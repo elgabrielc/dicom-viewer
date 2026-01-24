@@ -57,6 +57,10 @@ Copyright (c) 2026 Divergent Health Technologies
                     <p class="main-text">Drop a DICOM folder here</p>
                 </div>
             </div>
+            <div class="sample-section">
+                <span class="or-divider">or</span>
+                <button id="loadSampleBtn" class="sample-btn">Load Sample CT Scan</button>
+            </div>
         </section>
 
         <section class="studies-section">
@@ -207,6 +211,7 @@ Copyright (c) 2026 Divergent Health Technologies
         const prevBtn = $('prevSlice');
         const nextBtn = $('nextSlice');
         const backBtn = $('backBtn');
+        const loadSampleBtn = $('loadSampleBtn');
 
         // =====================================================================
         // UTILITY FUNCTIONS
@@ -1249,8 +1254,14 @@ Copyright (c) 2026 Divergent Health Technologies
                 let dataSet = state.sliceCache.get(index);
 
                 if (!dataSet) {
-                    const file = await slice.fileHandle.getFile();
-                    const buf = await file.arrayBuffer();
+                    // Handle both file handles (drag-drop) and blobs (sample loading)
+                    let buf;
+                    if (slice.fileHandle) {
+                        const file = await slice.fileHandle.getFile();
+                        buf = await file.arrayBuffer();
+                    } else if (slice.blob) {
+                        buf = await slice.blob.arrayBuffer();
+                    }
                     dataSet = dicomParser.parseDicom(new Uint8Array(buf));
                     state.sliceCache.set(index, dataSet);
                 }
@@ -1402,6 +1413,108 @@ Copyright (c) 2026 Divergent Health Technologies
         nextBtn.onclick = () => {
             if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1)
                 loadSlice(state.currentSliceIndex + 1);
+        };
+
+        // Load sample CT scan button
+        loadSampleBtn.onclick = async () => {
+            loadSampleBtn.disabled = true;
+            loadSampleBtn.textContent = 'Loading...';
+            uploadProgress.style.display = 'flex';
+            progressText.textContent = 'Loading sample scan...';
+            progressDetail.textContent = '';
+            progressFill.style.width = '0%';
+
+            try {
+                // Fetch the manifest of sample files
+                const manifestRes = await fetch('sample/manifest.json');
+                const fileNames = await manifestRes.json();
+
+                progressText.textContent = 'Downloading DICOM files...';
+                progressDetail.textContent = `0/${fileNames.length} files`;
+
+                // Fetch all DICOM files
+                const filePromises = fileNames.map(async (name, i) => {
+                    const res = await fetch(`sample/${name}`);
+                    const blob = await res.blob();
+                    // Update progress periodically
+                    if ((i + 1) % 5 === 0 || i === fileNames.length - 1) {
+                        const pct = Math.round(((i + 1) / fileNames.length) * 50);
+                        progressFill.style.width = pct + '%';
+                        progressDetail.textContent = `${i + 1}/${fileNames.length} files`;
+                    }
+                    return { name, blob };
+                });
+
+                const files = await Promise.all(filePromises);
+
+                progressText.textContent = 'Processing DICOM files...';
+                progressFill.style.width = '50%';
+
+                // Process files similar to processFiles but with blobs
+                const studies = {};
+                let processed = 0;
+
+                for (const { name, blob } of files) {
+                    const meta = await parseDicomMetadata(blob);
+                    processed++;
+
+                    const pct = 50 + Math.round((processed / files.length) * 50);
+                    progressFill.style.width = pct + '%';
+                    progressDetail.textContent = `Processing ${processed}/${files.length}`;
+
+                    if (!meta?.studyInstanceUid) continue;
+
+                    const studyUid = meta.studyInstanceUid;
+                    const seriesUid = meta.seriesInstanceUid;
+
+                    if (!studies[studyUid]) {
+                        studies[studyUid] = {
+                            ...meta,
+                            series: {},
+                            comments: []
+                        };
+                    }
+
+                    if (!studies[studyUid].series[seriesUid]) {
+                        studies[studyUid].series[seriesUid] = {
+                            seriesInstanceUid: seriesUid,
+                            seriesNumber: meta.seriesNumber,
+                            seriesDescription: meta.seriesDescription,
+                            modality: meta.modality,
+                            slices: [],
+                            comments: []
+                        };
+                    }
+
+                    studies[studyUid].series[seriesUid].slices.push({
+                        instanceNumber: meta.instanceNumber,
+                        sliceLocation: meta.sliceLocation,
+                        blob: blob  // Store blob instead of handle
+                    });
+                }
+
+                // Sort slices
+                for (const study of Object.values(studies)) {
+                    for (const series of Object.values(study.series)) {
+                        series.slices.sort((a, b) =>
+                            (a.sliceLocation ?? a.instanceNumber ?? 0) -
+                            (b.sliceLocation ?? b.instanceNumber ?? 0)
+                        );
+                    }
+                }
+
+                state.studies = studies;
+                uploadProgress.style.display = 'none';
+                displayStudies();
+                loadSampleBtn.textContent = 'Load Sample CT Scan';
+                loadSampleBtn.disabled = false;
+
+            } catch (err) {
+                uploadProgress.style.display = 'none';
+                loadSampleBtn.textContent = 'Load Sample CT Scan';
+                loadSampleBtn.disabled = false;
+                alert('Error loading sample: ' + err.message);
+            }
         };
 
         document.addEventListener('keydown', e => {
