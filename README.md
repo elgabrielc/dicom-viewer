@@ -1,8 +1,10 @@
 # DICOM CT Viewer
 
-**By [Divergent Health Technologies](https://divergent.health/)**
+**[Try it live](https://elgabrielc.github.io/dicom-viewer/)** | **By [Divergent Health Technologies](https://divergent.health/)**
 
 A web-based DICOM medical image viewer built with Flask and vanilla JavaScript. This viewer allows radiologists and researchers to browse, view, and annotate CT imaging studies directly in the browser.
+
+> **Demo available**: Click "Load Sample CT Scan" to view an anonymized brain CT with multiple series (axial, coronal, sagittal views).
 
 ## Features
 
