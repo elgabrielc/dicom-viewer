@@ -1,0 +1,359 @@
+<!--
+ALTERNATIVE VIEWER: Popup Window Version
+=========================================
+
+This is an ALTERNATIVE viewer designed to open in a separate window.
+The primary viewer is in index.html (single-page app).
+
+Use Case:
+  - Open studies in separate windows for multi-monitor setups
+  - Compare multiple studies side-by-side
+
+How it works:
+  1. Main page stores studies in window.dicomStudies
+  2. This page opens and reads data from window.opener.dicomStudies
+  3. Requires same-origin for window.opener access
+
+Limitations:
+  - Only supports UNCOMPRESSED DICOM (no JPEG Lossless, JPEG 2000)
+  - Requires same-origin popup (won't work if opened directly)
+  - Simpler implementation than index.html
+
+Note: The primary viewer (index.html) supports all compression formats
+and is recommended for most use cases.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DICOM CT Viewer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://unpkg.com/dicom-parser@1.8.21/dist/dicomParser.min.js"></script>
+</head>
+<body class="viewer-page">
+    <div class="viewer-container">
+        <header class="viewer-header">
+            <a href="/" class="back-btn">&larr; Back to Library</a>
+            <h1 id="studyTitle">Loading...</h1>
+        </header>
+
+        <div class="viewer-main">
+            <aside class="series-panel">
+                <h3>Series</h3>
+                <div id="seriesList" class="series-list">
+                    <p class="loading">Loading series...</p>
+                </div>
+            </aside>
+
+            <main class="image-panel">
+                <div class="canvas-container">
+                    <canvas id="imageCanvas"></canvas>
+                    <div id="imageLoading" class="image-loading">Loading image...</div>
+                </div>
+
+                <div class="slice-controls">
+                    <button id="prevSlice" class="slice-btn">&lt;</button>
+                    <input type="range" id="sliceSlider" min="0" max="0" value="0">
+                    <button id="nextSlice" class="slice-btn">&gt;</button>
+                    <span id="sliceInfo" class="slice-info">- / -</span>
+                </div>
+            </main>
+
+            <aside class="metadata-panel">
+                <h3>Slice Info</h3>
+                <div id="metadataContent" class="metadata-content">
+                    <p class="empty">Select a series to view</p>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        // Get study from opener window or session storage
+        const studyUid = '{{ study_uid }}';
+        let currentStudy = null;
+        let currentSeries = null;
+        let currentSliceIndex = 0;
+        let sliceCache = new Map();
+
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const slider = document.getElementById('sliceSlider');
+        const sliceInfo = document.getElementById('sliceInfo');
+        const seriesList = document.getElementById('seriesList');
+        const metadataContent = document.getElementById('metadataContent');
+        const studyTitle = document.getElementById('studyTitle');
+        const imageLoading = document.getElementById('imageLoading');
+        const prevBtn = document.getElementById('prevSlice');
+        const nextBtn = document.getElementById('nextSlice');
+
+        function getString(dataSet, tag) {
+            try { return dataSet.string(tag) || ''; } catch (e) { return ''; }
+        }
+
+        function getNumber(dataSet, tag, def = 0) {
+            try {
+                const v = dataSet.string(tag);
+                return v ? parseFloat(v) : def;
+            } catch (e) { return def; }
+        }
+
+        // Render DICOM pixel data to canvas
+        function renderDicom(dataSet) {
+            const rows = dataSet.uint16('x00280010');
+            const cols = dataSet.uint16('x00280011');
+            const bitsAllocated = dataSet.uint16('x00280100') || 16;
+            const bitsStored = dataSet.uint16('x00280101') || bitsAllocated;
+            const pixelRepresentation = dataSet.uint16('x00280103') || 0;
+            const rescaleSlope = getNumber(dataSet, 'x00281053', 1);
+            const rescaleIntercept = getNumber(dataSet, 'x00281052', 0);
+
+            let windowCenter = getNumber(dataSet, 'x00281050', 40);
+            let windowWidth = getNumber(dataSet, 'x00281051', 400);
+
+            const pixelDataElement = dataSet.elements.x7fe00010;
+            if (!pixelDataElement) return null;
+
+            let pixelData;
+            if (bitsAllocated === 16) {
+                if (pixelRepresentation === 1) {
+                    pixelData = new Int16Array(dataSet.byteArray.buffer, pixelDataElement.dataOffset, pixelDataElement.length / 2);
+                } else {
+                    pixelData = new Uint16Array(dataSet.byteArray.buffer, pixelDataElement.dataOffset, pixelDataElement.length / 2);
+                }
+            } else {
+                pixelData = new Uint8Array(dataSet.byteArray.buffer, pixelDataElement.dataOffset, pixelDataElement.length);
+            }
+
+            // Apply rescale and window/level
+            canvas.width = cols;
+            canvas.height = rows;
+            const imageData = ctx.createImageData(cols, rows);
+            const data = imageData.data;
+
+            const minVal = windowCenter - windowWidth / 2;
+            const maxVal = windowCenter + windowWidth / 2;
+
+            for (let i = 0; i < pixelData.length; i++) {
+                let val = pixelData[i] * rescaleSlope + rescaleIntercept;
+                val = Math.max(minVal, Math.min(maxVal, val));
+                const gray = Math.round(((val - minVal) / (maxVal - minVal)) * 255);
+
+                const idx = i * 4;
+                data[idx] = gray;
+                data[idx + 1] = gray;
+                data[idx + 2] = gray;
+                data[idx + 3] = 255;
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+
+            return {
+                rows, cols, windowCenter, windowWidth,
+                rescaleSlope, rescaleIntercept
+            };
+        }
+
+        async function loadSlice(index) {
+            if (!currentSeries) return;
+
+            const slices = currentSeries.slices;
+            if (index < 0 || index >= slices.length) return;
+
+            currentSliceIndex = index;
+            updateSliceInfo();
+            imageLoading.style.display = 'block';
+
+            try {
+                const slice = slices[index];
+                let dataSet;
+
+                // Check cache
+                if (sliceCache.has(index)) {
+                    dataSet = sliceCache.get(index);
+                } else {
+                    const file = await slice.fileHandle.getFile();
+                    const arrayBuffer = await file.arrayBuffer();
+                    const byteArray = new Uint8Array(arrayBuffer);
+                    dataSet = dicomParser.parseDicom(byteArray);
+                    sliceCache.set(index, dataSet);
+                }
+
+                const info = renderDicom(dataSet);
+
+                // Update metadata
+                if (info) {
+                    metadataContent.innerHTML = `
+                        <div class="metadata-item">
+                            <div class="label">Slice</div>
+                            <div class="value">${index + 1} / ${slices.length}</div>
+                        </div>
+                        <div class="metadata-item">
+                            <div class="label">Instance Number</div>
+                            <div class="value">${slice.instanceNumber || '-'}</div>
+                        </div>
+                        <div class="metadata-item">
+                            <div class="label">Slice Location</div>
+                            <div class="value">${slice.sliceLocation ? slice.sliceLocation.toFixed(2) + ' mm' : '-'}</div>
+                        </div>
+                        <div class="metadata-item">
+                            <div class="label">Image Size</div>
+                            <div class="value">${info.cols} x ${info.rows}</div>
+                        </div>
+                        <div class="metadata-item">
+                            <div class="label">Window Center</div>
+                            <div class="value">${info.windowCenter}</div>
+                        </div>
+                        <div class="metadata-item">
+                            <div class="label">Window Width</div>
+                            <div class="value">${info.windowWidth}</div>
+                        </div>
+                    `;
+                }
+
+                // Preload adjacent slices
+                preloadSlices(index);
+
+            } catch (error) {
+                console.error('Error loading slice:', error);
+            }
+
+            imageLoading.style.display = 'none';
+        }
+
+        function preloadSlices(currentIndex) {
+            const range = 5;
+            const slices = currentSeries.slices;
+
+            for (let i = currentIndex - range; i <= currentIndex + range; i++) {
+                if (i >= 0 && i < slices.length && !sliceCache.has(i)) {
+                    // Preload in background
+                    (async () => {
+                        try {
+                            const file = await slices[i].fileHandle.getFile();
+                            const arrayBuffer = await file.arrayBuffer();
+                            const byteArray = new Uint8Array(arrayBuffer);
+                            const dataSet = dicomParser.parseDicom(byteArray);
+                            sliceCache.set(i, dataSet);
+                        } catch (e) {}
+                    })();
+                }
+            }
+        }
+
+        function updateSliceInfo() {
+            const total = currentSeries ? currentSeries.slices.length : 0;
+            sliceInfo.textContent = `${currentSliceIndex + 1} / ${total}`;
+            slider.value = currentSliceIndex;
+            prevBtn.disabled = currentSliceIndex <= 0;
+            nextBtn.disabled = currentSliceIndex >= total - 1;
+        }
+
+        function selectSeries(seriesUid) {
+            if (!currentStudy) return;
+
+            currentSeries = currentStudy.series[seriesUid];
+            if (!currentSeries) return;
+
+            sliceCache.clear();
+            currentSliceIndex = 0;
+
+            // Update UI
+            document.querySelectorAll('.series-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.seriesUid === seriesUid);
+            });
+
+            slider.max = Math.max(0, currentSeries.slices.length - 1);
+            slider.value = 0;
+
+            loadSlice(0);
+        }
+
+        function renderSeriesList() {
+            if (!currentStudy) {
+                seriesList.innerHTML = '<p class="empty">No study loaded</p>';
+                return;
+            }
+
+            const seriesArray = Object.values(currentStudy.series);
+            if (seriesArray.length === 0) {
+                seriesList.innerHTML = '<p class="empty">No series found</p>';
+                return;
+            }
+
+            seriesList.innerHTML = seriesArray.map(s => `
+                <div class="series-item" data-series-uid="${s.seriesInstanceUid}">
+                    <div class="series-name">${s.seriesDescription || 'Series ' + (s.seriesNumber || '?')}</div>
+                    <div class="series-info">${s.slices.length} slices</div>
+                </div>
+            `).join('');
+
+            seriesList.querySelectorAll('.series-item').forEach(item => {
+                item.addEventListener('click', () => selectSeries(item.dataset.seriesUid));
+            });
+
+            // Auto-select first series
+            selectSeries(seriesArray[0].seriesInstanceUid);
+        }
+
+        // Event listeners
+        slider.addEventListener('input', () => {
+            loadSlice(parseInt(slider.value));
+        });
+
+        prevBtn.addEventListener('click', () => {
+            if (currentSliceIndex > 0) loadSlice(currentSliceIndex - 1);
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (currentSeries && currentSliceIndex < currentSeries.slices.length - 1) {
+                loadSlice(currentSliceIndex + 1);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (currentSliceIndex > 0) loadSlice(currentSliceIndex - 1);
+            } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (currentSeries && currentSliceIndex < currentSeries.slices.length - 1) {
+                    loadSlice(currentSliceIndex + 1);
+                }
+            }
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (e.deltaY > 0) {
+                if (currentSeries && currentSliceIndex < currentSeries.slices.length - 1) {
+                    loadSlice(currentSliceIndex + 1);
+                }
+            } else {
+                if (currentSliceIndex > 0) loadSlice(currentSliceIndex - 1);
+            }
+        });
+
+        // Initialize
+        function init() {
+            // Try to get study from opener window (same-origin)
+            if (window.opener && window.opener.dicomStudies) {
+                const studies = window.opener.dicomStudies;
+                currentStudy = studies[studyUid];
+            }
+
+            if (!currentStudy) {
+                studyTitle.textContent = 'Study not found';
+                seriesList.innerHTML = '<p class="empty">Please load a study from the library first</p>';
+                return;
+            }
+
+            studyTitle.textContent = `${currentStudy.patientName} - ${currentStudy.studyDescription || 'Study'}`;
+            renderSeriesList();
+        }
+
+        init();
+    </script>
+</body>
+</html>
