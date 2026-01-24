@@ -42,3 +42,6 @@ htmlcov/
 
 # Logs
 *.log
+
+# Session history (private)
+session-history*.md
