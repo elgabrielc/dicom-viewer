@@ -88,13 +88,25 @@ When evaluating libraries/tools, use these rules of thumb:
 
 ---
 
-## Research Summary
+## Benchmarking Research
 
-### Reference Implementations Studied
-1. **Kitware's vtk.js** - Open-source, CVR built-in, WebGL 2.0
-2. **Med3Web/MRI Viewer** - Three.js + custom GLSL shaders, 2D texture atlas approach
-3. **AMI Toolkit** - Three.js-based medical imaging toolkit
-4. **Cinematic Volume Rendering Paper** (Xu et al., 2022) - Kitware's research on in-browser CVR
+**Status**: Completed - See [BENCHMARKING_RESEARCH.md](./BENCHMARKING_RESEARCH.md) for full details.
+
+### Companies/Projects Studied
+| Company | Platform | Rendering Tech | Key Insight |
+|---------|----------|----------------|-------------|
+| **Onshape** | Browser-first | Custom WebGL | Browser-native 3D is production-ready |
+| **Autodesk Fusion 360** | Desktop + Web | C++/Qt + Three.js | Heavy compute stays desktop; web is read-only |
+| **3D Slicer / vtk.js** | Desktop + Web | VTK / vtk.js | vtk.js brings medical imaging to browser with CVR |
+| **Horos / OsiriX** | macOS Desktop | VTK + Cocoa | Mature CLUT/preset system; VTK is the standard |
+
+### Additional References Studied
+- **Med3Web/MRI Viewer** - Three.js + custom GLSL shaders
+- **AMI Toolkit** - Three.js-based medical imaging toolkit
+- **Cinematic Volume Rendering Paper** (Xu et al., 2022) - Kitware's research on in-browser CVR
+
+### Benchmarking Conclusion
+All serious medical imaging applications (Horos, OsiriX, 3D Slicer, RadiAnt) use VTK for volume rendering. For web-based implementation, **vtk.js is the clear choice** - it's the JavaScript port of VTK, maintained by Kitware with NIH funding, and includes Cinematic Volume Rendering features out of the box.
 
 ### Key Technical Insights
 
@@ -117,24 +129,27 @@ When evaluating libraries/tools, use these rules of thumb:
 
 ## Technology Decision
 
-**[DECISION NEEDED]** Which approach should we use?
+**[RECOMMENDED]**: vtk.js (Option B - start basic, add CVR incrementally)
 
-### Option A: vtk.js with CVR
-- Use Kitware's battle-tested implementation
-- Gradient shading, hybrid mode, LAO already included
-- Fastest path to high-quality rendering
-- Larger bundle size
+### Rationale
+Based on benchmarking research:
+1. **Industry standard**: All major desktop viewers (Horos, OsiriX, 3D Slicer) use VTK
+2. **Web-proven**: vtk.js is the official JavaScript port, used in VolView
+3. **Backed by Kitware**: NIH funded, active development, medical focus
+4. **CVR included**: Gradient shading, LAO, volumetric scattering available when needed
+5. **Transfer functions**: Full color/opacity pipeline with preset support
 
-### Option B: vtk.js Basic
-- Use vtk.js for volume rendering basics
-- Start simple, add CVR features incrementally
-- Balance between speed and control
+### Options Evaluated
 
-### Option C: Three.js Custom
-- Write custom GLSL ray-casting shaders
-- Smaller bundle, matches our vanilla JS approach
-- More work but educational
-- Reference: Med3Web uses this approach
+| Option | Approach | Pros | Cons | Recommendation |
+|--------|----------|------|------|----------------|
+| **A** | vtk.js with CVR | Full features immediately | May be complex for MVP | Later phase |
+| **B** | vtk.js Basic | Start simple, add CVR later | Need to learn vtk.js | **Recommended** |
+| **C** | Three.js Custom | Smaller bundle, full control | Significant dev time | Avoid |
+| **D** | Raw WebGL | Maximum performance | Very complex | Avoid |
+
+### Bundle Size Consideration
+vtk.js is ~500KB, but for a medical imaging app where users load multi-GB DICOM datasets, this is negligible. The alternative (Three.js + custom shaders) would require months of development to match vtk.js features.
 
 ---
 

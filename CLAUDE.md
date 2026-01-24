@@ -41,19 +41,27 @@ Flask Server (app.py)
 
 ## Current Work: 3D Volume Rendering
 
-**Status**: Benchmarking mode - researching technology options before implementation
+**Status**: Benchmarking complete, ready for implementation
 
 ### Research Completed
 1. **Onshape** - Browser-first, custom WebGL, Parasolid kernel in cloud
 2. **Autodesk Fusion 360** - Desktop-first (C++/Qt), Three.js r71 web viewer (frozen)
 3. **3D Slicer / vtk.js** - VTK/ITK desktop, vtk.js for web, VolView reference app
+4. **Horos / OsiriX** - macOS desktop, VTK volume rendering, extensive CLUT/preset system
 
-### Technology Decision Pending
-- **Option A**: vtk.js - Built-in volume rendering, CVR, medical presets
-- **Option B**: Three.js + custom shaders - Smaller bundle, more control
-- **Option C**: Raw WebGL - Maximum performance, most complex
+### Technology Decision: vtk.js
+- **Rationale**: Industry standard (all major medical imaging apps use VTK); vtk.js is official web port
+- **Bundle**: ~500KB (acceptable for medical imaging app)
+- **Features**: Volume rendering, MIP, CVR, transfer functions, medical presets
+- **Backing**: Kitware (NIH funded, active development)
 
-See `3D_VOLUME_RENDERING_PLAN.md` for full details.
+### Next Steps
+1. Add vtk.js to index.html
+2. Implement volume stacking (slices → 3D array)
+3. Basic ray-casting with preset transfer functions
+4. View mode toggle (2D Slices / 3D Volume / MIP)
+
+See `3D_VOLUME_RENDERING_PLAN.md` and `BENCHMARKING_RESEARCH.md` for full details.
 
 ## Technical Notes
 
