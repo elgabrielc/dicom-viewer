@@ -46,3 +46,6 @@ htmlcov/
 # Session history (private)
 session-history*.md
 test-data/
+
+# Playwright test results
+test-results/
