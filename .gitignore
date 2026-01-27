@@ -45,3 +45,4 @@ htmlcov/
 
 # Session history (private)
 session-history*.md
+test-data/

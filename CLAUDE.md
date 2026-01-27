@@ -1,8 +1,9 @@
-# DICOM CT Viewer - Claude Code Context
+# DICOM Medical Imaging Viewer - Claude Code Context
 
 ## Project Overview
 
 A web-based DICOM medical imaging viewer built by Divergent Health Technologies.
+Supports multiple modalities: CT, MRI, and other imaging types.
 
 - **Repository**: https://github.com/elgabrielc/dicom-viewer
 - **Stack**: Flask (Python) backend, vanilla JavaScript frontend
@@ -66,6 +67,9 @@ See `3D_VOLUME_RENDERING_PLAN.md` and `BENCHMARKING_RESEARCH.md` for full detail
 ## Technical Notes
 
 ### DICOM Tags Used
+
+**Common (all modalities):**
+- (0008,0060) Modality
 - (0028,0010) Rows, (0028,0011) Columns
 - (0028,0100) Bits Allocated, (0028,0103) Pixel Representation
 - (0028,1050) Window Center, (0028,1051) Window Width
@@ -73,8 +77,24 @@ See `3D_VOLUME_RENDERING_PLAN.md` and `BENCHMARKING_RESEARCH.md` for full detail
 - (0002,0010) Transfer Syntax UID
 - (7FE0,0010) Pixel Data
 
-### Window/Level
-Default values if not in DICOM: Window Center = 40, Window Width = 400 (typical CT)
+**MRI-specific:**
+- (0018,0080) Repetition Time (TR)
+- (0018,0081) Echo Time (TE)
+- (0018,1314) Flip Angle
+- (0018,0087) Magnetic Field Strength
+- (0018,1030) Protocol Name
+- (0018,0024) Sequence Name
+
+### Window/Level (Modality-Aware)
+
+| Modality | Default Center | Default Width | Notes |
+|----------|---------------|---------------|-------|
+| CT | 40 | 400 | Hounsfield units (soft tissue) |
+| MR | Auto-calculated | Auto-calculated | Based on pixel statistics |
+| US | 128 | 256 | 8-bit typical |
+| CR/DX/MG | 2048 | 4096 | 12-bit typical |
+
+For MRI without window/level in DICOM, auto-calculation uses pixel data statistics.
 
 ## Development Notes
 

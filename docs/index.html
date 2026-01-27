@@ -1,11 +1,12 @@
 <!--
-DICOM CT Viewer - Main Application
-==================================
+DICOM Medical Imaging Viewer - Main Application
+===============================================
 
 Divergent Health Technologies
 https://divergent.health/
 
-This is a single-page application for viewing DICOM CT imaging studies.
+This is a single-page application for viewing DICOM medical imaging studies.
+Supports CT, MRI, and other modalities.
 All DICOM processing happens client-side using the File System Access API.
 
 Features:
@@ -30,7 +31,7 @@ Copyright (c) 2026 Divergent Health Technologies
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DICOM CT Viewer</title>
+    <title>DICOM Medical Imaging Viewer</title>
     <link rel="stylesheet" href="css/style.css">
 
     <!-- DICOM parsing library -->
@@ -46,8 +47,8 @@ Copyright (c) 2026 Divergent Health Technologies
     <!-- LIBRARY VIEW -->
     <div id="libraryView" class="container">
         <header>
-            <h1>DICOM CT Viewer</h1>
-            <p class="subtitle">Browse and view CT imaging studies</p>
+            <h1>DICOM Medical Imaging Viewer</h1>
+            <p class="subtitle">Browse and view CT, MRI, and other imaging studies</p>
         </header>
 
         <section class="upload-section">
@@ -56,10 +57,6 @@ Copyright (c) 2026 Divergent Health Technologies
                     <span class="folder-icon">&#128193;</span>
                     <p class="main-text">Drop a DICOM folder here</p>
                 </div>
-            </div>
-            <div class="sample-section">
-                <span class="or-divider">or</span>
-                <button id="loadSampleBtn" class="sample-btn">Load Sample CT Scan</button>
             </div>
         </section>
 
@@ -136,7 +133,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
     <script>
         // =====================================================================
-        // DICOM CT VIEWER - CLIENT-SIDE APPLICATION
+        // DICOM MEDICAL IMAGING VIEWER - CLIENT-SIDE APPLICATION
         // =====================================================================
         //
         // This script implements the entire DICOM viewing workflow:
@@ -211,7 +208,6 @@ Copyright (c) 2026 Divergent Health Technologies
         const prevBtn = $('prevSlice');
         const nextBtn = $('nextSlice');
         const backBtn = $('backBtn');
-        const loadSampleBtn = $('loadSampleBtn');
 
         // =====================================================================
         // UTILITY FUNCTIONS
@@ -850,6 +846,71 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         // =====================================================================
+        // MODALITY-SPECIFIC DEFAULTS
+        // Different imaging modalities require different window/level settings
+        // =====================================================================
+
+        /**
+         * Default window/level values by modality
+         * CT uses Hounsfield Units (-1000 air, 0 water, +1000 bone)
+         * MR uses arbitrary signal intensity (depends on sequence)
+         * Other modalities have their own ranges
+         */
+        const MODALITY_DEFAULTS = {
+            'CT': { windowCenter: 40, windowWidth: 400 },      // Soft tissue window
+            'MR': { windowCenter: 512, windowWidth: 1024 },    // Mid-range for typical MRI
+            'PT': { windowCenter: 256, windowWidth: 512 },     // PET
+            'NM': { windowCenter: 256, windowWidth: 512 },     // Nuclear Medicine
+            'US': { windowCenter: 128, windowWidth: 256 },     // Ultrasound (8-bit typical)
+            'CR': { windowCenter: 2048, windowWidth: 4096 },   // Computed Radiography
+            'DX': { windowCenter: 2048, windowWidth: 4096 },   // Digital X-Ray
+            'MG': { windowCenter: 2048, windowWidth: 4096 },   // Mammography
+            'XA': { windowCenter: 128, windowWidth: 256 },     // X-Ray Angiography
+            'RF': { windowCenter: 128, windowWidth: 256 },     // Radiofluoroscopy
+        };
+
+        /**
+         * Get default window/level for a modality
+         * @param {string} modality - DICOM modality code (CT, MR, etc.)
+         * @returns {Object} {windowCenter, windowWidth}
+         */
+        function getModalityDefaults(modality) {
+            return MODALITY_DEFAULTS[modality] || { windowCenter: 128, windowWidth: 256 };
+        }
+
+        /**
+         * Calculate auto window/level from pixel data statistics
+         * Useful for MRI and other modalities without standard units
+         * @param {TypedArray} pixelData - Raw pixel values
+         * @param {number} rescaleSlope - Rescale slope
+         * @param {number} rescaleIntercept - Rescale intercept
+         * @returns {Object} {windowCenter, windowWidth}
+         */
+        function calculateAutoWindowLevel(pixelData, rescaleSlope = 1, rescaleIntercept = 0) {
+            // Sample pixels for speed (every 10th pixel)
+            let min = Infinity, max = -Infinity;
+            let sum = 0, count = 0;
+
+            for (let i = 0; i < pixelData.length; i += 10) {
+                const value = pixelData[i] * rescaleSlope + rescaleIntercept;
+                if (value < min) min = value;
+                if (value > max) max = value;
+                sum += value;
+                count++;
+            }
+
+            const mean = sum / count;
+
+            // Use percentile-based windowing to handle outliers
+            // Center at mean, width covers most of the dynamic range
+            const range = max - min;
+            const windowWidth = Math.max(range * 0.9, 1);  // 90% of range
+            const windowCenter = mean;
+
+            return { windowCenter: Math.round(windowCenter), windowWidth: Math.round(windowWidth) };
+        }
+
+        // =====================================================================
         // IMAGE DECODING
         // Different compression formats require different decoders
         // =====================================================================
@@ -1124,13 +1185,38 @@ Copyright (c) 2026 Divergent Health Technologies
             const bitsAllocated = dataSet.uint16('x00280100') || 16;  // (0028,0100) Bits Allocated
             const pixelRepresentation = dataSet.uint16('x00280103') || 0;  // (0028,0103) 0=unsigned, 1=signed
 
-            // Rescale slope/intercept for converting stored values to Hounsfield Units
+            // Get modality for appropriate defaults
+            const modality = getString(dataSet, 'x00080060');  // (0008,0060) Modality
+
+            // Rescale slope/intercept for converting stored values
+            // CT: converts to Hounsfield Units; MR: arbitrary signal intensity
             const rescaleSlope = getNumber(dataSet, 'x00281053', 1);     // (0028,1053)
             const rescaleIntercept = getNumber(dataSet, 'x00281052', 0); // (0028,1052)
 
-            // Window/level for display (center and width)
-            let windowCenter = getNumber(dataSet, 'x00281050', 40);  // (0028,1050)
-            let windowWidth = getNumber(dataSet, 'x00281051', 400);  // (0028,1051)
+            // Window/level for display - use modality-appropriate defaults
+            const modalityDefaults = getModalityDefaults(modality);
+            let windowCenter = getNumber(dataSet, 'x00281050', 0);  // (0028,1050)
+            let windowWidth = getNumber(dataSet, 'x00281051', 0);   // (0028,1051)
+
+            // If window/level not in DICOM, use modality defaults
+            // (we'll potentially override with auto-calculation for MRI later)
+            const hasWindowLevel = windowCenter !== 0 || windowWidth !== 0;
+            if (!hasWindowLevel) {
+                windowCenter = modalityDefaults.windowCenter;
+                windowWidth = modalityDefaults.windowWidth;
+            }
+
+            // Extract MRI-specific metadata
+            const mrMetadata = {
+                repetitionTime: getNumber(dataSet, 'x00180080', 0),     // (0018,0080) TR
+                echoTime: getNumber(dataSet, 'x00180081', 0),          // (0018,0081) TE
+                flipAngle: getNumber(dataSet, 'x00181314', 0),         // (0018,1314) Flip Angle
+                magneticFieldStrength: getNumber(dataSet, 'x00180087', 0), // (0018,0087) Field Strength
+                protocolName: getString(dataSet, 'x00181030'),         // (0018,1030) Protocol Name
+                sequenceName: getString(dataSet, 'x00180024'),         // (0018,0024) Sequence Name
+                scanningSequence: getString(dataSet, 'x00180020'),     // (0018,0020) Scanning Sequence
+                mrAcquisitionType: getString(dataSet, 'x00180023'),    // (0018,0023) MR Acquisition Type (2D/3D)
+            };
 
             // Get transfer syntax to determine compression format
             const transferSyntax = getString(dataSet, 'x00020010');  // (0002,0010)
@@ -1190,6 +1276,15 @@ Copyright (c) 2026 Divergent Health Technologies
                 }
             }
 
+            // For MRI without window/level in DICOM, calculate auto window/level
+            // based on actual pixel data statistics
+            if (!hasWindowLevel && (modality === 'MR' || modality === 'PT' || modality === 'NM')) {
+                const autoWL = calculateAutoWindowLevel(pixelData, rescaleSlope, rescaleIntercept);
+                windowCenter = autoWL.windowCenter;
+                windowWidth = autoWL.windowWidth;
+                console.log(`Auto window/level for ${modality}: C=${windowCenter} W=${windowWidth}`);
+            }
+
             // Set canvas size to match image dimensions
             canvas.width = cols;
             canvas.height = rows;
@@ -1209,11 +1304,12 @@ Copyright (c) 2026 Divergent Health Technologies
                     // Already 0-255 (e.g., from JPEG baseline decode)
                     grayscaleValue = pixelData[i];
                 } else {
-                    // Apply rescale slope/intercept to get Hounsfield Units
-                    let hounsfieldValue = pixelData[i] * rescaleSlope + rescaleIntercept;
+                    // Apply rescale slope/intercept
+                    // CT: converts to Hounsfield Units; MR: arbitrary signal intensity
+                    let pixelValue = pixelData[i] * rescaleSlope + rescaleIntercept;
                     // Clamp to window range and scale to 0-255
-                    hounsfieldValue = Math.max(windowMin, Math.min(windowMax, hounsfieldValue));
-                    grayscaleValue = Math.round(((hounsfieldValue - windowMin) / (windowMax - windowMin)) * 255);
+                    pixelValue = Math.max(windowMin, Math.min(windowMax, pixelValue));
+                    grayscaleValue = Math.round(((pixelValue - windowMin) / (windowMax - windowMin)) * 255);
                 }
                 // Set RGBA values (grayscale = R=G=B, alpha=255)
                 const pixelIndex = i * 4;
@@ -1226,7 +1322,12 @@ Copyright (c) 2026 Divergent Health Technologies
             // Draw to canvas
             ctx.putImageData(imageData, 0, 0);
 
-            return { rows, cols, wc: windowCenter, ww: windowWidth, transferSyntax };
+            return {
+                rows, cols,
+                wc: windowCenter, ww: windowWidth,
+                transferSyntax, modality,
+                mrMetadata
+            };
         }
 
         // =====================================================================
@@ -1254,27 +1355,49 @@ Copyright (c) 2026 Divergent Health Technologies
                 let dataSet = state.sliceCache.get(index);
 
                 if (!dataSet) {
-                    // Handle both file handles (drag-drop) and blobs (sample loading)
-                    let buf;
-                    if (slice.fileHandle) {
-                        const file = await slice.fileHandle.getFile();
-                        buf = await file.arrayBuffer();
-                    } else if (slice.blob) {
-                        buf = await slice.blob.arrayBuffer();
-                    }
+                    const file = await slice.fileHandle.getFile();
+                    const buf = await file.arrayBuffer();
                     dataSet = dicomParser.parseDicom(new Uint8Array(buf));
                     state.sliceCache.set(index, dataSet);
                 }
 
                 const info = await renderDicom(dataSet);
                 if (info && !info.error) {
-                    metadataContent.innerHTML = `
+                    // Build base metadata (common to all modalities)
+                    let metadataHtml = `
                         <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                        <div class="metadata-item"><div class="label">Instance</div><div class="value">${slice.instanceNumber || '-'}</div></div>
-                        <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
+                        <div class="metadata-item"><div class="label">Modality</div><div class="value">${info.modality || '-'}</div></div>
                         <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
+                        <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
                         <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
                     `;
+
+                    // Add MRI-specific metadata
+                    if (info.modality === 'MR' && info.mrMetadata) {
+                        const mr = info.mrMetadata;
+                        metadataHtml += `<div class="metadata-divider"></div>`;
+
+                        if (mr.protocolName) {
+                            metadataHtml += `<div class="metadata-item"><div class="label">Protocol</div><div class="value">${mr.protocolName}</div></div>`;
+                        }
+                        if (mr.sequenceName) {
+                            metadataHtml += `<div class="metadata-item"><div class="label">Sequence</div><div class="value">${mr.sequenceName}</div></div>`;
+                        }
+                        if (mr.repetitionTime) {
+                            metadataHtml += `<div class="metadata-item"><div class="label">TR</div><div class="value">${mr.repetitionTime.toFixed(1)} ms</div></div>`;
+                        }
+                        if (mr.echoTime) {
+                            metadataHtml += `<div class="metadata-item"><div class="label">TE</div><div class="value">${mr.echoTime.toFixed(1)} ms</div></div>`;
+                        }
+                        if (mr.flipAngle) {
+                            metadataHtml += `<div class="metadata-item"><div class="label">Flip Angle</div><div class="value">${mr.flipAngle}°</div></div>`;
+                        }
+                        if (mr.magneticFieldStrength) {
+                            metadataHtml += `<div class="metadata-item"><div class="label">Field</div><div class="value">${mr.magneticFieldStrength}T</div></div>`;
+                        }
+                    }
+
+                    metadataContent.innerHTML = metadataHtml;
                 } else if (info && info.error) {
                     metadataContent.innerHTML = `
                         <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
@@ -1413,108 +1536,6 @@ Copyright (c) 2026 Divergent Health Technologies
         nextBtn.onclick = () => {
             if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1)
                 loadSlice(state.currentSliceIndex + 1);
-        };
-
-        // Load sample CT scan button
-        loadSampleBtn.onclick = async () => {
-            loadSampleBtn.disabled = true;
-            loadSampleBtn.textContent = 'Loading...';
-            uploadProgress.style.display = 'flex';
-            progressText.textContent = 'Loading sample scan...';
-            progressDetail.textContent = '';
-            progressFill.style.width = '0%';
-
-            try {
-                // Fetch the manifest of sample files
-                const manifestRes = await fetch('sample/manifest.json');
-                const fileNames = await manifestRes.json();
-
-                progressText.textContent = 'Downloading DICOM files...';
-                progressDetail.textContent = `0/${fileNames.length} files`;
-
-                // Fetch all DICOM files
-                const filePromises = fileNames.map(async (name, i) => {
-                    const res = await fetch(`sample/${name}`);
-                    const blob = await res.blob();
-                    // Update progress periodically
-                    if ((i + 1) % 5 === 0 || i === fileNames.length - 1) {
-                        const pct = Math.round(((i + 1) / fileNames.length) * 50);
-                        progressFill.style.width = pct + '%';
-                        progressDetail.textContent = `${i + 1}/${fileNames.length} files`;
-                    }
-                    return { name, blob };
-                });
-
-                const files = await Promise.all(filePromises);
-
-                progressText.textContent = 'Processing DICOM files...';
-                progressFill.style.width = '50%';
-
-                // Process files similar to processFiles but with blobs
-                const studies = {};
-                let processed = 0;
-
-                for (const { name, blob } of files) {
-                    const meta = await parseDicomMetadata(blob);
-                    processed++;
-
-                    const pct = 50 + Math.round((processed / files.length) * 50);
-                    progressFill.style.width = pct + '%';
-                    progressDetail.textContent = `Processing ${processed}/${files.length}`;
-
-                    if (!meta?.studyInstanceUid) continue;
-
-                    const studyUid = meta.studyInstanceUid;
-                    const seriesUid = meta.seriesInstanceUid;
-
-                    if (!studies[studyUid]) {
-                        studies[studyUid] = {
-                            ...meta,
-                            series: {},
-                            comments: []
-                        };
-                    }
-
-                    if (!studies[studyUid].series[seriesUid]) {
-                        studies[studyUid].series[seriesUid] = {
-                            seriesInstanceUid: seriesUid,
-                            seriesNumber: meta.seriesNumber,
-                            seriesDescription: meta.seriesDescription,
-                            modality: meta.modality,
-                            slices: [],
-                            comments: []
-                        };
-                    }
-
-                    studies[studyUid].series[seriesUid].slices.push({
-                        instanceNumber: meta.instanceNumber,
-                        sliceLocation: meta.sliceLocation,
-                        blob: blob  // Store blob instead of handle
-                    });
-                }
-
-                // Sort slices
-                for (const study of Object.values(studies)) {
-                    for (const series of Object.values(study.series)) {
-                        series.slices.sort((a, b) =>
-                            (a.sliceLocation ?? a.instanceNumber ?? 0) -
-                            (b.sliceLocation ?? b.instanceNumber ?? 0)
-                        );
-                    }
-                }
-
-                state.studies = studies;
-                uploadProgress.style.display = 'none';
-                displayStudies();
-                loadSampleBtn.textContent = 'Load Sample CT Scan';
-                loadSampleBtn.disabled = false;
-
-            } catch (err) {
-                uploadProgress.style.display = 'none';
-                loadSampleBtn.textContent = 'Load Sample CT Scan';
-                loadSampleBtn.disabled = false;
-                alert('Error loading sample: ' + err.message);
-            }
         };
 
         document.addEventListener('keydown', e => {
