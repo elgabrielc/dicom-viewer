@@ -19,7 +19,9 @@
   "license": "MIT",
   "homepage": "https://divergent.health/",
   "dependencies": {
-    "@cornerstonejs/codec-openjpeg": "^1.3.0"
+    "@cornerstonejs/codec-openjpeg": "^1.3.0",
+    "@playwright/test": "^1.58.0",
+    "playwright": "^1.58.0"
   },
   "engines": {
     "node": ">=14.0.0"
@@ -27,5 +29,9 @@
   "repository": {
     "type": "git",
     "url": ""
+  },
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
   }
 }

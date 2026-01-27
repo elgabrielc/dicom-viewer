@@ -51,9 +51,13 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 
+# Test data folder for automated testing (bypasses File System Access API)
+TEST_DATA_FOLDER = os.path.expanduser('~/claude 0/MRI sample for debug 1')
+
 # In-memory store for studies (in production, use a database)
 # Maps study_id -> study dict containing patient info, series, and slice metadata
 studies_cache = {}
+test_data_cache = {}  # Separate cache for test data
 
 
 # =============================================================================
@@ -520,6 +524,87 @@ def find_folder():
         'path': folder_path,
         'study_count': len(new_studies),
         'found': True
+    })
+
+
+# =============================================================================
+# FLASK ROUTES - TEST DATA API
+# These endpoints provide test data for automated testing, bypassing the
+# File System Access API requirement.
+# =============================================================================
+
+def get_test_data():
+    """Load test data from the configured test folder."""
+    global test_data_cache
+    if not test_data_cache:
+        if os.path.exists(TEST_DATA_FOLDER):
+            test_data_cache = scan_dicom_files(TEST_DATA_FOLDER)
+    return test_data_cache
+
+
+@app.route('/api/test-data/studies')
+def get_test_studies():
+    """Get list of studies from test data folder."""
+    studies = get_test_data()
+    studies_list = []
+    for study_id, study in studies.items():
+        series_list = []
+        for series_id, series in study['series'].items():
+            series_list.append({
+                'seriesInstanceUid': series_id,
+                'seriesDescription': series['series_description'],
+                'seriesNumber': series['series_number'],
+                'modality': series['modality'],
+                'sliceCount': len(series['slices'])
+            })
+        studies_list.append({
+            'studyInstanceUid': study_id,
+            'patientName': study['patient_name'],
+            'patientId': study['patient_id'],
+            'studyDate': study['study_date'],
+            'studyDescription': study['study_description'],
+            'modality': study['modality'],
+            'seriesCount': len(study['series']),
+            'imageCount': study['image_count'],
+            'series': series_list
+        })
+    return jsonify(studies_list)
+
+
+@app.route('/api/test-data/dicom/<study_id>/<series_id>/<int:slice_num>')
+def get_test_dicom(study_id, series_id, slice_num):
+    """Get raw DICOM file bytes for a test data slice."""
+    studies = get_test_data()
+
+    if study_id not in studies:
+        return jsonify({'error': 'Study not found'}), 404
+
+    study = studies[study_id]
+    if series_id not in study['series']:
+        return jsonify({'error': 'Series not found'}), 404
+
+    series = study['series'][series_id]
+    if slice_num < 0 or slice_num >= len(series['slices']):
+        return jsonify({'error': 'Slice index out of range'}), 404
+
+    slice_info = series['slices'][slice_num]
+    file_path = slice_info['file_path']
+
+    try:
+        return send_file(file_path, mimetype='application/dicom')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/test-data/info')
+def get_test_info():
+    """Get info about available test data."""
+    studies = get_test_data()
+    return jsonify({
+        'testDataFolder': TEST_DATA_FOLDER,
+        'available': os.path.exists(TEST_DATA_FOLDER),
+        'studyCount': len(studies),
+        'totalImages': sum(s['image_count'] for s in studies.values())
     })
 
 

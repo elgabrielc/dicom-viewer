@@ -102,6 +102,15 @@ For MRI without window/level in DICOM, auto-calculation uses pixel data statisti
 - Node dependencies only needed for OpenJPEG codec (`npm install` then copy to static/js/)
 - Python venv for Flask server (`pip install -r requirements.txt`)
 
+## Testing
+
+- **Run tests**: `npx playwright test`
+- **Test mode URL**: `http://127.0.0.1:5001/?test` (auto-loads test data)
+- **Test docs**: `docs/TESTING.md`
+- **Global process**: `~/.claude/TESTING_PROCESS.md`
+
+After each test run, apply continuous improvement: analyze results, strengthen tests, add missing coverage.
+
 ## Past Decisions
 
 - Chose vanilla JS over React/Vue for simplicity and learning
