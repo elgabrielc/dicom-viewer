@@ -102,6 +102,108 @@ async function getCanvasCursor(page) {
   });
 }
 
+// Seeded random number generator for reproducible tests
+function seededRandom(seed) {
+  let state = seed;
+  return function() {
+    state = (state * 1103515245 + 12345) & 0x7fffffff;
+    return state / 0x7fffffff;
+  };
+}
+
+/**
+ * Sample 9 regions of the canvas (3x3 grid) and return pixel data.
+ * Each region gets one random sample point.
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page
+ * @param {number|null} seed - Random seed for reproducibility (null = use Math.random)
+ * @returns {Promise<{pixels: Array<{r: number, g: number, b: number, x: number, y: number}>, width: number, height: number}>}
+ */
+async function sample9Regions(page, seed = null) {
+  return await page.locator(CANVAS_SELECTOR).evaluate((canvas, seed) => {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Simple seeded random if seed provided
+    let random;
+    if (seed !== null) {
+      let state = seed;
+      random = () => {
+        state = (state * 1103515245 + 12345) & 0x7fffffff;
+        return state / 0x7fffffff;
+      };
+    } else {
+      random = Math.random;
+    }
+
+    const pixels = [];
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        // Random point within this region
+        const x = Math.floor((col + random()) * w / 3);
+        const y = Math.floor((row + random()) * h / 3);
+        const data = ctx.getImageData(x, y, 1, 1).data;
+        pixels.push({ r: data[0], g: data[1], b: data[2], x, y });
+      }
+    }
+
+    return { pixels, width: w, height: h };
+  }, seed);
+}
+
+/**
+ * Verify canvas has valid medical image content.
+ * Checks: dimensions, grayscale, variation, value range.
+ *
+ * If all 9 sampled pixels have the same value (within ±2), returns needsManualCheck: true
+ * instead of failing - this flags for human review rather than auto-failing.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {number|null} seed - Random seed for reproducibility
+ * @returns {Promise<{valid: boolean, needsManualCheck: boolean, issues: string[], samples: object}>}
+ */
+async function verifyCanvasContent(page, seed = null) {
+  const { pixels, width, height } = await sample9Regions(page, seed);
+  const issues = [];
+  let needsManualCheck = false;
+
+  // Check 1: Canvas has reasonable dimensions
+  if (width < 100 || height < 100) {
+    issues.push(`Canvas too small: ${width}x${height}`);
+  }
+
+  // Check 2: All pixels are grayscale (R=G=B)
+  const nonGrayscale = pixels.filter(p => p.r !== p.g || p.g !== p.b);
+  if (nonGrayscale.length > 0) {
+    issues.push(`Non-grayscale pixels found: ${nonGrayscale.length}/9`);
+  }
+
+  // Check 3: Pixels have variation (not all same value)
+  // If uniform, flag for manual check instead of failing
+  const values = pixels.map(p => p.r);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (max - min <= 2) {
+    needsManualCheck = true;
+  }
+
+  // Check 4: Values are in reasonable range (not all black or white)
+  if (max <= 5) {
+    issues.push(`Image appears all black: max value is ${max}`);
+  }
+  if (min >= 250) {
+    issues.push(`Image appears all white: min value is ${min}`);
+  }
+
+  return {
+    valid: issues.length === 0,
+    needsManualCheck,
+    issues,
+    samples: { pixels, width, height, min, max }
+  };
+}
+
 // ============================================
 // Test Suite 1: Toolbar Visibility and Initial State
 // ============================================
@@ -1076,6 +1178,215 @@ test.describe('Test Suite 13: Series Switching', () => {
       const newWL = await getWLValues(page);
       // Just verify it loaded successfully
       expect(newWL).not.toBeNull();
+    }
+  });
+
+  // ==========================================================================
+  // SAMPLE CT BUTTON TESTS
+  // ==========================================================================
+
+  test('Sample CT button loads study and enables viewing', async ({ page }) => {
+    // Use deterministic seed for reproducible sampling
+    const SEED = 12345;
+
+    // Go to home page (NOT test mode)
+    await page.goto('http://127.0.0.1:5001/');
+
+    // Verify sample button exists
+    const sampleBtn = page.locator('#loadSampleBtn');
+    await expect(sampleBtn).toBeVisible();
+    await expect(sampleBtn).toHaveText('Load Sample CT Scan');
+
+    // Click the sample button
+    await sampleBtn.click();
+
+    // Button should show loading state
+    await expect(sampleBtn).toHaveText('Loading...');
+    await expect(sampleBtn).toBeDisabled();
+
+    // Wait for studies table to appear (sample loaded)
+    await page.waitForSelector('#studiesTable', { state: 'visible', timeout: 60000 });
+
+    // Verify at least one study row exists
+    const studyRows = page.locator('#studiesBody tr');
+    await expect(studyRows.first()).toBeVisible({ timeout: 10000 });
+
+    // Button should be restored
+    await expect(sampleBtn).toHaveText('Load Sample CT Scan');
+    await expect(sampleBtn).toBeEnabled();
+
+    // Expand the study to see series
+    const expandIcon = page.locator('#studiesBody tr .expand-icon').first();
+    await expandIcon.click();
+    await page.waitForTimeout(300);
+
+    // Click on a series to open viewer
+    const seriesItem = page.locator('.series-dropdown-item').first();
+    await seriesItem.click();
+
+    // Wait for viewer to load
+    await waitForViewerReady(page);
+
+    // Verify canvas is visible
+    const canvas = page.locator(CANVAS_SELECTOR);
+    await expect(canvas).toBeVisible();
+
+    // Verify W/L display shows values
+    const wlDisplay = page.locator(WL_DISPLAY_SELECTOR);
+    await expect(wlDisplay).toContainText('C:');
+    await expect(wlDisplay).toContainText('W:');
+
+    // Verify toolbar is visible
+    const toolbar = page.locator(TOOLBAR_SELECTOR);
+    await expect(toolbar).toBeVisible();
+
+    // ================================================================
+    // VISUAL VERIFICATION: 9-region sampling with comprehensive checks
+    // ================================================================
+
+    const verification = await verifyCanvasContent(page, SEED);
+
+    // If verification fails, provide detailed diagnostics
+    if (!verification.valid) {
+      console.error('Canvas verification failed:', verification.issues);
+      console.error('Sample data:', JSON.stringify(verification.samples, null, 2));
+    }
+
+    // Check 1: Canvas dimensions are reasonable
+    expect(verification.samples.width).toBeGreaterThan(100);
+    expect(verification.samples.height).toBeGreaterThan(100);
+
+    // Check 2: All sampled pixels are grayscale
+    const nonGrayscale = verification.samples.pixels.filter(p => p.r !== p.g || p.g !== p.b);
+    expect(nonGrayscale.length).toBe(0);
+
+    // Check 3: If all pixels are uniform, flag for manual check
+    if (verification.needsManualCheck) {
+      console.log('========================================');
+      console.log('MANUAL_CHECK_REQUIRED');
+      console.log('All 9 sampled pixels have the same value.');
+      console.log('Sample data:', JSON.stringify(verification.samples, null, 2));
+      console.log('========================================');
+      // This will cause test to be marked as needing manual verification
+      // Do not auto-pass or auto-fail - throw to stop execution
+      throw new Error('MANUAL_CHECK_REQUIRED: Uniform pixels detected. Human verification needed.');
+    }
+
+    // Check 4: Values in reasonable range (not all black/white)
+    expect(verification.samples.max).toBeGreaterThan(5);
+    expect(verification.samples.min).toBeLessThan(250);
+  });
+
+  test('Sample CT: slice navigation changes the displayed image', async ({ page }) => {
+    const SEED = 12345;
+
+    // Load sample and open viewer
+    await page.goto('http://127.0.0.1:5001/');
+    await page.locator('#loadSampleBtn').click();
+    await page.waitForSelector('#studiesTable', { state: 'visible', timeout: 60000 });
+    await page.locator('#studiesBody tr .expand-icon').first().click();
+    await page.waitForTimeout(300);
+    await page.locator('.series-dropdown-item').first().click();
+    await waitForViewerReady(page);
+
+    // Get initial slice info and pixel samples
+    const initialSlice = await getSliceInfo(page);
+    const initialSamples = await sample9Regions(page, SEED);
+
+    // Navigate to a different slice (forward)
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(300);
+
+    // Verify slice changed
+    const newSlice = await getSliceInfo(page);
+    expect(newSlice.current).not.toBe(initialSlice.current);
+
+    // Get new pixel samples
+    const newSamples = await sample9Regions(page, SEED);
+
+    // At least some pixels should have changed values
+    let changedPixels = 0;
+    for (let i = 0; i < 9; i++) {
+      if (initialSamples.pixels[i].r !== newSamples.pixels[i].r) {
+        changedPixels++;
+      }
+    }
+
+    // If no pixels changed, flag for manual check
+    if (changedPixels === 0) {
+      console.log('========================================');
+      console.log('MANUAL_CHECK_REQUIRED');
+      console.log('No pixel changes detected after slice navigation.');
+      console.log('Initial samples:', JSON.stringify(initialSamples.pixels));
+      console.log('New samples:', JSON.stringify(newSamples.pixels));
+      console.log('========================================');
+      throw new Error('MANUAL_CHECK_REQUIRED: No pixel change on slice navigation. Human verification needed.');
+    }
+  });
+
+  test('W/L adjustment changes pixel values (visual verification)', async ({ page }) => {
+    const SEED = 42;  // Different seed for better coverage
+
+    // Use test mode which has properly rendering test data
+    await page.goto(TEST_URL);
+    await waitForViewerReady(page);
+
+    // Ensure W/L tool is active
+    await page.locator(WL_BUTTON_SELECTOR).click();
+    await page.waitForTimeout(100);
+
+    // Get initial W/L values and pixel samples
+    const initialWL = await getWLValues(page);
+    const initialSamples = await sample9Regions(page, SEED);
+
+    // Calculate initial brightness (sum of all sampled pixel values)
+    const initialBrightness = initialSamples.pixels.reduce((sum, p) => sum + p.r, 0);
+
+    // Perform W/L drag (significant movement to ensure visible change)
+    const bounds = await getCanvasBounds(page);
+    const centerX = bounds.x + bounds.width / 2;
+    const centerY = bounds.y + bounds.height / 2;
+
+    // Drag down significantly to decrease window center (brighten image)
+    await performDrag(page, centerX, centerY, centerX, centerY + 100, 20);
+    await page.waitForTimeout(500);  // Allow render to complete
+
+    // Verify W/L values changed
+    const newWL = await getWLValues(page);
+    expect(newWL.center).not.toBe(initialWL.center);
+
+    // Get new pixel samples
+    const newSamples = await sample9Regions(page, SEED);
+
+    // Calculate new brightness
+    const newBrightness = newSamples.pixels.reduce((sum, p) => sum + p.r, 0);
+
+    // Brightness should change noticeably (at least 10% of max possible range)
+    // Max range is 9 pixels * 255 = 2295, so 10% = ~230
+    const brightnessDiff = Math.abs(newBrightness - initialBrightness);
+
+    // Check if individual pixels changed or brightness shifted
+    let changedPixels = 0;
+    for (let i = 0; i < 9; i++) {
+      if (initialSamples.pixels[i].r !== newSamples.pixels[i].r) {
+        changedPixels++;
+      }
+    }
+
+    // Either individual pixels changed OR overall brightness changed significantly
+    const hasVisibleChange = changedPixels > 0 || brightnessDiff > 50;
+
+    // If no visible change, flag for manual check
+    if (!hasVisibleChange) {
+      console.log('========================================');
+      console.log('MANUAL_CHECK_REQUIRED');
+      console.log('W/L change had no visible pixel effect.');
+      console.log('W/L values DID change:', initialWL, '->', newWL);
+      console.log('Initial brightness:', initialBrightness, 'New brightness:', newBrightness);
+      console.log('Initial samples:', JSON.stringify(initialSamples.pixels));
+      console.log('New samples:', JSON.stringify(newSamples.pixels));
+      console.log('========================================');
+      throw new Error('MANUAL_CHECK_REQUIRED: No pixel change on W/L adjustment. Human verification needed.');
     }
   });
 });

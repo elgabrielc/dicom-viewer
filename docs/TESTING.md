@@ -83,7 +83,7 @@ To use different test data, modify `TEST_DATA_FOLDER` in `app.py`.
 
 ## Test Suites
 
-### Current Coverage (38 tests)
+### Current Coverage (41 tests)
 
 | Suite | Tests | Description |
 |-------|-------|-------------|
@@ -99,7 +99,7 @@ To use different test data, modify `TEST_DATA_FOLDER` in `app.py`.
 | Transform Verification | 3 | Actual scale/translate values |
 | Slice Navigation | 3 | Persistence, counter updates |
 | Cursor Feedback | 1 | Cursor changes per tool |
-| Series Switching | 1 | View reset on series change |
+| Series Switching | 4 | View reset, sample CT button, visual verification |
 
 ### Test Files
 - `tests/viewing-tools.spec.js` - Phase 1 viewing tools
@@ -228,11 +228,91 @@ Track bugs and gaps found through testing (before users hit them):
 
 ---
 
+## Visual Verification: 9-Region Sampling
+
+We use a custom visual verification approach to test that images actually render.
+
+### How It Works
+
+1. Divide the canvas into a 3x3 grid (9 regions)
+2. Sample a random pixel from each region (using deterministic seed for reproducibility)
+3. If all 9 pixels have the same value (±2) → flag for **manual check**
+4. If pixels have variation → **pass**
+
+### Why This Approach
+
+Real medical images have anatomical variation across space. A broken render (blank, solid color, corrupted) won't. We test for the *property* of being a real image rather than specific pixel values.
+
+**Compared to alternatives:**
+- **Canvas content check** (any non-zero pixel): Would pass a solid white rectangle
+- **Visual regression** (screenshot comparison): Requires maintaining baselines, brittle to intentional changes
+- **Fixed pixel sampling**: Position-dependent, requires knowing expected values
+
+### Helper Functions
+
+```javascript
+// Sample 9 regions with optional seed for reproducibility
+const { pixels, width, height } = await sample9Regions(page, seed);
+
+// Full verification: dimensions, grayscale, variation, value range
+const { valid, needsManualCheck, issues, samples } = await verifyCanvasContent(page, seed);
+```
+
+### Manual Check Protocol
+
+When a test throws `MANUAL_CHECK_REQUIRED`:
+1. Test stops (does not auto-pass or auto-fail)
+2. Human reviews the screenshot
+3. Human determines if the image is valid or indicates a bug
+
+This acknowledges that edge cases exist where automatic verification isn't sufficient.
+
+---
+
+## Known Limitations of Visual Verification
+
+### What It Catches
+- Blank canvas (nothing rendered)
+- Solid color fills (rendering bug)
+- Partial renders (some regions blank)
+- Non-grayscale output (color rendering bug)
+
+### What It Misses
+
+1. **Wrong image passes** - If the viewer displays the wrong image entirely (wrong patient, wrong slice, wrong series), the test passes as long as that image has variation. It verifies "an image rendered" not "the correct image rendered."
+
+2. **Legitimate images trigger manual check** - Some valid medical images are mostly uniform:
+   - Edge slices (mostly air/black)
+   - Scout/localizer images
+   - Slices through uniform anatomy
+
+3. **Rendering errors that preserve variation** - These would still pass:
+   - Image at wrong scale
+   - Image offset/cropped
+   - Inverted contrast
+   - Wrong window/level applied
+
+4. **Manual check dependency** - Slows CI/CD if no human available; human judgment can be inconsistent.
+
+5. **Grayscale assumption** - Color medical images (color Doppler ultrasound, PET-CT fusion) would fail the R=G=B check even when correct.
+
+6. **Small content missed** - If actual image content is small, random sampling within large regions might miss it entirely.
+
+### Future Improvements
+
+- [ ] Add "correct image" verification using DICOM metadata comparison
+- [ ] Handle color medical imaging modalities (US Doppler, PET-CT)
+- [ ] Detect common rendering errors (scale, offset, inversion)
+- [ ] Reduce manual check triggers for legitimately uniform slices
+- [ ] Add center-weighted sampling for small image content
+
+---
+
 ## Known Test Limitations
 
-1. **Visual verification** - Tests don't compare actual pixel output, only state values
-2. **Performance benchmarks** - No automated performance regression tests yet
-3. **Multi-browser** - Currently only testing Chromium (Chrome/Edge required for File System Access API anyway)
+1. **Performance benchmarks** - No automated performance regression tests yet
+2. **Multi-browser** - Currently only testing Chromium (Chrome/Edge required for File System Access API anyway)
+3. **Visual verification** - See detailed section above for limitations
 
 ---
 

@@ -1445,8 +1445,14 @@ Copyright (c) 2026 Divergent Health Technologies
                 let dataSet = state.sliceCache.get(index);
 
                 if (!dataSet) {
-                    const file = await slice.fileHandle.getFile();
-                    const buf = await file.arrayBuffer();
+                    // Handle both file handles (drag-drop) and blobs (sample loading)
+                    let buf;
+                    if (slice.fileHandle) {
+                        const file = await slice.fileHandle.getFile();
+                        buf = await file.arrayBuffer();
+                    } else if (slice.blob) {
+                        buf = await slice.blob.arrayBuffer();
+                    }
                     dataSet = dicomParser.parseDicom(new Uint8Array(buf));
                     state.sliceCache.set(index, dataSet);
                 }
@@ -1511,11 +1517,15 @@ Copyright (c) 2026 Divergent Health Technologies
                     `;
                 }
 
-                // Preload adjacent
+                // Preload adjacent slices
                 for (let i = index - 3; i <= index + 3; i++) {
                     if (i >= 0 && i < slices.length && !state.sliceCache.has(i)) {
                         const s = slices[i];
-                        s.fileHandle.getFile().then(f => f.arrayBuffer()).then(buf => {
+                        // Handle both file handles and blobs
+                        const getBuffer = s.fileHandle
+                            ? s.fileHandle.getFile().then(f => f.arrayBuffer())
+                            : s.blob ? s.blob.arrayBuffer() : Promise.reject();
+                        getBuffer.then(buf => {
                             state.sliceCache.set(i, dicomParser.parseDicom(new Uint8Array(buf)));
                         }).catch(() => {});
                     }
@@ -1876,14 +1886,18 @@ Copyright (c) 2026 Divergent Health Technologies
                     });
                 }
 
-                // Sort slices
+                // Sort slices and calculate counts
                 for (const study of Object.values(studies)) {
+                    let imageCount = 0;
                     for (const series of Object.values(study.series)) {
                         series.slices.sort((a, b) =>
                             (a.sliceLocation ?? a.instanceNumber ?? 0) -
                             (b.sliceLocation ?? b.instanceNumber ?? 0)
                         );
+                        imageCount += series.slices.length;
                     }
+                    study.seriesCount = Object.keys(study.series).length;
+                    study.imageCount = imageCount;
                 }
 
                 state.studies = studies;
