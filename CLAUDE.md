@@ -143,6 +143,14 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 ---
 
+## Git Workflow Controls
+
+- **Never push without explicit permission.** Commit when asked, but wait for explicit "push" instruction.
+- **Review deletions before committing.** Any deletion of 3+ lines should be justified.
+- **Check Feature Inventory before removing code.** If it's listed above, discuss first.
+
+---
+
 ## Past Decisions
 
 - Chose vanilla JS over React/Vue for simplicity and learning
