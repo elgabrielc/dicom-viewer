@@ -122,6 +122,43 @@ header .subtitle {
     margin: 0.25rem 0;
 }
 
+/* Sample CT button section */
+.sample-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.or-divider {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.sample-btn {
+    background: linear-gradient(135deg, #4a9eff 0%, #357abd 100%);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.sample-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
+}
+
+.sample-btn:disabled {
+    background: #444;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .tip {
     font-size: 0.8rem;
     color: #666;
@@ -683,6 +720,80 @@ header .subtitle {
     flex-direction: column;
     background-color: #000;
     overflow: hidden;
+}
+
+/* Viewer Toolbar */
+.viewer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #1a1a2e;
+    border-bottom: 1px solid #333;
+}
+
+.tool-btn {
+    padding: 6px 12px;
+    background: #2a2a4a;
+    border: 1px solid #444;
+    color: #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s ease;
+}
+
+.tool-btn:hover {
+    background: #3a3a5a;
+    border-color: #555;
+}
+
+.tool-btn.active {
+    background: #4a6fa5;
+    border-color: #5a8fd5;
+    color: #fff;
+}
+
+/* Custom tooltips - instant, styled */
+.tool-btn {
+    position: relative;
+}
+
+.tool-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: -32px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f1629;
+    color: #eee;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s ease;
+    border: 1px solid #444;
+    z-index: 100;
+}
+
+.tool-btn:hover::after {
+    opacity: 1;
+}
+
+.toolbar-separator {
+    width: 1px;
+    height: 24px;
+    background: #444;
+    margin: 0 4px;
+}
+
+.wl-display {
+    margin-left: auto;
+    color: #888;
+    font-size: 12px;
+    font-family: monospace;
 }
 
 .canvas-container {

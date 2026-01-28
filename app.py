@@ -37,7 +37,7 @@ import hashlib
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from flask import Flask, render_template, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file
 import pydicom
 from pydicom.errors import InvalidDicomError
 import numpy as np
@@ -47,7 +47,7 @@ from PIL import Image
 # FLASK APP CONFIGURATION
 # =============================================================================
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='docs', static_url_path='')
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 
@@ -236,20 +236,8 @@ def refresh_studies():
 
 @app.route('/')
 def index():
-    """Render the library view."""
-    return render_template('index.html')
-
-
-@app.route('/viewer/<study_id>')
-def viewer(study_id):
-    """Render the study viewer."""
-    return render_template('viewer.html', study_id=study_id)
-
-
-@app.route('/viewer-local/<study_uid>')
-def viewer_local(study_uid):
-    """Render the client-side study viewer."""
-    return render_template('viewer-local.html', study_uid=study_uid)
+    """Serve the main application."""
+    return app.send_static_file('index.html')
 
 
 # =============================================================================

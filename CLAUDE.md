@@ -25,10 +25,13 @@ Flask Server (app.py)
 
 ## Key Files
 
-- `templates/index.html` - Main SPA with all client-side logic (~1200 lines)
-- `app.py` - Flask server with optional DICOM processing APIs
-- `static/css/style.css` - All styling (dark theme for medical imaging)
-- `static/js/` - OpenJPEG WASM decoder files
+- `docs/index.html` - Main SPA with all client-side logic
+- `docs/css/style.css` - All styling (dark theme for medical imaging)
+- `docs/js/` - OpenJPEG WASM decoder files
+- `docs/sample/` - Sample CT scan for demo (188 slices, anonymized)
+- `app.py` - Flask server (serves docs/, provides test mode API)
+
+**Single source of truth**: All web assets live in `docs/`. Flask serves from there. GitHub Pages serves from there. No duplication.
 
 ## Supported Transfer Syntaxes
 
@@ -99,8 +102,9 @@ For MRI without window/level in DICOM, auto-calculation uses pixel data statisti
 ## Development Notes
 
 - Browser requirement: Chrome 86+ or Edge 86+ (File System Access API)
-- Node dependencies only needed for OpenJPEG codec (`npm install` then copy to static/js/)
 - Python venv for Flask server (`pip install -r requirements.txt`)
+- Flask serves from `docs/` - same files as GitHub Pages
+- To run locally: `python app.py` then open `http://127.0.0.1:5001/`
 
 ## Testing
 
@@ -111,8 +115,37 @@ For MRI without window/level in DICOM, auto-calculation uses pixel data statisti
 
 After each test run, apply continuous improvement: analyze results, strengthen tests, add missing coverage.
 
+## Feature Inventory
+
+**CRITICAL: Do not remove any of these features without explicit discussion.**
+
+### Library View
+- [ ] Drag-and-drop folder loading
+- [ ] **"Load Sample CT Scan" button** - lets new users try the viewer without their own data
+- [ ] Study/series table with patient info, date, description, modality
+- [ ] Expandable rows to show series within studies
+- [ ] Warning icons for unsupported compression formats
+
+### Image Viewer
+- [ ] **Viewing toolbar** - W/L, Pan, Zoom, Reset buttons
+- [ ] **Keyboard shortcuts** - W, P, Z, R for tools; arrows for slices; Esc to exit
+- [ ] **Instant tooltips** showing keyboard shortcuts on hover
+- [ ] Slice navigation (scroll wheel, slider, arrow buttons)
+- [ ] Series list sidebar
+- [ ] Metadata panel (slice info, MRI parameters)
+
+### Technical Features
+- [ ] Modality-aware window/level defaults (CT, MR, US, etc.)
+- [ ] Auto-calculated W/L for MRI when not in DICOM
+- [ ] Blank slice detection
+- [ ] JPEG Lossless, JPEG 2000, uncompressed support
+- [ ] Test mode (`?test` URL parameter) for automated testing
+
+---
+
 ## Past Decisions
 
 - Chose vanilla JS over React/Vue for simplicity and learning
 - Client-side processing to keep medical data in browser (privacy)
 - Dark theme optimized for radiologist viewing environment
+- Single source of truth in docs/ (consolidation done 2026-01-28)

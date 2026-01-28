@@ -58,6 +58,10 @@ Copyright (c) 2026 Divergent Health Technologies
                     <p class="main-text">Drop a DICOM folder here</p>
                 </div>
             </div>
+            <div class="sample-section">
+                <span class="or-divider">or</span>
+                <button id="loadSampleBtn" class="sample-btn">Load Sample CT Scan</button>
+            </div>
         </section>
 
         <section class="studies-section">
@@ -98,6 +102,14 @@ Copyright (c) 2026 Divergent Health Technologies
             </aside>
 
             <main class="image-panel">
+                <div class="viewer-toolbar">
+                    <button class="tool-btn active" data-tool="wl" data-tooltip="W">W/L</button>
+                    <button class="tool-btn" data-tool="pan" data-tooltip="P">Pan</button>
+                    <button class="tool-btn" data-tool="zoom" data-tooltip="Z">Zoom</button>
+                    <span class="toolbar-separator"></span>
+                    <button class="tool-btn" id="resetViewBtn" data-tooltip="R">Reset</button>
+                    <span class="wl-display" id="wlDisplay"></span>
+                </div>
                 <div class="canvas-container">
                     <canvas id="imageCanvas"></canvas>
                     <div id="imageLoading" class="image-loading" style="display: none;">Loading...</div>
@@ -171,13 +183,24 @@ Copyright (c) 2026 Divergent Health Technologies
          * @property {Object|null} currentSeries - Currently viewed series
          * @property {number} currentSliceIndex - Index of currently displayed slice
          * @property {Map} sliceCache - Cache of parsed DICOM datasets by slice index
+         * @property {string} currentTool - Active tool ('wl', 'pan', 'zoom', or null)
+         * @property {Object} viewTransform - Pan and zoom state
+         * @property {Object} windowLevel - Current W/L override (null = use DICOM values)
+         * @property {Object} baseWindowLevel - Original W/L values for reset
          */
         const state = {
             studies: {},
             currentStudy: null,
             currentSeries: null,
             currentSliceIndex: 0,
-            sliceCache: new Map()
+            sliceCache: new Map(),
+            // Viewing tools state
+            currentTool: 'wl',
+            viewTransform: { panX: 0, panY: 0, zoom: 1 },
+            windowLevel: { center: null, width: null },
+            baseWindowLevel: { center: null, width: null },
+            isDragging: false,
+            dragStart: { x: 0, y: 0 }
         };
 
         // =====================================================================
@@ -205,9 +228,12 @@ Copyright (c) 2026 Divergent Health Technologies
         const metadataContent = $('metadataContent');
         const studyTitle = $('studyTitle');
         const imageLoading = $('imageLoading');
+        const resetViewBtn = $('resetViewBtn');
+        const wlDisplay = $('wlDisplay');
         const prevBtn = $('prevSlice');
         const nextBtn = $('nextSlice');
         const backBtn = $('backBtn');
+        const loadSampleBtn = $('loadSampleBtn');
 
         // =====================================================================
         // UTILITY FUNCTIONS
@@ -884,7 +910,7 @@ Copyright (c) 2026 Divergent Health Technologies
          * @param {TypedArray} pixelData - Raw pixel values
          * @param {number} rescaleSlope - Rescale slope
          * @param {number} rescaleIntercept - Rescale intercept
-         * @returns {Object} {windowCenter, windowWidth}
+         * @returns {Object} {windowCenter, windowWidth, isBlank}
          */
         function calculateAutoWindowLevel(pixelData, rescaleSlope = 1, rescaleIntercept = 0) {
             // Sample pixels for speed (every 10th pixel)
@@ -900,14 +926,52 @@ Copyright (c) 2026 Divergent Health Technologies
             }
 
             const mean = sum / count;
+            const range = max - min;
+
+            // Detect blank/uniform slices (all pixels have same or nearly same value)
+            // This commonly occurs in MPR reconstructions as padding slices
+            const isBlank = range < 1;
 
             // Use percentile-based windowing to handle outliers
             // Center at mean, width covers most of the dynamic range
-            const range = max - min;
             const windowWidth = Math.max(range * 0.9, 1);  // 90% of range
             const windowCenter = mean;
 
-            return { windowCenter: Math.round(windowCenter), windowWidth: Math.round(windowWidth) };
+            return { windowCenter: Math.round(windowCenter), windowWidth: Math.round(windowWidth), isBlank };
+        }
+
+        /**
+         * Check if pixel data represents a blank/uniform slice
+         * @param {TypedArray} pixelData - Raw pixel values
+         * @param {number} rescaleSlope - Rescale slope
+         * @param {number} rescaleIntercept - Rescale intercept
+         * @returns {boolean} True if slice is blank (all pixels same value)
+         */
+        function isBlankSlice(pixelData, rescaleSlope = 1, rescaleIntercept = 0) {
+            // Sample pixels for speed (every 10th pixel)
+            let min = Infinity, max = -Infinity;
+
+            for (let i = 0; i < pixelData.length; i += 10) {
+                const value = pixelData[i] * rescaleSlope + rescaleIntercept;
+                if (value < min) min = value;
+                if (value > max) max = value;
+                // Early exit if we find variation
+                if (max - min >= 1) return false;
+            }
+
+            return (max - min) < 1;
+        }
+
+        /**
+         * Display a blank slice as black (like Horos)
+         * @param {number} rows - Image height
+         * @param {number} cols - Image width
+         */
+        function displayBlankSlice(rows, cols) {
+            canvas.width = cols;
+            canvas.height = rows;
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
 
         // =====================================================================
@@ -1176,9 +1240,10 @@ Copyright (c) 2026 Divergent Health Technologies
          * Handles decompression, window/level adjustment, and display
          *
          * @param {Object} dataSet - Parsed dicomParser dataset with pixel data
+         * @param {Object|null} wlOverride - Optional {center, width} to override DICOM values
          * @returns {Promise<Object>} Rendering info {rows, cols, wc, ww, transferSyntax} or {error: true}
          */
-        async function renderDicom(dataSet) {
+        async function renderDicom(dataSet, wlOverride = null) {
             // Extract image dimensions and pixel format from DICOM tags
             const rows = dataSet.uint16('x00280010');              // (0028,0010) Rows
             const cols = dataSet.uint16('x00280011');              // (0028,0011) Columns
@@ -1276,6 +1341,20 @@ Copyright (c) 2026 Divergent Health Technologies
                 }
             }
 
+            // Check for blank/uniform slices (common in MPR reconstructions as padding)
+            // This must be done before window/level calculations
+            if (isBlankSlice(pixelData, rescaleSlope, rescaleIntercept)) {
+                console.log('Detected blank slice (all pixels same value)');
+                displayBlankSlice(rows, cols);
+                return {
+                    rows, cols,
+                    wc: windowCenter, ww: windowWidth,
+                    transferSyntax, modality,
+                    mrMetadata,
+                    isBlank: true
+                };
+            }
+
             // For MRI without window/level in DICOM, calculate auto window/level
             // based on actual pixel data statistics
             if (!hasWindowLevel && (modality === 'MR' || modality === 'PT' || modality === 'NM')) {
@@ -1283,6 +1362,17 @@ Copyright (c) 2026 Divergent Health Technologies
                 windowCenter = autoWL.windowCenter;
                 windowWidth = autoWL.windowWidth;
                 console.log(`Auto window/level for ${modality}: C=${windowCenter} W=${windowWidth}`);
+            }
+
+            // Store base W/L values for reset (only on first render, not re-renders)
+            if (state.baseWindowLevel.center === null) {
+                state.baseWindowLevel = { center: windowCenter, width: windowWidth };
+            }
+
+            // Apply W/L override if provided (from user drag adjustment)
+            if (wlOverride && wlOverride.center !== null && wlOverride.width !== null) {
+                windowCenter = wlOverride.center;
+                windowWidth = wlOverride.width;
             }
 
             // Set canvas size to match image dimensions
@@ -1361,7 +1451,14 @@ Copyright (c) 2026 Divergent Health Technologies
                     state.sliceCache.set(index, dataSet);
                 }
 
-                const info = await renderDicom(dataSet);
+                // Pass W/L override if user has adjusted values
+                const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
+                    ? state.windowLevel : null;
+                const info = await renderDicom(dataSet, wlOverride);
+
+                // Update W/L display in toolbar
+                updateWLDisplay();
+
                 if (info && !info.error) {
                     // Build base metadata (common to all modalities)
                     let metadataHtml = `
@@ -1398,6 +1495,14 @@ Copyright (c) 2026 Divergent Health Technologies
                     }
 
                     metadataContent.innerHTML = metadataHtml;
+                } else if (info && info.isBlank) {
+                    // Blank/padding slice - show basic info
+                    metadataContent.innerHTML = `
+                        <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
+                        <div class="metadata-item"><div class="label">Modality</div><div class="value">${info.modality || '-'}</div></div>
+                        <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
+                        <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
+                    `;
                 } else if (info && info.error) {
                     metadataContent.innerHTML = `
                         <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
@@ -1433,6 +1538,9 @@ Copyright (c) 2026 Divergent Health Technologies
             state.currentSeries = state.currentStudy.series[seriesUid];
             state.sliceCache.clear();
             state.currentSliceIndex = 0;
+
+            // Reset view transforms and W/L for new series
+            resetViewForNewSeries();
 
             document.querySelectorAll('.series-item').forEach(el => {
                 el.classList.toggle('active', el.dataset.uid === seriesUid);
@@ -1483,6 +1591,158 @@ Copyright (c) 2026 Divergent Health Technologies
             state.currentStudy = null;
             state.currentSeries = null;
             state.sliceCache.clear();
+        }
+
+        // =====================================================================
+        // VIEWING TOOLS
+        // Window/Level, Pan, Zoom, Reset
+        // =====================================================================
+
+        /**
+         * Set the active viewing tool
+         * @param {string} tool - Tool name ('wl', 'pan', 'zoom', or null)
+         */
+        function setTool(tool) {
+            state.currentTool = tool;
+            // Update toolbar button states
+            document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tool === tool);
+            });
+            // Update cursor
+            canvas.style.cursor = getCursorForTool(tool, false);
+        }
+
+        /**
+         * Get appropriate cursor for the current tool
+         * @param {string} tool - Tool name
+         * @param {boolean} dragging - Whether currently dragging
+         * @returns {string} CSS cursor value
+         */
+        function getCursorForTool(tool, dragging) {
+            switch (tool) {
+                case 'wl': return dragging ? 'ns-resize' : 'crosshair';
+                case 'pan': return dragging ? 'grabbing' : 'grab';
+                case 'zoom': return dragging ? 'ns-resize' : 'zoom-in';
+                default: return 'default';
+            }
+        }
+
+        /**
+         * Apply CSS transform for pan and zoom
+         */
+        function applyViewTransform() {
+            const { panX, panY, zoom } = state.viewTransform;
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+            canvas.style.transformOrigin = 'center center';
+        }
+
+        /**
+         * Update the W/L display in the toolbar
+         */
+        function updateWLDisplay() {
+            const wc = state.windowLevel.center ?? state.baseWindowLevel.center;
+            const ww = state.windowLevel.width ?? state.baseWindowLevel.width;
+            if (wc !== null && ww !== null) {
+                wlDisplay.textContent = `C: ${Math.round(wc)} W: ${Math.round(ww)}`;
+            }
+        }
+
+        /**
+         * Re-render the current slice with current W/L settings
+         */
+        async function reRenderCurrentSlice() {
+            if (!state.currentSeries) return;
+            const dataSet = state.sliceCache.get(state.currentSliceIndex);
+            if (dataSet) {
+                const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
+                    ? state.windowLevel : null;
+                await renderDicom(dataSet, wlOverride);
+            }
+        }
+
+        /**
+         * Handle Window/Level drag
+         */
+        function handleWLDrag(dx, dy) {
+            const sensitivity = 2;
+            const currentWidth = state.windowLevel.width ?? state.baseWindowLevel.width;
+            const currentCenter = state.windowLevel.center ?? state.baseWindowLevel.center;
+
+            state.windowLevel.width = Math.max(1, currentWidth + dx * sensitivity);
+            state.windowLevel.center = currentCenter - dy * sensitivity;
+
+            reRenderCurrentSlice();
+            updateWLDisplay();
+        }
+
+        /**
+         * Handle Pan drag
+         */
+        function handlePanDrag(dx, dy) {
+            state.viewTransform.panX += dx;
+            state.viewTransform.panY += dy;
+            applyViewTransform();
+        }
+
+        /**
+         * Handle Zoom drag
+         */
+        function handleZoomDrag(dx, dy) {
+            const sensitivity = 0.005;
+            const delta = -dy * sensitivity;
+            state.viewTransform.zoom = Math.max(0.1, Math.min(10, state.viewTransform.zoom + delta));
+            applyViewTransform();
+        }
+
+        /**
+         * Reset view to default state
+         */
+        function resetView() {
+            state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
+            state.windowLevel = { center: null, width: null };
+            applyViewTransform();
+            reRenderCurrentSlice();
+            updateWLDisplay();
+        }
+
+        /**
+         * Reset view when switching series
+         */
+        function resetViewForNewSeries() {
+            state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
+            state.windowLevel = { center: null, width: null };
+            state.baseWindowLevel = { center: null, width: null };
+            applyViewTransform();
+        }
+
+        // Mouse event handlers for canvas tools
+        function onCanvasMouseDown(e) {
+            if (!state.currentTool || e.button !== 0) return;
+            state.isDragging = true;
+            state.dragStart = { x: e.clientX, y: e.clientY };
+            canvas.style.cursor = getCursorForTool(state.currentTool, true);
+            e.preventDefault();
+        }
+
+        function onCanvasMouseMove(e) {
+            if (!state.isDragging) return;
+            const dx = e.clientX - state.dragStart.x;
+            const dy = e.clientY - state.dragStart.y;
+
+            switch (state.currentTool) {
+                case 'wl': handleWLDrag(dx, dy); break;
+                case 'pan': handlePanDrag(dx, dy); break;
+                case 'zoom': handleZoomDrag(dx, dy); break;
+            }
+
+            state.dragStart = { x: e.clientX, y: e.clientY };
+        }
+
+        function onCanvasMouseUp(e) {
+            if (state.isDragging) {
+                state.isDragging = false;
+                canvas.style.cursor = getCursorForTool(state.currentTool, false);
+            }
         }
 
         // =====================================================================
@@ -1538,8 +1798,122 @@ Copyright (c) 2026 Divergent Health Technologies
                 loadSlice(state.currentSliceIndex + 1);
         };
 
+        // Load sample CT scan button
+        loadSampleBtn.onclick = async () => {
+            loadSampleBtn.disabled = true;
+            loadSampleBtn.textContent = 'Loading...';
+            uploadProgress.style.display = 'flex';
+            progressText.textContent = 'Loading sample scan...';
+            progressDetail.textContent = '';
+            progressFill.style.width = '0%';
+
+            try {
+                // Fetch the manifest of sample files
+                const manifestRes = await fetch('sample/manifest.json');
+                const fileNames = await manifestRes.json();
+
+                progressText.textContent = 'Downloading DICOM files...';
+                progressDetail.textContent = `0/${fileNames.length} files`;
+
+                // Fetch all DICOM files
+                const filePromises = fileNames.map(async (name, i) => {
+                    const res = await fetch(`sample/${name}`);
+                    const blob = await res.blob();
+                    // Update progress periodically
+                    if ((i + 1) % 5 === 0 || i === fileNames.length - 1) {
+                        const pct = Math.round(((i + 1) / fileNames.length) * 50);
+                        progressFill.style.width = pct + '%';
+                        progressDetail.textContent = `${i + 1}/${fileNames.length} files`;
+                    }
+                    return { name, blob };
+                });
+
+                const files = await Promise.all(filePromises);
+
+                progressText.textContent = 'Processing DICOM files...';
+                progressFill.style.width = '50%';
+
+                // Process files similar to processFiles but with blobs
+                const studies = {};
+                let processed = 0;
+
+                for (const { name, blob } of files) {
+                    const meta = await parseDicomMetadata(blob);
+                    processed++;
+
+                    const pct = 50 + Math.round((processed / files.length) * 50);
+                    progressFill.style.width = pct + '%';
+                    progressDetail.textContent = `Processing ${processed}/${files.length}`;
+
+                    if (!meta?.studyInstanceUid) continue;
+
+                    const studyUid = meta.studyInstanceUid;
+                    const seriesUid = meta.seriesInstanceUid;
+
+                    if (!studies[studyUid]) {
+                        studies[studyUid] = {
+                            ...meta,
+                            series: {},
+                            comments: []
+                        };
+                    }
+
+                    if (!studies[studyUid].series[seriesUid]) {
+                        studies[studyUid].series[seriesUid] = {
+                            seriesInstanceUid: seriesUid,
+                            seriesNumber: meta.seriesNumber,
+                            seriesDescription: meta.seriesDescription,
+                            modality: meta.modality,
+                            slices: [],
+                            comments: []
+                        };
+                    }
+
+                    studies[studyUid].series[seriesUid].slices.push({
+                        instanceNumber: meta.instanceNumber,
+                        sliceLocation: meta.sliceLocation,
+                        blob: blob  // Store blob instead of handle
+                    });
+                }
+
+                // Sort slices
+                for (const study of Object.values(studies)) {
+                    for (const series of Object.values(study.series)) {
+                        series.slices.sort((a, b) =>
+                            (a.sliceLocation ?? a.instanceNumber ?? 0) -
+                            (b.sliceLocation ?? b.instanceNumber ?? 0)
+                        );
+                    }
+                }
+
+                state.studies = studies;
+                uploadProgress.style.display = 'none';
+                displayStudies();
+                loadSampleBtn.textContent = 'Load Sample CT Scan';
+                loadSampleBtn.disabled = false;
+
+            } catch (err) {
+                uploadProgress.style.display = 'none';
+                loadSampleBtn.textContent = 'Load Sample CT Scan';
+                loadSampleBtn.disabled = false;
+                alert('Error loading sample: ' + err.message);
+            }
+        };
+
         document.addEventListener('keydown', e => {
             if (viewerView.style.display === 'none') return;
+
+            // Tool shortcuts (only when not typing in an input)
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+                switch (e.key.toLowerCase()) {
+                    case 'w': setTool('wl'); return;
+                    case 'p': setTool('pan'); return;
+                    case 'z': setTool('zoom'); return;
+                    case 'r': resetView(); return;
+                }
+            }
+
+            // Navigation shortcuts
             if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (state.currentSliceIndex > 0) loadSlice(state.currentSliceIndex - 1);
@@ -1552,17 +1926,203 @@ Copyright (c) 2026 Divergent Health Technologies
             }
         });
 
+        // Canvas mouse events for tools
+        canvas.addEventListener('mousedown', onCanvasMouseDown);
+        canvas.addEventListener('mousemove', onCanvasMouseMove);
+        canvas.addEventListener('mouseup', onCanvasMouseUp);
+        canvas.addEventListener('mouseleave', onCanvasMouseUp);
+
         canvas.addEventListener('wheel', e => {
             e.preventDefault();
-            if (e.deltaY > 0) {
-                if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1)
-                    loadSlice(state.currentSliceIndex + 1);
+            if (state.currentTool === 'zoom') {
+                // Zoom mode: scroll to zoom
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                state.viewTransform.zoom = Math.max(0.1, Math.min(10, state.viewTransform.zoom + delta));
+                applyViewTransform();
             } else {
-                if (state.currentSliceIndex > 0) loadSlice(state.currentSliceIndex - 1);
+                // Default: scroll to navigate slices
+                if (e.deltaY > 0) {
+                    if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1)
+                        loadSlice(state.currentSliceIndex + 1);
+                } else {
+                    if (state.currentSliceIndex > 0) loadSlice(state.currentSliceIndex - 1);
+                }
             }
         });
 
-        displayStudies();
+        // Toolbar button events
+        document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+            btn.addEventListener('click', () => setTool(btn.dataset.tool));
+        });
+        resetViewBtn.addEventListener('click', resetView);
+
+        // Initialize cursor for default tool
+        canvas.style.cursor = getCursorForTool(state.currentTool, false);
+
+        // =====================================================================
+        // TEST MODE
+        // When ?test is in the URL, load test data from the server API
+        // instead of requiring File System Access API folder drop.
+        // This enables automated testing with Playwright/Puppeteer.
+        // =====================================================================
+
+        /** Test mode flag - set when ?test URL parameter is present */
+        const isTestMode = new URLSearchParams(window.location.search).has('test');
+
+        /**
+         * Load test data from the server API
+         * @returns {Promise<Object>} Studies object matching the normal state.studies format
+         */
+        async function loadTestData() {
+            const response = await fetch('/api/test-data/studies');
+            if (!response.ok) throw new Error('Failed to load test data');
+
+            const studiesArray = await response.json();
+            const studies = {};
+
+            for (const study of studiesArray) {
+                const seriesMap = {};
+                for (const series of study.series) {
+                    seriesMap[series.seriesInstanceUid] = {
+                        seriesInstanceUid: series.seriesInstanceUid,
+                        seriesDescription: series.seriesDescription,
+                        seriesNumber: series.seriesNumber,
+                        modality: series.modality,
+                        // Create slice objects that use API URLs instead of fileHandles
+                        slices: Array.from({ length: series.sliceCount }, (_, i) => ({
+                            instanceNumber: i + 1,
+                            sliceLocation: 0,
+                            // Store API info for test mode loading
+                            testMode: true,
+                            studyId: study.studyInstanceUid,
+                            seriesId: series.seriesInstanceUid,
+                            sliceIndex: i
+                        }))
+                    };
+                }
+
+                studies[study.studyInstanceUid] = {
+                    patientName: study.patientName,
+                    studyDate: study.studyDate,
+                    studyDescription: study.studyDescription,
+                    studyInstanceUid: study.studyInstanceUid,
+                    modality: study.modality,
+                    seriesCount: study.seriesCount,
+                    imageCount: study.imageCount,
+                    series: seriesMap
+                };
+            }
+
+            return studies;
+        }
+
+        /**
+         * Load a slice in test mode (fetches from API instead of fileHandle)
+         * This is called from loadSlice when the slice has testMode: true
+         */
+        async function loadTestSlice(slice) {
+            const url = `/api/test-data/dicom/${slice.studyId}/${slice.seriesId}/${slice.sliceIndex}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Failed to load test slice: ${response.status}`);
+
+            const arrayBuffer = await response.arrayBuffer();
+            return dicomParser.parseDicom(new Uint8Array(arrayBuffer));
+        }
+
+        // Patch loadSlice to handle test mode
+        const originalLoadSlice = loadSlice;
+        loadSlice = async function(index) {
+            if (!state.currentSeries) return;
+            const slices = state.currentSeries.slices;
+            if (index < 0 || index >= slices.length) return;
+
+            const slice = slices[index];
+
+            // If this is a test mode slice, fetch from API
+            if (slice.testMode) {
+                state.currentSliceIndex = index;
+                updateSliceInfo();
+                imageLoading.style.display = 'block';
+
+                try {
+                    let dataSet = state.sliceCache.get(index);
+
+                    if (!dataSet) {
+                        dataSet = await loadTestSlice(slice);
+                        state.sliceCache.set(index, dataSet);
+                    }
+
+                    // Pass W/L override if user has adjusted values
+                    const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
+                        ? state.windowLevel : null;
+                    const info = await renderDicom(dataSet, wlOverride);
+
+                    // Update W/L display in toolbar
+                    updateWLDisplay();
+
+                    if (info && !info.error && !info.isBlank) {
+                        let metadataHtml = `
+                            <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
+                            <div class="metadata-item"><div class="label">Modality</div><div class="value">${info.modality || '-'}</div></div>
+                            <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
+                            <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
+                        `;
+                        metadataContent.innerHTML = metadataHtml;
+                    }
+
+                    // Preload adjacent slices
+                    for (let i = index - 2; i <= index + 2; i++) {
+                        if (i >= 0 && i < slices.length && !state.sliceCache.has(i)) {
+                            loadTestSlice(slices[i]).then(ds => {
+                                state.sliceCache.set(i, ds);
+                            }).catch(() => {});
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error loading test slice:', e);
+                }
+
+                imageLoading.style.display = 'none';
+                return;
+            }
+
+            // Normal mode - use original function
+            return originalLoadSlice.call(this, index);
+        };
+
+        // Auto-load test data if in test mode
+        if (isTestMode) {
+            console.log('Test mode enabled - loading test data from server');
+            (async () => {
+                try {
+                    uploadProgress.style.display = 'flex';
+                    progressText.textContent = 'Loading test data...';
+                    progressDetail.textContent = '';
+
+                    state.studies = await loadTestData();
+
+                    uploadProgress.style.display = 'none';
+                    displayStudies();
+
+                    // Auto-open first study/series if available
+                    const studyIds = Object.keys(state.studies);
+                    if (studyIds.length > 0) {
+                        const firstStudy = state.studies[studyIds[0]];
+                        const seriesIds = Object.keys(firstStudy.series);
+                        if (seriesIds.length > 0) {
+                            console.log('Auto-opening first series for testing');
+                            openViewerWithSeries(studyIds[0], seriesIds[0]);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load test data:', e);
+                    uploadProgress.style.display = 'none';
+                    alert('Failed to load test data: ' + e.message);
+                }
+            })();
+        } else {
+            displayStudies();
+        }
     </script>
 </body>
 </html>
