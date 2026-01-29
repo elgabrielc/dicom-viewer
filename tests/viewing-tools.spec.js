@@ -1193,9 +1193,9 @@ test.describe('Test Suite 13: Series Switching', () => {
     await page.goto('http://127.0.0.1:5001/');
 
     // Verify sample button exists
-    const sampleBtn = page.locator('#loadSampleBtn');
+    const sampleBtn = page.locator('#loadSampleCtBtn');
     await expect(sampleBtn).toBeVisible();
-    await expect(sampleBtn).toHaveText('Load Sample CT Scan');
+    await expect(sampleBtn).toHaveText('CT Scan');
 
     // Click the sample button
     await sampleBtn.click();
@@ -1212,7 +1212,7 @@ test.describe('Test Suite 13: Series Switching', () => {
     await expect(studyRows.first()).toBeVisible({ timeout: 10000 });
 
     // Button should be restored
-    await expect(sampleBtn).toHaveText('Load Sample CT Scan');
+    await expect(sampleBtn).toHaveText('CT Scan');
     await expect(sampleBtn).toBeEnabled();
 
     // Expand the study to see series
@@ -1282,7 +1282,7 @@ test.describe('Test Suite 13: Series Switching', () => {
 
     // Load sample and open viewer
     await page.goto('http://127.0.0.1:5001/');
-    await page.locator('#loadSampleBtn').click();
+    await page.locator('#loadSampleCtBtn').click();
     await page.waitForSelector('#studiesTable', { state: 'visible', timeout: 60000 });
     await page.locator('#studiesBody tr .expand-icon').first().click();
     await page.waitForTimeout(300);

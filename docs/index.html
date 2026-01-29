@@ -59,8 +59,9 @@ Copyright (c) 2026 Divergent Health Technologies
                 </div>
             </div>
             <div class="sample-section">
-                <span class="or-divider">or</span>
-                <button id="loadSampleBtn" class="sample-btn">Load Sample CT Scan</button>
+                <span class="or-divider">or try a sample</span>
+                <button id="loadSampleCtBtn" class="sample-btn">CT Scan</button>
+                <button id="loadSampleMriBtn" class="sample-btn">MRI Scan</button>
             </div>
         </section>
 
@@ -233,7 +234,8 @@ Copyright (c) 2026 Divergent Health Technologies
         const prevBtn = $('prevSlice');
         const nextBtn = $('nextSlice');
         const backBtn = $('backBtn');
-        const loadSampleBtn = $('loadSampleBtn');
+        const loadSampleCtBtn = $('loadSampleCtBtn');
+        const loadSampleMriBtn = $('loadSampleMriBtn');
 
         // =====================================================================
         // UTILITY FUNCTIONS
@@ -1808,10 +1810,10 @@ Copyright (c) 2026 Divergent Health Technologies
                 loadSlice(state.currentSliceIndex + 1);
         };
 
-        // Load sample CT scan button
-        loadSampleBtn.onclick = async () => {
-            loadSampleBtn.disabled = true;
-            loadSampleBtn.textContent = 'Loading...';
+        // Load sample scan (reusable for CT and MRI)
+        async function loadSampleScan(samplePath, button, buttonLabel) {
+            button.disabled = true;
+            button.textContent = 'Loading...';
             uploadProgress.style.display = 'flex';
             progressText.textContent = 'Loading sample scan...';
             progressDetail.textContent = '';
@@ -1819,7 +1821,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
             try {
                 // Fetch the manifest of sample files
-                const manifestRes = await fetch('sample/manifest.json');
+                const manifestRes = await fetch(`${samplePath}/manifest.json`);
                 const fileNames = await manifestRes.json();
 
                 progressText.textContent = 'Downloading DICOM files...';
@@ -1827,7 +1829,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
                 // Fetch all DICOM files
                 const filePromises = fileNames.map(async (name, i) => {
-                    const res = await fetch(`sample/${name}`);
+                    const res = await fetch(`${samplePath}/${name}`);
                     const blob = await res.blob();
                     // Update progress periodically
                     if ((i + 1) % 5 === 0 || i === fileNames.length - 1) {
@@ -1904,16 +1906,19 @@ Copyright (c) 2026 Divergent Health Technologies
                 state.studies = studies;
                 uploadProgress.style.display = 'none';
                 displayStudies();
-                loadSampleBtn.textContent = 'Load Sample CT Scan';
-                loadSampleBtn.disabled = false;
+                button.textContent = buttonLabel;
+                button.disabled = false;
 
             } catch (err) {
                 uploadProgress.style.display = 'none';
-                loadSampleBtn.textContent = 'Load Sample CT Scan';
-                loadSampleBtn.disabled = false;
+                button.textContent = buttonLabel;
+                button.disabled = false;
                 alert('Error loading sample: ' + err.message);
             }
-        };
+        }
+
+        loadSampleCtBtn.onclick = () => loadSampleScan('sample', loadSampleCtBtn, 'CT Scan');
+        loadSampleMriBtn.onclick = () => loadSampleScan('sample-mri', loadSampleMriBtn, 'MRI Scan');
 
         document.addEventListener('keydown', e => {
             if (viewerView.style.display === 'none') return;
