@@ -182,6 +182,15 @@ Principles that guide how we write code and build this product.
 - Compound knowledge over time - document learnings so future sessions benefit
 - Protect working features - verify existing functionality still works after changes
 
+**Continuous Improvement**
+- Testing explores all possibilities and preempts what users will experience
+- Think like a user - what would confuse them? What might they try that we didn't expect?
+- Each test run is an opportunity to learn - analyze results, find gaps, expand coverage
+- Ask after every test run: what user scenarios are we missing?
+- The process itself improves over time - update docs, refine checklists, capture patterns
+
+See `~/.claude/TESTING_PROCESS.md` for the full testing methodology.
+
 ---
 
 ## Documentation Requirements
