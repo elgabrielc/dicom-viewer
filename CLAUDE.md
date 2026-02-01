@@ -9,6 +9,21 @@ Supports multiple modalities: CT, MRI, and other imaging types.
 - **Stack**: Flask (Python) backend, vanilla JavaScript frontend
 - **Primary Workflow**: Client-side DICOM processing via File System Access API (Chrome/Edge)
 
+## Workspace Structure
+
+```
+claude 0/                    # Workspace - drop files here for Claude to process
+├── dicom-viewer/            # Git repo - organized, version-controlled project
+├── test-data-mri-1/         # Test DICOM data (used by Flask test mode)
+├── test-data-mri-2/         # Additional test data
+└── test-data-errors/        # Problem files for debugging
+```
+
+- **`claude 0/`** is a workspace/inbox where the user drops files
+- **`dicom-viewer/`** is the organized project; Claude moves files here as appropriate
+- When searching for docs or resources, check both locations
+- Planning docs, bug tracking, and research live in `dicom-viewer/docs/planning/`
+
 ## Architecture
 
 ```
@@ -127,8 +142,9 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 - [ ] Warning icons for unsupported compression formats
 
 ### Image Viewer
-- [ ] **Viewing toolbar** - W/L, Pan, Zoom, Reset buttons
-- [ ] **Keyboard shortcuts** - W, P, Z, R for tools; arrows for slices; Esc to exit
+- [ ] **Viewing toolbar** - W/L, Pan, Zoom, Measure, Reset buttons
+- [ ] **Measurement tool** - Click-drag distance measurement with PixelSpacing calibration
+- [ ] **Keyboard shortcuts** - W, P, Z, M, R for tools; arrows for slices; Esc to exit
 - [ ] **Instant tooltips** showing keyboard shortcuts on hover
 - [ ] Slice navigation (scroll wheel, slider, arrow buttons)
 - [ ] Series list sidebar
