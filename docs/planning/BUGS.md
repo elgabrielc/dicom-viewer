@@ -12,6 +12,57 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-003: Playwright tests fail when Flask server not running
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | High |
+| **Found** | 2026-02-01 |
+| **Resolved** | 2026-02-01 |
+| **Commit** | cab5c31 |
+
+**How Encountered:**
+All 41 Playwright tests were timing out with "page.waitForSelector: Timeout 30000ms exceeded" waiting for the canvas to become visible. Error screenshots showed "Loading test data..." message stuck indefinitely, with "No studies loaded" in the studies table.
+
+**Root Cause:**
+Tests require the Flask server to be running on `http://127.0.0.1:5001` before they execute. The test infrastructure had no mechanism to start the server automatically - it was expected to be running in a separate terminal. When the server wasn't running, API calls to `/api/test-data/studies` failed silently, leaving the viewer stuck in loading state.
+
+**Solution:**
+Added Playwright `webServer` configuration to `playwright.config.js`:
+```javascript
+webServer: {
+  command: './venv/bin/flask run --host=127.0.0.1 --port=5001',
+  url: 'http://127.0.0.1:5001/api/test-data/info',
+  reuseExistingServer: !process.env.CI,
+  timeout: 60000,
+}
+```
+
+Key details:
+- Uses `./venv/bin/flask` (absolute path to venv) because Playwright spawns a shell without the activated venv
+- Checks `/api/test-data/info` endpoint instead of root `/` - this ensures the test data scan completes before tests start (root responds immediately, but test data API may still be loading)
+- `reuseExistingServer: !process.env.CI` - reuses running server locally (faster iteration), always starts fresh in CI
+- 60s timeout allows for initial test data scan of ~2500 DICOM files
+
+**Why This Solution:**
+Alternatives considered:
+- *npm pretest script* - Rejected; requires manual process management (backgrounding, waiting, cleanup) that Playwright webServer handles automatically
+- *Document "start server first"* - Rejected; too easy to forget, causes confusing failures
+- *Check only root URL* - Initially tried; caused race condition where tests started before test data API was ready
+
+Chose Playwright webServer because it's purpose-built for this problem and handles startup, readiness checking, and cleanup automatically.
+
+**Prevention:**
+- Tests now automatically start the Flask server when needed
+- CI will always start fresh, ensuring clean test environment
+- Checking `/api/test-data/info` endpoint ensures test data is ready before tests begin
+
+**Files Changed:**
+- `playwright.config.js` - Added webServer configuration
+
+---
+
 ### BUG-001: Test mode fails on series with blank first slices
 
 | Field | Value |
