@@ -1,19 +1,23 @@
-# DICOM CT Viewer
+# DICOM Medical Imaging Viewer
 
 **[Try it live](https://elgabrielc.github.io/dicom-viewer/)** | **By [Divergent Health Technologies](https://divergent.health/)**
 
-A web-based DICOM medical image viewer built with Flask and vanilla JavaScript. This viewer allows radiologists and researchers to browse, view, and annotate CT imaging studies directly in the browser.
-
-> **Demo available**: Click "Load Sample CT Scan" to view an anonymized brain CT with multiple series (axial, coronal, sagittal views).
+A web-based DICOM medical image viewer for CT and MRI studies. Built with Flask and vanilla JavaScript, all processing happens client-side - your medical images never leave your machine.
 
 ## Features
 
-- **Drag-and-drop DICOM folder loading** - Drop a folder containing DICOM files to automatically organize by study/series
+- **Drag-and-drop folder loading** - Drop a folder containing DICOM files to automatically organize by study/series
+- **Sample scans included** - Click "CT Scan" or "MRI Scan" to load demo data instantly
 - **Multi-series support** - View multiple series within a study, organized hierarchically
-- **Slice navigation** - Scroll through slices using mouse wheel, keyboard arrows, or slider
-- **Multiple compression formats** - Supports uncompressed, JPEG Lossless, JPEG Baseline/Extended, and JPEG 2000
-- **Comments and annotations** - Add comments to studies and individual series
-- **Client-side processing** - All DICOM parsing happens in the browser (files never leave your machine)
+- **Slice navigation** - Mouse wheel, keyboard arrows, or slider
+- **Window/Level adjustment** - Drag to adjust brightness and contrast
+- **Pan and Zoom** - Navigate large images with pan and zoom tools
+- **Measurement tool** - Measure distances in millimeters using pixel spacing metadata
+- **Keyboard shortcuts** - W (window/level), P (pan), Z (zoom), R (reset)
+- **Comments** - Add notes to studies and individual series
+- **Multiple compression formats** - Uncompressed, JPEG Lossless, JPEG Baseline/Extended, JPEG 2000
+- **Modality-aware defaults** - Automatic W/L presets for CT, MR, and other modalities
+- **Client-side processing** - All DICOM parsing happens in the browser
 
 ## Supported DICOM Transfer Syntaxes
 
@@ -29,139 +33,122 @@ A web-based DICOM medical image viewer built with Flask and vanilla JavaScript. 
 | RLE Lossless | Not Supported |
 | JPEG-LS | Not Supported |
 
+## Quick Start
+
+### Option 1: Static file server (simplest)
+
+```bash
+cd dicom-viewer/docs
+python3 -m http.server 8000
+```
+
+Open `http://localhost:8000` in Chrome or Edge.
+
+### Option 2: Flask server (for development/testing)
+
+```bash
+cd dicom-viewer
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python app.py
+```
+
+Open `http://localhost:5001` in Chrome or Edge.
+
+## Usage
+
+1. **Load DICOM files**: Drag and drop a folder onto the drop zone, or click "CT Scan" / "MRI Scan" for samples
+2. **Browse studies**: The library shows all detected studies organized by patient
+3. **View series**: Click a series row to open the viewer
+4. **Navigate**: Scroll wheel or arrow keys to move through slices
+5. **Adjust display**: Drag with W/L tool to adjust brightness/contrast
+6. **Measure**: Select the measure tool and click two points to measure distance
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| W | Window/Level tool |
+| P | Pan tool |
+| Z | Zoom tool |
+| R | Reset view |
+| Arrow keys | Navigate slices |
+| Esc | Return to library |
+
+## Browser Compatibility
+
+| Browser | Status |
+|---------|--------|
+| Chrome 86+ | Full support |
+| Edge 86+ | Full support |
+| Firefox | Not supported (no File System Access API) |
+| Safari | Not supported (no File System Access API) |
+
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Browser                                  │
+│                         Browser                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  index.html                                                     │
+│  docs/index.html (single-page application)                      │
 │  ├── Library View (study/series browser)                        │
-│  ├── Viewer View (slice display + navigation)                   │
+│  ├── Viewer View (slice display + tools)                        │
 │  └── Inline JavaScript                                          │
 │      ├── dicom-parser (DICOM file parsing)                      │
-│      ├── jpeg-lossless-decoder-js (JPEG Lossless decoding)      │
-│      └── OpenJPEG WASM (JPEG 2000 decoding)                     │
+│      ├── jpeg-lossless-decoder-js (JPEG Lossless)               │
+│      └── OpenJPEG WASM (JPEG 2000)                              │
 ├─────────────────────────────────────────────────────────────────┤
 │  File System Access API                                         │
-│  └── Drag-and-drop folder access (Chrome/Edge)                  │
+│  └── Drag-and-drop folder access (Chrome/Edge only)             │
 └─────────────────────────────────────────────────────────────────┘
          │
-         │ HTTP (only for serving static files)
+         │ HTTP (static files only)
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Flask Server (app.py)                        │
-├─────────────────────────────────────────────────────────────────┤
-│  Routes:                                                        │
-│  ├── GET /              → Serve index.html                      │
-│  ├── GET /static/*      → Serve CSS, JS, WASM files             │
-│  └── POST /api/upload   → (Optional) Server-side file upload    │
+│  Any HTTP server (Flask, Python http.server, nginx, etc.)       │
+│  └── Serves static files from docs/                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-**Note:** The primary workflow uses client-side DICOM processing via the File System Access API. The Flask server primarily serves static files. Server-side APIs exist for alternative upload/processing workflows but are not used in the default drag-and-drop flow.
 
 ## Project Structure
 
 ```
 dicom-viewer/
-├── app.py                      # Flask server (serves static files + optional APIs)
-├── requirements.txt            # Python dependencies (Flask, pydicom)
-├── package.json                # Node dependencies (OpenJPEG codec)
+├── app.py                  # Flask server (static files + test API)
+├── requirements.txt        # Python: flask, pydicom
+├── package.json            # Node: OpenJPEG codec, Playwright
+├── playwright.config.js    # E2E test configuration
 │
-├── templates/
-│   └── index.html              # Main application (single-page app with inline JS)
+├── docs/                   # Static frontend (served as-is)
+│   ├── index.html          # Main application (single-page app)
+│   ├── css/style.css       # Styles
+│   ├── js/                 # JavaScript + WASM codecs
+│   ├── sample/             # Demo CT scan
+│   └── sample-mri/         # Demo MRI scan
 │
-├── static/
-│   ├── css/
-│   │   └── style.css           # All application styles
-│   └── js/
-│       ├── openjpegwasm.js     # OpenJPEG WASM loader
-│       ├── openjpegwasm.wasm   # OpenJPEG WebAssembly binary
-│       └── ...                 # Other codec files
+├── tests/                  # Playwright E2E tests
+│   └── viewing-tools.spec.js
 │
-├── uploads/                    # (Optional) Server-side uploaded files
-├── venv/                       # Python virtual environment
-└── node_modules/               # Node.js dependencies
+├── CLAUDE.md               # Technical documentation
+├── USER_GUIDE.md           # End-user documentation
+└── 3D_VOLUME_RENDERING_PLAN.md  # Future 3D features
 ```
 
-## Setup
+## Running Tests
 
-### Prerequisites
-- Python 3.8+
-- Node.js (for OpenJPEG codec installation)
-- Chrome or Edge browser (for File System Access API support)
+```bash
+npm install
+npx playwright install chromium
+npx playwright test
+```
 
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   cd dicom-viewer
-   ```
-
-2. **Create and activate a Python virtual environment**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. **Install Python dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Install Node dependencies (for JPEG 2000 support)**
-   ```bash
-   npm install
-   ```
-
-5. **Copy codec files to static directory**
-   ```bash
-   cp node_modules/@cornerstonejs/codec-openjpeg/dist/openjpegwasm* static/js/
-   ```
-
-6. **Run the server**
-   ```bash
-   python app.py
-   ```
-
-7. **Open in browser**
-   Navigate to `http://localhost:5001` in Chrome or Edge.
-
-## Usage
-
-1. **Load DICOM files**: Drag and drop a folder containing DICOM files onto the drop zone
-2. **Browse studies**: The library view shows all detected studies organized by patient
-3. **Expand series**: Click on a study row to see its series
-4. **View images**: Click on a series to open the viewer
-5. **Navigate slices**: Use mouse wheel, arrow keys, or the slider to scroll through slices
-6. **Add comments**: Click "Add comment" on any study or series to annotate
-
-## Browser Compatibility
-
-- **Chrome 86+**: Full support (File System Access API)
-- **Edge 86+**: Full support (File System Access API)
-- **Firefox**: Not supported (no File System Access API)
-- **Safari**: Not supported (no File System Access API)
-
-## Technical Details
-
-### DICOM Parsing
-The viewer uses [dicom-parser](https://github.com/cornerstonejs/dicomParser) for parsing DICOM files in the browser. This library handles the complex DICOM file format including various Value Representations (VR) and transfer syntaxes.
-
-### Image Decoding
-- **Uncompressed**: Native TypedArray operations
-- **JPEG Lossless**: [jpeg-lossless-decoder-js](https://github.com/cornerstonejs/jpeg-lossless-decoder-js)
-- **JPEG 2000**: [OpenJPEG](https://github.com/nickygerritsen/openjpegjs) compiled to WebAssembly
-- **JPEG Baseline**: Browser's native `createImageBitmap()` API
-
-### Window/Level
-The viewer automatically reads Window Center and Window Width from DICOM tags (0028,1050) and (0028,1051) to apply appropriate display settings for CT images.
+Tests automatically start the Flask server and use test data from `~/claude 0/test-data-mri-1` (configurable via `DICOM_TEST_DATA` environment variable).
 
 ## Future Plans
 
-See [3D_VOLUME_RENDERING_PLAN.md](./3D_VOLUME_RENDERING_PLAN.md) for plans to add:
-- 3D volume rendering
+See [3D_VOLUME_RENDERING_PLAN.md](./3D_VOLUME_RENDERING_PLAN.md) for planned features:
+- 3D volume rendering with vtk.js
 - Maximum Intensity Projection (MIP)
 - Multiplanar Reformation (MPR)
 
@@ -172,10 +159,3 @@ MIT License - Copyright (c) 2026 Divergent Health Technologies
 ## About
 
 Developed by Gabriel Casalduc at [Divergent Health Technologies](https://divergent.health/)
-
-## Acknowledgments
-
-- [dicom-parser](https://github.com/cornerstonejs/dicomParser) - DICOM parsing
-- [jpeg-lossless-decoder-js](https://github.com/cornerstonejs/jpeg-lossless-decoder-js) - JPEG Lossless decoding
-- [OpenJPEG](https://www.openjpeg.org/) - JPEG 2000 decoding
-- [Cornerstone.js](https://github.com/cornerstonejs) - Inspiration and codec implementations

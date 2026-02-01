@@ -20,13 +20,19 @@ claude 0/                          # Workspace/inbox - drop files here for Claud
 
 ---
 
+## Documentation (`dicom-viewer/docs/`)
+
+| File | Description |
+|------|-------------|
+| `BUGS.md` | Bug tracking and known issues |
+| `TESTING.md` | Testing documentation and Playwright setup |
+
 ## Planning (`dicom-viewer/docs/planning/`)
 
 Research, decisions, and reference materials for feature development.
 
 | File | Description |
 |------|-------------|
-| `BUGS.md` | Bug tracking and known issues |
 | `RESEARCH-3d-volume-rendering.md` | 3d-volume-rendering research |
 | `RESEARCH-measurement-tool-prompt.md` | measurement-tool-prompt research |
 | `RESEARCH-measurement-tool-thinking.md` | measurement-tool-thinking research |
@@ -48,7 +54,8 @@ dicom-viewer/
 │   ├── js/                # JavaScript + WASM
 │   ├── sample/            # Demo CT scan
 │   ├── sample-mri/        # Demo MRI scan
-│   ├── planning/          # Planning docs, research, bug tracking
+│   ├── planning/          # Research and feature planning
+│   ├── BUGS.md            # Bug tracking
 │   └── TESTING.md         # Test documentation
 ├── tests/                 # Playwright E2E tests
 └── uploads/               # Server upload destination
