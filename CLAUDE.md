@@ -163,29 +163,42 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 Principles that guide how we write code and build this product.
 
-**Fundamentals**
+**Long-Term Thinking**
+
+*Slow is smooth, smooth is fast.* Taking time to do things right is faster than rushing and fixing later. Short-term speed is an illusion - a quick fix today becomes a bug tomorrow and a rewrite next month.
+
+- Build strong foundations - they determine how high you can go
+- Fix root causes, not symptoms - understand why before fixing what
+- Technical debt is real debt - every shortcut is borrowed time paid back with interest
+- Don't take the easy way out - do it right, even when no one is watching
+
+**Simplicity Through Discipline**
+
+Simple is not lazy. A simple solution that handles edge cases elegantly is harder to build than a complex one that papers over problems. Simplicity is the result of deep understanding, not shallow effort.
+
+- Always ask: could this be way fewer lines of code?
+- Elegant solutions exist - take time to find them
+- Prefer limited functionality over a mess of dependencies
+- Every library is a liability - it can break, go unmaintained, or conflict
 - Don't hardcode values - use constants, config, or relative references
 - Don't repeat yourself - if you write it twice, extract it
 - Name things clearly - code should read like prose
 - Handle edge cases - real data is messy (blank slices, missing fields)
-- Test what you build - if it's worth building, it's worth verifying
 
-**Design Thinking**
+**Design for Reality**
+
 - Mimic user behavior - ask "what would a user do?" and do that
 - Keep test data realistic - don't sanitize away edge cases to make tests pass
-- Fix root causes, not symptoms - understand why before fixing what
+- Test what you build - if it's worth building, it's worth verifying
 - Tradeoffs are okay if documented - accept imperfection, but write down why
-- Simpler is better - don't add abstraction until you need it
-
-**Product Mindset**
-- Every fix needs a prevention control - tests, guidelines, or checks
-- Compound knowledge over time - document learnings so future sessions benefit
-- Protect working features - verify existing functionality still works after changes
 
 **Continuous Improvement**
-- Everything can be better - code, tests, docs, processes, tools
-- Small improvements compound into large gains over time
+
+Small improvements compound into large gains over time. Everything can be better - code, tests, docs, processes, tools.
+
+- Every fix needs a prevention control - don't solve the same problem twice
 - When something is hard or error-prone, fix the system not just the instance
+- Compound knowledge over time - document learnings so future sessions benefit
 - Revisit past decisions as context changes - what was right then may not be right now
 - Leave things better than you found them
 
