@@ -22,15 +22,23 @@ Known issues, bugs, and their resolution status.
 | **Resolved** | 2026-02-01 |
 | **Commit** | b75f15e |
 
-**Description:**
-Playwright tests were timing out because the first slice in MRI MPR reconstructions is often blank (uniform pixel values used as padding). The test mode waited for W/L display to show values, but blank slices don't set `state.baseWindowLevel`, causing an infinite wait.
+**How Encountered:**
+All 41 Playwright tests were timing out with the same error: waiting for W/L display to show "C:" values. The viewer loaded, series list appeared, but canvas stayed black and no W/L values displayed.
 
 **Root Cause:**
-`renderDicom()` returns early with `isBlank: true` for uniform slices, skipping the W/L calculation. The test's `waitForViewerReady()` function waited for "C:" in the W/L display text, which never appeared.
+`renderDicom()` returns early with `isBlank: true` for uniform slices (common as padding in MPR reconstructions), skipping W/L calculation. The test's `waitForViewerReady()` waited for "C:" in W/L display text, which never appeared because `state.baseWindowLevel` was never set.
 
-**Fix:**
+**Solution:**
 1. Added auto-advance logic in test mode to skip past blank slices (up to 50) to find displayable content
-2. Updated two tests to use relative slice positions instead of hardcoded values
+2. Updated two tests to use relative slice positions instead of hardcoded values (initial slice may not be 1)
+
+**Why This Solution:**
+Alternatives considered:
+- *Change test data to not start with blank slices* - Rejected; real MRI data has blank padding, tests should handle it
+- *Set dummy W/L values for blank slices* - Rejected; would be misleading, blank slices genuinely have no meaningful W/L
+- *Change waitForViewerReady to not require W/L* - Rejected; W/L presence is a good indicator that a real image loaded
+
+Chose auto-advance because it mimics what a user would do (scroll to find content) and keeps tests realistic. Tradeoff: tests now start on slice 2 instead of 1, requiring relative assertions.
 
 **Files Changed:**
 - `docs/index.html` - Auto-advance past blank slices in test mode
@@ -75,14 +83,17 @@ Copy this template when adding new bugs:
 | **Resolved** | YYYY-MM-DD |
 | **Commit** | (if resolved) |
 
-**Description:**
-What happens and how to reproduce.
+**How Encountered:**
+What were the symptoms? How was it discovered? Steps to reproduce.
 
 **Root Cause:**
-Why it happens (if known).
+Why did this happen? What was the underlying issue?
 
-**Fix:**
-How it was fixed (if resolved).
+**Solution:**
+What was changed to fix it?
+
+**Why This Solution:**
+What alternatives were considered? Why was this approach chosen? Any tradeoffs?
 
 **Files Changed:**
 - List affected files

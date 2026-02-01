@@ -162,7 +162,11 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 ## Documentation Requirements
 
 - **Keep SITEMAP.md accurate.** Update `docs/planning/SITEMAP.md` whenever project structure changes (new files, moved files, renamed folders). It's the reference for understanding the project.
-- **Track bugs in BUGS.md.** Document issues found and fixes applied in `docs/planning/BUGS.md`.
+- **Track bugs in BUGS.md.** Document in `docs/planning/BUGS.md` with full context:
+  - How the bug was encountered (symptoms, reproduction steps)
+  - Root cause analysis (why it happened)
+  - Solution implemented (what was changed)
+  - Why that solution was chosen (alternatives considered, tradeoffs)
 
 ## Git Workflow Controls
 
