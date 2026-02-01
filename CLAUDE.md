@@ -167,6 +167,7 @@ After each test run, apply continuous improvement: analyze results, strengthen t
   - Root cause analysis (why it happened)
   - Solution implemented (what was changed)
   - Why that solution was chosen (alternatives considered, tradeoffs)
+  - Prevention control added (test, code guideline, or check to prevent recurrence)
 
 ## Git Workflow Controls
 

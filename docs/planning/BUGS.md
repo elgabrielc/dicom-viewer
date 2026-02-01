@@ -40,6 +40,11 @@ Alternatives considered:
 
 Chose auto-advance because it mimics what a user would do (scroll to find content) and keeps tests realistic. Tradeoff: tests now start on slice 2 instead of 1, requiring relative assertions.
 
+**Prevention:**
+- Tests now use relative slice positions (`initialSlice.current + 1`) instead of hardcoded values, so they pass regardless of which slice auto-advance lands on
+- Test data intentionally includes blank slices to ensure this edge case stays covered
+- Added guideline: when writing slice navigation tests, always use relative positions
+
 **Files Changed:**
 - `docs/index.html` - Auto-advance past blank slices in test mode
 - `tests/viewing-tools.spec.js` - Relative slice position assertions
@@ -94,6 +99,9 @@ What was changed to fix it?
 
 **Why This Solution:**
 What alternatives were considered? Why was this approach chosen? Any tradeoffs?
+
+**Prevention:**
+What control was added to prevent recurrence? (test, code guideline, automated check)
 
 **Files Changed:**
 - List affected files
