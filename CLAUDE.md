@@ -159,6 +159,31 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 ---
 
+## Engineering Philosophy
+
+Principles that guide how we write code and build this product.
+
+**Fundamentals**
+- Don't hardcode values - use constants, config, or relative references
+- Don't repeat yourself - if you write it twice, extract it
+- Name things clearly - code should read like prose
+- Handle edge cases - real data is messy (blank slices, missing fields)
+- Test what you build - if it's worth building, it's worth verifying
+
+**Design Thinking**
+- Mimic user behavior - ask "what would a user do?" and do that
+- Keep test data realistic - don't sanitize away edge cases to make tests pass
+- Fix root causes, not symptoms - understand why before fixing what
+- Tradeoffs are okay if documented - accept imperfection, but write down why
+- Simpler is better - don't add abstraction until you need it
+
+**Product Mindset**
+- Every fix needs a prevention control - tests, guidelines, or checks
+- Compound knowledge over time - document learnings so future sessions benefit
+- Protect working features - verify existing functionality still works after changes
+
+---
+
 ## Documentation Requirements
 
 - **Keep SITEMAP.md accurate.** Update `docs/planning/SITEMAP.md` whenever project structure changes (new files, moved files, renamed folders). It's the reference for understanding the project.
