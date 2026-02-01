@@ -4,21 +4,23 @@ A map of the project structure to help navigate the codebase and documentation.
 
 ---
 
-## Project Root
+## Workspace Structure
 
 ```
-claude 0/
-├── deep-research-2x/              # Research tooling
-├── dicom-viewer/                  # Main DICOM viewer application
-├── docs/                          # Documentation and planning
-├── test-data-errors/              # Problem DICOM files for debugging
-├── test-data-mri-1/               # Test DICOM data (MRI)
-├── test-data-mri-2/               # Test DICOM data (MRI)
+claude 0/                          # Workspace/inbox - drop files here for Claude
+├── dicom-viewer/                  # Git repo - organized, version-controlled project
+├── test-data-mri-1/               # Test DICOM data (used by Flask test mode)
+├── test-data-mri-2/               # Additional test data
+└── test-data-errors/              # Problem DICOM files for debugging
 ```
+
+- **`claude 0/`** is a workspace where the user drops files for Claude to process
+- **`dicom-viewer/`** is the organized project; files get moved here as appropriate
+- Planning docs, bug tracking, and research live in `dicom-viewer/docs/planning/`
 
 ---
 
-## Planning (`docs/planning/`)
+## Planning (`dicom-viewer/docs/planning/`)
 
 Research, decisions, and reference materials for feature development.
 
@@ -39,13 +41,16 @@ Research, decisions, and reference materials for feature development.
 dicom-viewer/
 ├── app.py                 # Flask backend
 ├── requirements.txt       # Python dependencies
-├── docs/                  # Frontend static files
+├── CLAUDE.md              # Claude Code context and instructions
+├── docs/                  # Frontend static files + documentation
 │   ├── index.html         # Main SPA
 │   ├── css/               # Styles
 │   ├── js/                # JavaScript + WASM
-│   └── sample/            # Demo DICOM files
+│   ├── sample/            # Demo CT scan
+│   ├── sample-mri/        # Demo MRI scan
+│   ├── planning/          # Planning docs, research, bug tracking
+│   └── TESTING.md         # Test documentation
 ├── tests/                 # Playwright E2E tests
-├── test-data/             # Test DICOM files
 └── uploads/               # Server upload destination
 ```
 
@@ -71,4 +76,4 @@ dicom-viewer/
 
 ---
 
-*Auto-generated: 2026-01-31 — Run `./update-sitemap.sh` to refresh*
+*Last updated: 2026-02-01*
