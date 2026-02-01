@@ -1055,14 +1055,15 @@ test.describe('Test Suite 11: Slice Navigation & Persistence', () => {
   test('Slice counter updates on navigation', async ({ page }) => {
     const initialSlice = await getSliceInfo(page);
     expect(initialSlice).not.toBeNull();
-    expect(initialSlice.current).toBe(1);
+    // Note: initial slice may not be 1 if test mode auto-advances past blank slices
+    expect(initialSlice.current).toBeGreaterThanOrEqual(1);
 
     // Navigate forward
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(300);
 
     const newSlice = await getSliceInfo(page);
-    expect(newSlice.current).toBe(2);
+    expect(newSlice.current).toBe(initialSlice.current + 1);
     expect(newSlice.total).toBe(initialSlice.total);
 
     // Navigate back
@@ -1070,18 +1071,21 @@ test.describe('Test Suite 11: Slice Navigation & Persistence', () => {
     await page.waitForTimeout(300);
 
     const backSlice = await getSliceInfo(page);
-    expect(backSlice.current).toBe(1);
+    expect(backSlice.current).toBe(initialSlice.current);
   });
 
   test('T4.3: Reset preserves slice position', async ({ page }) => {
-    // Navigate to slice 3
+    // Get initial slice (may not be 1 if test mode auto-advances past blank slices)
+    const initialSlice = await getSliceInfo(page);
+
+    // Navigate forward 2 slices
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(200);
     await page.keyboard.press('ArrowRight');
     await page.waitForTimeout(200);
 
     const sliceBefore = await getSliceInfo(page);
-    expect(sliceBefore.current).toBe(3);
+    expect(sliceBefore.current).toBe(initialSlice.current + 2);
 
     // Adjust W/L and zoom
     const bounds = await getCanvasBounds(page);
@@ -1092,9 +1096,9 @@ test.describe('Test Suite 11: Slice Navigation & Persistence', () => {
     await page.click(RESET_BUTTON_SELECTOR);
     await page.waitForTimeout(200);
 
-    // Slice should still be 3
+    // Slice should still be at the same position
     const sliceAfter = await getSliceInfo(page);
-    expect(sliceAfter.current).toBe(3);
+    expect(sliceAfter.current).toBe(sliceBefore.current);
   });
 });
 

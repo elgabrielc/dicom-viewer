@@ -52,7 +52,7 @@ app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 
 # Test data folder for automated testing (bypasses File System Access API)
-TEST_DATA_FOLDER = os.path.expanduser('~/claude 0/MRI sample for debug 1')
+TEST_DATA_FOLDER = os.path.expanduser('~/claude 0/test-data-mri-1')
 
 # In-memory store for studies (in production, use a database)
 # Maps study_id -> study dict containing patient info, series, and slice metadata

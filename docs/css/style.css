@@ -796,6 +796,18 @@ header .subtitle {
     font-family: monospace;
 }
 
+/* Calibration warning for uncalibrated measurements */
+.calibration-warning {
+    color: #f0ad4e;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    background: rgba(240, 173, 78, 0.15);
+    border: 1px solid rgba(240, 173, 78, 0.3);
+    border-radius: 3px;
+    margin-left: 8px;
+}
+
 .canvas-container {
     flex: 1;
     display: flex;
@@ -809,6 +821,22 @@ header .subtitle {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+}
+
+/* Measurement overlay canvas - positioned identically to image canvas */
+#measurementCanvas {
+    position: absolute;
+    pointer-events: none;
+    /* Size and position will be set dynamically via JS to match imageCanvas */
+}
+
+/* Cursor for measure tool */
+.canvas-container.tool-measure {
+    cursor: crosshair;
+}
+
+.canvas-container.tool-measure.measuring {
+    cursor: crosshair;
 }
 
 .image-loading {

@@ -107,12 +107,15 @@ Copyright (c) 2026 Divergent Health Technologies
                     <button class="tool-btn active" data-tool="wl" data-tooltip="W">W/L</button>
                     <button class="tool-btn" data-tool="pan" data-tooltip="P">Pan</button>
                     <button class="tool-btn" data-tool="zoom" data-tooltip="Z">Zoom</button>
+                    <button class="tool-btn" data-tool="measure" data-tooltip="M">Measure</button>
                     <span class="toolbar-separator"></span>
                     <button class="tool-btn" id="resetViewBtn" data-tooltip="R">Reset</button>
+                    <span class="calibration-warning" id="calibrationWarning" style="display: none;">Uncalibrated</span>
                     <span class="wl-display" id="wlDisplay"></span>
                 </div>
                 <div class="canvas-container">
                     <canvas id="imageCanvas"></canvas>
+                    <canvas id="measurementCanvas"></canvas>
                     <div id="imageLoading" class="image-loading" style="display: none;">Loading...</div>
                 </div>
 
@@ -201,7 +204,11 @@ Copyright (c) 2026 Divergent Health Technologies
             windowLevel: { center: null, width: null },
             baseWindowLevel: { center: null, width: null },
             isDragging: false,
-            dragStart: { x: 0, y: 0 }
+            dragStart: { x: 0, y: 0 },
+            // Measurement tool state
+            measurements: new Map(),    // Map<sliceKey, Measurement[]> - keyed by study/series/slice
+            activeMeasurement: null,    // Measurement being drawn
+            pixelSpacing: null          // {row, col} in mm, or null if uncalibrated
         };
 
         // =====================================================================
@@ -231,6 +238,10 @@ Copyright (c) 2026 Divergent Health Technologies
         const imageLoading = $('imageLoading');
         const resetViewBtn = $('resetViewBtn');
         const wlDisplay = $('wlDisplay');
+        const measurementCanvas = $('measurementCanvas');
+        const measureCtx = measurementCanvas.getContext('2d');
+        const calibrationWarning = $('calibrationWarning');
+        const canvasContainer = document.querySelector('.canvas-container');
         const prevBtn = $('prevSlice');
         const nextBtn = $('nextSlice');
         const backBtn = $('backBtn');
@@ -264,6 +275,351 @@ Copyright (c) 2026 Divergent Health Technologies
          * @returns {number} Tag value or default
          */
         const getNumber = (ds, tag, def = 0) => { try { const v = ds.string(tag); return v ? parseFloat(v) : def; } catch { return def; }};
+
+        // =====================================================================
+        // MEASUREMENT TOOL FUNCTIONS
+        // Length measurement with calibration from DICOM PixelSpacing
+        // =====================================================================
+
+        /**
+         * Generate a UUID for measurement identification (persistence-ready)
+         * @returns {string} UUID v4 format string
+         */
+        function generateMeasurementId() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = Math.random() * 16 | 0;
+                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            });
+        }
+
+        /**
+         * Get unique key for storing measurements by slice
+         * @returns {string} Key combining study/series/slice for Map storage
+         */
+        function getMeasurementSliceKey() {
+            if (!state.currentStudy || !state.currentSeries) return null;
+            return `${state.currentStudy.studyInstanceUid}|${state.currentSeries.seriesInstanceUid}|${state.currentSliceIndex}`;
+        }
+
+        /**
+         * Extract pixel spacing from DICOM dataset
+         * Tries PixelSpacing (0028,0030) first, then ImagerPixelSpacing (0018,1164)
+         * PixelSpacing format is "row\col" (backslash separated)
+         *
+         * @param {Object} dataSet - dicomParser dataset
+         * @returns {Object|null} {row, col} spacing in mm, or null if not available
+         */
+        function extractPixelSpacing(dataSet) {
+            // Try PixelSpacing first (most reliable for cross-sectional imaging)
+            let spacingStr = getString(dataSet, 'x00280030');  // (0028,0030) Pixel Spacing
+
+            // Fall back to ImagerPixelSpacing (common in projection radiography)
+            if (!spacingStr) {
+                spacingStr = getString(dataSet, 'x00181164');  // (0018,1164) Imager Pixel Spacing
+            }
+
+            if (!spacingStr) return null;
+
+            // Parse "row\col" format (DICOM uses backslash as separator)
+            const parts = spacingStr.split('\\');
+            if (parts.length !== 2) return null;
+
+            const row = parseFloat(parts[0]);
+            const col = parseFloat(parts[1]);
+
+            // Validate parsed values
+            if (isNaN(row) || isNaN(col) || row <= 0 || col <= 0) return null;
+
+            return { row, col };
+        }
+
+        /**
+         * Convert screen coordinates to image coordinates
+         * Accounts for canvas position, pan offset, and zoom level
+         *
+         * @param {number} screenX - X position in viewport
+         * @param {number} screenY - Y position in viewport
+         * @returns {Object} {x, y} in image pixel coordinates
+         */
+        function screenToImage(screenX, screenY) {
+            const rect = canvas.getBoundingClientRect();
+            const { panX, panY, zoom } = state.viewTransform;
+
+            // Position relative to canvas element
+            const canvasX = screenX - rect.left;
+            const canvasY = screenY - rect.top;
+
+            // Account for canvas display scaling (CSS vs actual pixels)
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+
+            // Convert to image coordinates, accounting for pan and zoom
+            // Transform origin is center of canvas
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            const imageX = (canvasX * scaleX - centerX - panX) / zoom + centerX;
+            const imageY = (canvasY * scaleY - centerY - panY) / zoom + centerY;
+
+            return { x: imageX, y: imageY };
+        }
+
+        /**
+         * Convert image coordinates to screen coordinates
+         * Reverse of screenToImage for rendering measurements
+         *
+         * @param {number} imageX - X position in image pixels
+         * @param {number} imageY - Y position in image pixels
+         * @returns {Object} {x, y} in canvas coordinates (for drawing on overlay)
+         */
+        function imageToCanvas(imageX, imageY) {
+            const { panX, panY, zoom } = state.viewTransform;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Apply zoom and pan (transform origin is center)
+            const canvasX = (imageX - centerX) * zoom + centerX + panX;
+            const canvasY = (imageY - centerY) * zoom + centerY + panY;
+
+            return { x: canvasX, y: canvasY };
+        }
+
+        /**
+         * Calculate distance between two points
+         * Handles anisotropic pixels (different row/col spacing)
+         *
+         * @param {Object} start - {x, y} start point in image coordinates
+         * @param {Object} end - {x, y} end point in image coordinates
+         * @param {Object|null} pixelSpacing - {row, col} in mm, or null
+         * @returns {Object} {distancePixels, distanceMm}
+         */
+        function calculateDistance(start, end, pixelSpacing) {
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+
+            // Distance in pixels (always available)
+            const distancePixels = Math.sqrt(dx * dx + dy * dy);
+
+            // Distance in mm (only if calibrated)
+            let distanceMm = null;
+            if (pixelSpacing) {
+                // Use col spacing for X, row spacing for Y (DICOM convention)
+                const dxMm = dx * pixelSpacing.col;
+                const dyMm = dy * pixelSpacing.row;
+                distanceMm = Math.sqrt(dxMm * dxMm + dyMm * dyMm);
+            }
+
+            return { distancePixels, distanceMm };
+        }
+
+        /**
+         * Format distance for display
+         * Uses mm for < 100mm, cm for >= 100mm
+         * Falls back to pixels if uncalibrated
+         *
+         * @param {number|null} distanceMm - Distance in mm, or null
+         * @param {number} distancePixels - Distance in pixels
+         * @returns {string} Formatted distance string
+         */
+        function formatDistance(distanceMm, distancePixels) {
+            if (distanceMm !== null) {
+                if (distanceMm >= 100) {
+                    return (distanceMm / 10).toFixed(2) + ' cm';
+                }
+                return distanceMm.toFixed(2) + ' mm';
+            }
+            return distancePixels.toFixed(1) + ' px';
+        }
+
+        /**
+         * Create a new measurement object (persistence-ready structure)
+         *
+         * @param {Object} start - {x, y} start point
+         * @param {Object} end - {x, y} end point
+         * @returns {Object} Measurement object
+         */
+        function createMeasurement(start, end) {
+            const { distancePixels, distanceMm } = calculateDistance(start, end, state.pixelSpacing);
+
+            return {
+                id: generateMeasurementId(),
+                type: 'length',
+                studyInstanceUid: state.currentStudy?.studyInstanceUid || null,
+                seriesInstanceUid: state.currentSeries?.seriesInstanceUid || null,
+                sliceIndex: state.currentSliceIndex,
+                sopInstanceUid: null,  // Could be extracted from current slice if needed
+                points: [
+                    { x: start.x, y: start.y },
+                    { x: end.x, y: end.y }
+                ],
+                distanceMm: distanceMm,
+                distancePixels: distancePixels,
+                createdAt: new Date().toISOString(),
+                label: null
+            };
+        }
+
+        /**
+         * Get measurements for current slice
+         * @returns {Array} Array of measurements for current slice
+         */
+        function getCurrentSliceMeasurements() {
+            const key = getMeasurementSliceKey();
+            if (!key) return [];
+            return state.measurements.get(key) || [];
+        }
+
+        /**
+         * Add a measurement to the current slice
+         * @param {Object} measurement - Measurement object to add
+         */
+        function addMeasurement(measurement) {
+            const key = getMeasurementSliceKey();
+            if (!key) return;
+
+            const sliceMeasurements = state.measurements.get(key) || [];
+            sliceMeasurements.push(measurement);
+            state.measurements.set(key, sliceMeasurements);
+        }
+
+        /**
+         * Sync measurement overlay canvas size and position with image canvas
+         */
+        function syncMeasurementCanvas() {
+            const rect = canvas.getBoundingClientRect();
+            const containerRect = canvasContainer.getBoundingClientRect();
+
+            // Match the actual rendered size of the image canvas
+            measurementCanvas.width = canvas.width;
+            measurementCanvas.height = canvas.height;
+
+            // Position overlay exactly over the image canvas
+            measurementCanvas.style.width = rect.width + 'px';
+            measurementCanvas.style.height = rect.height + 'px';
+            measurementCanvas.style.left = (rect.left - containerRect.left) + 'px';
+            measurementCanvas.style.top = (rect.top - containerRect.top) + 'px';
+        }
+
+        /**
+         * Draw all measurements on the overlay canvas
+         * Called after view transform changes or measurements added
+         */
+        function drawMeasurements() {
+            if (!measurementCanvas) return;
+
+            // Sync canvas size/position first
+            syncMeasurementCanvas();
+
+            // Clear the overlay
+            measureCtx.clearRect(0, 0, measurementCanvas.width, measurementCanvas.height);
+
+            // Get measurements for current slice
+            const measurements = getCurrentSliceMeasurements();
+
+            // Draw each measurement
+            for (const m of measurements) {
+                drawSingleMeasurement(m);
+            }
+
+            // Draw active measurement (being drawn)
+            if (state.activeMeasurement) {
+                drawSingleMeasurement(state.activeMeasurement, true);
+            }
+        }
+
+        /**
+         * Draw a single measurement line with label
+         *
+         * @param {Object} measurement - Measurement object
+         * @param {boolean} isActive - Whether this is the measurement being drawn
+         */
+        function drawSingleMeasurement(measurement, isActive = false) {
+            if (!measurement.points || measurement.points.length < 2) return;
+
+            const start = measurement.points[0];
+            const end = measurement.points[1];
+
+            // Convert to canvas coordinates (accounting for pan/zoom)
+            const startCanvas = imageToCanvas(start.x, start.y);
+            const endCanvas = imageToCanvas(end.x, end.y);
+
+            // Line style
+            measureCtx.strokeStyle = isActive ? '#ffcc00' : '#00ff00';
+            measureCtx.lineWidth = 2;
+            measureCtx.lineCap = 'round';
+
+            // Draw line
+            measureCtx.beginPath();
+            measureCtx.moveTo(startCanvas.x, startCanvas.y);
+            measureCtx.lineTo(endCanvas.x, endCanvas.y);
+            measureCtx.stroke();
+
+            // Draw endpoints (small circles)
+            const endpointRadius = 4;
+            measureCtx.fillStyle = isActive ? '#ffcc00' : '#00ff00';
+
+            measureCtx.beginPath();
+            measureCtx.arc(startCanvas.x, startCanvas.y, endpointRadius, 0, Math.PI * 2);
+            measureCtx.fill();
+
+            measureCtx.beginPath();
+            measureCtx.arc(endCanvas.x, endCanvas.y, endpointRadius, 0, Math.PI * 2);
+            measureCtx.fill();
+
+            // Draw label near the midpoint, offset to avoid overlapping the line
+            const midX = (startCanvas.x + endCanvas.x) / 2;
+            const midY = (startCanvas.y + endCanvas.y) / 2;
+
+            // Calculate perpendicular offset for label placement
+            const dx = endCanvas.x - startCanvas.x;
+            const dy = endCanvas.y - startCanvas.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const offsetDist = 15;  // Pixels away from line
+
+            // Perpendicular direction (normalized), prefer above the line
+            let perpX = -dy / length;
+            let perpY = dx / length;
+            if (perpY > 0) { perpX = -perpX; perpY = -perpY; }  // Prefer label above
+
+            const labelX = midX + perpX * offsetDist;
+            const labelY = midY + perpY * offsetDist;
+
+            // Format distance text
+            const distanceText = formatDistance(measurement.distanceMm, measurement.distancePixels);
+
+            // Draw text with background for readability
+            measureCtx.font = '12px -apple-system, BlinkMacSystemFont, sans-serif';
+            const textMetrics = measureCtx.measureText(distanceText);
+            const textWidth = textMetrics.width;
+            const textHeight = 14;
+            const padding = 4;
+
+            // Background rectangle
+            measureCtx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            measureCtx.fillRect(
+                labelX - textWidth / 2 - padding,
+                labelY - textHeight / 2 - padding,
+                textWidth + padding * 2,
+                textHeight + padding * 2
+            );
+
+            // Text
+            measureCtx.fillStyle = isActive ? '#ffcc00' : '#00ff00';
+            measureCtx.textAlign = 'center';
+            measureCtx.textBaseline = 'middle';
+            measureCtx.fillText(distanceText, labelX, labelY);
+        }
+
+        /**
+         * Update calibration warning display
+         */
+        function updateCalibrationWarning() {
+            if (state.currentTool === 'measure') {
+                calibrationWarning.style.display = state.pixelSpacing ? 'none' : 'inline';
+            } else {
+                calibrationWarning.style.display = 'none';
+            }
+        }
 
         // =====================================================================
         // DICOM PARSING
@@ -1273,6 +1629,11 @@ Copyright (c) 2026 Divergent Health Technologies
                 windowWidth = modalityDefaults.windowWidth;
             }
 
+            // Extract pixel spacing for measurement calibration
+            const pixelSpacing = extractPixelSpacing(dataSet);
+            state.pixelSpacing = pixelSpacing;
+            updateCalibrationWarning();
+
             // Extract MRI-specific metadata
             const mrMetadata = {
                 repetitionTime: getNumber(dataSet, 'x00180080', 0),     // (0018,0080) TR
@@ -1536,6 +1897,8 @@ Copyright (c) 2026 Divergent Health Technologies
                 console.error('Error loading slice:', e);
             }
             imageLoading.style.display = 'none';
+            // Redraw measurements for the new slice
+            drawMeasurements();
         }
 
         function updateSliceInfo() {
@@ -1622,6 +1985,10 @@ Copyright (c) 2026 Divergent Health Technologies
             });
             // Update cursor
             canvas.style.cursor = getCursorForTool(tool, false);
+            // Update canvas container class for measure tool cursor
+            canvasContainer.classList.toggle('tool-measure', tool === 'measure');
+            // Update calibration warning visibility
+            updateCalibrationWarning();
         }
 
         /**
@@ -1635,6 +2002,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 case 'wl': return dragging ? 'ns-resize' : 'crosshair';
                 case 'pan': return dragging ? 'grabbing' : 'grab';
                 case 'zoom': return dragging ? 'ns-resize' : 'zoom-in';
+                case 'measure': return 'crosshair';
                 default: return 'default';
             }
         }
@@ -1646,6 +2014,8 @@ Copyright (c) 2026 Divergent Health Technologies
             const { panX, panY, zoom } = state.viewTransform;
             canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
             canvas.style.transformOrigin = 'center center';
+            // Redraw measurements to account for new transform
+            drawMeasurements();
         }
 
         /**
@@ -1724,12 +2094,24 @@ Copyright (c) 2026 Divergent Health Technologies
             state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
             state.windowLevel = { center: null, width: null };
             state.baseWindowLevel = { center: null, width: null };
+            // Clear measurements for new series
+            state.measurements.clear();
+            state.activeMeasurement = null;
+            state.pixelSpacing = null;
             applyViewTransform();
+            updateCalibrationWarning();
         }
 
         // Mouse event handlers for canvas tools
         function onCanvasMouseDown(e) {
             if (!state.currentTool || e.button !== 0) return;
+
+            // Handle measure tool separately
+            if (state.currentTool === 'measure') {
+                handleMeasureMouseDown(e);
+                return;
+            }
+
             state.isDragging = true;
             state.dragStart = { x: e.clientX, y: e.clientY };
             canvas.style.cursor = getCursorForTool(state.currentTool, true);
@@ -1737,6 +2119,12 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         function onCanvasMouseMove(e) {
+            // Handle measure tool separately
+            if (state.currentTool === 'measure' && state.activeMeasurement) {
+                handleMeasureMouseMove(e);
+                return;
+            }
+
             if (!state.isDragging) return;
             const dx = e.clientX - state.dragStart.x;
             const dy = e.clientY - state.dragStart.y;
@@ -1751,10 +2139,81 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         function onCanvasMouseUp(e) {
+            // Handle measure tool separately
+            if (state.currentTool === 'measure' && state.activeMeasurement) {
+                handleMeasureMouseUp(e);
+                return;
+            }
+
             if (state.isDragging) {
                 state.isDragging = false;
                 canvas.style.cursor = getCursorForTool(state.currentTool, false);
             }
+        }
+
+        /**
+         * Handle mouse down for measure tool - start new measurement
+         */
+        function handleMeasureMouseDown(e) {
+            const imageCoords = screenToImage(e.clientX, e.clientY);
+
+            // Clamp to image bounds
+            imageCoords.x = Math.max(0, Math.min(canvas.width - 1, imageCoords.x));
+            imageCoords.y = Math.max(0, Math.min(canvas.height - 1, imageCoords.y));
+
+            // Start new measurement
+            state.activeMeasurement = createMeasurement(imageCoords, imageCoords);
+            canvasContainer.classList.add('measuring');
+            e.preventDefault();
+        }
+
+        /**
+         * Handle mouse move for measure tool - update active measurement endpoint
+         */
+        function handleMeasureMouseMove(e) {
+            if (!state.activeMeasurement) return;
+
+            const imageCoords = screenToImage(e.clientX, e.clientY);
+
+            // Clamp to image bounds
+            imageCoords.x = Math.max(0, Math.min(canvas.width - 1, imageCoords.x));
+            imageCoords.y = Math.max(0, Math.min(canvas.height - 1, imageCoords.y));
+
+            // Update endpoint
+            state.activeMeasurement.points[1] = { x: imageCoords.x, y: imageCoords.y };
+
+            // Recalculate distance
+            const { distancePixels, distanceMm } = calculateDistance(
+                state.activeMeasurement.points[0],
+                state.activeMeasurement.points[1],
+                state.pixelSpacing
+            );
+            state.activeMeasurement.distancePixels = distancePixels;
+            state.activeMeasurement.distanceMm = distanceMm;
+
+            // Redraw
+            drawMeasurements();
+        }
+
+        /**
+         * Handle mouse up for measure tool - finalize measurement
+         */
+        function handleMeasureMouseUp(e) {
+            if (!state.activeMeasurement) return;
+
+            // Discard very small measurements (< 3 pixels)
+            if (state.activeMeasurement.distancePixels < 3) {
+                state.activeMeasurement = null;
+                canvasContainer.classList.remove('measuring');
+                drawMeasurements();
+                return;
+            }
+
+            // Add to measurements collection
+            addMeasurement(state.activeMeasurement);
+            state.activeMeasurement = null;
+            canvasContainer.classList.remove('measuring');
+            drawMeasurements();
         }
 
         // =====================================================================
@@ -1929,6 +2388,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     case 'w': setTool('wl'); return;
                     case 'p': setTool('pan'); return;
                     case 'z': setTool('zoom'); return;
+                    case 'm': setTool('measure'); return;
                     case 'r': resetView(); return;
                 }
             }
@@ -2132,6 +2592,23 @@ Copyright (c) 2026 Divergent Health Technologies
                         if (seriesIds.length > 0) {
                             console.log('Auto-opening first series for testing');
                             openViewerWithSeries(studyIds[0], seriesIds[0]);
+
+                            // Auto-advance past blank slices to find displayable content
+                            // MPR reconstructions often have blank padding slices at the start
+                            const maxSkip = 50;
+                            for (let i = 0; i < maxSkip && state.currentSeries; i++) {
+                                // Check if current W/L is set (non-blank slice)
+                                if (state.baseWindowLevel.center !== null) {
+                                    console.log(`Found non-blank slice at index ${state.currentSliceIndex}`);
+                                    break;
+                                }
+                                // Advance to next slice
+                                if (state.currentSliceIndex < state.currentSeries.slices.length - 1) {
+                                    await loadSlice(state.currentSliceIndex + 1);
+                                } else {
+                                    break;
+                                }
+                            }
                         }
                     }
                 } catch (e) {
