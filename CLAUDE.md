@@ -159,6 +159,11 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 ---
 
+## Documentation Requirements
+
+- **Keep SITEMAP.md accurate.** Update `docs/planning/SITEMAP.md` whenever project structure changes (new files, moved files, renamed folders). It's the reference for understanding the project.
+- **Track bugs in BUGS.md.** Document issues found and fixes applied in `docs/planning/BUGS.md`.
+
 ## Git Workflow Controls
 
 - **Never push without explicit permission.** Commit when asked, but wait for explicit "push" instruction.
