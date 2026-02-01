@@ -51,4 +51,12 @@ module.exports = defineConfig({
   expect: {
     timeout: 10000, // 10 seconds for expect assertions
   },
+
+  /* Start Flask server before tests */
+  webServer: {
+    command: './venv/bin/flask run --host=127.0.0.1 --port=5001',
+    url: 'http://127.0.0.1:5001/api/test-data/info',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60000, // Allow time for initial test data scan
+  },
 });
