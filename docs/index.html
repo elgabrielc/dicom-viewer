@@ -365,23 +365,18 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         /**
-         * Convert image coordinates to screen coordinates
-         * Reverse of screenToImage for rendering measurements
+         * Convert image coordinates to overlay canvas coordinates
+         * Since the overlay canvas has the same CSS transform as the image canvas,
+         * we simply return the image coordinates directly.
          *
          * @param {number} imageX - X position in image pixels
          * @param {number} imageY - Y position in image pixels
-         * @returns {Object} {x, y} in canvas coordinates (for drawing on overlay)
+         * @returns {Object} {x, y} in overlay canvas coordinates
          */
         function imageToCanvas(imageX, imageY) {
-            const { panX, panY, zoom } = state.viewTransform;
-            const centerX = canvas.width / 2;
-            const centerY = canvas.height / 2;
-
-            // Apply zoom and pan (transform origin is center)
-            const canvasX = (imageX - centerX) * zoom + centerX + panX;
-            const canvasY = (imageY - centerY) * zoom + centerY + panY;
-
-            return { x: canvasX, y: canvasY };
+            // The overlay canvas uses the same CSS transform as the image canvas,
+            // so we draw directly in image coordinates
+            return { x: imageX, y: imageY };
         }
 
         /**
@@ -483,21 +478,132 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         /**
+         * Delete a measurement by ID from the current slice
+         * @param {string} measurementId - ID of measurement to delete
+         * @returns {boolean} True if measurement was found and deleted
+         */
+        function deleteMeasurement(measurementId) {
+            const key = getMeasurementSliceKey();
+            if (!key) return false;
+
+            const sliceMeasurements = state.measurements.get(key) || [];
+            const index = sliceMeasurements.findIndex(m => m.id === measurementId);
+            if (index === -1) return false;
+
+            sliceMeasurements.splice(index, 1);
+            state.measurements.set(key, sliceMeasurements);
+            drawMeasurements();
+            return true;
+        }
+
+        /**
+         * Delete the most recent measurement on current slice
+         * @returns {boolean} True if a measurement was deleted
+         */
+        function deleteLastMeasurement() {
+            const key = getMeasurementSliceKey();
+            if (!key) return false;
+
+            const sliceMeasurements = state.measurements.get(key) || [];
+            if (sliceMeasurements.length === 0) return false;
+
+            sliceMeasurements.pop();
+            state.measurements.set(key, sliceMeasurements);
+            drawMeasurements();
+            return true;
+        }
+
+        /**
+         * Clear all measurements on current slice
+         * @returns {boolean} True if measurements were cleared
+         */
+        function clearSliceMeasurements() {
+            const key = getMeasurementSliceKey();
+            if (!key) return false;
+
+            const sliceMeasurements = state.measurements.get(key) || [];
+            if (sliceMeasurements.length === 0) return false;
+
+            state.measurements.delete(key);
+            drawMeasurements();
+            return true;
+        }
+
+        /**
+         * Find measurement at given image coordinates (hit testing)
+         * Returns the measurement if click is within tolerance of the line or endpoints
+         *
+         * @param {number} imageX - X position in image coordinates
+         * @param {number} imageY - Y position in image coordinates
+         * @param {number} tolerance - Hit detection tolerance in pixels (default 8)
+         * @returns {Object|null} Measurement object if found, null otherwise
+         */
+        function findMeasurementAtPoint(imageX, imageY, tolerance = 8) {
+            const measurements = getCurrentSliceMeasurements();
+
+            // Check in reverse order so most recent measurements are hit first
+            for (let i = measurements.length - 1; i >= 0; i--) {
+                const m = measurements[i];
+                if (!m.points || m.points.length < 2) continue;
+
+                const start = m.points[0];
+                const end = m.points[1];
+
+                // Check endpoints first (easier click targets)
+                if (Math.hypot(imageX - start.x, imageY - start.y) <= tolerance) return m;
+                if (Math.hypot(imageX - end.x, imageY - end.y) <= tolerance) return m;
+
+                // Check distance to line segment
+                if (pointToLineDistance(imageX, imageY, start.x, start.y, end.x, end.y) <= tolerance) {
+                    return m;
+                }
+            }
+
+            return null;
+        }
+
+        /**
+         * Calculate shortest distance from point to line segment
+         * @param {number} px - Point X
+         * @param {number} py - Point Y
+         * @param {number} x1 - Line start X
+         * @param {number} y1 - Line start Y
+         * @param {number} x2 - Line end X
+         * @param {number} y2 - Line end Y
+         * @returns {number} Distance in pixels
+         */
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const lengthSq = dx * dx + dy * dy;
+
+            // Line segment is a point
+            if (lengthSq === 0) return Math.hypot(px - x1, py - y1);
+
+            // Project point onto line, clamped to segment [0, 1]
+            const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSq));
+
+            // Distance to closest point on segment
+            return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+        }
+
+        /**
          * Sync measurement overlay canvas size and position with image canvas
+         * Applies the same CSS transform so measurements move with the image
          */
         function syncMeasurementCanvas() {
-            const rect = canvas.getBoundingClientRect();
-            const containerRect = canvasContainer.getBoundingClientRect();
-
-            // Match the actual rendered size of the image canvas
+            // Match the image canvas dimensions
             measurementCanvas.width = canvas.width;
             measurementCanvas.height = canvas.height;
 
-            // Position overlay exactly over the image canvas
-            measurementCanvas.style.width = rect.width + 'px';
-            measurementCanvas.style.height = rect.height + 'px';
-            measurementCanvas.style.left = (rect.left - containerRect.left) + 'px';
-            measurementCanvas.style.top = (rect.top - containerRect.top) + 'px';
+            // Copy the same CSS styles as the image canvas
+            measurementCanvas.style.maxWidth = '100%';
+            measurementCanvas.style.maxHeight = '100%';
+
+            // Apply the same transform as the image canvas
+            const { panX, panY, zoom } = state.viewTransform;
+            measurementCanvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+            measurementCanvas.style.transformOrigin = 'center center';
         }
 
         /**
@@ -2382,6 +2488,17 @@ Copyright (c) 2026 Divergent Health Technologies
         document.addEventListener('keydown', e => {
             if (viewerView.style.display === 'none') return;
 
+            // Delete/Backspace for measurements when measure tool is active
+            if ((e.key === 'Delete' || e.key === 'Backspace') && state.currentTool === 'measure') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    clearSliceMeasurements();  // Shift+Delete clears all on slice
+                } else {
+                    deleteLastMeasurement();   // Delete removes most recent
+                }
+                return;
+            }
+
             // Tool shortcuts (only when not typing in an input)
             if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
                 switch (e.key.toLowerCase()) {
@@ -2411,6 +2528,19 @@ Copyright (c) 2026 Divergent Health Technologies
         canvas.addEventListener('mousemove', onCanvasMouseMove);
         canvas.addEventListener('mouseup', onCanvasMouseUp);
         canvas.addEventListener('mouseleave', onCanvasMouseUp);
+
+        // Right-click to delete measurement
+        canvas.addEventListener('contextmenu', e => {
+            if (state.currentTool !== 'measure') return;
+
+            e.preventDefault();
+            const imageCoords = screenToImage(e.clientX, e.clientY);
+            const measurement = findMeasurementAtPoint(imageCoords.x, imageCoords.y);
+
+            if (measurement) {
+                deleteMeasurement(measurement.id);
+            }
+        });
 
         canvas.addEventListener('wheel', e => {
             e.preventDefault();
