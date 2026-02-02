@@ -2,7 +2,7 @@
 
 <!-- Copyright (c) 2026 Divergent Health Technologies -->
 
-This document covers deployment options for the DICOM Viewer, including local development and GitHub Pages hosting.
+This document covers deployment options for the DICOM Viewer, including local development, GitHub Pages hosting, and our CI/CD pipeline.
 
 ---
 
@@ -81,6 +81,79 @@ npx serve docs -p 8000
 
 ---
 
+## Development Workflow
+
+We use **GitHub Flow** for development:
+
+```
+Feature Branch ──PR──► main ──auto──► GitHub Pages (demo)
+                  │
+                  └──► Vercel Preview (per-PR staging)
+```
+
+### Branch Strategy
+
+1. `main` is always deployable (it's the live demo)
+2. All work happens in feature branches
+3. PRs must pass CI before merge
+4. Self-merge allowed after CI passes
+
+Branch naming: `feature/<name>`, `fix/<name>`, `docs/<name>`
+
+### Making Changes (Recommended Flow)
+
+```bash
+# 1. Create feature branch
+git checkout main && git pull
+git checkout -b feature/my-change
+
+# 2. Make and test changes locally
+# ... edit files, run tests ...
+
+# 3. Commit and push
+git add <files>
+git commit -m "feat: description"
+git push -u origin feature/my-change
+
+# 4. Open PR on GitHub
+# CI runs automatically, Vercel creates preview
+
+# 5. After CI passes, merge PR
+# GitHub Pages updates automatically
+```
+
+---
+
+## CI/CD Pipeline
+
+### GitHub Actions (PR Validation)
+
+Every PR to `main` triggers `.github/workflows/pr-validate.yml`:
+
+1. Installs Python + Node dependencies
+2. Runs all Playwright tests
+3. Blocks merge if tests fail
+
+**To run tests locally:**
+```bash
+npx playwright test
+```
+
+### Vercel Preview Environments
+
+Each PR automatically gets a preview deployment:
+
+- URL format: `dicom-viewer-git-<branch>-<username>.vercel.app`
+- Updates on each push to the PR
+- Good for visual verification before merge
+
+**Setup (one-time):**
+1. Connect repository to Vercel at vercel.com
+2. Set Output Directory to `docs`
+3. Preview deploys are enabled by default for PRs
+
+---
+
 ## GitHub Pages Deployment
 
 The project uses GitHub Pages to host the live demo.
@@ -111,17 +184,17 @@ https://elgabrielc.github.io/dicom-viewer/
 
 ### Updating the Live Site
 
-1. Make changes to files in `docs/`
-2. Commit changes:
-   ```bash
-   git add docs/
-   git commit -m "Update: description of changes"
-   ```
-3. Push to main:
-   ```bash
-   git push origin main
-   ```
-4. GitHub Pages rebuilds automatically (typically 1-2 minutes)
+**Via PR (recommended):**
+1. Create feature branch with changes
+2. Open PR, wait for CI
+3. Merge after CI passes
+4. GitHub Pages rebuilds automatically
+
+**Direct push (not recommended):**
+```bash
+git push origin main
+```
+Note: Direct pushes bypass CI checks. Use PRs instead.
 
 ### Verifying Deployment
 

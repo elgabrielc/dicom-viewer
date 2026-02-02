@@ -1,0 +1,79 @@
+# Copyright (c) 2026 Divergent Health Technologies
+# PR Validation Workflow - Runs tests on every pull request to main
+
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+  # Allow manual trigger for testing the workflow itself
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run Playwright Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Copy test fixtures to test-data location
+        run: |
+          # Create the test data directory that Flask expects
+          mkdir -p test-data
+          # Copy minimal test fixtures if they exist, otherwise use sample data
+          if [ -d "test-fixtures" ]; then
+            cp -r test-fixtures/* test-data/
+          elif [ -d "docs/sample" ]; then
+            cp -r docs/sample/* test-data/
+          fi
+
+      - name: Run Playwright tests
+        run: |
+          source venv/bin/activate
+          npx playwright test
+        env:
+          CI: true
+          # Point Flask to the test-data directory we created
+          DICOM_TEST_DATA: ./test-data
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

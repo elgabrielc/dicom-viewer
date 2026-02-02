@@ -64,13 +64,16 @@ Thank you for your interest in contributing to the DICOM Viewer project. This do
 
 ```
 dicom-viewer/
+├── .github/workflows/       # CI/CD configuration
+│   └── pr-validate.yml     # PR validation (runs tests)
 ├── docs/                    # Web assets (served by Flask and GitHub Pages)
 │   ├── index.html          # Main SPA with all client-side logic
 │   ├── css/style.css       # All styling (dark theme)
-│   ├── js/                 # OpenJPEG WASM decoder files
+│   ├── js/                 # JavaScript, config, WASM decoders
 │   ├── sample/             # Sample CT scan for demo
 │   └── planning/           # Planning docs, bug tracking, research
 ├── tests/                   # Playwright test suites
+├── test-fixtures/           # Minimal test data for CI
 ├── app.py                   # Flask server
 ├── playwright.config.js     # Test configuration
 └── CLAUDE.md               # Project context and conventions
@@ -189,6 +192,13 @@ if (!windowCenter && modality === 'MR') {
 
 ## Git Workflow
 
+We use **GitHub Flow** - a simple branching strategy:
+
+1. `main` is always deployable (it's the live demo)
+2. All work happens in feature branches
+3. Pull Requests require CI to pass before merge
+4. Self-merge is allowed after CI passes
+
 ### Branch Naming Conventions
 
 Use descriptive branch names with a prefix indicating the type:
@@ -257,6 +267,37 @@ git diff --staged
 # Commit with message
 git commit -m "feat: Add zoom controls to toolbar"
 ```
+
+---
+
+## CI/CD Pipeline
+
+### GitHub Actions
+
+Every PR triggers the validation workflow (`.github/workflows/pr-validate.yml`):
+
+1. Checks out code
+2. Installs Python and Node dependencies
+3. Runs all Playwright tests
+4. Reports results
+
+If tests fail, the PR cannot be merged until issues are fixed.
+
+### Preview Environments (Vercel)
+
+Each PR automatically gets a preview deployment:
+
+- URL format: `dicom-viewer-git-<branch>-<username>.vercel.app`
+- Preview updates on each push to the PR
+- Good for visual verification and testing
+
+### Production Deployment
+
+Merging to `main` triggers:
+
+1. GitHub Pages rebuilds automatically
+2. Live site updates within 1-2 minutes
+3. No manual deployment needed
 
 ---
 

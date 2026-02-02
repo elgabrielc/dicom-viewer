@@ -25,6 +25,8 @@ claude 0/                          # Workspace/inbox - drop files here for Claud
 | File | Description |
 |------|-------------|
 | `BUGS.md` | Bug tracking and known issues |
+| `DEPLOY.md` | Deployment guide: local dev, GitHub Pages, CI/CD workflow |
+| `DEVELOPMENT_PHILOSOPHY.md` | Learning guide: why branches, CI/CD, preview environments, code review exist |
 | `TESTING.md` | Testing documentation and Playwright setup |
 
 ## Planning (`dicom-viewer/docs/planning/`)
@@ -46,19 +48,25 @@ Research, decisions, and reference materials for feature development.
 
 ```
 dicom-viewer/
+├── .github/workflows/     # CI/CD configuration
+│   └── pr-validate.yml    # PR validation (runs tests)
 ├── app.py                 # Flask backend
 ├── requirements.txt       # Python dependencies
 ├── CLAUDE.md              # Claude Code context and instructions
+├── CONTRIBUTING.md        # Contribution guidelines
 ├── docs/                  # Frontend static files + documentation
 │   ├── index.html         # Main SPA
 │   ├── css/               # Styles
-│   ├── js/                # JavaScript + WASM
+│   ├── js/                # JavaScript, config.js, WASM decoders
 │   ├── sample/            # Demo CT scan
 │   ├── sample-mri/        # Demo MRI scan
 │   ├── planning/          # Research and feature planning
 │   ├── BUGS.md            # Bug tracking
+│   ├── DEPLOY.md          # Deployment guide
+│   ├── DEVELOPMENT_PHILOSOPHY.md  # Why we work this way
 │   └── TESTING.md         # Test documentation
 ├── tests/                 # Playwright E2E tests
+├── test-fixtures/         # Minimal DICOM data for CI
 └── uploads/               # Server upload destination
 ```
 

@@ -10,6 +10,11 @@ const { defineConfig, devices } = require('@playwright/test');
  * - Extended timeouts to accommodate DICOM file scanning on server startup
  * - Test data endpoint verification ensures server is fully ready before tests run
  *
+ * CI Support:
+ * - Set DICOM_TEST_DATA env var to point to test data directory
+ * - CI runs use test-fixtures/ directory with minimal DICOM data
+ * - Local dev can use larger test data for comprehensive testing
+ *
  * @see https://playwright.dev/docs/test-configuration
  */
 module.exports = defineConfig({

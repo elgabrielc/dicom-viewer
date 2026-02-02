@@ -297,9 +297,64 @@ Future: Cloud platform will add `isCloudPlatform()` check for server-sync featur
 
 ---
 
+## Development Workflow
+
+### Branching Strategy: GitHub Flow
+
+1. `main` is always deployable (it's the live demo)
+2. All work happens in feature branches
+3. PRs must pass CI before merge
+4. Self-merge allowed after CI passes
+
+Branch naming: `feature/<name>`, `fix/<name>`, `docs/<name>`
+
+### CI/CD Pipeline
+
+```
+Feature Branch ──PR──► main ──auto──► GitHub Pages (demo)
+                  │
+                  └──► Vercel Preview (per-PR staging)
+```
+
+**GitHub Actions** (`.github/workflows/pr-validate.yml`):
+- Runs on every PR to main
+- Installs Python + Node dependencies
+- Runs all Playwright tests
+- Blocks merge if tests fail
+
+**Vercel Preview**:
+- Each PR gets a preview URL automatically
+- Good for visual verification before merge
+
+### Making Changes
+
+```bash
+# Create feature branch
+git checkout -b feature/my-change
+
+# Make changes, test locally
+npx playwright test
+
+# Commit and push
+git push -u origin feature/my-change
+
+# Open PR, wait for CI, merge
+```
+
+### Configuration
+
+Deployment mode is detected in `docs/js/config.js`:
+- `demo` - GitHub Pages (stateless)
+- `preview` - Vercel PR previews (stateless)
+- `cloud` - Future hosted platform
+- `personal` - Local development (full features)
+
+---
+
 ## Past Decisions
 
 - Chose vanilla JS over React/Vue for simplicity and learning
 - Client-side processing to keep medical data in browser (privacy)
 - Dark theme optimized for radiologist viewing environment
 - Single source of truth in docs/ (consolidation done 2026-01-28)
+- GitHub Flow branching strategy (simple, single main branch)

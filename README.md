@@ -1,5 +1,7 @@
 # DICOM Medical Imaging Viewer
 
+[![CI](https://github.com/elgabrielc/dicom-viewer/actions/workflows/pr-validate.yml/badge.svg)](https://github.com/elgabrielc/dicom-viewer/actions/workflows/pr-validate.yml)
+
 **[Try it live](https://elgabrielc.github.io/dicom-viewer/)** | **By [Divergent Health Technologies](https://divergent.health/)**
 
 A web-based DICOM medical image viewer for CT and MRI studies. Built with Flask and vanilla JavaScript, all processing happens client-side - your medical images never leave your machine.

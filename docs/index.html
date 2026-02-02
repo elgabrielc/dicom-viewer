@@ -42,6 +42,9 @@ Copyright (c) 2026 Divergent Health Technologies
 
     <!-- JPEG 2000 decoder (OpenJPEG compiled to WebAssembly) -->
     <script src="js/openjpegwasm_decode.js"></script>
+
+    <!-- Application configuration (deployment mode, feature flags) -->
+    <script src="js/config.js"></script>
 </head>
 <body>
     <!-- LIBRARY VIEW -->
@@ -999,10 +1002,17 @@ Copyright (c) 2026 Divergent Health Technologies
 
         /**
          * Check if we should persist notes to localStorage
-         * Disabled on public demo site (github.io) to keep it stateless
+         * Disabled on demo and preview sites to keep them stateless.
+         * Uses centralized config from js/config.js
          */
         function shouldPersistNotes() {
-            return !window.location.hostname.endsWith('github.io');
+            // Use CONFIG if available, fallback to direct check for backwards compatibility
+            if (typeof CONFIG !== 'undefined' && CONFIG.shouldPersistNotes) {
+                return CONFIG.shouldPersistNotes();
+            }
+            // Fallback: disable on GitHub Pages and Vercel previews
+            const hostname = window.location.hostname;
+            return !hostname.endsWith('github.io') && !hostname.endsWith('vercel.app');
         }
 
         /**
