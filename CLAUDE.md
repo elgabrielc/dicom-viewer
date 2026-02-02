@@ -252,30 +252,35 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 ## Deployment Modes
 
-The same codebase serves two different purposes:
+The same codebase serves three different purposes:
 
 | Mode | URL | Purpose | Audience |
 |------|-----|---------|----------|
 | **Demo site** | elgabrielc.github.io/dicom-viewer | Showcase features, let people try it | Public, anonymous visitors |
-| **Personal app** | localhost:5001 (or self-hosted) | Actual medical image viewing | Individual user with their own data |
+| **Personal app** | localhost:5001 (or self-hosted) | Local medical image viewing | Individual user with their own data |
+| **Cloud platform** | (future) app.divergent.health | Full-featured hosted service | Logged-in users with accounts |
 
 ### Key Differences
 
-| Behavior | Demo Site | Personal App |
-|----------|-----------|--------------|
-| Notes persistence | Disabled (stateless) | Enabled (localStorage) |
-| Sample scans | Primary use case | Convenience for testing |
-| User data | None expected | User's own DICOM files |
-| Session length | Brief exploration | Extended viewing sessions |
+| Behavior | Demo Site | Personal App | Cloud Platform |
+|----------|-----------|--------------|----------------|
+| Notes persistence | Disabled | localStorage | Server-side |
+| User accounts | None | None | Required |
+| Data storage | None | Local only | Cloud + local cache |
+| Sample scans | Primary use | For testing | For onboarding |
+| Sharing/collaboration | None | None | Planned |
+| Session length | Brief | Extended | Extended |
 
-### Design Principle
+### Design Principles
 
 **Demo site = stateless showcase.** No data persists between visits. Every visitor gets a fresh experience. This is intentional:
 - No accumulated cruft from random visitors
 - No privacy concerns about shared state
 - Always shows the app in its clean state
 
-**Personal app = full-featured tool.** All features enabled, data persists locally. The user owns their environment.
+**Personal app = full-featured local tool.** All features enabled, data persists in browser localStorage. The user owns their environment. No account needed.
+
+**Cloud platform = hosted service with accounts.** (Future) Server-side persistence, sync across devices, collaboration features. localStorage becomes offline cache. This is the product offering.
 
 ### Implementation
 
@@ -287,6 +292,8 @@ function shouldPersistNotes() {
 ```
 
 When adding features that persist state, check `shouldPersistNotes()` or add similar guards.
+
+Future: Cloud platform will add `isCloudPlatform()` check for server-sync features.
 
 ---
 
