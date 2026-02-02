@@ -102,7 +102,7 @@ curl http://127.0.0.1:5001/api/test-data/info
 **Example Response:**
 ```json
 {
-  "testDataFolder": "/Users/gabriel/claude 0/test-data-mri-1",
+  "testDataFolder": "/path/to/test-data",
   "available": true,
   "studyCount": 1,
   "totalImages": 188
@@ -302,10 +302,7 @@ export DICOM_TEST_DATA="/path/to/your/test/data"
 python app.py
 ```
 
-Default path if not set:
-```
-~/claude 0/test-data-mri-1
-```
+Default path if not set: See `app.py` for current default.
 
 ---
 

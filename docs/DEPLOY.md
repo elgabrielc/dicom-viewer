@@ -36,7 +36,7 @@ Flask provides the development server with test mode API support.
 
 **Setup:**
 ```bash
-cd "/Users/gabriel/claude 0/dicom-viewer"
+cd dicom-viewer
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -63,7 +63,7 @@ For simple local viewing without test mode features.
 
 **Python (built-in):**
 ```bash
-cd "/Users/gabriel/claude 0/dicom-viewer/docs"
+cd dicom-viewer/docs
 python3 -m http.server 8000
 ```
 

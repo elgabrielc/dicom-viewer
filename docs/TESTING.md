@@ -10,7 +10,7 @@ This document covers testing practices specific to the DICOM Viewer project.
 
 ```bash
 # Run all tests
-cd "/Users/gabriel/claude 0/dicom-viewer"
+cd dicom-viewer
 npx playwright test
 
 # Run with visible browser
@@ -37,7 +37,7 @@ npx playwright test --reporter=list
 
 ### First-Time Setup
 ```bash
-cd "/Users/gabriel/claude 0/dicom-viewer"
+cd dicom-viewer
 npm install
 npx playwright install chromium
 ```
@@ -73,11 +73,10 @@ Test Mode:
 ```
 
 ### Test Data Location
-```
-~/claude 0/MRI sample for debug 1/
-```
 
-To use different test data, modify `TEST_DATA_FOLDER` in `app.py`.
+Set via `DICOM_TEST_DATA` environment variable, or modify `TEST_DATA_FOLDER` in `app.py`.
+
+For CI, the `test-fixtures/` directory contains minimal test data.
 
 ---
 

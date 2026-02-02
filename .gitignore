@@ -49,3 +49,6 @@ test-data/
 
 # Playwright test results
 test-results/
+
+# Session logs (contain local paths)
+docs/planning/SESSION-*.md
