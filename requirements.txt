@@ -1,2 +1,9 @@
-flask>=2.0.0
-pydicom>=2.3.0
+# DICOM Viewer - Python Dependencies
+# Copyright (c) 2026 Divergent Health Technologies
+#
+# This file lists Python packages required for the Flask backend.
+# Install with: pip install -r requirements.txt
+# Recommended: Use a virtual environment (python -m venv venv)
+
+flask>=2.0.0        # Web framework - serves static files and provides test mode API
+pydicom>=2.3.0      # DICOM file parsing - used for server-side test data scanning

@@ -2,6 +2,16 @@
 
 Benchmarking how professional medical imaging viewers implement measurement tools.
 
+## Implementation Status
+
+**Status**: Implemented (2026-02-01, commit b75f15e)
+
+**Implementation Details**:
+- **Location**: `docs/index.html` - measurement tool functions
+- **Interaction**: Click-drag (matching Ambra/Horos pattern)
+- **Calibration**: Uses PixelSpacing DICOM tag (0028,0030)
+- **Related Docs**: [CLAUDE.md Feature Inventory](../../CLAUDE.md#feature-inventory), [SITEMAP.md](SITEMAP.md#current-work-in-progress)
+
 ---
 
 ## Viewers Researched

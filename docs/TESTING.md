@@ -156,6 +156,225 @@ const cursor = await getCanvasCursor(page);
 await performDrag(page, startX, startY, endX, endY, steps);
 ```
 
+---
+
+### Helper Functions: Detailed Reference
+
+#### waitForViewerReady(page)
+
+Waits for the DICOM viewer to be fully initialized and ready for interaction.
+
+**What it waits for:**
+1. Canvas element (`#imageCanvas`) is visible in the DOM
+2. Window/Level display (`#wlDisplay`) contains valid values (matches pattern `C: <number>`)
+3. A 500ms settling delay for final render completion
+
+**Why W/L display is used as the ready indicator:**
+
+The W/L display is populated only after:
+- DICOM file is fully loaded and parsed
+- Pixel data is decoded (including decompression if needed)
+- Image is rendered to canvas
+- Window/level values are calculated and applied
+
+This makes it a reliable proxy for "viewer is fully ready" without needing to inspect internal state or canvas pixels.
+
+**Timing assumptions:**
+- 30-second timeout for canvas visibility (handles slow DICOM loading)
+- 30-second timeout for W/L population (handles large series)
+- 500ms post-ready delay (allows pending renders to complete)
+
+**Edge case: Blank slices and auto-advance:**
+
+In test mode, the viewer may auto-advance past blank slices (slices with no meaningful pixel data, common at the edges of CT/MRI volumes). This means:
+- Initial slice number may not be 1
+- Tests should use relative slice positions, not absolute
+- The `getSliceInfo()` function returns the actual current slice, which may differ from expectations
+
+```javascript
+// Good: Use relative navigation
+const initialSlice = await getSliceInfo(page);
+await page.keyboard.press('ArrowRight');
+const newSlice = await getSliceInfo(page);
+expect(newSlice.current).toBe(initialSlice.current + 1);
+
+// Bad: Assume slice 1 is initial
+expect(initialSlice.current).toBe(1);  // May fail if auto-advanced
+```
+
+---
+
+#### getCanvasTransform(page)
+
+Parses the CSS transform matrix applied to the canvas element to extract pan and zoom values.
+
+**How it works:**
+1. Gets the computed style `transform` property from the canvas element
+2. If `transform` is `'none'`, returns default values (scale=1, translate=0,0)
+3. Otherwise, parses the `matrix(a, b, c, d, tx, ty)` format
+
+**CSS Transform Matrix Format:**
+
+The 2D transform matrix has 6 values: `matrix(a, b, c, d, tx, ty)`
+
+| Position | Value | Meaning |
+|----------|-------|---------|
+| a (values[0]) | scaleX | Horizontal scale factor |
+| b (values[1]) | skewY | Vertical skew (0 for our usage) |
+| c (values[2]) | skewX | Horizontal skew (0 for our usage) |
+| d (values[3]) | scaleY | Vertical scale factor |
+| tx (values[4]) | translateX | Horizontal offset in pixels |
+| ty (values[5]) | translateY | Vertical offset in pixels |
+
+**What values it returns:**
+
+```javascript
+{
+  scale: number,      // From 'a' value; assumes uniform scaling (scaleX = scaleY)
+  translateX: number, // Horizontal pan offset in pixels
+  translateY: number  // Vertical pan offset in pixels
+}
+```
+
+**Assumptions:**
+- Uniform scaling (uses only the `a` value, assumes `a === d`)
+- No rotation or skew applied to the canvas
+- Transform origin is default (center of element)
+
+**Usage example:**
+
+```javascript
+const initial = await getCanvasTransform(page);
+expect(initial.scale).toBe(1);  // No zoom initially
+
+await zoomIn(page);
+const zoomed = await getCanvasTransform(page);
+expect(zoomed.scale).toBeGreaterThan(1);
+```
+
+---
+
+#### performDrag(page, startX, startY, endX, endY, steps)
+
+Simulates a mouse drag operation from one point to another.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| startX | number | Starting X coordinate |
+| startY | number | Starting Y coordinate |
+| endX | number | Ending X coordinate |
+| endY | number | Ending Y coordinate |
+| steps | number | Number of intermediate move events (default: 10) |
+
+**How it works:**
+1. Moves mouse to starting position
+2. Presses mouse button down
+3. Moves to ending position in `steps` intermediate steps
+4. Releases mouse button
+
+**How the `steps` parameter affects drag smoothness:**
+
+The `steps` value controls how many `mousemove` events are fired between start and end:
+
+| Steps | Behavior | Use Case |
+|-------|----------|----------|
+| 1 | Single jump from start to end | Testing final position only |
+| 5-10 | Moderate smoothness | Standard tool testing |
+| 20+ | Very smooth, gradual movement | Testing real-time updates during drag |
+
+Higher step counts:
+- More accurately simulate real user behavior
+- Allow testing of incremental updates (W/L display during drag)
+- Take longer to execute
+- Generate more events for the application to process
+
+**Coordinate system:**
+
+Coordinates are relative to the **viewport** (visible browser area), not the canvas element. To drag within the canvas, first get canvas bounds:
+
+```javascript
+const bounds = await getCanvasBounds(page);
+const centerX = bounds.x + bounds.width / 2;  // Viewport X of canvas center
+const centerY = bounds.y + bounds.height / 2; // Viewport Y of canvas center
+
+// Drag from center 100px to the right
+await performDrag(page, centerX, centerY, centerX + 100, centerY);
+```
+
+The `bounds` object contains:
+- `x`, `y`: Top-left corner in viewport coordinates
+- `width`, `height`: Element dimensions
+
+---
+
+### Blank Slice Handling in Tests
+
+DICOM volumes often have blank slices at the edges (slices containing only air or padding). The viewer handles these specially in test mode.
+
+**Why tests use relative slice positions:**
+
+When running in test mode, the viewer may auto-advance past blank slices to show meaningful content immediately. This means:
+
+1. **Initial slice is unpredictable**: Could be slice 1, or could be slice 15 if slices 1-14 are blank
+2. **Slice count is fixed**: Total slice count remains accurate
+3. **Navigation is relative**: ArrowRight/ArrowLeft always move by 1 slice
+
+```javascript
+// Correct approach: relative assertions
+const initialSlice = await getSliceInfo(page);
+// Don't assume initialSlice.current === 1
+
+await page.keyboard.press('ArrowRight');
+await page.keyboard.press('ArrowRight');
+
+const afterNav = await getSliceInfo(page);
+expect(afterNav.current).toBe(initialSlice.current + 2);  // Relative check
+```
+
+**Auto-advance behavior in test mode:**
+
+When test mode loads a series:
+1. Scans slices to detect blank content
+2. Advances to first non-blank slice automatically
+3. Updates slice counter to reflect actual position
+
+This mimics what a user would do (scroll past empty slices) and ensures tests start with renderable content.
+
+**How to write tests that work regardless of initial slice:**
+
+1. **Capture initial state first:**
+   ```javascript
+   const initialSlice = await getSliceInfo(page);
+   ```
+
+2. **Use relative assertions:**
+   ```javascript
+   // After navigating forward 2 slices
+   expect(newSlice.current).toBe(initialSlice.current + 2);
+   ```
+
+3. **Test edge behavior carefully:**
+   ```javascript
+   // Navigate to end
+   for (let i = 0; i < sliceInfo.total - sliceInfo.current; i++) {
+     await page.keyboard.press('ArrowRight');
+   }
+   // Now at last slice
+   ```
+
+4. **Don't assume slice 1 has content:**
+   ```javascript
+   // Bad: Assumes slice 1 is valid
+   await navigateToSlice(page, 1);
+   await verifyCanvasHasContent(page);
+
+   // Good: Use whatever slice loaded initially
+   await waitForViewerReady(page);
+   await verifyCanvasHasContent(page);
+   ```
+
 ### Test Template
 
 ```javascript

@@ -171,6 +171,65 @@ Returns everything to the starting point - zoom back to 100%, image centered, an
 
 ---
 
+## Comments
+
+The Comments feature lets you add personal notes to studies and series. This is useful for tracking observations, marking images for follow-up, or keeping notes about what you discussed with your doctor.
+
+### What Comments Do
+
+- Add text notes to any study or series in your library
+- Each comment is timestamped with when it was created
+- Comments can be edited or deleted at any time
+- Studies and series show a count of how many comments they have
+
+### Adding a Comment
+
+**To add a comment to a study:**
+
+1. In the library view, find the study you want to annotate
+2. Click the **Add comment** button in the Comments column (rightmost column)
+3. A panel will expand showing a text input field
+4. Type your comment in the field
+5. Press **Enter** or click **Add** to save the comment
+
+**To add a comment to a series:**
+
+1. Click the arrow next to a study to expand it and show the series
+2. Find the series you want to annotate
+3. Click the **Add comment** button on the right side of the series row
+4. Type your comment and press **Enter** or click **Add**
+
+### Viewing Existing Comments
+
+When a study or series has comments, the button displays the count (e.g., "2 comments"). Click this button to expand the panel and view all comments.
+
+Each comment shows:
+- The date and time it was created
+- The comment text
+- **Edit** and **Delete** buttons
+
+To hide the comment panel, click the button again (it will show "Hide comments" while expanded).
+
+### Editing and Deleting Comments
+
+- Click **Edit** next to any comment to modify its text. A dialog will appear with the current text, which you can change and save.
+- Click **Delete** to remove a comment. The comment is removed immediately.
+
+When you edit a comment, its timestamp is updated to reflect when it was last modified.
+
+### Where Comments Are Stored
+
+Comments are stored in your browser's memory for the current session only. This means:
+
+- Comments persist as long as the browser tab remains open
+- Comments are lost when you close the tab, refresh the page, or close the browser
+- Comments are not saved to any file or server
+- Comments are not stored in localStorage or any persistent storage
+
+**Limitation**: Because comments exist only in memory, they do not persist across sessions. If you need to keep notes permanently, consider copying your comments to a separate document before closing the viewer.
+
+---
+
 ## Keyboard Shortcuts
 
 For faster navigation, you can use these keyboard shortcuts:
@@ -345,6 +404,113 @@ This design was intentional - medical images contain sensitive personal health i
 | Microsoft Edge 86+ | Fully supported |
 | Firefox | Not supported (lacks File System Access API) |
 | Safari | Not supported (lacks File System Access API) |
+
+---
+
+## Accessibility
+
+This viewer is designed to be usable with keyboard-only navigation and includes several accessibility considerations.
+
+### Keyboard Navigation
+
+All core viewing functions can be performed without a mouse:
+
+| Key | Action |
+|-----|--------|
+| **W** | Select Window/Level tool |
+| **P** | Select Pan tool |
+| **Z** | Select Zoom tool |
+| **M** | Select Measure tool |
+| **R** | Reset the view (zoom, pan, and window/level) |
+| **Arrow Left** or **Arrow Up** | Go to previous slice |
+| **Arrow Right** or **Arrow Down** | Go to next slice |
+| **Esc** | Return to the library view |
+| **Delete** or **Backspace** | Delete the most recent measurement (when Measure tool is active) |
+| **Shift + Delete** | Clear all measurements on the current slice |
+
+Tool buttons display their keyboard shortcuts in instant tooltips when you hover over them, making it easy to learn shortcuts as you work.
+
+### Focus Management
+
+- The viewer responds to keyboard input when the image viewer is active
+- Keyboard shortcuts are disabled when typing in input fields (such as the comment text box) to avoid interference
+- The Escape key provides a consistent way to exit the viewer and return to the library
+
+### Screen Reader Considerations
+
+This viewer relies heavily on visual content (medical images rendered on HTML canvas elements) which presents inherent limitations for screen readers:
+
+- **Canvas content is not accessible to screen readers.** The medical images themselves cannot be described programmatically because they require visual interpretation by a trained clinician.
+- **Study metadata is presented in standard HTML tables**, which screen readers can navigate.
+- **Interactive elements (buttons, sliders) use standard HTML controls** that screen readers can identify and interact with.
+- **Current slice position** is displayed as text (e.g., "3 / 50") which can be read by screen readers.
+
+If you rely on a screen reader, you will be able to navigate the library view and access study/series metadata, but the core image viewing functionality requires visual access to the canvas.
+
+### Dark Theme and Medical Viewing
+
+The viewer uses a dark color scheme by design. This is not merely aesthetic; dark backgrounds with high-contrast text are the standard for medical imaging workstations because:
+
+- **Reduced eye strain** during extended viewing sessions
+- **Better perception of subtle grayscale differences** in medical images
+- **Consistent with professional radiology reading rooms**, which use dim lighting to optimize image perception
+
+The dark theme (dark navy background #1a1a2e with light text #eee) provides sufficient contrast for readability while maintaining optimal conditions for image interpretation.
+
+---
+
+## Performance
+
+This section describes what to expect when loading and viewing DICOM studies of various sizes.
+
+### Typical Series Sizes
+
+The viewer handles typical clinical imaging studies well:
+
+| Study Type | Typical Slice Count | Performance |
+|------------|---------------------|-------------|
+| Standard CT chest/abdomen | 50-200 slices | Smooth navigation |
+| High-resolution CT | 200-400 slices | Smooth navigation |
+| MRI brain | 20-50 slices per sequence | Smooth navigation |
+| CT angiography | 300-600 slices | Generally smooth; may have brief delays |
+
+For most clinical studies you encounter, the viewer should feel responsive with smooth slice-by-slice navigation.
+
+### Large Series (500+ Slices)
+
+When working with very large series:
+
+- **Initial loading** takes longer because metadata must be extracted from every file. A 1000-slice series may take 10-30 seconds to scan, depending on file sizes and your computer's speed.
+- **Slice navigation** remains smooth because the viewer uses a caching strategy: it preloads slices adjacent to your current position, so scrolling through the series stays responsive.
+- **Memory usage increases** with series size because parsed DICOM data is cached in memory to enable smooth navigation.
+
+### Memory Considerations
+
+The viewer runs entirely in your web browser, which means it shares memory with your other browser tabs and extensions:
+
+- **Each loaded slice** consumes memory proportional to its pixel dimensions (typically 512x512 pixels for CT, varying for other modalities).
+- **The slice cache** stores parsed data for recently viewed slices plus a few adjacent slices for preloading. This cache grows as you navigate through a series.
+- **Very large studies** (thousands of slices or multiple large series loaded simultaneously) may cause your browser to slow down or display memory warnings.
+
+### Recommendations for Optimal Performance
+
+1. **Close unused browser tabs** before loading very large studies to free up memory.
+
+2. **Load one study at a time** rather than dropping multiple large study folders simultaneously.
+
+3. **Use Chrome or Edge** as recommended; these browsers tend to handle large amounts of image data more efficiently.
+
+4. **If the viewer becomes sluggish**, refresh the page to clear memory, then reload only the study you need to view.
+
+5. **For extremely large datasets** (whole-body CT with thousands of slices), consider using dedicated medical imaging software on your computer, which has better memory management for such cases.
+
+### File System Access
+
+The viewer uses your browser's File System Access API to read DICOM files directly from your computer. This means:
+
+- Files are read on-demand as you navigate, rather than all being loaded upfront
+- No files are uploaded to any server
+- Performance depends partly on your storage speed (SSD is faster than traditional hard drives)
 
 ---
 

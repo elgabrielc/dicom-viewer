@@ -1,3 +1,21 @@
+# 3D Volume Rendering Research
+
+Architecture decisions, modularity, graceful degradation, and testability considerations for adding 3D volume rendering to the DICOM viewer.
+
+## Implementation Status
+
+**Status**: Research complete, not started
+
+**Technology Decision**: vtk.js (industry standard, NIH-backed, ~500KB bundle)
+
+**Related Docs**:
+- [CLAUDE.md Current Work](../../CLAUDE.md#current-work-3d-volume-rendering) - Next steps and implementation plan
+- [SITEMAP.md](SITEMAP.md#current-work-in-progress) - Project structure
+
+---
+
+## Research Notes
+
 Thinking as a senior engineer, here are some additions I'd suggest:                                                                               12:00 PM  claude-opus-4-5-20251101        
                                                                                                                                                                                               
   Technical principles to add:                                                                                                                                                                

@@ -1,7 +1,7 @@
 {
   "name": "dicom-ct-viewer",
   "version": "1.0.0",
-  "description": "A web-based DICOM CT imaging viewer with support for various compression formats",
+  "description": "A web-based DICOM medical imaging viewer (CT, MRI, etc.) with client-side processing for privacy. Supports JPEG Lossless, JPEG 2000, and uncompressed formats via browser-based decoders. Built with vanilla JS frontend and Flask backend for static serving. See docs/CLAUDE.md for architecture details.",
   "main": "app.py",
   "scripts": {
     "copy-codecs": "cp node_modules/@cornerstonejs/codec-openjpeg/dist/openjpegwasm* static/js/",

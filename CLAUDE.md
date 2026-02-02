@@ -80,7 +80,7 @@ Flask Server (app.py)
 3. Basic ray-casting with preset transfer functions
 4. View mode toggle (2D Slices / 3D Volume / MIP)
 
-See `3D_VOLUME_RENDERING_PLAN.md` and `BENCHMARKING_RESEARCH.md` for full details.
+See [RESEARCH-3d-volume-rendering.md](docs/planning/RESEARCH-3d-volume-rendering.md) for architecture decisions, and `3D_VOLUME_RENDERING_PLAN.md` for implementation details.
 
 ## Technical Notes
 
@@ -114,6 +114,78 @@ See `3D_VOLUME_RENDERING_PLAN.md` and `BENCHMARKING_RESEARCH.md` for full detail
 
 For MRI without window/level in DICOM, auto-calculation uses pixel data statistics.
 
+## Algorithm Documentation
+
+### MRI Window/Level Auto-Calculation
+
+**When Used**: For MR, PT (PET), and NM (Nuclear Medicine) modalities when no Window Center (0028,1050) or Window Width (0028,1051) is present in the DICOM file.
+
+**Function**: `calculateAutoWindowLevel(pixelData, rescaleSlope, rescaleIntercept)` (line ~1379)
+
+**Algorithm**:
+1. **Sampling**: Samples every 10th pixel for performance (pixelData.length / 10 samples)
+2. **Statistics**: Computes min, max, and mean of rescaled values (`value = pixel * rescaleSlope + rescaleIntercept`)
+3. **Window Calculation**:
+   - `windowCenter = mean` (center at the mean pixel value)
+   - `windowWidth = range * 0.9` (90% of min-max range to reduce outlier influence)
+   - Minimum width of 1 to avoid division by zero
+4. **Returns**: `{windowCenter, windowWidth, isBlank}` (all values rounded to integers)
+
+**Rationale**: MRI pixel values are arbitrary signal intensities (unlike CT Hounsfield units), so there are no standard defaults. This percentile-inspired approach centers the display range on the actual data while trimming 10% of the range to reduce outlier influence.
+
+### Blank Slice Detection
+
+**Purpose**: Detect and handle uniform/padding slices that contain no useful image data. Common in MPR (Multi-Planar Reconstruction) datasets where padding slices fill the volume.
+
+**Functions**:
+- `isBlankSlice(pixelData, rescaleSlope, rescaleIntercept)` (line ~1414) - Detection only
+- `calculateAutoWindowLevel()` also returns `isBlank` flag (line ~1377)
+- `displayBlankSlice(rows, cols)` (line ~1434) - Renders black canvas
+
+**Detection Criteria**:
+- Samples every 10th pixel (same as W/L calculation)
+- Computes `range = max - min` of rescaled values
+- **Threshold**: `range < 1` means blank (all sampled pixels have essentially the same value)
+- `isBlankSlice()` uses early exit optimization: returns `false` immediately when `max - min >= 1`
+
+**Behavior When Detected**:
+1. `renderDicom()` checks `isBlankSlice()` before W/L calculations (line ~1815)
+2. If blank, calls `displayBlankSlice()` which fills canvas with solid black (`#000`)
+3. Returns `{..., isBlank: true}` in the render result
+4. UI shows reduced metadata (no W/L values, just slice position and size)
+5. On initial load, auto-advances past blank slices (up to 50) to find displayable content (line ~2727)
+
+### Canvas Transform System
+
+**State Object**: `state.viewTransform` (line ~203)
+```javascript
+viewTransform: { panX: 0, panY: 0, zoom: 1 }
+```
+
+**Coordinate System**:
+- Origin: Center of canvas (via `transformOrigin: 'center center'`)
+- panX/panY: Offset in CSS pixels from center (positive = right/down)
+- zoom: Scale factor (1 = 100%, range: 0.1 to 10)
+
+**Transform Application**: `applyViewTransform()` (line ~2119)
+```javascript
+canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+canvas.style.transformOrigin = 'center center';
+```
+- **Order**: Translation applied first, then scale (in CSS transform syntax, rightmost applies first, but `translate` followed by `scale` means translate in pre-scaled coordinates)
+- Same transform applied to measurement overlay canvas via `syncMeasurementCanvas()` (line ~604)
+
+**Tool Interactions**:
+- **Pan tool** (`handlePanDrag`, line ~2169): Adds mouse delta directly to panX/panY
+- **Zoom tool** (`handleZoomDrag`, line ~2178): Adjusts zoom based on vertical drag (sensitivity: 0.005 per pixel)
+- **Scroll wheel in zoom mode** (line ~2550): Discrete zoom steps (+/- 0.1 per scroll tick)
+- **Reset** (`resetView`, line ~2188): Sets `{panX: 0, panY: 0, zoom: 1}`
+
+**Coordinate Conversion**: `screenToImage(screenX, screenY)` (line ~344)
+- Converts viewport coordinates to image pixel coordinates
+- Accounts for: canvas bounding rect, CSS display scaling, pan offset, and zoom level
+- Used by measurement tool for accurate distance calculations
+
 ## Development Notes
 
 - Browser requirement: Chrome 86+ or Edge 86+ (File System Access API)
@@ -135,27 +207,27 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 **CRITICAL: Do not remove any of these features without explicit discussion.**
 
 ### Library View
-- [ ] Drag-and-drop folder loading
-- [ ] **"Load Sample CT Scan" button** - lets new users try the viewer without their own data
-- [ ] Study/series table with patient info, date, description, modality
-- [ ] Expandable rows to show series within studies
-- [ ] Warning icons for unsupported compression formats
+- [x] Drag-and-drop folder loading
+- [x] **"Load Sample CT/MRI" buttons** - lets new users try the viewer without their own data
+- [x] Study/series table with patient info, date, description, modality
+- [x] Expandable rows to show series within studies
+- [x] Warning icons for unsupported compression formats
 
 ### Image Viewer
-- [ ] **Viewing toolbar** - W/L, Pan, Zoom, Measure, Reset buttons
-- [ ] **Measurement tool** - Click-drag distance measurement with PixelSpacing calibration
-- [ ] **Keyboard shortcuts** - W, P, Z, M, R for tools; arrows for slices; Esc to exit
-- [ ] **Instant tooltips** showing keyboard shortcuts on hover
-- [ ] Slice navigation (scroll wheel, slider, arrow buttons)
-- [ ] Series list sidebar
-- [ ] Metadata panel (slice info, MRI parameters)
+- [x] **Viewing toolbar** - W/L, Pan, Zoom, Measure, Reset buttons
+- [x] **Measurement tool** - Click-drag distance measurement with PixelSpacing calibration. See [RESEARCH-measurement-tool.md](docs/planning/RESEARCH-measurement-tool.md) for benchmarking details
+- [x] **Keyboard shortcuts** - W, P, Z, M, R for tools; arrows for slices; Esc to exit
+- [x] **Instant tooltips** showing keyboard shortcuts on hover
+- [x] Slice navigation (scroll wheel, slider, arrow buttons)
+- [x] Series list sidebar
+- [x] Metadata panel (slice info, MRI parameters)
 
 ### Technical Features
-- [ ] Modality-aware window/level defaults (CT, MR, US, etc.)
-- [ ] Auto-calculated W/L for MRI when not in DICOM
-- [ ] Blank slice detection
-- [ ] JPEG Lossless, JPEG 2000, uncompressed support
-- [ ] Test mode (`?test` URL parameter) for automated testing
+- [x] Modality-aware window/level defaults (CT, MR, US, etc.)
+- [x] Auto-calculated W/L for MRI when not in DICOM
+- [x] Blank slice detection
+- [x] JPEG Lossless, JPEG 2000, uncompressed support
+- [x] Test mode (`?test` URL parameter) for automated testing
 
 ---
 

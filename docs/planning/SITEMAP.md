@@ -33,10 +33,10 @@ Research, decisions, and reference materials for feature development.
 
 | File | Description |
 |------|-------------|
-| `RESEARCH-3d-volume-rendering.md` | 3d-volume-rendering research |
-| `RESEARCH-measurement-tool-prompt.md` | measurement-tool-prompt research |
-| `RESEARCH-measurement-tool-thinking.md` | measurement-tool-thinking research |
-| `RESEARCH-measurement-tool.md` | Benchmarking of measurement tools (Horos, NilRead, Ambra) |
+| `RESEARCH-3d-volume-rendering.md` | 3D volume rendering research: architecture decisions, modularity, graceful degradation, testability considerations. Related: [CLAUDE.md Current Work](#current-work-in-progress) |
+| `RESEARCH-measurement-tool.md` | Benchmarking of measurement tools (Horos, NilRead, Ambra, Sectra UniView): calibration, pixel spacing, interaction models, display formats, clinical warnings. Related: [Feature Inventory - Measurement tool](../index.html) |
+| `RESEARCH-measurement-tool-prompt.md` | Research prompt used for Ambra measurement tool investigation |
+| `RESEARCH-measurement-tool-thinking.md` | Research thinking process and synthesis for measurement tool implementation decisions |
 | `SITEMAP.md` | This file - project structure map |
 
 ---
@@ -74,11 +74,13 @@ dicom-viewer/
 
 ### Measurement Tool
 - **Status**: Implemented (2026-02-01, commit b75f15e)
-- **Doc**: `docs/planning/RESEARCH-measurement-tool.md`
+- **Research**: [RESEARCH-measurement-tool.md](RESEARCH-measurement-tool.md) - Benchmarking of Horos, NilRead, Ambra, Sectra UniView
+- **Implementation**: [CLAUDE.md Feature Inventory](../../CLAUDE.md#feature-inventory) - Click-drag distance measurement with PixelSpacing calibration
 
 ### 3D Volume Rendering
 - **Status**: Research complete, not started
-- **Doc**: `docs/planning/3d-volume-rendering.md`
+- **Research**: [RESEARCH-3d-volume-rendering.md](RESEARCH-3d-volume-rendering.md) - Architecture, modularity, testability
+- **Implementation**: [CLAUDE.md Current Work](../../CLAUDE.md#current-work-3d-volume-rendering) - vtk.js decision and next steps
 
 
 ---
