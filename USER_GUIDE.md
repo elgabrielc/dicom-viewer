@@ -171,62 +171,73 @@ Returns everything to the starting point - zoom back to 100%, image centered, an
 
 ---
 
-## Comments
+## Notes
 
-The Comments feature lets you add personal notes to studies and series. This is useful for tracking observations, marking images for follow-up, or keeping notes about what you discussed with your doctor.
+The Notes feature lets you add personal annotations to studies and series. This is useful for tracking observations, marking images for follow-up, or keeping notes about what you discussed with your doctor.
 
-### What Comments Do
+There are two types of notes:
 
-- Add text notes to any study or series in your library
-- Each comment is timestamped with when it was created
-- Comments can be edited or deleted at any time
-- Studies and series show a count of how many comments they have
+| Type | Purpose |
+|------|---------|
+| **Description** | A free-form text area for general notes about the study or series |
+| **Comments** | Timestamped entries that track observations over time |
 
-### Adding a Comment
+### Adding Notes
 
-**To add a comment to a study:**
+**To add notes to a study:**
 
 1. In the library view, find the study you want to annotate
-2. Click the **Add comment** button in the Comments column (rightmost column)
-3. A panel will expand showing a text input field
-4. Type your comment in the field
-5. Press **Enter** or click **Add** to save the comment
+2. Click the **Add comment** button in the rightmost column
+3. A panel will expand showing:
+   - A **Description** text area at the top for free-form notes
+   - A **Comments** section below for timestamped entries
+4. Type in the description field - it saves automatically as you type
+5. To add a timestamped comment, type in the comment input and press **Enter**
 
-**To add a comment to a series:**
+**To add notes to a series:**
 
 1. Click the arrow next to a study to expand it and show the series
 2. Find the series you want to annotate
 3. Click the **Add comment** button on the right side of the series row
-4. Type your comment and press **Enter** or click **Add**
+4. The same panel layout appears: description textarea + comments list
 
-### Viewing Existing Comments
+### Descriptions vs Comments
 
-When a study or series has comments, the button displays the count (e.g., "2 comments"). Click this button to expand the panel and view all comments.
+**Descriptions** are best for:
+- Summary notes about what you see in the images
+- Questions to ask your doctor
+- General observations that don't need timestamps
+
+**Comments** are best for:
+- Tracking observations over multiple viewing sessions
+- Recording when you noticed something
+- Creating a timeline of your notes
+
+### Viewing and Editing
+
+When a study or series has comments, the button displays the count (e.g., "2 comments"). Click this button to expand the panel and view all notes.
 
 Each comment shows:
 - The date and time it was created
 - The comment text
 - **Edit** and **Delete** buttons
 
-To hide the comment panel, click the button again (it will show "Hide comments" while expanded).
+To edit a comment, click **Edit** - a dialog will appear with the current text. When you save changes, the timestamp updates.
 
-### Editing and Deleting Comments
+To delete a comment, click **Delete**. The comment is removed immediately.
 
-- Click **Edit** next to any comment to modify its text. A dialog will appear with the current text, which you can change and save.
-- Click **Delete** to remove a comment. The comment is removed immediately.
+Descriptions can be edited directly in the text area - changes save automatically.
 
-When you edit a comment, its timestamp is updated to reflect when it was last modified.
+### Where Notes Are Stored
 
-### Where Comments Are Stored
+Notes are automatically saved to your browser's local storage. This means:
 
-Comments are stored in your browser's memory for the current session only. This means:
+- Notes persist across page refreshes, tab closes, and browser restarts
+- Notes are stored locally in your browser, not on any server
+- Notes are linked to DICOM studies by their unique identifiers (StudyInstanceUID)
+- When you reload the same DICOM files, your notes will reappear
 
-- Comments persist as long as the browser tab remains open
-- Comments are lost when you close the tab, refresh the page, or close the browser
-- Comments are not saved to any file or server
-- Comments are not stored in localStorage or any persistent storage
-
-**Limitation**: Because comments exist only in memory, they do not persist across sessions. If you need to keep notes permanently, consider copying your comments to a separate document before closing the viewer.
+**Note**: Your notes are stored only in this browser on this device. If you use a different browser or computer, your notes will not be available there. Clearing your browser data will also remove stored notes.
 
 ---
 

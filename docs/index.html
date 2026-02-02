@@ -964,6 +964,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 state.studies[studyUid].comments.push(comment);
             }
             updateCommentListUI(studyUid, seriesUid);
+            saveCommentsToStorage();
         }
 
         // Delete comment
@@ -974,6 +975,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 state.studies[studyUid].comments.splice(idx, 1);
             }
             updateCommentListUI(studyUid, seriesUid);
+            saveCommentsToStorage();
         }
 
         // Edit comment
@@ -986,6 +988,93 @@ Copyright (c) 2026 Divergent Health Technologies
                 comments[idx].text = newText.trim();
                 comments[idx].time = Date.now();
                 updateCommentListUI(studyUid, seriesUid);
+                saveCommentsToStorage();
+            }
+        }
+
+        // =====================================================================
+        // COMMENT PERSISTENCE
+        // Save/load comments to localStorage for persistence across sessions
+        // =====================================================================
+
+        /**
+         * Save all comments to localStorage
+         * Called after every comment mutation (add/edit/delete)
+         */
+        function saveCommentsToStorage() {
+            const data = { version: 1, comments: {} };
+            for (const [studyUid, study] of Object.entries(state.studies)) {
+                const hasStudyComments = study.comments?.length > 0;
+                const hasSeriesComments = Object.values(study.series).some(s => s.comments?.length > 0);
+                const hasStudyDescription = !!study.description;
+                const hasSeriesDescriptions = Object.values(study.series).some(s => !!s.description);
+                if (!hasStudyComments && !hasSeriesComments && !hasStudyDescription && !hasSeriesDescriptions) continue;
+
+                data.comments[studyUid] = {
+                    study: study.comments || [],
+                    description: study.description || '',
+                    series: {}
+                };
+                for (const [seriesUid, series] of Object.entries(study.series)) {
+                    if (series.comments?.length > 0 || series.description) {
+                        data.comments[studyUid].series[seriesUid] = {
+                            comments: series.comments || [],
+                            description: series.description || ''
+                        };
+                    }
+                }
+            }
+            try {
+                localStorage.setItem('dicom-viewer-comments', JSON.stringify(data));
+            } catch (e) {
+                console.warn('Failed to save comments to storage:', e);
+            }
+        }
+
+        /**
+         * Load comments from localStorage and apply to matching studies
+         * Called after studies are populated from DICOM files
+         */
+        function loadCommentsFromStorage() {
+            const raw = localStorage.getItem('dicom-viewer-comments');
+            if (!raw) return;
+
+            try {
+                const data = JSON.parse(raw);
+                if (data.version !== 1) return; // Skip incompatible versions
+
+                for (const [studyUid, stored] of Object.entries(data.comments)) {
+                    if (!state.studies[studyUid]) continue; // Study not loaded
+
+                    // Restore study comments
+                    if (stored.study?.length > 0) {
+                        state.studies[studyUid].comments = stored.study;
+                    }
+
+                    // Restore study description
+                    if (stored.description) {
+                        state.studies[studyUid].description = stored.description;
+                    }
+
+                    // Restore series comments and descriptions
+                    for (const [seriesUid, seriesData] of Object.entries(stored.series || {})) {
+                        if (state.studies[studyUid].series[seriesUid]) {
+                            // Handle both old format (array) and new format (object)
+                            if (Array.isArray(seriesData)) {
+                                state.studies[studyUid].series[seriesUid].comments = seriesData;
+                            } else {
+                                if (seriesData.comments?.length > 0) {
+                                    state.studies[studyUid].series[seriesUid].comments = seriesData.comments;
+                                }
+                                if (seriesData.description) {
+                                    state.studies[studyUid].series[seriesUid].description = seriesData.description;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to load comments from storage:', e);
             }
         }
 
@@ -999,6 +1088,9 @@ Copyright (c) 2026 Divergent Health Technologies
          * Creates expandable rows for each study with nested series items
          */
         function displayStudies() {
+            // Load any persisted comments for loaded studies
+            loadCommentsFromStorage();
+
             const studies = Object.values(state.studies);
             if (!studies.length) {
                 emptyState.style.display = 'block';
@@ -1217,6 +1309,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     const studyUid = textarea.dataset.studyUid;
                     if (state.studies[studyUid]) {
                         state.studies[studyUid].description = textarea.value;
+                        saveCommentsToStorage();
                     }
                 };
             });
@@ -1228,6 +1321,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     const seriesUid = textarea.dataset.seriesUid;
                     if (state.studies[studyUid]?.series[seriesUid]) {
                         state.studies[studyUid].series[seriesUid].description = textarea.value;
+                        saveCommentsToStorage();
                     }
                 };
             });

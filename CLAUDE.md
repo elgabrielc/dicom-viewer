@@ -212,6 +212,7 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 - [x] Study/series table with patient info, date, description, modality
 - [x] Expandable rows to show series within studies
 - [x] Warning icons for unsupported compression formats
+- [x] **Notes system** - Descriptions and timestamped comments on studies/series (localStorage persistence)
 
 ### Image Viewer
 - [x] **Viewing toolbar** - W/L, Pan, Zoom, Measure, Reset buttons

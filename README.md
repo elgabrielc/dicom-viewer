@@ -14,7 +14,7 @@ A web-based DICOM medical image viewer for CT and MRI studies. Built with Flask 
 - **Pan and Zoom** - Navigate large images with pan and zoom tools
 - **Measurement tool** - Measure distances in millimeters using pixel spacing metadata
 - **Keyboard shortcuts** - W (window/level), P (pan), Z (zoom), R (reset)
-- **Comments** - Add notes to studies and individual series
+- **Notes** - Add descriptions and timestamped comments to studies and series (persisted to localStorage)
 - **Multiple compression formats** - Uncompressed, JPEG Lossless, JPEG Baseline/Extended, JPEG 2000
 - **Modality-aware defaults** - Automatic W/L presets for CT, MR, and other modalities
 - **Client-side processing** - All DICOM parsing happens in the browser
