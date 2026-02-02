@@ -250,6 +250,46 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 ---
 
+## Deployment Modes
+
+The same codebase serves two different purposes:
+
+| Mode | URL | Purpose | Audience |
+|------|-----|---------|----------|
+| **Demo site** | elgabrielc.github.io/dicom-viewer | Showcase features, let people try it | Public, anonymous visitors |
+| **Personal app** | localhost:5001 (or self-hosted) | Actual medical image viewing | Individual user with their own data |
+
+### Key Differences
+
+| Behavior | Demo Site | Personal App |
+|----------|-----------|--------------|
+| Notes persistence | Disabled (stateless) | Enabled (localStorage) |
+| Sample scans | Primary use case | Convenience for testing |
+| User data | None expected | User's own DICOM files |
+| Session length | Brief exploration | Extended viewing sessions |
+
+### Design Principle
+
+**Demo site = stateless showcase.** No data persists between visits. Every visitor gets a fresh experience. This is intentional:
+- No accumulated cruft from random visitors
+- No privacy concerns about shared state
+- Always shows the app in its clean state
+
+**Personal app = full-featured tool.** All features enabled, data persists locally. The user owns their environment.
+
+### Implementation
+
+Detection is via hostname:
+```javascript
+function shouldPersistNotes() {
+    return !window.location.hostname.endsWith('github.io');
+}
+```
+
+When adding features that persist state, check `shouldPersistNotes()` or add similar guards.
+
+---
+
 ## Past Decisions
 
 - Chose vanilla JS over React/Vue for simplicity and learning
