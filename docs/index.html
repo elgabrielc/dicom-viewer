@@ -998,10 +998,19 @@ Copyright (c) 2026 Divergent Health Technologies
         // =====================================================================
 
         /**
+         * Check if we should persist notes to localStorage
+         * Disabled on public demo site (github.io) to keep it stateless
+         */
+        function shouldPersistNotes() {
+            return !window.location.hostname.endsWith('github.io');
+        }
+
+        /**
          * Save all comments to localStorage
          * Called after every comment mutation (add/edit/delete)
          */
         function saveCommentsToStorage() {
+            if (!shouldPersistNotes()) return;
             const data = { version: 1, comments: {} };
             for (const [studyUid, study] of Object.entries(state.studies)) {
                 const hasStudyComments = study.comments?.length > 0;
@@ -1036,6 +1045,7 @@ Copyright (c) 2026 Divergent Health Technologies
          * Called after studies are populated from DICOM files
          */
         function loadCommentsFromStorage() {
+            if (!shouldPersistNotes()) return;
             const raw = localStorage.getItem('dicom-viewer-comments');
             if (!raw) return;
 

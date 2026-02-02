@@ -239,6 +239,8 @@ Notes are automatically saved to your browser's local storage. This means:
 
 **Note**: Your notes are stored only in this browser on this device. If you use a different browser or computer, your notes will not be available there. Clearing your browser data will also remove stored notes.
 
+**Demo site**: On the public demo at github.io, notes are not persisted - they work during your session but are cleared when you leave. Run the viewer locally for persistent notes.
+
 ---
 
 ## Keyboard Shortcuts

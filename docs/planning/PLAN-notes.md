@@ -100,6 +100,8 @@ Notes are loaded when studies are displayed, matching by StudyInstanceUID and Se
 
 **Privacy note**: This is a personal tool, not a shared kiosk. Users on shared computers should clear browser data.
 
+**Demo site**: Persistence is disabled on the public GitHub Pages demo (github.io) to keep it stateless. Notes work during the session but are not saved.
+
 ### Why No Rich Text
 
 **Decision**: Plain text only, no markdown or formatting.
