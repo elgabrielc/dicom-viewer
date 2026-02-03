@@ -369,4 +369,4 @@ The sample data is optional but included for demo purposes. Remove from `docs/` 
 
 ---
 
-*Last updated: 2026-02-01*
+*Last updated: 2026-02-02*
