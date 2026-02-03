@@ -53,3 +53,4 @@ test-results/
 # Session logs (contain local paths)
 docs/planning/SESSION-*.md
 docs/DEVELOPMENT_PHILOSOPHY.md
+docs/history/
