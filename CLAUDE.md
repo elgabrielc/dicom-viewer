@@ -241,6 +241,7 @@ After each test run, apply continuous improvement: analyze results, strengthen t
   - Solution implemented (what was changed)
   - Why that solution was chosen (alternatives considered, tradeoffs)
   - Prevention control added (test, code guideline, or check to prevent recurrence)
+- **Update session log.** At the end of each session, append a summary to `docs/history/session-summaries.md` with date, session name, what was accomplished, and key decisions. This file is gitignored (private).
 
 ## Git Workflow Controls
 
