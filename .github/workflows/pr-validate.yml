@@ -4,6 +4,8 @@
 name: PR Validation
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   # Allow manual trigger for testing the workflow itself
