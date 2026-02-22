@@ -1149,10 +1149,12 @@ Copyright (c) 2026 Divergent Health Technologies
          * Load comments from localStorage and apply to matching studies
          * Called after studies are populated from DICOM files
          */
-        function loadCommentsFromStorage() {
+        async function loadCommentsFromStorage() {
             if (!shouldPersistNotes()) return;
             const raw = localStorage.getItem('dicom-viewer-comments');
             if (!raw) return;
+
+            let dirty = false;
 
             try {
                 const data = JSON.parse(raw);
@@ -1172,14 +1174,23 @@ Copyright (c) 2026 Divergent Health Technologies
                         state.studies[studyUid].description = stored.description;
                     }
 
-                    // Restore reports (v2) - blobs retrieved from IndexedDB on demand
+                    // Restore reports (v2) - validate blobs exist in IndexedDB
                     if (stored.reports?.length > 0) {
-                        state.studies[studyUid].reports = stored.reports.map(r => ({
-                            ...r,
-                            // Runtime-only properties (not persisted)
-                            fileHandle: null,
-                            blob: null
-                        }));
+                        const validated = [];
+                        for (const r of stored.reports) {
+                            try {
+                                const blob = await getReportBlobFromDB(r.id);
+                                if (blob) {
+                                    validated.push({ ...r, fileHandle: null, blob: null });
+                                }
+                            } catch (e) {
+                                // Blob missing or IndexedDB error -- skip this report
+                            }
+                        }
+                        state.studies[studyUid].reports = validated;
+                        if (validated.length < stored.reports.length) {
+                            dirty = true;
+                        }
                     }
 
                     // Restore series comments and descriptions
@@ -1201,6 +1212,11 @@ Copyright (c) 2026 Divergent Health Technologies
                 }
             } catch (e) {
                 console.warn('Failed to load comments from storage:', e);
+            }
+
+            // Persist cleanup of stale report entries
+            if (dirty) {
+                saveCommentsToStorage();
             }
         }
 
@@ -1501,9 +1517,9 @@ Copyright (c) 2026 Divergent Health Technologies
          * Render the studies table in the library view
          * Creates expandable rows for each study with nested series items
          */
-        function displayStudies() {
-            // Load any persisted comments for loaded studies
-            loadCommentsFromStorage();
+        async function displayStudies() {
+            // Load any persisted comments for loaded studies (validates report blobs)
+            await loadCommentsFromStorage();
 
             const studies = Object.values(state.studies);
             if (!studies.length) {
@@ -2919,7 +2935,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
                 state.studies = await processFiles(fileHandles);
                 uploadProgress.style.display = 'none';
-                displayStudies();
+                await displayStudies();
 
             } catch (err) {
                 uploadProgress.style.display = 'none';
@@ -3030,7 +3046,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
                 state.studies = studies;
                 uploadProgress.style.display = 'none';
-                displayStudies();
+                await displayStudies();
                 button.textContent = buttonLabel;
                 button.disabled = false;
 
@@ -3280,7 +3296,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     state.studies = await loadTestData();
 
                     uploadProgress.style.display = 'none';
-                    displayStudies();
+                    await displayStudies();
 
                     // Auto-open first study/series if available
                     const studyIds = Object.keys(state.studies);
