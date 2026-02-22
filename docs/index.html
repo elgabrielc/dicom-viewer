@@ -85,6 +85,7 @@ Copyright (c) 2026 Divergent Health Technologies
                         <th>Series</th>
                         <th>Images</th>
                         <th>Comments</th>
+                        <th>Reports</th>
                     </tr>
                 </thead>
                 <tbody id="studiesBody"></tbody>
@@ -147,6 +148,18 @@ Copyright (c) 2026 Divergent Health Technologies
                 <div class="progress-fill" id="progressFill" style="width: 0%; animation: none;"></div>
             </div>
             <p id="progressDetail" class="progress-detail"></p>
+        </div>
+    </div>
+
+    <!-- REPORT VIEWER MODAL -->
+    <div id="reportViewer" class="report-viewer" style="display: none;">
+        <div class="report-viewer-header">
+            <span id="reportViewerTitle">Report</span>
+            <button id="closeReportViewer" class="report-viewer-close">&times;</button>
+        </div>
+        <div class="report-viewer-content">
+            <iframe id="reportPdfFrame" sandbox="allow-scripts allow-same-origin" style="display: none;"></iframe>
+            <img id="reportImageView" style="display: none;">
         </div>
     </div>
 
@@ -213,6 +226,77 @@ Copyright (c) 2026 Divergent Health Technologies
             activeMeasurement: null,    // Measurement being drawn
             pixelSpacing: null          // {row, col} in mm, or null if uncalibrated
         };
+
+        // =====================================================================
+        // INDEXEDDB STORAGE FOR REPORT BLOBS
+        // =====================================================================
+
+        const REPORTS_DB_NAME = 'dicom-viewer-reports';
+        const REPORTS_DB_VERSION = 1;
+
+        /**
+         * Open or create the reports IndexedDB database
+         * @returns {Promise<IDBDatabase>}
+         */
+        function openReportsDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(REPORTS_DB_NAME, REPORTS_DB_VERSION);
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => resolve(request.result);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('reports')) {
+                        db.createObjectStore('reports', { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+
+        /**
+         * Store a report blob in IndexedDB
+         * @param {string} reportId - Report UUID
+         * @param {Blob} blob - File blob to store
+         * @returns {Promise<void>}
+         */
+        async function storeReportBlob(reportId, blob) {
+            const db = await openReportsDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('reports', 'readwrite');
+                tx.objectStore('reports').put({ id: reportId, blob: blob });
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        /**
+         * Retrieve a report blob from IndexedDB
+         * @param {string} reportId - Report UUID
+         * @returns {Promise<Blob|null>}
+         */
+        async function getReportBlobFromDB(reportId) {
+            const db = await openReportsDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('reports', 'readonly');
+                const request = tx.objectStore('reports').get(reportId);
+                request.onsuccess = () => resolve(request.result?.blob || null);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        /**
+         * Delete a report blob from IndexedDB
+         * @param {string} reportId - Report UUID
+         * @returns {Promise<void>}
+         */
+        async function deleteReportBlobFromDB(reportId) {
+            const db = await openReportsDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction('reports', 'readwrite');
+                tx.objectStore('reports').delete(reportId);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
 
         // =====================================================================
         // DOM ELEMENT REFERENCES
@@ -285,10 +369,10 @@ Copyright (c) 2026 Divergent Health Technologies
         // =====================================================================
 
         /**
-         * Generate a UUID for measurement identification (persistence-ready)
+         * Generate a UUID v4 string
          * @returns {string} UUID v4 format string
          */
-        function generateMeasurementId() {
+        function generateUUID() {
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
                 const r = Math.random() * 16 | 0;
                 return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
@@ -440,7 +524,7 @@ Copyright (c) 2026 Divergent Health Technologies
             const { distancePixels, distanceMm } = calculateDistance(start, end, state.pixelSpacing);
 
             return {
-                id: generateMeasurementId(),
+                id: generateUUID(),
                 type: 'length',
                 studyInstanceUid: state.currentStudy?.studyInstanceUid || null,
                 seriesInstanceUid: state.currentSeries?.seriesInstanceUid || null,
@@ -1021,18 +1105,29 @@ Copyright (c) 2026 Divergent Health Technologies
          */
         function saveCommentsToStorage() {
             if (!shouldPersistNotes()) return;
-            const data = { version: 1, comments: {} };
+            const data = { version: 2, comments: {} };
             for (const [studyUid, study] of Object.entries(state.studies)) {
                 const hasStudyComments = study.comments?.length > 0;
                 const hasSeriesComments = Object.values(study.series).some(s => s.comments?.length > 0);
                 const hasStudyDescription = !!study.description;
                 const hasSeriesDescriptions = Object.values(study.series).some(s => !!s.description);
-                if (!hasStudyComments && !hasSeriesComments && !hasStudyDescription && !hasSeriesDescriptions) continue;
+                const hasReports = study.reports?.length > 0;
+                if (!hasStudyComments && !hasSeriesComments && !hasStudyDescription && !hasSeriesDescriptions && !hasReports) continue;
 
                 data.comments[studyUid] = {
                     study: study.comments || [],
                     description: study.description || '',
-                    series: {}
+                    series: {},
+                    // Store report metadata only (blobs stored in IndexedDB)
+                    reports: (study.reports || []).map(r => ({
+                        id: r.id,
+                        name: r.name,
+                        type: r.type,
+                        size: r.size,
+                        addedAt: r.addedAt,
+                        updatedAt: r.updatedAt,
+                        syncStatus: r.syncStatus
+                    }))
                 };
                 for (const [seriesUid, series] of Object.entries(study.series)) {
                     if (series.comments?.length > 0 || series.description) {
@@ -1061,7 +1156,8 @@ Copyright (c) 2026 Divergent Health Technologies
 
             try {
                 const data = JSON.parse(raw);
-                if (data.version !== 1) return; // Skip incompatible versions
+                // Support both version 1 (comments only) and version 2 (comments + reports)
+                if (data.version !== 1 && data.version !== 2) return;
 
                 for (const [studyUid, stored] of Object.entries(data.comments)) {
                     if (!state.studies[studyUid]) continue; // Study not loaded
@@ -1074,6 +1170,16 @@ Copyright (c) 2026 Divergent Health Technologies
                     // Restore study description
                     if (stored.description) {
                         state.studies[studyUid].description = stored.description;
+                    }
+
+                    // Restore reports (v2) - blobs retrieved from IndexedDB on demand
+                    if (stored.reports?.length > 0) {
+                        state.studies[studyUid].reports = stored.reports.map(r => ({
+                            ...r,
+                            // Runtime-only properties (not persisted)
+                            fileHandle: null,
+                            blob: null
+                        }));
                     }
 
                     // Restore series comments and descriptions
@@ -1096,6 +1202,294 @@ Copyright (c) 2026 Divergent Health Technologies
             } catch (e) {
                 console.warn('Failed to load comments from storage:', e);
             }
+        }
+
+        // =====================================================================
+        // REPORTS SYSTEM
+        // Allows users to attach PDF and image reports to studies
+        // =====================================================================
+
+        /**
+         * Escape a string for safe insertion into innerHTML
+         * @param {string} str - Untrusted string
+         * @returns {string} HTML-safe string
+         */
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        /**
+         * Get file type from MIME type with filename extension fallback
+         * @param {File} file - File object
+         * @returns {'pdf'|'png'|'jpg'|null}
+         */
+        function getReportType(file) {
+            const mime = file.type;
+            if (mime === 'application/pdf') return 'pdf';
+            if (mime === 'image/png') return 'png';
+            if (mime === 'image/jpeg') return 'jpg';
+
+            // Fallback to extension when MIME is absent or generic
+            const ext = file.name.toLowerCase().split('.').pop();
+            if (ext === 'pdf') return 'pdf';
+            if (ext === 'png') return 'png';
+            if (ext === 'jpg' || ext === 'jpeg') return 'jpg';
+            return null;
+        }
+
+        /**
+         * Format file size for display
+         * @param {number} bytes
+         * @returns {string}
+         */
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        /**
+         * Add a report to a study
+         * @param {string} studyUid - Study instance UID
+         * @param {File} file - File object from input
+         * @param {FileSystemFileHandle} [handle] - Optional file handle for File System Access API
+         */
+        async function addReport(studyUid, file, handle = null) {
+            const type = getReportType(file);
+            if (!type) {
+                alert('Unsupported file type. Please use PDF, PNG, or JPG.');
+                return;
+            }
+
+            if (!state.studies[studyUid].reports) {
+                state.studies[studyUid].reports = [];
+            }
+
+            const now = Date.now();
+
+            const report = {
+                id: generateUUID(),
+                name: file.name,
+                type: type,
+                size: file.size,
+                addedAt: now,
+                updatedAt: now,
+                syncStatus: 'local',
+                fileHandle: handle,
+                blob: handle ? null : file
+            };
+
+            // Store blob in IndexedDB for persistence across page reloads
+            if (shouldPersistNotes()) {
+                try {
+                    await storeReportBlob(report.id, file);
+                } catch (e) {
+                    console.error('Failed to store report in IndexedDB:', e);
+                    // Continue anyway - blob is still in memory
+                }
+            }
+
+            state.studies[studyUid].reports.push(report);
+            updateReportListUI(studyUid);
+            saveCommentsToStorage();
+        }
+
+        /**
+         * Delete a report from a study
+         * @param {string} studyUid - Study instance UID
+         * @param {string} reportId - Report UUID
+         */
+        async function deleteReport(studyUid, reportId) {
+            const reports = state.studies[studyUid].reports;
+            if (!reports) return;
+            const idx = reports.findIndex(r => r.id === reportId);
+            if (idx !== -1) {
+                reports.splice(idx, 1);
+
+                // Also remove blob from IndexedDB
+                try {
+                    await deleteReportBlobFromDB(reportId);
+                } catch (e) {
+                    console.warn('Failed to delete report from IndexedDB:', e);
+                }
+
+                updateReportListUI(studyUid);
+                saveCommentsToStorage();
+            }
+        }
+
+        /**
+         * Get file content for viewing
+         * @param {Object} report - Report object
+         * @returns {Promise<Blob|null>}
+         */
+        async function getReportBlob(report) {
+            // First try in-memory blob
+            if (report.blob) return report.blob;
+
+            // Then try file handle (File System Access API)
+            if (report.fileHandle) {
+                try {
+                    const file = await report.fileHandle.getFile();
+                    return file;
+                } catch (e) {
+                    console.warn('Failed to get file from handle:', e);
+                }
+            }
+
+            // Finally try IndexedDB (persistent storage)
+            try {
+                const blob = await getReportBlobFromDB(report.id);
+                if (blob) {
+                    // Cache in memory for faster subsequent access
+                    report.blob = blob;
+                    return blob;
+                }
+            } catch (e) {
+                console.warn('Failed to get report from IndexedDB:', e);
+            }
+
+            return null;
+        }
+
+        /**
+         * Render reports list HTML
+         * @param {Array} reports - Array of report objects
+         * @param {string} studyUid - Study instance UID
+         * @returns {string} HTML string
+         */
+        function renderReports(reports, studyUid) {
+            if (!reports || reports.length === 0) {
+                return '<p class="report-empty">No reports attached</p>';
+            }
+
+            return reports.map(r => {
+                const icon = r.type === 'pdf' ? '&#128196;' : '&#128247;';
+
+                return `
+                    <div class="report-item" data-report-id="${r.id}">
+                        <span class="report-icon">${icon}</span>
+                        <span class="report-name">${escapeHtml(r.name)}</span>
+                        <span class="report-size">${formatFileSize(r.size)}</span>
+                        <span class="report-actions">
+                            <button class="report-btn view-report" data-study-uid="${studyUid}" data-report-id="${r.id}">View</button>
+                            <button class="report-btn delete-report" data-study-uid="${studyUid}" data-report-id="${r.id}">Delete</button>
+                        </span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Update report list UI without full page re-render
+         * @param {string} studyUid - Study instance UID
+         */
+        function updateReportListUI(studyUid) {
+            const reportList = document.querySelector(`.report-list[data-study-uid="${studyUid}"]`);
+            if (reportList) {
+                reportList.innerHTML = renderReports(state.studies[studyUid].reports, studyUid);
+                attachReportEventHandlers(studyUid);
+            }
+
+            // Update button text
+            const btn = document.querySelector(`.report-toggle[data-study-uid="${studyUid}"]`);
+            if (btn) {
+                const count = state.studies[studyUid].reports?.length || 0;
+                btn.textContent = count > 0 ? `${count} report${count > 1 ? 's' : ''}` : 'Add report';
+            }
+        }
+
+        /**
+         * Open report in viewer modal
+         * @param {string} studyUid - Study instance UID
+         * @param {string} reportId - Report UUID
+         */
+        async function viewReport(studyUid, reportId) {
+            const report = state.studies[studyUid].reports?.find(r => r.id === reportId);
+            if (!report) return;
+
+            const blob = await getReportBlob(report);
+            if (!blob) {
+                alert('Report file not available. The file may have been deleted from browser storage.');
+                return;
+            }
+
+            const viewer = $('reportViewer');
+            const pdfFrame = $('reportPdfFrame');
+            const imageView = $('reportImageView');
+            const title = $('reportViewerTitle');
+
+            // Revoke previous object URL to prevent memory leak on back-to-back views
+            if (viewer.dataset.objectUrl) {
+                URL.revokeObjectURL(viewer.dataset.objectUrl);
+            }
+
+            const url = URL.createObjectURL(blob);
+
+            // Hide both viewers initially
+            pdfFrame.style.display = 'none';
+            imageView.style.display = 'none';
+
+            title.textContent = report.name;
+
+            if (report.type === 'pdf') {
+                pdfFrame.src = url;
+                pdfFrame.style.display = 'block';
+            } else {
+                imageView.src = url;
+                imageView.style.display = 'block';
+            }
+
+            viewer.style.display = 'flex';
+            viewer.dataset.objectUrl = url;
+        }
+
+        /**
+         * Close report viewer and cleanup resources
+         */
+        function closeReportViewer() {
+            const viewer = $('reportViewer');
+            const pdfFrame = $('reportPdfFrame');
+            const imageView = $('reportImageView');
+
+            // Cleanup object URL to prevent memory leak
+            if (viewer.dataset.objectUrl) {
+                URL.revokeObjectURL(viewer.dataset.objectUrl);
+                delete viewer.dataset.objectUrl;
+            }
+
+            pdfFrame.src = '';
+            imageView.src = '';
+            viewer.style.display = 'none';
+        }
+
+        /**
+         * Attach event handlers for report actions within a study
+         * @param {string} studyUid - Study instance UID
+         */
+        function attachReportEventHandlers(studyUid) {
+            // View report buttons
+            document.querySelectorAll(`.view-report[data-study-uid="${studyUid}"]`).forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    viewReport(studyUid, btn.dataset.reportId);
+                };
+            });
+
+            // Delete report buttons
+            document.querySelectorAll(`.delete-report[data-study-uid="${studyUid}"]`).forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (confirm('Delete this report?')) {
+                        deleteReport(studyUid, btn.dataset.reportId);
+                    }
+                };
+            });
         }
 
         // =====================================================================
@@ -1127,6 +1521,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 const seriesArr = Object.values(s.series);
                 if (!Array.isArray(s.comments)) s.comments = [];
                 const commentCount = s.comments.length;
+                const reportCount = s.reports?.length || 0;
 
                 html += `
                     <tr class="study-row" data-uid="${s.studyInstanceUid}">
@@ -1142,9 +1537,14 @@ Copyright (c) 2026 Divergent Health Technologies
                                 ${commentCount > 0 ? `${commentCount} comment${commentCount > 1 ? 's' : ''}` : 'Add comment'}
                             </button>
                         </td>
+                        <td class="report-cell" onclick="event.stopPropagation()">
+                            <button class="report-toggle" data-study-uid="${s.studyInstanceUid}">
+                                ${reportCount > 0 ? `${reportCount} report${reportCount > 1 ? 's' : ''}` : 'Add report'}
+                            </button>
+                        </td>
                     </tr>
                     <tr class="comment-panel-row" data-study-uid="${s.studyInstanceUid}" style="display: none;">
-                        <td colspan="8">
+                        <td colspan="9">
                             <div class="detail-panel">
                                 <div class="description-section">
                                     <h4>Description</h4>
@@ -1158,11 +1558,19 @@ Copyright (c) 2026 Divergent Health Technologies
                                         <button class="comment-submit" data-study-uid="${s.studyInstanceUid}">Add</button>
                                     </div>
                                 </div>
+                                <div class="report-section">
+                                    <h4>Reports</h4>
+                                    <div class="report-list" data-study-uid="${s.studyInstanceUid}">${renderReports(s.reports, s.studyInstanceUid)}</div>
+                                    <div class="report-upload">
+                                        <input type="file" class="report-file-input" data-study-uid="${s.studyInstanceUid}" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+                                        <button class="report-upload-btn" data-study-uid="${s.studyInstanceUid}">Upload Report</button>
+                                    </div>
+                                </div>
                             </div>
                         </td>
                     </tr>
                     <tr class="series-dropdown-row" data-study-uid="${s.studyInstanceUid}" style="display: none;">
-                        <td colspan="8">
+                        <td colspan="9">
                             <div class="series-dropdown">
                                 ${seriesArr.map(ser => {
                                     if (!Array.isArray(ser.comments)) ser.comments = [];
@@ -1208,7 +1616,7 @@ Copyright (c) 2026 Divergent Health Technologies
             // Toggle expand/collapse for series
             studiesBody.querySelectorAll('.study-row').forEach(row => {
                 row.onclick = (e) => {
-                    if (e.target.closest('.comment-cell')) return;
+                    if (e.target.closest('.comment-cell') || e.target.closest('.report-cell')) return;
                     const uid = row.dataset.uid;
                     const dropdownRow = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${uid}"]`);
                     const icon = row.querySelector('.expand-icon');
@@ -1370,6 +1778,44 @@ Copyright (c) 2026 Divergent Health Technologies
                 if (dropdown) dropdown.style.display = 'table-row';
                 const icon = studiesBody.querySelector(`.study-row[data-uid="${studyUid}"] .expand-icon`);
                 if (icon) { icon.textContent = '\u25BC'; icon.classList.add('expanded'); }
+            });
+
+            // Report toggle button (reuses comment panel, same behavior)
+            studiesBody.querySelectorAll('.report-toggle').forEach(btn => {
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    const studyUid = btn.dataset.studyUid;
+                    const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${studyUid}"]`);
+                    const isOpen = panel.style.display !== 'none';
+                    panel.style.display = isOpen ? 'none' : 'table-row';
+                    if (isOpen) {
+                        openPanels.studyPanels.delete(studyUid);
+                    } else {
+                        openPanels.studyPanels.add(studyUid);
+                    }
+                };
+            });
+
+            // Report upload button -> trigger file input
+            studiesBody.querySelectorAll('.report-upload-btn').forEach(btn => {
+                const studyUid = btn.dataset.studyUid;
+                const fileInput = studiesBody.querySelector(`.report-file-input[data-study-uid="${studyUid}"]`);
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    fileInput.click();
+                };
+                fileInput.onchange = async () => {
+                    const file = fileInput.files[0];
+                    if (file) {
+                        await addReport(studyUid, file);
+                        fileInput.value = '';
+                    }
+                };
+            });
+
+            // Attach report event handlers for all studies
+            Object.keys(state.studies).forEach(studyUid => {
+                attachReportEventHandlers(studyUid);
             });
         }
 
@@ -2633,7 +3079,12 @@ Copyright (c) 2026 Divergent Health Technologies
                 if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1)
                     loadSlice(state.currentSliceIndex + 1);
             } else if (e.key === 'Escape') {
-                closeViewer();
+                // Close report viewer first if open, otherwise close main viewer
+                if ($('reportViewer').style.display !== 'none') {
+                    closeReportViewer();
+                } else {
+                    closeViewer();
+                }
             }
         });
 
@@ -2679,6 +3130,9 @@ Copyright (c) 2026 Divergent Health Technologies
             btn.addEventListener('click', () => setTool(btn.dataset.tool));
         });
         resetViewBtn.addEventListener('click', resetView);
+
+        // Report viewer close button
+        $('closeReportViewer').addEventListener('click', closeReportViewer);
 
         // Initialize cursor for default tool
         canvas.style.cursor = getCursorForTool(state.currentTool, false);
