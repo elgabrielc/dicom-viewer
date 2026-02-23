@@ -434,8 +434,8 @@ def get_test_dicom(study_id, series_id, slice_num):
 
     try:
         return send_file(file_path, mimetype='application/dicom')
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        return jsonify({'error': 'Failed to read DICOM file'}), 500
 
 
 @app.route('/api/test-data/info')
@@ -443,7 +443,6 @@ def get_test_info():
     """Get info about available test data."""
     studies = _get_test_data()
     return jsonify({
-        'testDataFolder': TEST_DATA_FOLDER,
         'available': os.path.exists(TEST_DATA_FOLDER),
         'studyCount': len(studies),
         'totalImages': sum(s['image_count'] for s in studies.values())
@@ -809,8 +808,13 @@ def get_report_file(report_id):
     if not row or not row['file_path'] or not os.path.exists(row['file_path']):
         return jsonify({'error': 'Report file not found'}), 404
 
+    # Verify the file path is within REPORTS_DIR (prevent path traversal via DB tampering)
+    resolved = Path(row['file_path']).resolve()
+    if not resolved.is_relative_to(Path(REPORTS_DIR).resolve()):
+        return jsonify({'error': 'Report file not found'}), 404
+
     mimetype = REPORT_TYPE_MAP.get(row['type'], ('', '', 'application/octet-stream'))[2]
-    return send_file(row['file_path'], mimetype=mimetype, as_attachment=False)
+    return send_file(str(resolved), mimetype=mimetype, as_attachment=False)
 
 
 @app.route('/api/notes/<study_uid>/reports/<report_id>', methods=['DELETE'])
@@ -824,17 +828,22 @@ def delete_report(study_uid, report_id):
     if not row:
         return jsonify({'error': 'Report not found'}), 404
 
-    if row['file_path'] and os.path.exists(row['file_path']):
-        try:
-            os.remove(row['file_path'])
-        except OSError:
-            pass
-
+    # Delete DB record first, then remove file.
+    # If file removal fails, the orphan file is acceptable;
+    # the reverse (dangling DB reference) is worse.
+    file_path = row['file_path']
     db.execute(
         "DELETE FROM reports WHERE id = ? AND study_uid = ?",
         (report_id, study_uid)
     )
     db.commit()
+
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
+
     return jsonify({'deleted': True, 'id': report_id})
 
 

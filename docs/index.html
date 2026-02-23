@@ -949,10 +949,10 @@ Copyright (c) 2026 Divergent Health Technologies
             // Find the comment list element
             let commentList;
             if (seriesUid) {
-                const panel = document.querySelector(`.series-comment-panel[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                const panel = document.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
                 commentList = panel?.querySelector('.comment-list');
             } else {
-                const panel = document.querySelector(`.comment-panel-row[data-study-uid="${studyUid}"]`);
+                const panel = document.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
                 commentList = panel?.querySelector('.comment-list');
             }
 
@@ -977,9 +977,9 @@ Copyright (c) 2026 Divergent Health Technologies
             const count = comments.length;
             let btn;
             if (seriesUid) {
-                btn = document.querySelector(`.series-comment-toggle[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                btn = document.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
             } else {
-                btn = document.querySelector(`.comment-toggle[data-study-uid="${studyUid}"]:not(.series-comment-toggle)`);
+                btn = document.querySelector(`.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`);
             }
             // Keep showing "Hide comments" if panel is open
             if (btn && btn.textContent !== 'Hide comments') {
@@ -989,9 +989,9 @@ Copyright (c) 2026 Divergent Health Technologies
             // Clear the input
             let input;
             if (seriesUid) {
-                input = document.querySelector(`.add-series-comment[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                input = document.querySelector(`.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
             } else {
-                input = document.querySelector(`.add-study-comment[data-study-uid="${studyUid}"]`);
+                input = document.querySelector(`.add-study-comment[data-study-uid="${CSS.escape(studyUid)}"]`);
             }
             if (input) input.value = '';
         }
@@ -1351,14 +1351,14 @@ Copyright (c) 2026 Divergent Health Technologies
          * @param {string} studyUid - Study instance UID
          */
         function updateReportListUI(studyUid) {
-            const reportList = document.querySelector(`.report-list[data-study-uid="${studyUid}"]`);
+            const reportList = document.querySelector(`.report-list[data-study-uid="${CSS.escape(studyUid)}"]`);
             if (reportList) {
                 reportList.innerHTML = renderReports(state.studies[studyUid].reports, studyUid);
                 attachReportEventHandlers(studyUid);
             }
 
             // Update button text
-            const btn = document.querySelector(`.report-toggle[data-study-uid="${studyUid}"]`);
+            const btn = document.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
             if (btn) {
                 const count = state.studies[studyUid].reports?.length || 0;
                 btn.textContent = count > 0 ? `${count} report${count > 1 ? 's' : ''}` : 'Add report';
@@ -1440,7 +1440,7 @@ Copyright (c) 2026 Divergent Health Technologies
          */
         function attachReportEventHandlers(studyUid) {
             // View report buttons
-            document.querySelectorAll(`.view-report[data-study-uid="${studyUid}"]`).forEach(btn => {
+            document.querySelectorAll(`.view-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach(btn => {
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     viewReport(studyUid, btn.dataset.reportId);
@@ -1448,7 +1448,7 @@ Copyright (c) 2026 Divergent Health Technologies
             });
 
             // Delete report buttons
-            document.querySelectorAll(`.delete-report[data-study-uid="${studyUid}"]`).forEach(btn => {
+            document.querySelectorAll(`.delete-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach(btn => {
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     if (confirm('Delete this report?')) {
@@ -1585,7 +1585,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 row.onclick = (e) => {
                     if (e.target.closest('.comment-cell') || e.target.closest('.report-cell')) return;
                     const uid = row.dataset.uid;
-                    const dropdownRow = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${uid}"]`);
+                    const dropdownRow = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(uid)}"]`);
                     const icon = row.querySelector('.expand-icon');
                     const isExpanded = dropdownRow.style.display !== 'none';
 
@@ -1608,7 +1608,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     const studyUid = btn.dataset.studyUid;
-                    const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${studyUid}"]`);
+                    const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
                     const isOpen = panel.style.display !== 'none';
                     panel.style.display = isOpen ? 'none' : 'table-row';
                     if (isOpen) {
@@ -1629,7 +1629,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     const studyUid = btn.dataset.studyUid;
                     const seriesUid = btn.dataset.seriesUid;
                     const key = `${studyUid}:${seriesUid}`;
-                    const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                    const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
                     const isOpen = panel.style.display !== 'none';
                     panel.style.display = isOpen ? 'none' : 'block';
                     if (isOpen) {
@@ -1658,7 +1658,7 @@ Copyright (c) 2026 Divergent Health Technologies
             studiesBody.querySelectorAll('.comment-submit:not([data-series-uid])').forEach(btn => {
                 btn.onclick = () => {
                     const studyUid = btn.dataset.studyUid;
-                    const input = studiesBody.querySelector(`.add-study-comment[data-study-uid="${studyUid}"]`);
+                    const input = studiesBody.querySelector(`.add-study-comment[data-study-uid="${CSS.escape(studyUid)}"]`);
                     addComment(studyUid, null, input.value);
                 };
             });
@@ -1668,7 +1668,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 btn.onclick = () => {
                     const studyUid = btn.dataset.studyUid;
                     const seriesUid = btn.dataset.seriesUid;
-                    const input = studiesBody.querySelector(`.add-series-comment[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                    const input = studiesBody.querySelector(`.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
                     addComment(studyUid, seriesUid, input.value);
                 };
             });
@@ -1727,27 +1727,27 @@ Copyright (c) 2026 Divergent Health Technologies
 
             // Restore open panels
             openPanels.studyPanels.forEach(studyUid => {
-                const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${studyUid}"]`);
+                const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
                 if (panel) panel.style.display = 'table-row';
-                const btn = studiesBody.querySelector(`.comment-toggle[data-study-uid="${studyUid}"]:not(.series-comment-toggle)`);
+                const btn = studiesBody.querySelector(`.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`);
                 if (btn) btn.textContent = 'Hide comments';
             });
             openPanels.seriesPanels.forEach(key => {
                 const [studyUid, seriesUid] = key.split(':');
-                const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
                 if (panel) panel.style.display = 'block';
-                const btn = studiesBody.querySelector(`.series-comment-toggle[data-study-uid="${studyUid}"][data-series-uid="${seriesUid}"]`);
+                const btn = studiesBody.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
                 if (btn) btn.textContent = 'Hide comments';
                 // Also need to open the series dropdown
-                const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${studyUid}"]`);
+                const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);
                 if (dropdown) dropdown.style.display = 'table-row';
-                const icon = studiesBody.querySelector(`.study-row[data-uid="${studyUid}"] .expand-icon`);
+                const icon = studiesBody.querySelector(`.study-row[data-uid="${CSS.escape(studyUid)}"] .expand-icon`);
                 if (icon) { icon.textContent = '\u25BC'; icon.classList.add('expanded'); }
             });
             openPanels.seriesDropdowns.forEach(studyUid => {
-                const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${studyUid}"]`);
+                const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);
                 if (dropdown) dropdown.style.display = 'table-row';
-                const icon = studiesBody.querySelector(`.study-row[data-uid="${studyUid}"] .expand-icon`);
+                const icon = studiesBody.querySelector(`.study-row[data-uid="${CSS.escape(studyUid)}"] .expand-icon`);
                 if (icon) { icon.textContent = '\u25BC'; icon.classList.add('expanded'); }
             });
 
@@ -1756,7 +1756,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     const studyUid = btn.dataset.studyUid;
-                    const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${studyUid}"]`);
+                    const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
                     const isOpen = panel.style.display !== 'none';
                     panel.style.display = isOpen ? 'none' : 'table-row';
                     if (isOpen) {
@@ -1770,7 +1770,7 @@ Copyright (c) 2026 Divergent Health Technologies
             // Report upload button -> trigger file input
             studiesBody.querySelectorAll('.report-upload-btn').forEach(btn => {
                 const studyUid = btn.dataset.studyUid;
-                const fileInput = studiesBody.querySelector(`.report-file-input[data-study-uid="${studyUid}"]`);
+                const fileInput = studiesBody.querySelector(`.report-file-input[data-study-uid="${CSS.escape(studyUid)}"]`);
                 btn.onclick = (e) => {
                     e.stopPropagation();
                     fileInput.click();
@@ -2094,13 +2094,13 @@ Copyright (c) 2026 Divergent Health Technologies
             try {
                 console.log('Attempting JPEG 2000 decode for', rows, 'x', cols, 'image');
 
-                const pixelDataElement = dataSet.elements.x7fe00010;
-                if (!pixelDataElement.encapsulatedPixelData) {
+                const jp2DataElement = dataSet.elements.x7fe00010;
+                if (!jp2DataElement.encapsulatedPixelData) {
                     console.error('Pixel data is not encapsulated');
                     return null;
                 }
 
-                const fragments = pixelDataElement.fragments;
+                const fragments = jp2DataElement.fragments;
                 if (!fragments || fragments.length === 0) {
                     console.error('No fragments found for JPEG 2000');
                     return null;
@@ -3020,7 +3020,8 @@ Copyright (c) 2026 Divergent Health Technologies
             if (viewerView.style.display === 'none') return;
 
             // Delete/Backspace for measurements when measure tool is active
-            if ((e.key === 'Delete' || e.key === 'Backspace') && state.currentTool === 'measure') {
+            const activeTag = document.activeElement.tagName;
+            if ((e.key === 'Delete' || e.key === 'Backspace') && activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && state.currentTool === 'measure') {
                 e.preventDefault();
                 if (e.shiftKey) {
                     clearSliceMeasurements();  // Shift+Delete clears all on slice
