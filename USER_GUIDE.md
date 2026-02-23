@@ -1,3 +1,5 @@
+<!-- If you edit this file, also update docs/js/help-content.js to keep the in-app help in sync. -->
+
 # DICOM Viewer - User Guide
 
 A web-based viewer for CT and MRI medical images.
@@ -161,6 +163,19 @@ Magnifies or shrinks the image so you can see fine details or the full picture.
 4. You can also use your **scroll wheel** to zoom when this tool is active
 
 The zoom range is from 10% to 1000%.
+
+### Measure
+
+Measures distances on the image. If the DICOM file contains pixel spacing calibration data, measurements are shown in millimeters; otherwise they show in pixels.
+
+**How to use it:**
+1. Click the **Measure** button (or press **M**)
+2. Click and drag on the image to draw a measurement line
+3. The distance appears next to the line
+4. To delete the last measurement, press **Delete** or **Backspace**
+5. To clear all measurements on the current slice, press **Shift + Delete**
+
+Measurements are per-slice -- each slice has its own set of measurement lines.
 
 ### Reset
 

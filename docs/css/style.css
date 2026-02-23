@@ -72,6 +72,10 @@ header {
     margin-bottom: 2rem;
 }
 
+.library-header {
+    position: relative;
+}
+
 header h1 {
     font-size: 2rem;
     color: #fff;
@@ -739,6 +743,228 @@ header .subtitle {
     object-fit: contain;
 }
 
+/* Help Viewer Modal */
+.help-viewer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.95);
+    display: flex;
+    flex-direction: column;
+    z-index: 2000;
+}
+
+.help-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background-color: #16213e;
+    border-bottom: 1px solid #333;
+}
+
+.help-viewer-header span {
+    font-size: 1rem;
+    color: #ddd;
+    font-weight: 500;
+}
+
+.help-viewer-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.help-viewer-close:hover {
+    color: #fff;
+}
+
+.help-viewer-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.help-viewer-sidebar {
+    width: 220px;
+    overflow-y: auto;
+    border-right: 1px solid #333;
+    background-color: #0f1629;
+    padding: 1rem 0;
+}
+
+.help-viewer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    color: #ddd;
+    background-color: #1a1a2e;
+}
+
+/* TOC navigation */
+.help-toc-item {
+    display: block;
+    padding: 0.55rem 1rem;
+    border-left: 3px solid transparent;
+    color: #888;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.help-toc-item:hover {
+    color: #ddd;
+    background-color: rgba(74, 158, 255, 0.08);
+}
+
+.help-toc-item.active {
+    border-left: 3px solid #4a9eff;
+    color: #4a9eff;
+    background-color: rgba(74, 158, 255, 0.12);
+}
+
+/* Content typography */
+.help-section + .help-section {
+    margin-top: 2.5rem;
+}
+
+.help-viewer-content h2 {
+    font-size: 1.4rem;
+    color: #fff;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #333;
+}
+
+.help-viewer-content h3 {
+    font-size: 1.05rem;
+    color: #d7e7ff;
+    margin-top: 1.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.help-viewer-content p,
+.help-viewer-content li {
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
+.help-viewer-content p {
+    margin: 0 0 0.8rem;
+}
+
+.help-viewer-content ul,
+.help-viewer-content ol {
+    margin: 0 0 1rem 1.25rem;
+}
+
+.help-viewer-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.8rem 0 1.2rem;
+    font-size: 0.9rem;
+}
+
+.help-viewer-content th,
+.help-viewer-content td {
+    border: 1px solid #333;
+    padding: 0.5rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.help-viewer-content th {
+    background-color: #16213e;
+    color: #d7e7ff;
+    font-weight: 600;
+}
+
+.help-viewer-content td {
+    color: #d0d0d0;
+}
+
+.help-viewer-content pre {
+    margin: 0.8rem 0 1.2rem;
+    padding: 0.9rem;
+    background-color: #0f1629;
+    border: 1px solid #333;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
+.help-viewer-content code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    color: #9cd2ff;
+}
+
+.help-viewer-content pre code {
+    color: #ddd;
+}
+
+/* Help button */
+.help-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid #444;
+    background: #16213e;
+    color: #c8ddff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.help-btn:hover {
+    background: #1f2f4f;
+    border-color: #4a9eff;
+    color: #fff;
+}
+
+.help-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f1629;
+    color: #eee;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s ease;
+    z-index: 100;
+}
+
+.help-btn:hover::after {
+    opacity: 1;
+}
+
+.library-help-btn {
+    position: absolute;
+    top: 0;
+    right: 0;
+}
+
+.viewer-help-btn {
+    margin-left: auto;
+}
+
 /* ==========================================================================
    4. PROGRESS OVERLAY
    Modal overlay shown during folder scanning
@@ -832,6 +1058,10 @@ header .subtitle {
 .viewer-header h1 {
     font-size: 1.25rem;
     font-weight: 500;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .viewer-main {
@@ -1162,6 +1392,11 @@ header .subtitle {
     .metadata-panel {
         width: 220px;
     }
+
+    .library-help-btn {
+        top: -0.25rem;
+        right: -0.25rem;
+    }
 }
 
 @media (max-width: 700px) {
@@ -1179,5 +1414,15 @@ header .subtitle {
     .metadata-panel {
         border-left: none;
         border-top: 1px solid #222;
+    }
+
+    .help-viewer-content {
+        padding: 1.25rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .help-viewer-sidebar {
+        display: none;
     }
 }
