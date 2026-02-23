@@ -263,7 +263,7 @@ init_db()
 
 def _generate_id(uid):
     """Generate a short ID from a DICOM UID."""
-    return hashlib.md5(uid.encode()).hexdigest()[:12]
+    return hashlib.sha256(uid.encode()).hexdigest()[:12]
 
 
 def _extract_metadata(ds, file_path):
