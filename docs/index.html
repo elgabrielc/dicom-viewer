@@ -46,15 +46,19 @@ Copyright (c) 2026 Divergent Health Technologies
     <!-- Application configuration (deployment mode, feature flags) -->
     <script src="js/config.js"></script>
 
+    <!-- In-app user guide content -->
+    <script src="js/help-content.js"></script>
+
     <!-- Notes API abstraction (server persistence with graceful fallback) -->
     <script src="js/api.js"></script>
 </head>
 <body>
     <!-- LIBRARY VIEW -->
     <div id="libraryView" class="container">
-        <header>
+        <header class="library-header">
             <h1>DICOM Medical Imaging Viewer</h1>
             <p class="subtitle">Browse and view CT, MRI, and other imaging studies</p>
+            <button class="help-btn library-help-btn" aria-label="Open user guide" data-tooltip="H">?</button>
         </header>
 
         <section class="upload-section">
@@ -101,6 +105,7 @@ Copyright (c) 2026 Divergent Health Technologies
         <header class="viewer-header">
             <a href="#" class="back-btn" id="backBtn">&larr; Back to Library</a>
             <h1 id="studyTitle">Loading...</h1>
+            <button class="help-btn viewer-help-btn" aria-label="Open user guide" data-tooltip="H">?</button>
         </header>
 
         <div class="viewer-main">
@@ -163,6 +168,18 @@ Copyright (c) 2026 Divergent Health Technologies
         <div class="report-viewer-content">
             <iframe id="reportPdfFrame" style="display: none;"></iframe>
             <img id="reportImageView" style="display: none;">
+        </div>
+    </div>
+
+    <!-- HELP VIEWER MODAL -->
+    <div id="helpViewer" class="help-viewer" style="display: none;">
+        <div class="help-viewer-header">
+            <span>User Guide</span>
+            <button id="closeHelpViewer" class="help-viewer-close">&times;</button>
+        </div>
+        <div class="help-viewer-body">
+            <nav class="help-viewer-sidebar" id="helpToc"></nav>
+            <div class="help-viewer-content" id="helpContent"></div>
         </div>
     </div>
 
@@ -1488,6 +1505,100 @@ Copyright (c) 2026 Divergent Health Technologies
             pdfFrame.src = '';
             imageView.src = '';
             viewer.style.display = 'none';
+        }
+
+        // =====================================================================
+        // HELP VIEWER
+        // In-app user guide modal with table of contents and scroll sync
+        // =====================================================================
+
+        /**
+         * Highlight active help section in table of contents
+         * @param {string} sectionId - HELP_SECTIONS id value
+         */
+        function setActiveHelpTocItem(sectionId) {
+            document.querySelectorAll('.help-toc-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.sectionId === sectionId);
+            });
+        }
+
+        /**
+         * Update active TOC entry as user scrolls help content
+         */
+        function onHelpContentScroll() {
+            const contentEl = $('helpContent');
+            if (!contentEl) return;
+
+            const sections = Array.from(contentEl.querySelectorAll('.help-section'));
+            if (!sections.length) return;
+
+            const offset = contentEl.scrollTop + 40;
+            let activeSectionId = sections[0].dataset.sectionId;
+
+            for (const section of sections) {
+                if (section.offsetTop <= offset) {
+                    activeSectionId = section.dataset.sectionId;
+                } else {
+                    break;
+                }
+            }
+
+            setActiveHelpTocItem(activeSectionId);
+        }
+
+        /**
+         * Build help table of contents and section content from HELP_SECTIONS
+         */
+        function renderHelpContent() {
+            const tocEl = $('helpToc');
+            const contentEl = $('helpContent');
+            if (!tocEl || !contentEl || !Array.isArray(HELP_SECTIONS)) return;
+
+            tocEl.innerHTML = HELP_SECTIONS.map(section => `
+                <a href="#help-${escapeHtml(section.id)}" class="help-toc-item" data-section-id="${escapeHtml(section.id)}">
+                    ${escapeHtml(section.title)}
+                </a>
+            `).join('');
+
+            contentEl.innerHTML = HELP_SECTIONS.map(section => `
+                <section id="help-${escapeHtml(section.id)}" class="help-section" data-section-id="${escapeHtml(section.id)}">
+                    <h2>${escapeHtml(section.title)}</h2>
+                    ${section.content}
+                </section>
+            `).join('');
+
+            tocEl.querySelectorAll('.help-toc-item').forEach(item => {
+                item.addEventListener('click', e => {
+                    e.preventDefault();
+                    const sectionId = item.dataset.sectionId;
+                    const target = contentEl.querySelector(`#help-${CSS.escape(sectionId)}`);
+                    if (!target) return;
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    setActiveHelpTocItem(sectionId);
+                });
+            });
+
+            contentEl.removeEventListener('scroll', onHelpContentScroll);
+            contentEl.addEventListener('scroll', onHelpContentScroll);
+            onHelpContentScroll();
+        }
+
+        /**
+         * Open in-app help modal
+         */
+        function openHelpViewer() {
+            $('helpViewer').style.display = 'flex';
+            renderHelpContent();
+            const contentEl = $('helpContent');
+            if (contentEl) contentEl.scrollTop = 0;
+            onHelpContentScroll();
+        }
+
+        /**
+         * Close in-app help modal
+         */
+        function closeHelpViewer() {
+            $('helpViewer').style.display = 'none';
         }
 
         /**
@@ -3073,11 +3184,25 @@ Copyright (c) 2026 Divergent Health Technologies
         loadSampleMriBtn.onclick = () => loadSampleScan('sample-mri', loadSampleMriBtn, 'MRI Scan');
 
         document.addEventListener('keydown', e => {
+            const activeElement = document.activeElement;
+            const activeTag = activeElement ? activeElement.tagName : '';
+            const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT' || !!activeElement?.isContentEditable;
+
+            if (!isTyping && e.key.toLowerCase() === 'h') {
+                e.preventDefault();
+                openHelpViewer();
+                return;
+            }
+
+            if (e.key === 'Escape' && $('helpViewer').style.display !== 'none') {
+                closeHelpViewer();
+                return;
+            }
+
             if (viewerView.style.display === 'none') return;
 
             // Delete/Backspace for measurements when measure tool is active
-            const activeTag = document.activeElement.tagName;
-            if ((e.key === 'Delete' || e.key === 'Backspace') && activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && state.currentTool === 'measure') {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && !isTyping && state.currentTool === 'measure') {
                 e.preventDefault();
                 if (e.shiftKey) {
                     clearSliceMeasurements();  // Shift+Delete clears all on slice
@@ -3088,7 +3213,7 @@ Copyright (c) 2026 Divergent Health Technologies
             }
 
             // Tool shortcuts (only when not typing in an input)
-            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            if (!isTyping) {
                 switch (e.key.toLowerCase()) {
                     case 'w': setTool('wl'); return;
                     case 'p': setTool('pan'); return;
@@ -3161,6 +3286,12 @@ Copyright (c) 2026 Divergent Health Technologies
 
         // Report viewer close button
         $('closeReportViewer').addEventListener('click', closeReportViewer);
+        $('closeHelpViewer').addEventListener('click', closeHelpViewer);
+
+        // Help buttons (library + viewer headers)
+        document.querySelectorAll('.help-btn').forEach(btn => {
+            btn.addEventListener('click', openHelpViewer);
+        });
 
         // Initialize cursor for default tool
         canvas.style.cursor = getCursorForTool(state.currentTool, false);
