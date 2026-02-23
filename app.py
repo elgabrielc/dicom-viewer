@@ -10,12 +10,23 @@ Access API in the browser). This server provides:
 
 1. Static file serving (HTML, CSS, JS, WASM)
 2. Test data API for automated Playwright tests
+3. Notes persistence API (SQLite) for comments, descriptions, and reports
 
 Routes:
-    GET  /                                      - Main application page
-    GET  /api/test-data/studies                 - List test studies (for tests)
-    GET  /api/test-data/dicom/<study>/<series>/<slice> - Get DICOM bytes (for tests)
-    GET  /api/test-data/info                    - Test data info (for tests)
+    GET  /                                                  - Main application page
+    GET  /api/test-data/studies                             - List test studies
+    GET  /api/test-data/dicom/<study>/<series>/<slice>      - Get DICOM bytes
+    GET  /api/test-data/info                                - Test data info
+    GET  /api/notes/?studies=uid1,uid2                      - Batch load notes
+    PUT  /api/notes/<study_uid>/description                 - Save study description
+    PUT  /api/notes/<study_uid>/series/<series_uid>/description - Save series description
+    POST /api/notes/<study_uid>/comments                    - Add comment
+    PUT  /api/notes/<study_uid>/comments/<id>               - Edit comment
+    DELETE /api/notes/<study_uid>/comments/<id>              - Delete comment
+    POST /api/notes/<study_uid>/reports                     - Upload report
+    GET  /api/notes/reports/<id>/file                       - Download report file
+    DELETE /api/notes/<study_uid>/reports/<id>               - Delete report
+    POST /api/notes/migrate                                 - One-time localStorage import
 
 Copyright (c) 2026 Divergent Health Technologies
 """
@@ -23,7 +34,9 @@ Copyright (c) 2026 Divergent Health Technologies
 import os
 import hashlib
 import re
+import shutil
 import sqlite3
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -62,6 +75,19 @@ REPORT_TYPE_MAP = {
     'jpg': ('jpg', 'jpg', 'image/jpeg'),
     'jpeg': ('jpg', 'jpg', 'image/jpeg'),
 }
+
+# Reverse lookup: MIME type -> (canonical_type, extension, mime)
+MIME_TO_TYPE = {
+    'application/pdf': ('pdf', 'pdf', 'application/pdf'),
+    'image/png': ('png', 'png', 'image/png'),
+    'image/jpeg': ('jpg', 'jpg', 'image/jpeg'),
+}
+
+# Maximum number of study UIDs accepted in a single batch request
+MAX_BATCH_STUDY_UIDS = 200
+
+# Comment timestamps must be within this range of server time
+MAX_TIMESTAMP_DRIFT_MS = 365 * 24 * 60 * 60 * 1000  # 1 year
 
 # Cache for test data (loaded once on first request)
 _test_data_cache = None
@@ -122,10 +148,8 @@ def _resolve_report_type(filename, provided_type, mimetype):
             report_type, resolved_ext, mime = REPORT_TYPE_MAP[ext]
             return report_type, resolved_ext, mime
 
-    if mimetype:
-        for report_type, (canonical, ext, mime) in REPORT_TYPE_MAP.items():
-            if mimetype == mime:
-                return canonical, ext, mime
+    if mimetype and mimetype in MIME_TO_TYPE:
+        return MIME_TO_TYPE[mimetype]
 
     return None, None, None
 
@@ -133,8 +157,9 @@ def _resolve_report_type(filename, provided_type, mimetype):
 def get_db():
     if 'db' not in g:
         _ensure_data_dirs()
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
         g.db = conn
     return g.db
 
@@ -519,9 +544,11 @@ def get_notes():
     if not studies_param:
         return jsonify({'studies': {}})
 
-    study_uids = [uid for uid in studies_param.split(',') if uid]
+    study_uids = [uid.strip() for uid in studies_param.split(',') if uid.strip()]
     if not study_uids:
         return jsonify({'studies': {}})
+    if len(study_uids) > MAX_BATCH_STUDY_UIDS:
+        return jsonify({'error': f'Too many study UIDs (max {MAX_BATCH_STUDY_UIDS})'}), 400
 
     db = get_db()
     payload = _build_notes_payload(study_uids, db)
@@ -594,7 +621,13 @@ def add_comment(study_uid):
         return jsonify({'error': 'Comment text is required'}), 400
 
     series_uid = (data.get('seriesUid') or '').strip() or None
-    timestamp = _parse_int(data.get('time'), int(time.time() * 1000))
+    now = int(time.time() * 1000)
+    client_time = _parse_int(data.get('time'))
+    # Accept client timestamp if within reasonable range, otherwise use server time
+    if client_time is not None and abs(client_time - now) <= MAX_TIMESTAMP_DRIFT_MS:
+        timestamp = client_time
+    else:
+        timestamp = now
 
     db = get_db()
     cursor = db.execute(
@@ -619,11 +652,12 @@ def update_comment(study_uid, comment_id):
     if not text:
         return jsonify({'error': 'Comment text is required'}), 400
 
-    timestamp = _parse_int(data.get('time'), int(time.time() * 1000))
+    # Always use server time for edits to preserve audit integrity
+    now = int(time.time() * 1000)
     db = get_db()
     cursor = db.execute(
         "UPDATE comments SET text = ?, time = ? WHERE id = ? AND study_uid = ?",
-        (text, timestamp, comment_id, study_uid)
+        (text, now, comment_id, study_uid)
     )
     db.commit()
 
@@ -634,7 +668,7 @@ def update_comment(study_uid, comment_id):
         'id': comment_id,
         'studyUid': study_uid,
         'text': text,
-        'time': timestamp
+        'time': now
     })
 
 
@@ -664,7 +698,7 @@ def upload_report(study_uid):
 
     provided_id = request.form.get('id')
     report_id = _sanitize_report_id(provided_id) or str(uuid.uuid4())
-    name = (request.form.get('name') or file.filename or 'report').strip()
+    name = (request.form.get('name') or file.filename or 'report').strip()[:255]
 
     provided_type = request.form.get('type')
     report_type, ext, mime = _resolve_report_type(file.filename, provided_type, file.mimetype)
@@ -677,48 +711,61 @@ def upload_report(study_uid):
 
     report_path = os.path.join(REPORTS_DIR, f"{report_id}.{ext}")
 
-    db = get_db()
-    existing = db.execute(
-        "SELECT file_path, added_at FROM reports WHERE id = ?",
-        (report_id,)
-    ).fetchone()
+    # Save upload to a temp file first, then commit DB, then move into place.
+    # This prevents orphan files if the DB operation fails.
+    _ensure_data_dirs()
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=REPORTS_DIR, suffix=f".{ext}.tmp")
+    try:
+        os.close(tmp_fd)
+        file.save(tmp_path)
+        size = _parse_int(request.form.get('size'))
+        if size is None:
+            try:
+                size = os.path.getsize(tmp_path)
+            except OSError:
+                size = 0
 
-    if existing and existing['file_path'] and existing['file_path'] != report_path:
+        db = get_db()
+        existing = db.execute(
+            "SELECT file_path, added_at FROM reports WHERE id = ?",
+            (report_id,)
+        ).fetchone()
+
+        if existing and existing['added_at'] and not request.form.get('addedAt'):
+            added_at = existing['added_at']
+
+        db.execute(
+            """
+            INSERT INTO reports (id, study_uid, name, type, size, file_path, added_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                study_uid=excluded.study_uid,
+                name=excluded.name,
+                type=excluded.type,
+                size=excluded.size,
+                file_path=excluded.file_path,
+                added_at=excluded.added_at,
+                updated_at=excluded.updated_at
+            """,
+            (report_id, study_uid, name, report_type, size, report_path, added_at, updated_at)
+        )
+        db.commit()
+
+        # DB committed successfully -- move temp file to final path
+        if existing and existing['file_path'] and existing['file_path'] != report_path:
+            try:
+                if os.path.exists(existing['file_path']):
+                    os.remove(existing['file_path'])
+            except OSError:
+                pass
+        shutil.move(tmp_path, report_path)
+    except Exception:
+        # Clean up temp file on any failure
         try:
-            if os.path.exists(existing['file_path']):
-                os.remove(existing['file_path'])
+            os.remove(tmp_path)
         except OSError:
             pass
-
-    _ensure_data_dirs()
-    file.save(report_path)
-
-    size = _parse_int(request.form.get('size'))
-    if size is None:
-        try:
-            size = os.path.getsize(report_path)
-        except OSError:
-            size = 0
-
-    if existing and existing['added_at'] and not request.form.get('addedAt'):
-        added_at = existing['added_at']
-
-    db.execute(
-        """
-        INSERT INTO reports (id, study_uid, name, type, size, file_path, added_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-            study_uid=excluded.study_uid,
-            name=excluded.name,
-            type=excluded.type,
-            size=excluded.size,
-            file_path=excluded.file_path,
-            added_at=excluded.added_at,
-            updated_at=excluded.updated_at
-        """,
-        (report_id, study_uid, name, report_type, size, report_path, added_at, updated_at)
-    )
-    db.commit()
+        raise
 
     return jsonify({
         'id': report_id,
@@ -800,9 +847,7 @@ def migrate_notes():
                 """
                 INSERT INTO study_notes (study_uid, description, updated_at)
                 VALUES (?, ?, ?)
-                ON CONFLICT(study_uid) DO UPDATE SET
-                    description=excluded.description,
-                    updated_at=excluded.updated_at
+                ON CONFLICT(study_uid) DO NOTHING
                 """,
                 (study_uid, description, now)
             )
@@ -833,9 +878,7 @@ def migrate_notes():
                         """
                         INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
                         VALUES (?, ?, ?, ?)
-                        ON CONFLICT(study_uid, series_uid) DO UPDATE SET
-                            description=excluded.description,
-                            updated_at=excluded.updated_at
+                        ON CONFLICT(study_uid, series_uid) DO NOTHING
                         """,
                         (study_uid, series_uid, series_description, now)
                     )

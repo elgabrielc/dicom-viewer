@@ -901,7 +901,7 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         function generateLocalCommentId() {
-            return `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+            return `local-${crypto.randomUUID()}`;
         }
 
         // Render comments list HTML
@@ -1331,11 +1331,17 @@ Copyright (c) 2026 Divergent Health Technologies
             const reports = state.studies[studyUid].reports;
             if (!reports) return;
             const idx = reports.findIndex(r => r.id === reportId);
-            if (idx !== -1) {
-                reports.splice(idx, 1);
+            if (idx === -1) return;
 
+            const removed = reports.splice(idx, 1)[0];
+            updateReportListUI(studyUid);
+
+            const result = await NotesAPI.deleteReport(studyUid, reportId);
+            if (!result && NotesAPI.isEnabled()) {
+                // Server failed -- restore the report in the UI
+                reports.splice(idx, 0, removed);
                 updateReportListUI(studyUid);
-                await NotesAPI.deleteReport(studyUid, reportId);
+                alert('Failed to delete report. Please try again.');
             }
         }
 
