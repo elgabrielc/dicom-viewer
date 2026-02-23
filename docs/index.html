@@ -1216,6 +1216,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
         async function migrateIfNeeded() {
             if (!NotesAPI.isEnabled()) return;
+            if (typeof CONFIG !== 'undefined' && !CONFIG.features.notesServer) return;
             let alreadyMigrated = false;
             try {
                 alreadyMigrated = !!localStorage.getItem(MIGRATION_FLAG_KEY);

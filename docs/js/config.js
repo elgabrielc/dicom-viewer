@@ -49,8 +49,12 @@ const CONFIG = {
         const mode = this.deploymentMode;
         return {
             // Notes persistence (localStorage)
-            // Disabled on demo/preview to keep them stateless
-            notesPersistence: mode === 'personal' || mode === 'cloud',
+            // Enabled everywhere; localStorage on demo/preview, server on personal/cloud
+            notesPersistence: true,
+
+            // Server-side notes API available (Flask backend)
+            // Only when running with the Flask server or cloud platform
+            notesServer: mode === 'personal' || mode === 'cloud',
 
             // Cloud sync (future feature)
             // Only available on the cloud platform
@@ -75,8 +79,8 @@ const CONFIG = {
     },
 
     /**
-     * Check if notes should persist to localStorage
-     * Convenience method for the most common check
+     * Check if notes should persist
+     * Always true; storage backend depends on deployment mode
      * @returns {boolean}
      */
     shouldPersistNotes() {

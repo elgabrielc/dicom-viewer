@@ -1,26 +1,229 @@
 /**
- * NotesAPI - server-side persistence abstraction
- * Wraps fetch calls to the Flask backend with graceful fallbacks.
+ * NotesAPI - Persistence abstraction with pluggable backends
+ *
+ * Routes to LocalBackend (localStorage) or ServerBackend (Flask API)
+ * based on deployment mode from CONFIG.
+ *
+ * Copyright (c) 2026 Divergent Health Technologies
  */
 
 const NotesAPI = (() => {
-    let serverAvailable = true;
+    const STORAGE_KEY = 'dicom-viewer-notes-v3';
     const baseUrl = '/api/notes';
+    let serverAvailable = true;
+    let lastCommentTimestamp = 0;
+    let commentCounter = 0;
 
-    function isEnabled() {
-        if (typeof CONFIG !== 'undefined' && CONFIG.shouldPersistNotes) {
-            return CONFIG.shouldPersistNotes();
-        }
-        const hostname = window.location.hostname;
-        return !hostname.endsWith('github.io') && !hostname.endsWith('vercel.app');
+    function createEmptyStore() {
+        return { studies: {} };
     }
+
+    function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function normalizeCommentId(value) {
+        if (value === null || value === undefined) return null;
+        const asNumber = Number(value);
+        if (!Number.isNaN(asNumber)) return asNumber;
+        return String(value);
+    }
+
+    function createCommentId() {
+        const now = Date.now();
+        if (now === lastCommentTimestamp) {
+            commentCounter += 1;
+            return `${now}-${commentCounter}`;
+        }
+        lastCommentTimestamp = now;
+        commentCounter = 0;
+        return now;
+    }
+
+    function loadStore() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return createEmptyStore();
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || !parsed.studies || typeof parsed.studies !== 'object') {
+                return createEmptyStore();
+            }
+            return parsed;
+        } catch (e) {
+            console.warn('LocalBackend: failed to load:', e);
+            return createEmptyStore();
+        }
+    }
+
+    function saveStore(store) {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        } catch (e) {
+            console.warn('LocalBackend: failed to save:', e);
+        }
+    }
+
+    function ensureStudy(store, studyUid) {
+        if (!store.studies[studyUid]) {
+            store.studies[studyUid] = {
+                description: '',
+                comments: [],
+                series: {},
+                reports: []
+            };
+            return store.studies[studyUid];
+        }
+
+        const entry = store.studies[studyUid];
+        if (typeof entry.description !== 'string') entry.description = '';
+        if (!Array.isArray(entry.comments)) entry.comments = [];
+        if (!entry.series || typeof entry.series !== 'object') entry.series = {};
+        if (!Array.isArray(entry.reports)) entry.reports = [];
+        return entry;
+    }
+
+    function ensureSeries(studyEntry, seriesUid) {
+        if (!studyEntry.series[seriesUid]) {
+            studyEntry.series[seriesUid] = {
+                description: '',
+                comments: []
+            };
+            return studyEntry.series[seriesUid];
+        }
+
+        const entry = studyEntry.series[seriesUid];
+        if (typeof entry.description !== 'string') entry.description = '';
+        if (!Array.isArray(entry.comments)) entry.comments = [];
+        return entry;
+    }
+
+    function findCommentById(comments, commentId) {
+        if (!Array.isArray(comments)) return null;
+        const target = normalizeCommentId(commentId);
+        if (target === null) return null;
+        return comments.find((comment) => normalizeCommentId(comment.id) === target) || null;
+    }
+
+    // ---- LocalBackend ----
+    const LocalBackend = {
+        async loadNotes(studyUids) {
+            const list = (studyUids || []).filter(Boolean);
+            if (!list.length) return createEmptyStore();
+
+            const store = loadStore();
+            const filtered = createEmptyStore();
+            for (const studyUid of list) {
+                if (store.studies[studyUid]) {
+                    filtered.studies[studyUid] = clone(ensureStudy(store, studyUid));
+                }
+            }
+            return filtered;
+        },
+
+        async saveStudyDescription(studyUid, description) {
+            if (!studyUid) return null;
+            const store = loadStore();
+            const studyEntry = ensureStudy(store, studyUid);
+            studyEntry.description = description || '';
+            saveStore(store);
+            return clone(studyEntry);
+        },
+
+        async saveSeriesDescription(studyUid, seriesUid, description) {
+            if (!studyUid || !seriesUid) return null;
+            const store = loadStore();
+            const studyEntry = ensureStudy(store, studyUid);
+            const seriesEntry = ensureSeries(studyEntry, seriesUid);
+            seriesEntry.description = description || '';
+            saveStore(store);
+            return clone(seriesEntry);
+        },
+
+        async addComment(studyUid, payload = {}) {
+            if (!studyUid) return null;
+            const store = loadStore();
+            const studyEntry = ensureStudy(store, studyUid);
+            const seriesUid = payload.seriesUid || null;
+            const target = seriesUid ? ensureSeries(studyEntry, seriesUid) : studyEntry;
+
+            const comment = {
+                id: createCommentId(),
+                text: (payload.text || '').trim(),
+                time: payload.time ?? Date.now()
+            };
+            target.comments.push(comment);
+            saveStore(store);
+            return clone(comment);
+        },
+
+        async updateComment(studyUid, commentId, payload = {}) {
+            if (!studyUid || commentId === undefined || commentId === null) return null;
+            const store = loadStore();
+            const studyEntry = store.studies[studyUid];
+            if (!studyEntry) return null;
+
+            ensureStudy(store, studyUid);
+
+            let comment = findCommentById(studyEntry.comments, commentId);
+            if (!comment) {
+                for (const seriesEntry of Object.values(studyEntry.series)) {
+                    comment = findCommentById(seriesEntry.comments, commentId);
+                    if (comment) break;
+                }
+            }
+            if (!comment) return null;
+
+            comment.text = (payload.text || '').trim();
+            comment.time = Date.now();
+            saveStore(store);
+            return clone(comment);
+        },
+
+        async deleteComment(studyUid, commentId) {
+            if (!studyUid || commentId === undefined || commentId === null) return false;
+            const store = loadStore();
+            const studyEntry = store.studies[studyUid];
+            if (!studyEntry) return true;
+
+            ensureStudy(store, studyUid);
+            const target = normalizeCommentId(commentId);
+            studyEntry.comments = studyEntry.comments.filter((comment) => normalizeCommentId(comment.id) !== target);
+
+            for (const seriesEntry of Object.values(studyEntry.series)) {
+                if (!Array.isArray(seriesEntry.comments)) {
+                    seriesEntry.comments = [];
+                    continue;
+                }
+                seriesEntry.comments = seriesEntry.comments.filter((comment) => normalizeCommentId(comment.id) !== target);
+            }
+
+            saveStore(store);
+            return true;
+        },
+
+        async uploadReport() {
+            return null;
+        },
+
+        async deleteReport() {
+            return false;
+        },
+
+        async migrate() {
+            return null;
+        },
+
+        getReportFileUrl() {
+            return '';
+        }
+    };
 
     function disableForSession() {
         serverAvailable = false;
     }
 
     async function requestJson(url, options = {}) {
-        if (!isEnabled() || !serverAvailable) return null;
+        if (!serverAvailable) return null;
         try {
             const res = await fetch(url, options);
             if (!res.ok) {
@@ -36,7 +239,7 @@ const NotesAPI = (() => {
     }
 
     async function requestOk(url, options = {}) {
-        if (!isEnabled() || !serverAvailable) return false;
+        if (!serverAvailable) return false;
         try {
             const res = await fetch(url, options);
             if (!res.ok) {
@@ -55,15 +258,16 @@ const NotesAPI = (() => {
         return encodeURIComponent(value);
     }
 
-    return {
-        isEnabled,
+    // ---- ServerBackend ----
+    const ServerBackend = {
         async loadNotes(studyUids) {
             const list = (studyUids || []).filter(Boolean);
             if (!list.length) return { studies: {} };
             const query = list.map(encodeId).join(',');
             const data = await requestJson(`${baseUrl}/?studies=${query}`);
-            return data || { studies: {} };
+            return data || null;
         },
+
         async saveStudyDescription(studyUid, description) {
             if (!studyUid) return null;
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/description`, {
@@ -72,6 +276,7 @@ const NotesAPI = (() => {
                 body: JSON.stringify({ description })
             });
         },
+
         async saveSeriesDescription(studyUid, seriesUid, description) {
             if (!studyUid || !seriesUid) return null;
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/series/${encodeId(seriesUid)}/description`, {
@@ -80,6 +285,7 @@ const NotesAPI = (() => {
                 body: JSON.stringify({ description })
             });
         },
+
         async addComment(studyUid, payload) {
             if (!studyUid) return null;
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments`, {
@@ -88,6 +294,7 @@ const NotesAPI = (() => {
                 body: JSON.stringify(payload)
             });
         },
+
         async updateComment(studyUid, commentId, payload) {
             if (!studyUid || commentId === undefined || commentId === null) return null;
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments/${encodeId(commentId)}`, {
@@ -96,15 +303,17 @@ const NotesAPI = (() => {
                 body: JSON.stringify(payload)
             });
         },
+
         async deleteComment(studyUid, commentId) {
             if (!studyUid || commentId === undefined || commentId === null) return false;
             return await requestOk(`${baseUrl}/${encodeId(studyUid)}/comments/${encodeId(commentId)}`, {
                 method: 'DELETE'
             });
         },
+
         async uploadReport(studyUid, file, meta = {}) {
             if (!studyUid || !file) return null;
-            if (!isEnabled() || !serverAvailable) return null;
+            if (!serverAvailable) return null;
 
             const form = new FormData();
             const filename = meta.name || file.name || 'report';
@@ -132,12 +341,14 @@ const NotesAPI = (() => {
                 return null;
             }
         },
+
         async deleteReport(studyUid, reportId) {
             if (!studyUid || !reportId) return false;
             return await requestOk(`${baseUrl}/${encodeId(studyUid)}/reports/${encodeId(reportId)}`, {
                 method: 'DELETE'
             });
         },
+
         async migrate(payload) {
             return await requestJson(`${baseUrl}/migrate`, {
                 method: 'POST',
@@ -145,10 +356,134 @@ const NotesAPI = (() => {
                 body: JSON.stringify(payload)
             });
         },
+
         getReportFileUrl(reportId) {
             if (!reportId) return '';
             return `${baseUrl}/reports/${encodeId(reportId)}/file`;
         }
+    };
+
+    // ---- Dispatcher ----
+    function getBackend() {
+        const mode = (typeof CONFIG !== 'undefined') ? CONFIG.deploymentMode : 'personal';
+        const hasServer = (typeof CONFIG !== 'undefined' && CONFIG.features)
+            ? CONFIG.features.notesServer
+            : mode === 'personal' || mode === 'cloud';
+        if (hasServer) return 'server';
+        return 'local';
+    }
+
+    function isEnabled() {
+        if (typeof CONFIG !== 'undefined' && CONFIG.shouldPersistNotes) {
+            return CONFIG.shouldPersistNotes();
+        }
+        return true;
+    }
+
+    async function withFallback(serverCall, localCall) {
+        if (getBackend() === 'local') {
+            return await localCall();
+        }
+
+        const result = await serverCall();
+        if (result === null || result === false) {
+            return await localCall();
+        }
+        return result;
+    }
+
+    async function loadNotes(studyUids) {
+        if (!isEnabled()) return { studies: {} };
+        return await withFallback(
+            () => ServerBackend.loadNotes(studyUids),
+            () => LocalBackend.loadNotes(studyUids)
+        );
+    }
+
+    async function saveStudyDescription(studyUid, description) {
+        if (!isEnabled()) return null;
+        return await withFallback(
+            () => ServerBackend.saveStudyDescription(studyUid, description),
+            () => LocalBackend.saveStudyDescription(studyUid, description)
+        );
+    }
+
+    async function saveSeriesDescription(studyUid, seriesUid, description) {
+        if (!isEnabled()) return null;
+        return await withFallback(
+            () => ServerBackend.saveSeriesDescription(studyUid, seriesUid, description),
+            () => LocalBackend.saveSeriesDescription(studyUid, seriesUid, description)
+        );
+    }
+
+    async function addComment(studyUid, payload) {
+        if (!isEnabled()) return null;
+        return await withFallback(
+            () => ServerBackend.addComment(studyUid, payload),
+            () => LocalBackend.addComment(studyUid, payload)
+        );
+    }
+
+    async function updateComment(studyUid, commentId, payload) {
+        if (!isEnabled()) return null;
+        return await withFallback(
+            () => ServerBackend.updateComment(studyUid, commentId, payload),
+            () => LocalBackend.updateComment(studyUid, commentId, payload)
+        );
+    }
+
+    async function deleteComment(studyUid, commentId) {
+        if (!isEnabled()) return false;
+        return await withFallback(
+            () => ServerBackend.deleteComment(studyUid, commentId),
+            () => LocalBackend.deleteComment(studyUid, commentId)
+        );
+    }
+
+    async function uploadReport(studyUid, file, meta) {
+        if (!isEnabled()) return null;
+        return await withFallback(
+            () => ServerBackend.uploadReport(studyUid, file, meta),
+            () => LocalBackend.uploadReport(studyUid, file, meta)
+        );
+    }
+
+    async function deleteReport(studyUid, reportId) {
+        if (!isEnabled()) return false;
+        return await withFallback(
+            () => ServerBackend.deleteReport(studyUid, reportId),
+            () => LocalBackend.deleteReport(studyUid, reportId)
+        );
+    }
+
+    async function migrate(payload) {
+        if (!isEnabled()) return null;
+        return await withFallback(
+            () => ServerBackend.migrate(payload),
+            () => LocalBackend.migrate(payload)
+        );
+    }
+
+    function getReportFileUrl(reportId) {
+        if (!isEnabled()) return '';
+        if (getBackend() === 'server') {
+            return ServerBackend.getReportFileUrl(reportId);
+        }
+        return LocalBackend.getReportFileUrl(reportId);
+    }
+
+    return {
+        isEnabled,
+        loadNotes,
+        saveStudyDescription,
+        saveSeriesDescription,
+        addComment,
+        updateComment,
+        deleteComment,
+        uploadReport,
+        deleteReport,
+        migrate,
+        getReportFileUrl
     };
 })();
 
