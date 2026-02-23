@@ -908,15 +908,15 @@ Copyright (c) 2026 Divergent Health Technologies
         function renderComments(comments, studyUid, seriesUid = null) {
             if (!comments || comments.length === 0) return '';
             return comments.map(c => `
-                <div class="comment-item" data-comment-id="${c.id}">
+                <div class="comment-item" data-comment-id="${escapeHtml(c.id)}">
                     <div class="comment-header">
                         <span class="comment-time">${formatTimestamp(c.time)}</span>
                         <span class="comment-actions">
-                            <button class="comment-btn edit-comment" data-study-uid="${studyUid}" ${seriesUid ? `data-series-uid="${seriesUid}"` : ''} data-comment-id="${c.id}">Edit</button>
-                            <button class="comment-btn delete-comment" data-study-uid="${studyUid}" ${seriesUid ? `data-series-uid="${seriesUid}"` : ''} data-comment-id="${c.id}">Delete</button>
+                            <button class="comment-btn edit-comment" data-study-uid="${escapeHtml(studyUid)}" ${seriesUid ? `data-series-uid="${escapeHtml(seriesUid)}"` : ''} data-comment-id="${escapeHtml(c.id)}">Edit</button>
+                            <button class="comment-btn delete-comment" data-study-uid="${escapeHtml(studyUid)}" ${seriesUid ? `data-series-uid="${escapeHtml(seriesUid)}"` : ''} data-comment-id="${escapeHtml(c.id)}">Delete</button>
                         </span>
                     </div>
-                    <div class="comment-text">${escapeHtml(c.text || '')}</div>
+                    <div class="comment-text">${escapeHtml(c.text)}</div>
                 </div>
             `).join('');
         }
@@ -1025,14 +1025,6 @@ Copyright (c) 2026 Divergent Health Technologies
             if (saved?.id !== undefined && saved?.id !== null) {
                 comment.id = saved.id;
                 updateCommentListUI(studyUid, seriesUid);
-                return;
-            }
-
-            if (NotesAPI.isEnabled()) {
-                const idx = findCommentIndex(comments, comment.id);
-                if (idx !== -1) comments.splice(idx, 1);
-                updateCommentListUI(studyUid, seriesUid);
-                alert('Failed to save comment. Please try again.');
             }
         }
 
@@ -1044,18 +1036,10 @@ Copyright (c) 2026 Divergent Health Technologies
             if (!Array.isArray(comments)) return;
             const idx = findCommentIndex(comments, commentId);
             if (idx === -1) return;
-            const removed = comments.splice(idx, 1)[0];
+            comments.splice(idx, 1);
             updateCommentListUI(studyUid, seriesUid);
-
-            if (String(commentId).startsWith('local-') || !NotesAPI.isEnabled()) {
-                return;
-            }
-
-            const ok = await NotesAPI.deleteComment(studyUid, commentId);
-            if (!ok) {
-                comments.splice(idx, 0, removed);
-                updateCommentListUI(studyUid, seriesUid);
-                alert('Failed to delete comment. Please try again.');
+            if (!String(commentId).startsWith('local-')) {
+                await NotesAPI.deleteComment(studyUid, commentId);
             }
         }
 
@@ -1067,28 +1051,16 @@ Copyright (c) 2026 Divergent Health Technologies
             if (!Array.isArray(comments)) return;
             const idx = findCommentIndex(comments, commentId);
             if (idx === -1) return;
-            const prevText = comments[idx].text;
-            const prevTime = comments[idx].time;
             const newText = prompt('Edit comment:', comments[idx].text);
             if (newText !== null && newText.trim()) {
                 comments[idx].text = newText.trim();
                 comments[idx].time = Date.now();
                 updateCommentListUI(studyUid, seriesUid);
-
-                if (String(commentId).startsWith('local-') || !NotesAPI.isEnabled()) {
-                    return;
-                }
-
-                const updated = await NotesAPI.updateComment(studyUid, commentId, {
+                if (!String(commentId).startsWith('local-')) {
+                    await NotesAPI.updateComment(studyUid, commentId, {
                     text: comments[idx].text,
                     time: comments[idx].time
-                });
-
-                if (!updated) {
-                    comments[idx].text = prevText;
-                    comments[idx].time = prevTime;
-                    updateCommentListUI(studyUid, seriesUid);
-                    alert('Failed to update comment. Please try again.');
+                    });
                 }
             }
         }
@@ -1244,7 +1216,8 @@ Copyright (c) 2026 Divergent Health Technologies
          * @returns {string} HTML-safe string
          */
         function escapeHtml(str) {
-            return str
+            if (str == null) return '';
+            return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
@@ -1518,52 +1491,52 @@ Copyright (c) 2026 Divergent Health Technologies
                 const reportCount = s.reports?.length || 0;
 
                 html += `
-                    <tr class="study-row" data-uid="${s.studyInstanceUid}">
+                    <tr class="study-row" data-uid="${escapeHtml(s.studyInstanceUid)}">
                         <td class="expand-cell"><span class="expand-icon">&#9654;</span></td>
-                        <td>${s.patientName || '-'}</td>
+                        <td>${escapeHtml(s.patientName || '-')}</td>
                         <td>${formatDate(s.studyDate)}</td>
-                        <td>${s.studyDescription || '-'}</td>
-                        <td><span class="modality-badge">${s.modality || '-'}</span></td>
+                        <td>${escapeHtml(s.studyDescription || '-')}</td>
+                        <td><span class="modality-badge">${escapeHtml(s.modality || '-')}</span></td>
                         <td>${s.seriesCount}</td>
                         <td>${s.imageCount}</td>
                         <td class="comment-cell" onclick="event.stopPropagation()">
-                            <button class="comment-toggle" data-study-uid="${s.studyInstanceUid}">
+                            <button class="comment-toggle" data-study-uid="${escapeHtml(s.studyInstanceUid)}">
                                 ${commentCount > 0 ? `${commentCount} comment${commentCount > 1 ? 's' : ''}` : 'Add comment'}
                             </button>
                         </td>
                         <td class="report-cell" onclick="event.stopPropagation()">
-                            <button class="report-toggle" data-study-uid="${s.studyInstanceUid}">
+                            <button class="report-toggle" data-study-uid="${escapeHtml(s.studyInstanceUid)}">
                                 ${reportCount > 0 ? `${reportCount} report${reportCount > 1 ? 's' : ''}` : 'Add report'}
                             </button>
                         </td>
                     </tr>
-                    <tr class="comment-panel-row" data-study-uid="${s.studyInstanceUid}" style="display: none;">
+                    <tr class="comment-panel-row" data-study-uid="${escapeHtml(s.studyInstanceUid)}" style="display: none;">
                         <td colspan="9">
                             <div class="detail-panel">
                                 <div class="description-section">
                                     <h4>Description</h4>
-                                    <textarea class="description-input" data-study-uid="${s.studyInstanceUid}" placeholder="Add a more detailed description...">${(s.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                    <textarea class="description-input" data-study-uid="${escapeHtml(s.studyInstanceUid)}" placeholder="Add a more detailed description...">${escapeHtml(s.description || '')}</textarea>
                                 </div>
                                 <div class="comment-section">
                                     <h4>Comments</h4>
                                     <div class="comment-list">${renderComments(s.comments, s.studyInstanceUid)}</div>
                                     <div class="comment-add">
-                                        <input type="text" class="comment-input add-study-comment" data-study-uid="${s.studyInstanceUid}" placeholder="Write a comment...">
-                                        <button class="comment-submit" data-study-uid="${s.studyInstanceUid}">Add</button>
+                                        <input type="text" class="comment-input add-study-comment" data-study-uid="${escapeHtml(s.studyInstanceUid)}" placeholder="Write a comment...">
+                                        <button class="comment-submit" data-study-uid="${escapeHtml(s.studyInstanceUid)}">Add</button>
                                     </div>
                                 </div>
                                 <div class="report-section">
                                     <h4>Reports</h4>
-                                    <div class="report-list" data-study-uid="${s.studyInstanceUid}">${renderReports(s.reports, s.studyInstanceUid)}</div>
+                                    <div class="report-list" data-study-uid="${escapeHtml(s.studyInstanceUid)}">${renderReports(s.reports, s.studyInstanceUid)}</div>
                                     <div class="report-upload">
-                                        <input type="file" class="report-file-input" data-study-uid="${s.studyInstanceUid}" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
-                                        <button class="report-upload-btn" data-study-uid="${s.studyInstanceUid}">Upload Report</button>
+                                        <input type="file" class="report-file-input" data-study-uid="${escapeHtml(s.studyInstanceUid)}" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
+                                        <button class="report-upload-btn" data-study-uid="${escapeHtml(s.studyInstanceUid)}">Upload Report</button>
                                     </div>
                                 </div>
                             </div>
                         </td>
                     </tr>
-                    <tr class="series-dropdown-row" data-study-uid="${s.studyInstanceUid}" style="display: none;">
+                    <tr class="series-dropdown-row" data-study-uid="${escapeHtml(s.studyInstanceUid)}" style="display: none;">
                         <td colspan="9">
                             <div class="series-dropdown">
                                 ${seriesArr.map(ser => {
@@ -1572,28 +1545,28 @@ Copyright (c) 2026 Divergent Health Technologies
                                     const tsInfo = getTransferSyntaxInfo(ser.transferSyntax);
                                     const warningIcon = !tsInfo.supported ? `<span class="format-warning" title="${tsInfo.name} - may not display correctly">&#9888;</span>` : '';
                                     return `
-                                    <div class="series-dropdown-item" data-study-uid="${s.studyInstanceUid}" data-series-uid="${ser.seriesInstanceUid}">
+                                    <div class="series-dropdown-item" data-study-uid="${escapeHtml(s.studyInstanceUid)}" data-series-uid="${escapeHtml(ser.seriesInstanceUid)}">
                                         <div class="series-main-row">
                                             <span class="series-icon">&#128196;</span>
                                             ${warningIcon}
-                                            <span class="series-name">${ser.seriesDescription || 'Series ' + (ser.seriesNumber || '?')}</span>
+                                            <span class="series-name">${escapeHtml(ser.seriesDescription || 'Series ' + (ser.seriesNumber || '?'))}</span>
                                             <span class="series-count">${ser.slices.length} slices</span>
-                                            <button class="comment-toggle series-comment-toggle" data-study-uid="${s.studyInstanceUid}" data-series-uid="${ser.seriesInstanceUid}" onclick="event.stopPropagation()">
+                                            <button class="comment-toggle series-comment-toggle" data-study-uid="${escapeHtml(s.studyInstanceUid)}" data-series-uid="${escapeHtml(ser.seriesInstanceUid)}" onclick="event.stopPropagation()">
                                                 ${serCommentCount > 0 ? `${serCommentCount} comment${serCommentCount > 1 ? 's' : ''}` : 'Add comment'}
                                             </button>
                                         </div>
-                                        <div class="series-comment-panel" data-study-uid="${s.studyInstanceUid}" data-series-uid="${ser.seriesInstanceUid}" style="display: none;" onclick="event.stopPropagation()">
+                                        <div class="series-comment-panel" data-study-uid="${escapeHtml(s.studyInstanceUid)}" data-series-uid="${escapeHtml(ser.seriesInstanceUid)}" style="display: none;" onclick="event.stopPropagation()">
                                             <div class="detail-panel series-detail-panel">
                                                 <div class="description-section">
                                                     <h4>Description</h4>
-                                                    <textarea class="description-input series-description" data-study-uid="${s.studyInstanceUid}" data-series-uid="${ser.seriesInstanceUid}" placeholder="Add a more detailed description...">${(ser.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                                                    <textarea class="description-input series-description" data-study-uid="${escapeHtml(s.studyInstanceUid)}" data-series-uid="${escapeHtml(ser.seriesInstanceUid)}" placeholder="Add a more detailed description...">${escapeHtml(ser.description || '')}</textarea>
                                                 </div>
                                                 <div class="comment-section">
                                                     <h4>Comments</h4>
                                                     <div class="comment-list">${renderComments(ser.comments, s.studyInstanceUid, ser.seriesInstanceUid)}</div>
                                                     <div class="comment-add">
-                                                        <input type="text" class="comment-input add-series-comment" data-study-uid="${s.studyInstanceUid}" data-series-uid="${ser.seriesInstanceUid}" placeholder="Write a comment...">
-                                                        <button class="comment-submit" data-study-uid="${s.studyInstanceUid}" data-series-uid="${ser.seriesInstanceUid}">Add</button>
+                                                        <input type="text" class="comment-input add-series-comment" data-study-uid="${escapeHtml(s.studyInstanceUid)}" data-series-uid="${escapeHtml(ser.seriesInstanceUid)}" placeholder="Write a comment...">
+                                                        <button class="comment-submit" data-study-uid="${escapeHtml(s.studyInstanceUid)}" data-series-uid="${escapeHtml(ser.seriesInstanceUid)}">Add</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1730,10 +1703,9 @@ Copyright (c) 2026 Divergent Health Technologies
                 textarea.oninput = () => {
                     const studyUid = textarea.dataset.studyUid;
                     if (state.studies[studyUid]) {
-                        const value = textarea.value;
-                        state.studies[studyUid].description = value;
+                        state.studies[studyUid].description = textarea.value;
                         scheduleDescriptionSave(`study:${studyUid}`, () => {
-                            NotesAPI.saveStudyDescription(studyUid, value);
+                            NotesAPI.saveStudyDescription(studyUid, textarea.value);
                         });
                     }
                 };
@@ -1745,10 +1717,9 @@ Copyright (c) 2026 Divergent Health Technologies
                     const studyUid = textarea.dataset.studyUid;
                     const seriesUid = textarea.dataset.seriesUid;
                     if (state.studies[studyUid]?.series[seriesUid]) {
-                        const value = textarea.value;
-                        state.studies[studyUid].series[seriesUid].description = value;
+                        state.studies[studyUid].series[seriesUid].description = textarea.value;
                         scheduleDescriptionSave(`series:${studyUid}:${seriesUid}`, () => {
-                            NotesAPI.saveSeriesDescription(studyUid, seriesUid, value);
+                            NotesAPI.saveSeriesDescription(studyUid, seriesUid, textarea.value);
                         });
                     }
                 };
@@ -2498,7 +2469,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     // Build base metadata (common to all modalities)
                     let metadataHtml = `
                         <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                        <div class="metadata-item"><div class="label">Modality</div><div class="value">${info.modality || '-'}</div></div>
+                        <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
                         <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
                         <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
                         <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
@@ -2510,10 +2481,10 @@ Copyright (c) 2026 Divergent Health Technologies
                         metadataHtml += `<div class="metadata-divider"></div>`;
 
                         if (mr.protocolName) {
-                            metadataHtml += `<div class="metadata-item"><div class="label">Protocol</div><div class="value">${mr.protocolName}</div></div>`;
+                            metadataHtml += `<div class="metadata-item"><div class="label">Protocol</div><div class="value">${escapeHtml(mr.protocolName)}</div></div>`;
                         }
                         if (mr.sequenceName) {
-                            metadataHtml += `<div class="metadata-item"><div class="label">Sequence</div><div class="value">${mr.sequenceName}</div></div>`;
+                            metadataHtml += `<div class="metadata-item"><div class="label">Sequence</div><div class="value">${escapeHtml(mr.sequenceName)}</div></div>`;
                         }
                         if (mr.repetitionTime) {
                             metadataHtml += `<div class="metadata-item"><div class="label">TR</div><div class="value">${mr.repetitionTime.toFixed(1)} ms</div></div>`;
@@ -2522,10 +2493,10 @@ Copyright (c) 2026 Divergent Health Technologies
                             metadataHtml += `<div class="metadata-item"><div class="label">TE</div><div class="value">${mr.echoTime.toFixed(1)} ms</div></div>`;
                         }
                         if (mr.flipAngle) {
-                            metadataHtml += `<div class="metadata-item"><div class="label">Flip Angle</div><div class="value">${mr.flipAngle}°</div></div>`;
+                            metadataHtml += `<div class="metadata-item"><div class="label">Flip Angle</div><div class="value">${escapeHtml(mr.flipAngle)}°</div></div>`;
                         }
                         if (mr.magneticFieldStrength) {
-                            metadataHtml += `<div class="metadata-item"><div class="label">Field</div><div class="value">${mr.magneticFieldStrength}T</div></div>`;
+                            metadataHtml += `<div class="metadata-item"><div class="label">Field</div><div class="value">${escapeHtml(mr.magneticFieldStrength)}T</div></div>`;
                         }
                     }
 
@@ -2534,7 +2505,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     // Blank/padding slice - show basic info
                     metadataContent.innerHTML = `
                         <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                        <div class="metadata-item"><div class="label">Modality</div><div class="value">${info.modality || '-'}</div></div>
+                        <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
                         <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
                         <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
                     `;
@@ -2600,8 +2571,8 @@ Copyright (c) 2026 Divergent Health Technologies
 
             const seriesArr = Object.values(state.currentStudy.series);
             seriesList.innerHTML = seriesArr.map(s => `
-                <div class="series-item" data-uid="${s.seriesInstanceUid}">
-                    <div class="series-name">${s.seriesDescription || 'Series ' + (s.seriesNumber || '?')}</div>
+                <div class="series-item" data-uid="${escapeHtml(s.seriesInstanceUid)}">
+                    <div class="series-name">${escapeHtml(s.seriesDescription || 'Series ' + (s.seriesNumber || '?'))}</div>
                     <div class="series-info">${s.slices.length} slices</div>
                 </div>
             `).join('');
@@ -3241,7 +3212,7 @@ Copyright (c) 2026 Divergent Health Technologies
                     if (info && !info.error && !info.isBlank) {
                         let metadataHtml = `
                             <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                            <div class="metadata-item"><div class="label">Modality</div><div class="value">${info.modality || '-'}</div></div>
+                            <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
                             <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
                             <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
                         `;

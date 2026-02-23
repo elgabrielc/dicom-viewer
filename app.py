@@ -52,7 +52,6 @@ from pydicom.errors import InvalidDicomError
 # =============================================================================
 
 app = Flask(__name__, static_folder='docs', static_url_path='')
-# Limit upload size to prevent oversized report uploads from exhausting memory.
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
 
 # Test data folder for automated testing (bypasses File System Access API)
@@ -94,6 +93,44 @@ _test_data_cache = None
 
 
 # =============================================================================
+# SECURITY MIDDLEWARE
+# =============================================================================
+
+@app.before_request
+def _csrf_origin_check():
+    """Block cross-origin state-modifying requests (CSRF protection).
+
+    For POST/PUT/DELETE, verify that the Origin or Referer header matches
+    the server's own host. This prevents malicious websites from submitting
+    forms or fetch requests to the local server while a user is browsing.
+    Multipart uploads are the primary concern since they bypass CORS preflight.
+    """
+    if request.method in ('POST', 'PUT', 'DELETE'):
+        origin = request.headers.get('Origin')
+        if not origin:
+            # Fall back to Referer if Origin is absent (some browsers strip it)
+            referer = request.headers.get('Referer')
+            if referer:
+                from urllib.parse import urlparse
+                origin = f"{urlparse(referer).scheme}://{urlparse(referer).netloc}"
+
+        if origin:
+            from urllib.parse import urlparse
+            origin_host = urlparse(origin).netloc
+            server_host = request.host  # includes port
+            if origin_host != server_host:
+                return jsonify({'error': 'Cross-origin request blocked'}), 403
+
+
+@app.after_request
+def _set_security_headers(response):
+    """Add standard security headers to all responses."""
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    return response
+
+
+# =============================================================================
 # NOTES DATABASE (SQLITE)
 # =============================================================================
 
@@ -116,23 +153,6 @@ def _sanitize_report_id(value):
     if not re.match(r'^[a-zA-Z0-9_-]{8,64}$', value):
         return None
     return value
-
-
-def _insert_comment_if_missing(db, study_uid, series_uid, text, timestamp):
-    db.execute(
-        """
-        INSERT INTO comments (study_uid, series_uid, text, time)
-        SELECT ?, ?, ?, ?
-        WHERE NOT EXISTS (
-            SELECT 1 FROM comments
-            WHERE study_uid = ?
-              AND series_uid IS ?
-              AND text = ?
-              AND time = ?
-        )
-        """,
-        (study_uid, series_uid, text, timestamp, study_uid, series_uid, text, timestamp)
-    )
 
 
 def _resolve_report_type(filename, provided_type, mimetype):
@@ -780,10 +800,6 @@ def upload_report(study_uid):
 
 @app.route('/api/notes/reports/<report_id>/file', methods=['GET'])
 def get_report_file(report_id):
-    report_id = _sanitize_report_id(report_id)
-    if not report_id:
-        return jsonify({'error': 'Invalid report id'}), 400
-
     db = get_db()
     row = db.execute(
         "SELECT file_path, type FROM reports WHERE id = ?",
@@ -799,10 +815,6 @@ def get_report_file(report_id):
 
 @app.route('/api/notes/<study_uid>/reports/<report_id>', methods=['DELETE'])
 def delete_report(study_uid, report_id):
-    report_id = _sanitize_report_id(report_id)
-    if not report_id:
-        return jsonify({'error': 'Invalid report id'}), 400
-
     db = get_db()
     row = db.execute(
         "SELECT file_path FROM reports WHERE id = ? AND study_uid = ?",
@@ -859,7 +871,10 @@ def migrate_notes():
             if not text:
                 continue
             timestamp = _parse_int(comment.get('time'), now)
-            _insert_comment_if_missing(db, study_uid, None, text, timestamp)
+            db.execute(
+                "INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)",
+                (study_uid, '', text, timestamp)
+            )
 
         series_blob = stored.get('series') or {}
         if isinstance(series_blob, dict):
@@ -890,7 +905,10 @@ def migrate_notes():
                     if not text:
                         continue
                     timestamp = _parse_int(comment.get('time'), now)
-                    _insert_comment_if_missing(db, study_uid, series_uid, text, timestamp)
+                    db.execute(
+                        "INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)",
+                        (study_uid, series_uid, text, timestamp)
+                    )
 
         migrated += 1
 
@@ -903,4 +921,6 @@ def migrate_notes():
 # =============================================================================
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5001)
+    debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
+    host = '0.0.0.0' if os.environ.get('FLASK_HOST') == '0.0.0.0' else '127.0.0.1'
+    app.run(debug=debug, host=host, port=5001)
