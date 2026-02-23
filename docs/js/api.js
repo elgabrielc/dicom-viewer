@@ -11,6 +11,8 @@ const NotesAPI = (() => {
     const STORAGE_KEY = 'dicom-viewer-notes-v3';
     const baseUrl = '/api/notes';
     let serverAvailable = true;
+    let serverDisabledAt = 0;
+    const SERVER_RETRY_MS = 60000; // Retry server after 60 seconds
     let lastCommentTimestamp = 0;
     let commentCounter = 0;
 
@@ -37,7 +39,7 @@ const NotesAPI = (() => {
         }
         lastCommentTimestamp = now;
         commentCounter = 0;
-        return now;
+        return String(now);
     }
 
     function loadStore() {
@@ -206,7 +208,9 @@ const NotesAPI = (() => {
         },
 
         async deleteReport() {
-            return false;
+            // No persistent report storage in localStorage, so delete is a no-op success.
+            // Returning true lets the UI remove the in-memory entry without error.
+            return true;
         },
 
         async migrate() {
@@ -218,12 +222,24 @@ const NotesAPI = (() => {
         }
     };
 
-    function disableForSession() {
+    function disableServer() {
         serverAvailable = false;
+        serverDisabledAt = Date.now();
+        console.warn('NotesAPI: server unreachable, using local storage. Will retry in 60s.');
+    }
+
+    function checkServerAvailable() {
+        if (serverAvailable) return true;
+        // Circuit breaker: re-enable after retry interval
+        if (Date.now() - serverDisabledAt >= SERVER_RETRY_MS) {
+            serverAvailable = true;
+            return true;
+        }
+        return false;
     }
 
     async function requestJson(url, options = {}) {
-        if (!serverAvailable) return null;
+        if (!checkServerAvailable()) return null;
         try {
             const res = await fetch(url, options);
             if (!res.ok) {
@@ -233,13 +249,13 @@ const NotesAPI = (() => {
             return await res.json();
         } catch (err) {
             console.warn('NotesAPI unavailable:', err);
-            disableForSession();
+            disableServer();
             return null;
         }
     }
 
     async function requestOk(url, options = {}) {
-        if (!serverAvailable) return false;
+        if (!checkServerAvailable()) return false;
         try {
             const res = await fetch(url, options);
             if (!res.ok) {
@@ -249,7 +265,7 @@ const NotesAPI = (() => {
             return true;
         } catch (err) {
             console.warn('NotesAPI unavailable:', err);
-            disableForSession();
+            disableServer();
             return false;
         }
     }
@@ -313,7 +329,7 @@ const NotesAPI = (() => {
 
         async uploadReport(studyUid, file, meta = {}) {
             if (!studyUid || !file) return null;
-            if (!serverAvailable) return null;
+            if (!checkServerAvailable()) return null;
 
             const form = new FormData();
             const filename = meta.name || file.name || 'report';
@@ -337,7 +353,7 @@ const NotesAPI = (() => {
                 return await res.json();
             } catch (err) {
                 console.warn('NotesAPI unavailable:', err);
-                disableForSession();
+                disableServer();
                 return null;
             }
         },
@@ -386,7 +402,11 @@ const NotesAPI = (() => {
         }
 
         const result = await serverCall();
-        if (result === null || result === false) {
+        // Only fall back to localStorage when the server became unreachable
+        // (network error that triggered disableServer). Application-level
+        // errors (4xx, 5xx) should surface as failures, not be silently
+        // absorbed by the local backend -- that would create divergent data.
+        if ((result === null || result === false) && !serverAvailable) {
             return await localCall();
         }
         return result;
