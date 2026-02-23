@@ -22,10 +22,14 @@ Copyright (c) 2026 Divergent Health Technologies
 
 import os
 import hashlib
+import re
+import sqlite3
+import time
+import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from flask import Flask, jsonify, send_file
+from flask import Flask, jsonify, send_file, request, g
 import pydicom
 from pydicom.errors import InvalidDicomError
 
@@ -35,6 +39,8 @@ from pydicom.errors import InvalidDicomError
 # =============================================================================
 
 app = Flask(__name__, static_folder='docs', static_url_path='')
+# Limit upload size to prevent oversized report uploads from exhausting memory.
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
 
 # Test data folder for automated testing (bypasses File System Access API)
 TEST_DATA_FOLDER = os.environ.get(
@@ -42,8 +48,168 @@ TEST_DATA_FOLDER = os.environ.get(
     os.path.expanduser('~/claude 0/test-data-mri-1')
 )
 
+# Notes database storage (SQLite + report files)
+DATA_DIR = os.environ.get(
+    'DICOM_VIEWER_DATA_DIR',
+    os.path.join(app.root_path, 'data')
+)
+DB_PATH = os.path.join(DATA_DIR, 'viewer.db')
+REPORTS_DIR = os.path.join(DATA_DIR, 'reports')
+
+REPORT_TYPE_MAP = {
+    'pdf': ('pdf', 'pdf', 'application/pdf'),
+    'png': ('png', 'png', 'image/png'),
+    'jpg': ('jpg', 'jpg', 'image/jpeg'),
+    'jpeg': ('jpg', 'jpg', 'image/jpeg'),
+}
+
 # Cache for test data (loaded once on first request)
 _test_data_cache = None
+
+
+# =============================================================================
+# NOTES DATABASE (SQLITE)
+# =============================================================================
+
+def _ensure_data_dirs():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+
+
+def _parse_int(value, default=None):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _sanitize_report_id(value):
+    if not value:
+        return None
+    value = value.strip()
+    if not re.match(r'^[a-zA-Z0-9_-]{8,64}$', value):
+        return None
+    return value
+
+
+def _insert_comment_if_missing(db, study_uid, series_uid, text, timestamp):
+    db.execute(
+        """
+        INSERT INTO comments (study_uid, series_uid, text, time)
+        SELECT ?, ?, ?, ?
+        WHERE NOT EXISTS (
+            SELECT 1 FROM comments
+            WHERE study_uid = ?
+              AND series_uid IS ?
+              AND text = ?
+              AND time = ?
+        )
+        """,
+        (study_uid, series_uid, text, timestamp, study_uid, series_uid, text, timestamp)
+    )
+
+
+def _resolve_report_type(filename, provided_type, mimetype):
+    if provided_type:
+        provided = provided_type.lower().strip()
+        if provided in REPORT_TYPE_MAP:
+            report_type, ext, mime = REPORT_TYPE_MAP[provided]
+            return report_type, ext, mime
+
+    if filename:
+        ext = os.path.splitext(filename)[1].lower().lstrip('.')
+        if ext in REPORT_TYPE_MAP:
+            report_type, resolved_ext, mime = REPORT_TYPE_MAP[ext]
+            return report_type, resolved_ext, mime
+
+    if mimetype:
+        for report_type, (canonical, ext, mime) in REPORT_TYPE_MAP.items():
+            if mimetype == mime:
+                return canonical, ext, mime
+
+    return None, None, None
+
+
+def get_db():
+    if 'db' not in g:
+        _ensure_data_dirs()
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        g.db = conn
+    return g.db
+
+
+@app.teardown_appcontext
+def _close_db(exception=None):
+    db = g.pop('db', None)
+    if db is not None:
+        db.close()
+
+
+def init_db():
+    _ensure_data_dirs()
+    db = sqlite3.connect(DB_PATH)
+    try:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_notes (
+                study_uid TEXT PRIMARY KEY,
+                description TEXT,
+                updated_at INTEGER
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS series_notes (
+                study_uid TEXT NOT NULL,
+                series_uid TEXT NOT NULL,
+                description TEXT,
+                updated_at INTEGER,
+                PRIMARY KEY (study_uid, series_uid)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                study_uid TEXT NOT NULL,
+                series_uid TEXT,
+                text TEXT NOT NULL,
+                time INTEGER NOT NULL,
+                UNIQUE(study_uid, series_uid, text, time)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reports (
+                id TEXT PRIMARY KEY,
+                study_uid TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                file_path TEXT,
+                added_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """
+        )
+        # Idempotency index for migration -- safe to run on existing DBs
+        db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_comments_dedup
+            ON comments(study_uid, series_uid, text, time)
+            """
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+# Initialize the database on startup
+init_db()
 
 
 # =============================================================================
@@ -237,6 +403,456 @@ def get_test_info():
         'studyCount': len(studies),
         'totalImages': sum(s['image_count'] for s in studies.values())
     })
+
+
+# =============================================================================
+# NOTES API (PERSISTENT COMMENTS/REPORTS)
+# =============================================================================
+
+def _build_notes_payload(study_uids, db):
+    if not study_uids:
+        return {}
+
+    placeholders = ','.join('?' for _ in study_uids)
+
+    study_rows = db.execute(
+        f"SELECT study_uid, description FROM study_notes WHERE study_uid IN ({placeholders})",
+        study_uids
+    ).fetchall()
+
+    series_rows = db.execute(
+        f"SELECT study_uid, series_uid, description FROM series_notes WHERE study_uid IN ({placeholders})",
+        study_uids
+    ).fetchall()
+
+    comment_rows = db.execute(
+        f"""
+        SELECT id, study_uid, series_uid, text, time
+        FROM comments
+        WHERE study_uid IN ({placeholders})
+        ORDER BY time ASC, id ASC
+        """,
+        study_uids
+    ).fetchall()
+
+    report_rows = db.execute(
+        f"""
+        SELECT id, study_uid, name, type, size, added_at, updated_at
+        FROM reports
+        WHERE study_uid IN ({placeholders})
+        AND file_path IS NOT NULL
+        ORDER BY added_at ASC, id ASC
+        """,
+        study_uids
+    ).fetchall()
+
+    notes = {}
+
+    def ensure(study_uid):
+        if study_uid not in notes:
+            notes[study_uid] = {
+                'description': '',
+                'comments': [],
+                'series': {},
+                'reports': []
+            }
+
+    for row in study_rows:
+        study_uid = row['study_uid']
+        ensure(study_uid)
+        notes[study_uid]['description'] = row['description'] or ''
+
+    for row in series_rows:
+        study_uid = row['study_uid']
+        series_uid = row['series_uid']
+        ensure(study_uid)
+        series = notes[study_uid]['series'].setdefault(
+            series_uid,
+            {'description': '', 'comments': []}
+        )
+        series['description'] = row['description'] or ''
+
+    for row in comment_rows:
+        study_uid = row['study_uid']
+        ensure(study_uid)
+        comment = {
+            'id': row['id'],
+            'text': row['text'],
+            'time': row['time']
+        }
+        series_uid = row['series_uid']
+        if series_uid:
+            series = notes[study_uid]['series'].setdefault(
+                series_uid,
+                {'description': '', 'comments': []}
+            )
+            series['comments'].append(comment)
+        else:
+            notes[study_uid]['comments'].append(comment)
+
+    for row in report_rows:
+        study_uid = row['study_uid']
+        ensure(study_uid)
+        notes[study_uid]['reports'].append({
+            'id': row['id'],
+            'name': row['name'],
+            'type': row['type'],
+            'size': row['size'],
+            'addedAt': row['added_at'],
+            'updatedAt': row['updated_at']
+        })
+
+    def has_notes(entry):
+        if entry['description'] or entry['comments'] or entry['reports']:
+            return True
+        for series_entry in entry['series'].values():
+            if series_entry['description'] or series_entry['comments']:
+                return True
+        return False
+
+    return {uid: data for uid, data in notes.items() if has_notes(data)}
+
+
+@app.route('/api/notes/', methods=['GET'])
+def get_notes():
+    studies_param = request.args.get('studies', '').strip()
+    if not studies_param:
+        return jsonify({'studies': {}})
+
+    study_uids = [uid for uid in studies_param.split(',') if uid]
+    if not study_uids:
+        return jsonify({'studies': {}})
+
+    db = get_db()
+    payload = _build_notes_payload(study_uids, db)
+    return jsonify({'studies': payload})
+
+
+@app.route('/api/notes/<study_uid>/description', methods=['PUT'])
+def save_study_description(study_uid):
+    data = request.get_json(silent=True) or {}
+    description = (data.get('description') or '').strip()
+    db = get_db()
+    now = int(time.time() * 1000)
+
+    if description:
+        db.execute(
+            """
+            INSERT INTO study_notes (study_uid, description, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(study_uid) DO UPDATE SET
+                description=excluded.description,
+                updated_at=excluded.updated_at
+            """,
+            (study_uid, description, now)
+        )
+    else:
+        db.execute("DELETE FROM study_notes WHERE study_uid = ?", (study_uid,))
+
+    db.commit()
+    return jsonify({'studyUid': study_uid, 'description': description, 'updatedAt': now})
+
+
+@app.route('/api/notes/<study_uid>/series/<series_uid>/description', methods=['PUT'])
+def save_series_description(study_uid, series_uid):
+    data = request.get_json(silent=True) or {}
+    description = (data.get('description') or '').strip()
+    db = get_db()
+    now = int(time.time() * 1000)
+
+    if description:
+        db.execute(
+            """
+            INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(study_uid, series_uid) DO UPDATE SET
+                description=excluded.description,
+                updated_at=excluded.updated_at
+            """,
+            (study_uid, series_uid, description, now)
+        )
+    else:
+        db.execute(
+            "DELETE FROM series_notes WHERE study_uid = ? AND series_uid = ?",
+            (study_uid, series_uid)
+        )
+
+    db.commit()
+    return jsonify({
+        'studyUid': study_uid,
+        'seriesUid': series_uid,
+        'description': description,
+        'updatedAt': now
+    })
+
+
+@app.route('/api/notes/<study_uid>/comments', methods=['POST'])
+def add_comment(study_uid):
+    data = request.get_json(silent=True) or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'Comment text is required'}), 400
+
+    series_uid = (data.get('seriesUid') or '').strip() or None
+    timestamp = _parse_int(data.get('time'), int(time.time() * 1000))
+
+    db = get_db()
+    cursor = db.execute(
+        "INSERT INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)",
+        (study_uid, series_uid, text, timestamp)
+    )
+    db.commit()
+
+    return jsonify({
+        'id': cursor.lastrowid,
+        'studyUid': study_uid,
+        'seriesUid': series_uid,
+        'text': text,
+        'time': timestamp
+    })
+
+
+@app.route('/api/notes/<study_uid>/comments/<int:comment_id>', methods=['PUT'])
+def update_comment(study_uid, comment_id):
+    data = request.get_json(silent=True) or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'Comment text is required'}), 400
+
+    timestamp = _parse_int(data.get('time'), int(time.time() * 1000))
+    db = get_db()
+    cursor = db.execute(
+        "UPDATE comments SET text = ?, time = ? WHERE id = ? AND study_uid = ?",
+        (text, timestamp, comment_id, study_uid)
+    )
+    db.commit()
+
+    if cursor.rowcount == 0:
+        return jsonify({'error': 'Comment not found'}), 404
+
+    return jsonify({
+        'id': comment_id,
+        'studyUid': study_uid,
+        'text': text,
+        'time': timestamp
+    })
+
+
+@app.route('/api/notes/<study_uid>/comments/<int:comment_id>', methods=['DELETE'])
+def delete_comment(study_uid, comment_id):
+    db = get_db()
+    cursor = db.execute(
+        "DELETE FROM comments WHERE id = ? AND study_uid = ?",
+        (comment_id, study_uid)
+    )
+    db.commit()
+
+    if cursor.rowcount == 0:
+        return jsonify({'error': 'Comment not found'}), 404
+
+    return jsonify({'deleted': True, 'id': comment_id})
+
+
+@app.route('/api/notes/<study_uid>/reports', methods=['POST'])
+def upload_report(study_uid):
+    if 'file' not in request.files:
+        return jsonify({'error': 'Report file is required'}), 400
+
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify({'error': 'Report file is required'}), 400
+
+    provided_id = request.form.get('id')
+    report_id = _sanitize_report_id(provided_id) or str(uuid.uuid4())
+    name = (request.form.get('name') or file.filename or 'report').strip()
+
+    provided_type = request.form.get('type')
+    report_type, ext, mime = _resolve_report_type(file.filename, provided_type, file.mimetype)
+    if not report_type:
+        return jsonify({'error': 'Unsupported report file type'}), 400
+
+    now = int(time.time() * 1000)
+    added_at = _parse_int(request.form.get('addedAt'), now)
+    updated_at = _parse_int(request.form.get('updatedAt'), now)
+
+    report_path = os.path.join(REPORTS_DIR, f"{report_id}.{ext}")
+
+    db = get_db()
+    existing = db.execute(
+        "SELECT file_path, added_at FROM reports WHERE id = ?",
+        (report_id,)
+    ).fetchone()
+
+    if existing and existing['file_path'] and existing['file_path'] != report_path:
+        try:
+            if os.path.exists(existing['file_path']):
+                os.remove(existing['file_path'])
+        except OSError:
+            pass
+
+    _ensure_data_dirs()
+    file.save(report_path)
+
+    size = _parse_int(request.form.get('size'))
+    if size is None:
+        try:
+            size = os.path.getsize(report_path)
+        except OSError:
+            size = 0
+
+    if existing and existing['added_at'] and not request.form.get('addedAt'):
+        added_at = existing['added_at']
+
+    db.execute(
+        """
+        INSERT INTO reports (id, study_uid, name, type, size, file_path, added_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            study_uid=excluded.study_uid,
+            name=excluded.name,
+            type=excluded.type,
+            size=excluded.size,
+            file_path=excluded.file_path,
+            added_at=excluded.added_at,
+            updated_at=excluded.updated_at
+        """,
+        (report_id, study_uid, name, report_type, size, report_path, added_at, updated_at)
+    )
+    db.commit()
+
+    return jsonify({
+        'id': report_id,
+        'studyUid': study_uid,
+        'name': name,
+        'type': report_type,
+        'size': size,
+        'addedAt': added_at,
+        'updatedAt': updated_at
+    })
+
+
+@app.route('/api/notes/reports/<report_id>/file', methods=['GET'])
+def get_report_file(report_id):
+    report_id = _sanitize_report_id(report_id)
+    if not report_id:
+        return jsonify({'error': 'Invalid report id'}), 400
+
+    db = get_db()
+    row = db.execute(
+        "SELECT file_path, type FROM reports WHERE id = ?",
+        (report_id,)
+    ).fetchone()
+
+    if not row or not row['file_path'] or not os.path.exists(row['file_path']):
+        return jsonify({'error': 'Report file not found'}), 404
+
+    mimetype = REPORT_TYPE_MAP.get(row['type'], ('', '', 'application/octet-stream'))[2]
+    return send_file(row['file_path'], mimetype=mimetype, as_attachment=False)
+
+
+@app.route('/api/notes/<study_uid>/reports/<report_id>', methods=['DELETE'])
+def delete_report(study_uid, report_id):
+    report_id = _sanitize_report_id(report_id)
+    if not report_id:
+        return jsonify({'error': 'Invalid report id'}), 400
+
+    db = get_db()
+    row = db.execute(
+        "SELECT file_path FROM reports WHERE id = ? AND study_uid = ?",
+        (report_id, study_uid)
+    ).fetchone()
+
+    if not row:
+        return jsonify({'error': 'Report not found'}), 404
+
+    if row['file_path'] and os.path.exists(row['file_path']):
+        try:
+            os.remove(row['file_path'])
+        except OSError:
+            pass
+
+    db.execute(
+        "DELETE FROM reports WHERE id = ? AND study_uid = ?",
+        (report_id, study_uid)
+    )
+    db.commit()
+    return jsonify({'deleted': True, 'id': report_id})
+
+
+@app.route('/api/notes/migrate', methods=['POST'])
+def migrate_notes():
+    data = request.get_json(silent=True) or {}
+    comments_blob = data.get('comments') or {}
+    if not isinstance(comments_blob, dict):
+        return jsonify({'error': 'Invalid migration payload'}), 400
+
+    db = get_db()
+    now = int(time.time() * 1000)
+    migrated = 0
+
+    for study_uid, stored in comments_blob.items():
+        if not isinstance(stored, dict):
+            continue
+
+        description = (stored.get('description') or '').strip()
+        if description:
+            db.execute(
+                """
+                INSERT INTO study_notes (study_uid, description, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(study_uid) DO UPDATE SET
+                    description=excluded.description,
+                    updated_at=excluded.updated_at
+                """,
+                (study_uid, description, now)
+            )
+
+        for comment in stored.get('study') or []:
+            if not isinstance(comment, dict):
+                continue
+            text = (comment.get('text') or '').strip()
+            if not text:
+                continue
+            timestamp = _parse_int(comment.get('time'), now)
+            _insert_comment_if_missing(db, study_uid, None, text, timestamp)
+
+        series_blob = stored.get('series') or {}
+        if isinstance(series_blob, dict):
+            for series_uid, series_data in series_blob.items():
+                series_comments = []
+                series_description = ''
+
+                if isinstance(series_data, list):
+                    series_comments = series_data
+                elif isinstance(series_data, dict):
+                    series_description = (series_data.get('description') or '').strip()
+                    series_comments = series_data.get('comments') or []
+
+                if series_description:
+                    db.execute(
+                        """
+                        INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(study_uid, series_uid) DO UPDATE SET
+                            description=excluded.description,
+                            updated_at=excluded.updated_at
+                        """,
+                        (study_uid, series_uid, series_description, now)
+                    )
+
+                for comment in series_comments:
+                    if not isinstance(comment, dict):
+                        continue
+                    text = (comment.get('text') or '').strip()
+                    if not text:
+                        continue
+                    timestamp = _parse_int(comment.get('time'), now)
+                    _insert_comment_if_missing(db, study_uid, series_uid, text, timestamp)
+
+        migrated += 1
+
+    db.commit()
+    return jsonify({'migrated': migrated})
 
 
 # =============================================================================

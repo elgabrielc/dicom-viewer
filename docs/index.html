@@ -45,6 +45,9 @@ Copyright (c) 2026 Divergent Health Technologies
 
     <!-- Application configuration (deployment mode, feature flags) -->
     <script src="js/config.js"></script>
+
+    <!-- Notes API abstraction (server persistence with graceful fallback) -->
+    <script src="js/api.js"></script>
 </head>
 <body>
     <!-- LIBRARY VIEW -->
@@ -226,77 +229,6 @@ Copyright (c) 2026 Divergent Health Technologies
             activeMeasurement: null,    // Measurement being drawn
             pixelSpacing: null          // {row, col} in mm, or null if uncalibrated
         };
-
-        // =====================================================================
-        // INDEXEDDB STORAGE FOR REPORT BLOBS
-        // =====================================================================
-
-        const REPORTS_DB_NAME = 'dicom-viewer-reports';
-        const REPORTS_DB_VERSION = 1;
-
-        /**
-         * Open or create the reports IndexedDB database
-         * @returns {Promise<IDBDatabase>}
-         */
-        function openReportsDB() {
-            return new Promise((resolve, reject) => {
-                const request = indexedDB.open(REPORTS_DB_NAME, REPORTS_DB_VERSION);
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => resolve(request.result);
-                request.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('reports')) {
-                        db.createObjectStore('reports', { keyPath: 'id' });
-                    }
-                };
-            });
-        }
-
-        /**
-         * Store a report blob in IndexedDB
-         * @param {string} reportId - Report UUID
-         * @param {Blob} blob - File blob to store
-         * @returns {Promise<void>}
-         */
-        async function storeReportBlob(reportId, blob) {
-            const db = await openReportsDB();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction('reports', 'readwrite');
-                tx.objectStore('reports').put({ id: reportId, blob: blob });
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => reject(tx.error);
-            });
-        }
-
-        /**
-         * Retrieve a report blob from IndexedDB
-         * @param {string} reportId - Report UUID
-         * @returns {Promise<Blob|null>}
-         */
-        async function getReportBlobFromDB(reportId) {
-            const db = await openReportsDB();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction('reports', 'readonly');
-                const request = tx.objectStore('reports').get(reportId);
-                request.onsuccess = () => resolve(request.result?.blob || null);
-                request.onerror = () => reject(request.error);
-            });
-        }
-
-        /**
-         * Delete a report blob from IndexedDB
-         * @param {string} reportId - Report UUID
-         * @returns {Promise<void>}
-         */
-        async function deleteReportBlobFromDB(reportId) {
-            const db = await openReportsDB();
-            return new Promise((resolve, reject) => {
-                const tx = db.transaction('reports', 'readwrite');
-                tx.objectStore('reports').delete(reportId);
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => reject(tx.error);
-            });
-        }
 
         // =====================================================================
         // DOM ELEMENT REFERENCES
@@ -955,19 +887,36 @@ Copyright (c) 2026 Divergent Health Technologies
             });
         }
 
+        function normalizeCommentId(value) {
+            if (value === null || value === undefined) return null;
+            const asNumber = Number(value);
+            if (!Number.isNaN(asNumber)) return asNumber;
+            return String(value);
+        }
+
+        function findCommentIndex(comments, commentId) {
+            const target = normalizeCommentId(commentId);
+            if (target === null) return -1;
+            return comments.findIndex(c => normalizeCommentId(c.id) === target);
+        }
+
+        function generateLocalCommentId() {
+            return `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+        }
+
         // Render comments list HTML
         function renderComments(comments, studyUid, seriesUid = null) {
             if (!comments || comments.length === 0) return '';
-            return comments.map((c, idx) => `
-                <div class="comment-item" data-idx="${idx}">
+            return comments.map(c => `
+                <div class="comment-item" data-comment-id="${c.id}">
                     <div class="comment-header">
                         <span class="comment-time">${formatTimestamp(c.time)}</span>
                         <span class="comment-actions">
-                            <button class="comment-btn edit-comment" data-study-uid="${studyUid}" ${seriesUid ? `data-series-uid="${seriesUid}"` : ''} data-idx="${idx}">Edit</button>
-                            <button class="comment-btn delete-comment" data-study-uid="${studyUid}" ${seriesUid ? `data-series-uid="${seriesUid}"` : ''} data-idx="${idx}">Delete</button>
+                            <button class="comment-btn edit-comment" data-study-uid="${studyUid}" ${seriesUid ? `data-series-uid="${seriesUid}"` : ''} data-comment-id="${c.id}">Edit</button>
+                            <button class="comment-btn delete-comment" data-study-uid="${studyUid}" ${seriesUid ? `data-series-uid="${seriesUid}"` : ''} data-comment-id="${c.id}">Delete</button>
                         </span>
                     </div>
-                    <div class="comment-text">${c.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                    <div class="comment-text">${escapeHtml(c.text || '')}</div>
                 </div>
             `).join('');
         }
@@ -978,6 +927,18 @@ Copyright (c) 2026 Divergent Health Technologies
             seriesPanels: new Set(),
             seriesDropdowns: new Set()
         };
+
+        const descriptionSaveTimers = new Map();
+
+        function scheduleDescriptionSave(key, callback) {
+            const existing = descriptionSaveTimers.get(key);
+            if (existing) clearTimeout(existing);
+            const handle = setTimeout(() => {
+                descriptionSaveTimers.delete(key);
+                callback();
+            }, 500);
+            descriptionSaveTimers.set(key, handle);
+        }
 
         // Update just the comment list without re-rendering everything
         function updateCommentListUI(studyUid, seriesUid) {
@@ -1001,13 +962,13 @@ Copyright (c) 2026 Divergent Health Technologies
                 commentList.querySelectorAll('.edit-comment').forEach(btn => {
                     btn.onclick = (e) => {
                         e.stopPropagation();
-                        editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, parseInt(btn.dataset.idx));
+                        editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
                     };
                 });
                 commentList.querySelectorAll('.delete-comment').forEach(btn => {
                     btn.onclick = (e) => {
                         e.stopPropagation();
-                        deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, parseInt(btn.dataset.idx));
+                        deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
                     };
                 });
             }
@@ -1036,188 +997,240 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         // Add comment to study or series
-        function addComment(studyUid, seriesUid, text) {
+        async function addComment(studyUid, seriesUid, text) {
             if (!text.trim()) return;
-            const comment = { text: text.trim(), time: Date.now() };
+            const now = Date.now();
+            const comment = { id: generateLocalCommentId(), text: text.trim(), time: now };
+            let comments;
             if (seriesUid) {
-                if (!state.studies[studyUid].series[seriesUid].comments) {
+                if (!Array.isArray(state.studies[studyUid].series[seriesUid].comments)) {
                     state.studies[studyUid].series[seriesUid].comments = [];
                 }
-                state.studies[studyUid].series[seriesUid].comments.push(comment);
+                comments = state.studies[studyUid].series[seriesUid].comments;
             } else {
-                if (!state.studies[studyUid].comments) {
+                if (!Array.isArray(state.studies[studyUid].comments)) {
                     state.studies[studyUid].comments = [];
                 }
-                state.studies[studyUid].comments.push(comment);
+                comments = state.studies[studyUid].comments;
             }
+
+            comments.push(comment);
             updateCommentListUI(studyUid, seriesUid);
-            saveCommentsToStorage();
+
+            const saved = await NotesAPI.addComment(studyUid, {
+                text: comment.text,
+                time: comment.time,
+                seriesUid: seriesUid
+            });
+            if (saved?.id !== undefined && saved?.id !== null) {
+                comment.id = saved.id;
+                updateCommentListUI(studyUid, seriesUid);
+                return;
+            }
+
+            if (NotesAPI.isEnabled()) {
+                const idx = findCommentIndex(comments, comment.id);
+                if (idx !== -1) comments.splice(idx, 1);
+                updateCommentListUI(studyUid, seriesUid);
+                alert('Failed to save comment. Please try again.');
+            }
         }
 
         // Delete comment
-        function deleteComment(studyUid, seriesUid, idx) {
-            if (seriesUid) {
-                state.studies[studyUid].series[seriesUid].comments.splice(idx, 1);
-            } else {
-                state.studies[studyUid].comments.splice(idx, 1);
-            }
-            updateCommentListUI(studyUid, seriesUid);
-            saveCommentsToStorage();
-        }
-
-        // Edit comment
-        function editComment(studyUid, seriesUid, idx) {
+        async function deleteComment(studyUid, seriesUid, commentId) {
             const comments = seriesUid
                 ? state.studies[studyUid].series[seriesUid].comments
                 : state.studies[studyUid].comments;
+            if (!Array.isArray(comments)) return;
+            const idx = findCommentIndex(comments, commentId);
+            if (idx === -1) return;
+            const removed = comments.splice(idx, 1)[0];
+            updateCommentListUI(studyUid, seriesUid);
+
+            if (String(commentId).startsWith('local-') || !NotesAPI.isEnabled()) {
+                return;
+            }
+
+            const ok = await NotesAPI.deleteComment(studyUid, commentId);
+            if (!ok) {
+                comments.splice(idx, 0, removed);
+                updateCommentListUI(studyUid, seriesUid);
+                alert('Failed to delete comment. Please try again.');
+            }
+        }
+
+        // Edit comment
+        async function editComment(studyUid, seriesUid, commentId) {
+            const comments = seriesUid
+                ? state.studies[studyUid].series[seriesUid].comments
+                : state.studies[studyUid].comments;
+            if (!Array.isArray(comments)) return;
+            const idx = findCommentIndex(comments, commentId);
+            if (idx === -1) return;
+            const prevText = comments[idx].text;
+            const prevTime = comments[idx].time;
             const newText = prompt('Edit comment:', comments[idx].text);
             if (newText !== null && newText.trim()) {
                 comments[idx].text = newText.trim();
                 comments[idx].time = Date.now();
                 updateCommentListUI(studyUid, seriesUid);
-                saveCommentsToStorage();
+
+                if (String(commentId).startsWith('local-') || !NotesAPI.isEnabled()) {
+                    return;
+                }
+
+                const updated = await NotesAPI.updateComment(studyUid, commentId, {
+                    text: comments[idx].text,
+                    time: comments[idx].time
+                });
+
+                if (!updated) {
+                    comments[idx].text = prevText;
+                    comments[idx].time = prevTime;
+                    updateCommentListUI(studyUid, seriesUid);
+                    alert('Failed to update comment. Please try again.');
+                }
             }
         }
 
         // =====================================================================
-        // COMMENT PERSISTENCE
-        // Save/load comments to localStorage for persistence across sessions
+        // NOTES PERSISTENCE (SERVER-SIDE)
         // =====================================================================
 
-        /**
-         * Check if we should persist notes to localStorage
-         * Disabled on demo and preview sites to keep them stateless.
-         * Uses centralized config from js/config.js
-         */
-        function shouldPersistNotes() {
-            // Use CONFIG if available, fallback to direct check for backwards compatibility
-            if (typeof CONFIG !== 'undefined' && CONFIG.shouldPersistNotes) {
-                return CONFIG.shouldPersistNotes();
+        const MIGRATION_FLAG_KEY = 'dicom-viewer-migrated';
+        const LEGACY_STORAGE_KEY = 'dicom-viewer-comments';
+        const LEGACY_REPORTS_DB = 'dicom-viewer-reports';
+        const LEGACY_REPORTS_STORE = 'reports';
+
+        async function loadNotesForStudies() {
+            const studyUids = Object.keys(state.studies);
+            if (!studyUids.length) return;
+
+            const result = await NotesAPI.loadNotes(studyUids);
+            const notes = result?.studies || {};
+
+            for (const [studyUid, entry] of Object.entries(notes)) {
+                const study = state.studies[studyUid];
+                if (!study) continue;
+
+                if (entry.description !== undefined) {
+                    study.description = entry.description || '';
+                }
+                if (Array.isArray(entry.comments)) {
+                    study.comments = entry.comments;
+                    study.comments.forEach(c => {
+                        if (c.id === undefined || c.id === null) {
+                            c.id = generateLocalCommentId();
+                        }
+                    });
+                }
+                if (Array.isArray(entry.reports)) {
+                    study.reports = entry.reports;
+                }
+
+                if (entry.series && typeof entry.series === 'object') {
+                    for (const [seriesUid, seriesEntry] of Object.entries(entry.series)) {
+                        const series = study.series[seriesUid];
+                        if (!series) continue;
+                        if (seriesEntry.description !== undefined) {
+                            series.description = seriesEntry.description || '';
+                        }
+                        if (Array.isArray(seriesEntry.comments)) {
+                            series.comments = seriesEntry.comments;
+                            series.comments.forEach(c => {
+                                if (c.id === undefined || c.id === null) {
+                                    c.id = generateLocalCommentId();
+                                }
+                            });
+                        }
+                    }
+                }
             }
-            // Fallback: disable on GitHub Pages and Vercel previews
-            const hostname = window.location.hostname;
-            return !hostname.endsWith('github.io') && !hostname.endsWith('vercel.app');
         }
 
-        /**
-         * Save all comments to localStorage
-         * Called after every comment mutation (add/edit/delete)
-         */
-        function saveCommentsToStorage() {
-            if (!shouldPersistNotes()) return;
-            const data = { version: 2, comments: {} };
-            for (const [studyUid, study] of Object.entries(state.studies)) {
-                const hasStudyComments = study.comments?.length > 0;
-                const hasSeriesComments = Object.values(study.series).some(s => s.comments?.length > 0);
-                const hasStudyDescription = !!study.description;
-                const hasSeriesDescriptions = Object.values(study.series).some(s => !!s.description);
-                const hasReports = study.reports?.length > 0;
-                if (!hasStudyComments && !hasSeriesComments && !hasStudyDescription && !hasSeriesDescriptions && !hasReports) continue;
-
-                data.comments[studyUid] = {
-                    study: study.comments || [],
-                    description: study.description || '',
-                    series: {},
-                    // Store report metadata only (blobs stored in IndexedDB)
-                    reports: (study.reports || []).map(r => ({
-                        id: r.id,
-                        name: r.name,
-                        type: r.type,
-                        size: r.size,
-                        addedAt: r.addedAt,
-                        updatedAt: r.updatedAt,
-                        syncStatus: r.syncStatus
-                    }))
+        async function openLegacyReportsDB() {
+            if (!('indexedDB' in window)) return null;
+            return new Promise((resolve) => {
+                const request = indexedDB.open(LEGACY_REPORTS_DB, 1);
+                request.onerror = () => resolve(null);
+                request.onsuccess = () => {
+                    const db = request.result;
+                    if (!db.objectStoreNames.contains(LEGACY_REPORTS_STORE)) {
+                        db.close();
+                        resolve(null);
+                        return;
+                    }
+                    resolve(db);
                 };
-                for (const [seriesUid, series] of Object.entries(study.series)) {
-                    if (series.comments?.length > 0 || series.description) {
-                        data.comments[studyUid].series[seriesUid] = {
-                            comments: series.comments || [],
-                            description: series.description || ''
-                        };
-                    }
-                }
-            }
-            try {
-                localStorage.setItem('dicom-viewer-comments', JSON.stringify(data));
-            } catch (e) {
-                console.warn('Failed to save comments to storage:', e);
-            }
+                request.onupgradeneeded = () => resolve(null);
+            });
         }
 
-        /**
-         * Load comments from localStorage and apply to matching studies
-         * Called after studies are populated from DICOM files
-         */
-        async function loadCommentsFromStorage() {
-            if (!shouldPersistNotes()) return;
-            const raw = localStorage.getItem('dicom-viewer-comments');
-            if (!raw) return;
+        async function getLegacyReportBlob(db, reportId) {
+            if (!db) return null;
+            return new Promise((resolve) => {
+                const tx = db.transaction(LEGACY_REPORTS_STORE, 'readonly');
+                const request = tx.objectStore(LEGACY_REPORTS_STORE).get(reportId);
+                request.onsuccess = () => resolve(request.result?.blob || null);
+                request.onerror = () => resolve(null);
+            });
+        }
 
-            let dirty = false;
-
+        async function migrateIfNeeded() {
+            if (!NotesAPI.isEnabled()) return;
+            let alreadyMigrated = false;
             try {
-                const data = JSON.parse(raw);
-                // Support both version 1 (comments only) and version 2 (comments + reports)
-                if (data.version !== 1 && data.version !== 2) return;
+                alreadyMigrated = !!localStorage.getItem(MIGRATION_FLAG_KEY);
+            } catch (e) {
+                return;
+            }
+            if (alreadyMigrated) return;
 
-                for (const [studyUid, stored] of Object.entries(data.comments)) {
-                    if (!state.studies[studyUid]) continue; // Study not loaded
+            let raw;
+            try {
+                raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+            } catch (e) {
+                return;
+            }
+            if (!raw) {
+                localStorage.setItem(MIGRATION_FLAG_KEY, '1');
+                return;
+            }
 
-                    // Restore study comments
-                    if (stored.study?.length > 0) {
-                        state.studies[studyUid].comments = stored.study;
-                    }
+            let payload;
+            try {
+                payload = JSON.parse(raw);
+            } catch (e) {
+                console.warn('Failed to parse legacy notes for migration:', e);
+                return;
+            }
 
-                    // Restore study description
-                    if (stored.description) {
-                        state.studies[studyUid].description = stored.description;
-                    }
+            const migrated = await NotesAPI.migrate(payload);
+            if (!migrated) return;
 
-                    // Restore reports (v2) - validate blobs exist in IndexedDB
-                    if (stored.reports?.length > 0) {
-                        const validated = [];
-                        for (const r of stored.reports) {
-                            try {
-                                const blob = await getReportBlobFromDB(r.id);
-                                if (blob) {
-                                    validated.push({ ...r, fileHandle: null, blob: null });
-                                }
-                            } catch (e) {
-                                // Blob missing or IndexedDB error -- skip this report
-                            }
-                        }
-                        state.studies[studyUid].reports = validated;
-                        if (validated.length < stored.reports.length) {
-                            dirty = true;
-                        }
-                    }
-
-                    // Restore series comments and descriptions
-                    for (const [seriesUid, seriesData] of Object.entries(stored.series || {})) {
-                        if (state.studies[studyUid].series[seriesUid]) {
-                            // Handle both old format (array) and new format (object)
-                            if (Array.isArray(seriesData)) {
-                                state.studies[studyUid].series[seriesUid].comments = seriesData;
-                            } else {
-                                if (seriesData.comments?.length > 0) {
-                                    state.studies[studyUid].series[seriesUid].comments = seriesData.comments;
-                                }
-                                if (seriesData.description) {
-                                    state.studies[studyUid].series[seriesUid].description = seriesData.description;
-                                }
-                            }
-                        }
+            if (payload?.version === 2 && payload?.comments) {
+                const db = await openLegacyReportsDB();
+                const uploadTasks = [];
+                for (const [studyUid, stored] of Object.entries(payload.comments)) {
+                    const reports = stored?.reports || [];
+                    for (const report of reports) {
+                        if (!report?.id) continue;
+                        uploadTasks.push((async () => {
+                            const blob = await getLegacyReportBlob(db, report.id);
+                            if (!blob) return;
+                            const filename = report.name || 'report';
+                            const file = new File([blob], filename, { type: blob.type || '' });
+                            await NotesAPI.uploadReport(studyUid, file, report);
+                        })());
                     }
                 }
-            } catch (e) {
-                console.warn('Failed to load comments from storage:', e);
+                if (uploadTasks.length) {
+                    await Promise.allSettled(uploadTasks);
+                }
+                if (db) db.close();
             }
 
-            // Persist cleanup of stale report entries
-            if (dirty) {
-                saveCommentsToStorage();
-            }
+            localStorage.setItem(MIGRATION_FLAG_KEY, '1');
         }
 
         // =====================================================================
@@ -1273,9 +1286,8 @@ Copyright (c) 2026 Divergent Health Technologies
          * Add a report to a study
          * @param {string} studyUid - Study instance UID
          * @param {File} file - File object from input
-         * @param {FileSystemFileHandle} [handle] - Optional file handle for File System Access API
          */
-        async function addReport(studyUid, file, handle = null) {
+        async function addReport(studyUid, file) {
             const type = getReportType(file);
             if (!type) {
                 alert('Unsupported file type. Please use PDF, PNG, or JPG.');
@@ -1295,24 +1307,19 @@ Copyright (c) 2026 Divergent Health Technologies
                 size: file.size,
                 addedAt: now,
                 updatedAt: now,
-                syncStatus: 'local',
-                fileHandle: handle,
-                blob: handle ? null : file
+                blob: null
             };
 
-            // Store blob in IndexedDB for persistence across page reloads
-            if (shouldPersistNotes()) {
-                try {
-                    await storeReportBlob(report.id, file);
-                } catch (e) {
-                    console.error('Failed to store report in IndexedDB:', e);
-                    // Continue anyway - blob is still in memory
-                }
+            const saved = await NotesAPI.uploadReport(studyUid, file, report);
+            if (saved) {
+                Object.assign(report, saved);
+            } else {
+                // Server unavailable; keep in-memory blob for this session
+                report.blob = file;
             }
 
             state.studies[studyUid].reports.push(report);
             updateReportListUI(studyUid);
-            saveCommentsToStorage();
         }
 
         /**
@@ -1327,50 +1334,9 @@ Copyright (c) 2026 Divergent Health Technologies
             if (idx !== -1) {
                 reports.splice(idx, 1);
 
-                // Also remove blob from IndexedDB
-                try {
-                    await deleteReportBlobFromDB(reportId);
-                } catch (e) {
-                    console.warn('Failed to delete report from IndexedDB:', e);
-                }
-
                 updateReportListUI(studyUid);
-                saveCommentsToStorage();
+                await NotesAPI.deleteReport(studyUid, reportId);
             }
-        }
-
-        /**
-         * Get file content for viewing
-         * @param {Object} report - Report object
-         * @returns {Promise<Blob|null>}
-         */
-        async function getReportBlob(report) {
-            // First try in-memory blob
-            if (report.blob) return report.blob;
-
-            // Then try file handle (File System Access API)
-            if (report.fileHandle) {
-                try {
-                    const file = await report.fileHandle.getFile();
-                    return file;
-                } catch (e) {
-                    console.warn('Failed to get file from handle:', e);
-                }
-            }
-
-            // Finally try IndexedDB (persistent storage)
-            try {
-                const blob = await getReportBlobFromDB(report.id);
-                if (blob) {
-                    // Cache in memory for faster subsequent access
-                    report.blob = blob;
-                    return blob;
-                }
-            } catch (e) {
-                console.warn('Failed to get report from IndexedDB:', e);
-            }
-
-            return null;
         }
 
         /**
@@ -1429,23 +1395,29 @@ Copyright (c) 2026 Divergent Health Technologies
             const report = state.studies[studyUid].reports?.find(r => r.id === reportId);
             if (!report) return;
 
-            const blob = await getReportBlob(report);
-            if (!blob) {
-                alert('Report file not available. The file may have been deleted from browser storage.');
-                return;
-            }
-
             const viewer = $('reportViewer');
             const pdfFrame = $('reportPdfFrame');
             const imageView = $('reportImageView');
             const title = $('reportViewerTitle');
 
-            // Revoke previous object URL to prevent memory leak on back-to-back views
+            // Cleanup previous object URL (used for in-memory fallback)
             if (viewer.dataset.objectUrl) {
                 URL.revokeObjectURL(viewer.dataset.objectUrl);
+                delete viewer.dataset.objectUrl;
             }
 
-            const url = URL.createObjectURL(blob);
+            let url = '';
+            if (report.blob) {
+                url = URL.createObjectURL(report.blob);
+                viewer.dataset.objectUrl = url;
+            } else {
+                url = NotesAPI.getReportFileUrl(report.id);
+            }
+
+            if (!url) {
+                alert('Report file not available.');
+                return;
+            }
 
             // Hide both viewers initially
             pdfFrame.style.display = 'none';
@@ -1462,7 +1434,6 @@ Copyright (c) 2026 Divergent Health Technologies
             }
 
             viewer.style.display = 'flex';
-            viewer.dataset.objectUrl = url;
         }
 
         /**
@@ -1518,8 +1489,9 @@ Copyright (c) 2026 Divergent Health Technologies
          * Creates expandable rows for each study with nested series items
          */
         async function displayStudies() {
-            // Load any persisted comments for loaded studies (validates report blobs)
-            await loadCommentsFromStorage();
+            // Migrate legacy notes once, then load persisted notes from the server
+            await migrateIfNeeded();
+            await loadNotesForStudies();
 
             const studies = Object.values(state.studies);
             if (!studies.length) {
@@ -1737,13 +1709,13 @@ Copyright (c) 2026 Divergent Health Technologies
             studiesBody.querySelectorAll('.edit-comment').forEach(btn => {
                 btn.onclick = (e) => {
                     e.stopPropagation();
-                    editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, parseInt(btn.dataset.idx));
+                    editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
                 };
             });
             studiesBody.querySelectorAll('.delete-comment').forEach(btn => {
                 btn.onclick = (e) => {
                     e.stopPropagation();
-                    deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, parseInt(btn.dataset.idx));
+                    deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
                 };
             });
 
@@ -1752,8 +1724,11 @@ Copyright (c) 2026 Divergent Health Technologies
                 textarea.oninput = () => {
                     const studyUid = textarea.dataset.studyUid;
                     if (state.studies[studyUid]) {
-                        state.studies[studyUid].description = textarea.value;
-                        saveCommentsToStorage();
+                        const value = textarea.value;
+                        state.studies[studyUid].description = value;
+                        scheduleDescriptionSave(`study:${studyUid}`, () => {
+                            NotesAPI.saveStudyDescription(studyUid, value);
+                        });
                     }
                 };
             });
@@ -1764,8 +1739,11 @@ Copyright (c) 2026 Divergent Health Technologies
                     const studyUid = textarea.dataset.studyUid;
                     const seriesUid = textarea.dataset.seriesUid;
                     if (state.studies[studyUid]?.series[seriesUid]) {
-                        state.studies[studyUid].series[seriesUid].description = textarea.value;
-                        saveCommentsToStorage();
+                        const value = textarea.value;
+                        state.studies[studyUid].series[seriesUid].description = value;
+                        scheduleDescriptionSave(`series:${studyUid}:${seriesUid}`, () => {
+                            NotesAPI.saveSeriesDescription(studyUid, seriesUid, value);
+                        });
                     }
                 };
             });

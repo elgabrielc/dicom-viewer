@@ -14,6 +14,7 @@ npm-debug.log*
 
 # DICOM data (user uploads - do not commit PHI)
 uploads/
+data/
 
 # macOS
 .DS_Store
