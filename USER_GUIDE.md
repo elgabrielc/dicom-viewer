@@ -267,6 +267,8 @@ For faster navigation, you can use these keyboard shortcuts:
 | **W** | Select Window/Level tool |
 | **P** | Select Pan tool |
 | **Z** | Select Zoom tool |
+| **M** | Select Measure tool |
+| **H** | Open this help guide |
 | **R** | Reset the view to defaults |
 | **←** or **↑** | Go to previous slice |
 | **→** or **↓** | Go to next slice |
@@ -455,6 +457,7 @@ All core viewing functions can be performed without a mouse:
 | **Esc** | Return to the library view |
 | **Delete** or **Backspace** | Delete the most recent measurement (when Measure tool is active) |
 | **Shift + Delete** | Clear all measurements on the current slice |
+| **H** | Open the user guide |
 
 Tool buttons display their keyboard shortcuts in instant tooltips when you hover over them, making it easy to learn shortcuts as you work.
 
