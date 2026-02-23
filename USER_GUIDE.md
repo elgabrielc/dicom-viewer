@@ -245,16 +245,14 @@ Descriptions can be edited directly in the text area - changes save automaticall
 
 ### Where Notes Are Stored
 
-Notes are automatically saved to your browser's local storage. This means:
+Notes are saved automatically. This means:
 
 - Notes persist across page refreshes, tab closes, and browser restarts
-- Notes are stored locally in your browser, not on any server
+- Notes are stored locally -- nothing is sent to an external server
 - Notes are linked to DICOM studies by their unique identifiers (StudyInstanceUID)
 - When you reload the same DICOM files, your notes will reappear
 
-**Note**: Your notes are stored only in this browser on this device. If you use a different browser or computer, your notes will not be available there. Clearing your browser data will also remove stored notes.
-
-**Demo site**: On the public demo at github.io, notes are not persisted - they work during your session but are cleared when you leave. Run the viewer locally for persistent notes.
+**Important**: Your notes are stored in this browser on this device. If you switch to a different browser or computer, your notes will not be available there. Clearing your browser data will also remove your stored notes.
 
 ---
 
@@ -268,8 +266,8 @@ For faster navigation, you can use these keyboard shortcuts:
 | **P** | Select Pan tool |
 | **Z** | Select Zoom tool |
 | **M** | Select Measure tool |
-| **H** | Open this help guide |
 | **R** | Reset the view to defaults |
+| **H** | Open this help guide |
 | **←** or **↑** | Go to previous slice |
 | **→** or **↓** | Go to next slice |
 | **Esc** | Return to the library |
@@ -452,12 +450,12 @@ All core viewing functions can be performed without a mouse:
 | **Z** | Select Zoom tool |
 | **M** | Select Measure tool |
 | **R** | Reset the view (zoom, pan, and window/level) |
+| **H** | Open the user guide |
 | **Arrow Left** or **Arrow Up** | Go to previous slice |
 | **Arrow Right** or **Arrow Down** | Go to next slice |
 | **Esc** | Return to the library view |
 | **Delete** or **Backspace** | Delete the most recent measurement (when Measure tool is active) |
 | **Shift + Delete** | Clear all measurements on the current slice |
-| **H** | Open the user guide |
 
 Tool buttons display their keyboard shortcuts in instant tooltips when you hover over them, making it easy to learn shortcuts as you work.
 
