@@ -1389,13 +1389,13 @@ Copyright (c) 2026 Divergent Health Technologies
                 const icon = r.type === 'pdf' ? '&#128196;' : '&#128247;';
 
                 return `
-                    <div class="report-item" data-report-id="${r.id}">
+                    <div class="report-item" data-report-id="${escapeHtml(r.id)}">
                         <span class="report-icon">${icon}</span>
                         <span class="report-name">${escapeHtml(r.name)}</span>
                         <span class="report-size">${formatFileSize(r.size)}</span>
                         <span class="report-actions">
-                            <button class="report-btn view-report" data-study-uid="${studyUid}" data-report-id="${r.id}">View</button>
-                            <button class="report-btn delete-report" data-study-uid="${studyUid}" data-report-id="${r.id}">Delete</button>
+                            <button class="report-btn view-report" data-study-uid="${escapeHtml(studyUid)}" data-report-id="${escapeHtml(r.id)}">View</button>
+                            <button class="report-btn delete-report" data-study-uid="${escapeHtml(studyUid)}" data-report-id="${escapeHtml(r.id)}">Delete</button>
                         </span>
                     </div>
                 `;

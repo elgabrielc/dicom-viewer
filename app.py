@@ -41,6 +41,7 @@ import time
 import uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
 
 from flask import Flask, jsonify, send_file, request, g
 import pydicom
@@ -104,6 +105,11 @@ def _csrf_origin_check():
     the server's own host. This prevents malicious websites from submitting
     forms or fetch requests to the local server while a user is browsing.
     Multipart uploads are the primary concern since they bypass CORS preflight.
+
+    Requests with neither Origin nor Referer are allowed through. Direct API
+    clients (curl, Playwright tests) don't send these headers and are not a
+    CSRF concern -- the threat model is browser-based cross-origin attacks,
+    where modern browsers always include Origin on state-modifying requests.
     """
     if request.method in ('POST', 'PUT', 'DELETE'):
         origin = request.headers.get('Origin')
@@ -111,11 +117,10 @@ def _csrf_origin_check():
             # Fall back to Referer if Origin is absent (some browsers strip it)
             referer = request.headers.get('Referer')
             if referer:
-                from urllib.parse import urlparse
-                origin = f"{urlparse(referer).scheme}://{urlparse(referer).netloc}"
+                parsed = urlparse(referer)
+                origin = f"{parsed.scheme}://{parsed.netloc}"
 
         if origin:
-            from urllib.parse import urlparse
             origin_host = urlparse(origin).netloc
             server_host = request.host  # includes port
             if origin_host != server_host:
