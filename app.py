@@ -17,6 +17,9 @@ Routes:
     GET  /api/test-data/studies                             - List test studies
     GET  /api/test-data/dicom/<study>/<series>/<slice>      - Get DICOM bytes
     GET  /api/test-data/info                                - Test data info
+    GET  /api/library/studies                               - List local library studies
+    GET  /api/library/dicom/<study>/<series>/<slice>        - Get local library DICOM bytes
+    POST /api/library/refresh                               - Rescan local library folder
     GET  /api/notes/?studies=uid1,uid2                      - Batch load notes
     PUT  /api/notes/<study_uid>/description                 - Save study description
     PUT  /api/notes/<study_uid>/series/<series_uid>/description - Save series description
@@ -32,11 +35,11 @@ Copyright (c) 2026 Divergent Health Technologies
 """
 
 import os
-import hashlib
 import re
 import shutil
 import sqlite3
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -60,6 +63,10 @@ TEST_DATA_FOLDER = os.environ.get(
     'DICOM_TEST_DATA',
     os.path.expanduser('~/claude 0/test-data-mri-1')
 )
+
+# Persistent local library folder (personal mode)
+LIBRARY_FOLDER_RAW = os.environ.get('DICOM_LIBRARY', '~/DICOMs')
+LIBRARY_FOLDER = os.path.expanduser(LIBRARY_FOLDER_RAW)
 
 # Notes database storage (SQLite + report files)
 DATA_DIR = os.environ.get(
@@ -88,10 +95,6 @@ MAX_BATCH_STUDY_UIDS = 200
 
 # Comment timestamps must be within this range of server time
 MAX_TIMESTAMP_DRIFT_MS = 365 * 24 * 60 * 60 * 1000  # 1 year
-
-# Cache for test data (loaded once on first request)
-_test_data_cache = None
-
 
 # =============================================================================
 # SECURITY MIDDLEWARE
@@ -266,11 +269,6 @@ init_db()
 # DICOM SCANNING
 # =============================================================================
 
-def _generate_id(uid):
-    """Generate a short ID from a DICOM UID."""
-    return hashlib.sha256(uid.encode()).hexdigest()[:12]
-
-
 def _extract_metadata(ds, file_path):
     """Extract relevant metadata from a DICOM dataset."""
     def get_attr(attr, default=''):
@@ -286,9 +284,9 @@ def _extract_metadata(ds, file_path):
         'patient_id': get_attr('PatientID', ''),
         'study_date': get_attr('StudyDate', ''),
         'study_description': get_attr('StudyDescription', ''),
-        'study_instance_uid': get_attr('StudyInstanceUID', ''),
+        'study_instance_uid': get_attr('StudyInstanceUID', '').strip(),
         'series_description': get_attr('SeriesDescription', ''),
-        'series_instance_uid': get_attr('SeriesInstanceUID', ''),
+        'series_instance_uid': get_attr('SeriesInstanceUID', '').strip(),
         'series_number': get_attr('SeriesNumber', ''),
         'modality': get_attr('Modality', ''),
         'instance_number': int(get_attr('InstanceNumber', '0') or '0'),
@@ -314,18 +312,18 @@ def scan_dicom_folder(folder_path):
         return studies
 
     file_paths = [f for f in folder.rglob('*') if f.is_file()]
-    print(f"Scanning {len(file_paths)} files...")
+    app.logger.info("Scanning %d files in %s", len(file_paths), folder_path)
 
     with ThreadPoolExecutor(max_workers=os.cpu_count() * 2) as executor:
         futures = {executor.submit(_read_single_dicom, fp): fp for fp in file_paths}
 
         for future in as_completed(futures):
             meta = future.result()
-            if meta is None or not meta['study_instance_uid']:
+            if meta is None or not meta['study_instance_uid'] or not meta['series_instance_uid']:
                 continue
 
-            study_id = _generate_id(meta['study_instance_uid'])
-            series_id = _generate_id(meta['series_instance_uid'])
+            study_id = meta['study_instance_uid']
+            series_id = meta['series_instance_uid']
 
             # Initialize study
             if study_id not in studies:
@@ -364,8 +362,112 @@ def scan_dicom_folder(folder_path):
             series['slices'].sort(key=lambda x: (x['slice_location'], x['instance_number']))
         study['series_count'] = len(study['series'])
 
-    print(f"Found {len(studies)} studies")
+    app.logger.info("Found %d studies in %s", len(studies), folder_path)
     return studies
+
+
+# =============================================================================
+# DICOM FOLDER SOURCES (TEST DATA + LOCAL LIBRARY)
+# =============================================================================
+
+class DicomFolderSource:
+    """Reusable DICOM folder scanner with caching."""
+
+    def __init__(self, folder_path):
+        self.folder_path = folder_path
+        self._cache = None
+        self._lock = threading.Lock()
+
+    def is_available(self):
+        return os.path.exists(self.folder_path)
+
+    def get_data(self):
+        """Load studies from the folder (cached)."""
+        with self._lock:
+            if self._cache is not None:
+                return self._cache
+
+        if not os.path.exists(self.folder_path):
+            return {}
+
+        scanned = scan_dicom_folder(self.folder_path)
+        with self._lock:
+            if self._cache is None:
+                self._cache = scanned
+            return self._cache or {}
+
+    def refresh(self):
+        """Rescan folder and refresh cache."""
+        if os.path.exists(self.folder_path):
+            scanned = scan_dicom_folder(self.folder_path)
+        else:
+            scanned = None
+
+        with self._lock:
+            self._cache = scanned
+            return self._cache or {}
+
+    def format_studies(self):
+        """Format studies in the JSON shape expected by the frontend."""
+        studies = self.get_data()
+        return [
+            {
+                'studyInstanceUid': study_id,
+                'patientName': study['patient_name'],
+                'patientId': study['patient_id'],
+                'studyDate': study['study_date'],
+                'studyDescription': study['study_description'],
+                'modality': study['modality'],
+                'seriesCount': len(study['series']),
+                'imageCount': study['image_count'],
+                'series': [
+                    {
+                        'seriesInstanceUid': series_id,
+                        'seriesDescription': series['series_description'],
+                        'seriesNumber': series['series_number'],
+                        'modality': series['modality'],
+                        'sliceCount': len(series['slices'])
+                    }
+                    for series_id, series in study['series'].items()
+                ]
+            }
+            for study_id, study in studies.items()
+        ]
+
+    def get_slice_path(self, study_id, series_id, slice_num):
+        """Look up file path for a specific slice. Returns path or None."""
+        studies = self.get_data()
+        study = studies.get(study_id)
+        if not study:
+            return None
+
+        series = study['series'].get(series_id)
+        if not series:
+            return None
+
+        if slice_num < 0 or slice_num >= len(series['slices']):
+            return None
+
+        return series['slices'][slice_num]['file_path']
+
+    def get_safe_slice_path(self, study_id, series_id, slice_num):
+        """Look up a slice path and ensure it stays inside source folder."""
+        file_path = self.get_slice_path(study_id, series_id, slice_num)
+        if not file_path:
+            return None
+
+        try:
+            resolved_path = Path(file_path).resolve()
+            resolved_root = Path(self.folder_path).resolve()
+            if not resolved_path.is_relative_to(resolved_root):
+                return None
+            return str(resolved_path)
+        except Exception:
+            return None
+
+
+test_source = DicomFolderSource(TEST_DATA_FOLDER)
+library_source = DicomFolderSource(LIBRARY_FOLDER)
 
 
 # =============================================================================
@@ -378,64 +480,18 @@ def index():
     return app.send_static_file('index.html')
 
 
-# =============================================================================
-# TEST DATA API (for Playwright tests)
-# =============================================================================
-
-def _get_test_data():
-    """Load test data from the configured folder (cached)."""
-    global _test_data_cache
-    if _test_data_cache is None and os.path.exists(TEST_DATA_FOLDER):
-        _test_data_cache = scan_dicom_folder(TEST_DATA_FOLDER)
-    return _test_data_cache or {}
-
-
 @app.route('/api/test-data/studies')
 def get_test_studies():
     """Get list of studies from test data folder."""
-    studies = _get_test_data()
-    return jsonify([
-        {
-            'studyInstanceUid': study_id,
-            'patientName': study['patient_name'],
-            'patientId': study['patient_id'],
-            'studyDate': study['study_date'],
-            'studyDescription': study['study_description'],
-            'modality': study['modality'],
-            'seriesCount': len(study['series']),
-            'imageCount': study['image_count'],
-            'series': [
-                {
-                    'seriesInstanceUid': series_id,
-                    'seriesDescription': series['series_description'],
-                    'seriesNumber': series['series_number'],
-                    'modality': series['modality'],
-                    'sliceCount': len(series['slices'])
-                }
-                for series_id, series in study['series'].items()
-            ]
-        }
-        for study_id, study in studies.items()
-    ])
+    return jsonify(test_source.format_studies())
 
 
 @app.route('/api/test-data/dicom/<study_id>/<series_id>/<int:slice_num>')
 def get_test_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a test data slice."""
-    studies = _get_test_data()
-
-    if study_id not in studies:
-        return jsonify({'error': 'Study not found'}), 404
-
-    study = studies[study_id]
-    if series_id not in study['series']:
-        return jsonify({'error': 'Series not found'}), 404
-
-    series = study['series'][series_id]
-    if slice_num < 0 or slice_num >= len(series['slices']):
-        return jsonify({'error': 'Slice index out of range'}), 404
-
-    file_path = series['slices'][slice_num]['file_path']
+    file_path = test_source.get_safe_slice_path(study_id, series_id, slice_num)
+    if not file_path:
+        return jsonify({'error': 'Slice not found'}), 404
 
     try:
         return send_file(file_path, mimetype='application/dicom')
@@ -446,11 +502,79 @@ def get_test_dicom(study_id, series_id, slice_num):
 @app.route('/api/test-data/info')
 def get_test_info():
     """Get info about available test data."""
-    studies = _get_test_data()
+    studies = test_source.get_data()
     return jsonify({
-        'available': os.path.exists(TEST_DATA_FOLDER),
+        'available': test_source.is_available(),
         'studyCount': len(studies),
         'totalImages': sum(s['image_count'] for s in studies.values())
+    })
+
+
+# =============================================================================
+# LIBRARY API (PERSISTENT LOCAL FOLDER)
+# =============================================================================
+
+def _ensure_library_folder():
+    """Create library folder lazily on first local-library access."""
+    try:
+        os.makedirs(LIBRARY_FOLDER, exist_ok=True)
+        return True, None
+    except PermissionError:
+        app.logger.warning("Permission denied creating library folder: %s", LIBRARY_FOLDER)
+        return False, f"Permission denied creating {LIBRARY_FOLDER_RAW}"
+    except OSError as exc:
+        app.logger.warning("Failed to create library folder %s: %s", LIBRARY_FOLDER, exc)
+        return False, f"Failed to create {LIBRARY_FOLDER_RAW}"
+
+
+@app.route('/api/library/studies')
+def get_library_studies():
+    """Get studies from local persistent library folder."""
+    available = os.path.exists(LIBRARY_FOLDER)
+    error = None
+    if not available:
+        available, error = _ensure_library_folder()
+
+    payload = {
+        'available': available,
+        'folder': LIBRARY_FOLDER_RAW,
+        'studies': library_source.format_studies()
+    }
+    if error:
+        payload['error'] = error
+    return jsonify(payload)
+
+
+@app.route('/api/library/dicom/<study_id>/<series_id>/<int:slice_num>')
+def get_library_dicom(study_id, series_id, slice_num):
+    """Get raw DICOM file bytes for a local library slice."""
+    file_path = library_source.get_safe_slice_path(study_id, series_id, slice_num)
+    if not file_path:
+        return jsonify({'error': 'Slice not found'}), 404
+
+    try:
+        return send_file(file_path, mimetype='application/dicom')
+    except Exception:
+        return jsonify({'error': 'Failed to read DICOM file'}), 500
+
+
+@app.route('/api/library/refresh', methods=['POST'])
+def refresh_library():
+    """Rescan local library folder and return updated studies."""
+    available, error = _ensure_library_folder()
+    if not available:
+        return jsonify({
+            'available': False,
+            'folder': LIBRARY_FOLDER_RAW,
+            'studies': [],
+            'error': error
+        }), 500
+
+    library_source.refresh()
+    return jsonify({
+        'available': os.path.exists(LIBRARY_FOLDER),
+        'folder': LIBRARY_FOLDER_RAW,
+        'studies': library_source.format_studies()
     })
 
 

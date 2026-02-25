@@ -72,6 +72,10 @@ const CONFIG = {
             // Only works with Flask backend (localhost)
             testMode: mode === 'personal',
 
+            // Auto-load persistent local library from backend API
+            // Only in local/self-hosted personal mode
+            libraryAutoLoad: mode === 'personal',
+
             // Analytics (future feature)
             // Only on cloud platform
             analytics: mode === 'cloud',

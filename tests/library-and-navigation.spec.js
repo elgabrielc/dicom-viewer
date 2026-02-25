@@ -24,7 +24,7 @@ const { test, expect } = require('@playwright/test');
  */
 
 const TEST_URL = 'http://127.0.0.1:5001/?test';
-const HOME_URL = 'http://127.0.0.1:5001/';
+const HOME_URL = 'http://127.0.0.1:5001/?nolib';
 
 // Selectors - kept consistent with viewing-tools.spec.js
 const CANVAS_SELECTOR = '#imageCanvas';
@@ -125,6 +125,19 @@ test.describe('Test Suite 14: Library View - Home Page Initial State', () => {
         await expect(mriBtn).toBeVisible();
         await expect(mriBtn).toHaveText('MRI Scan');
         await expect(mriBtn).toBeEnabled();
+    });
+
+    test('Home page with ?nolib does not call library studies API', async ({ page }) => {
+        const libraryRequests = [];
+        page.on('request', req => {
+            if (req.url().includes('/api/library/studies')) {
+                libraryRequests.push(req.url());
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await page.waitForTimeout(300);
+        expect(libraryRequests.length).toBe(0);
     });
 
     test('Home page shows study count in header when studies present', async ({ page }) => {
@@ -985,6 +998,32 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
         const studies = await response.json();
         expect(Array.isArray(studies)).toBe(true);
         expect(studies.length).toBeGreaterThan(0);
+    });
+
+    test('GET /api/library/studies returns expected payload shape', async ({ page }) => {
+        const response = await page.request.get('http://127.0.0.1:5001/api/library/studies');
+        expect(response.status()).toBe(200);
+
+        const body = await response.json();
+        expect(body).toHaveProperty('available');
+        expect(body).toHaveProperty('folder');
+        expect(body).toHaveProperty('studies');
+        expect(typeof body.available).toBe('boolean');
+        expect(typeof body.folder).toBe('string');
+        expect(Array.isArray(body.studies)).toBe(true);
+    });
+
+    test('POST /api/library/refresh returns expected payload shape', async ({ page }) => {
+        const response = await page.request.post('http://127.0.0.1:5001/api/library/refresh');
+        expect(response.status()).toBe(200);
+
+        const body = await response.json();
+        expect(body).toHaveProperty('available');
+        expect(body).toHaveProperty('folder');
+        expect(body).toHaveProperty('studies');
+        expect(typeof body.available).toBe('boolean');
+        expect(typeof body.folder).toBe('string');
+        expect(Array.isArray(body.studies)).toBe(true);
     });
 
     test('GET /api/test-data/studies returns studies with required fields', async ({ page }) => {
