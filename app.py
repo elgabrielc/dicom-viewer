@@ -314,7 +314,7 @@ def scan_dicom_folder(folder_path):
     file_paths = [f for f in folder.rglob('*') if f.is_file()]
     app.logger.info("Scanning %d files in %s", len(file_paths), folder_path)
 
-    with ThreadPoolExecutor(max_workers=os.cpu_count() * 2) as executor:
+    with ThreadPoolExecutor(max_workers=(os.cpu_count() or 4) * 2) as executor:
         futures = {executor.submit(_read_single_dicom, fp): fp for fp in file_paths}
 
         for future in as_completed(futures):
@@ -377,39 +377,69 @@ class DicomFolderSource:
         self.folder_path = folder_path
         self._cache = None
         self._lock = threading.Lock()
+        self._scan_cv = threading.Condition(self._lock)
+        self._scan_in_progress = False
 
     def is_available(self):
         return os.path.exists(self.folder_path)
 
     def get_data(self):
         """Load studies from the folder (cached)."""
-        with self._lock:
-            if self._cache is not None:
-                return self._cache
+        with self._scan_cv:
+            while True:
+                if self._cache is not None:
+                    return self._cache
+                if self._scan_in_progress:
+                    self._scan_cv.wait()
+                    continue
+                if not os.path.exists(self.folder_path):
+                    return {}
+                self._scan_in_progress = True
+                break
 
-        if not os.path.exists(self.folder_path):
-            return {}
+        try:
+            scanned = scan_dicom_folder(self.folder_path)
+        except Exception:
+            with self._scan_cv:
+                self._scan_in_progress = False
+                self._scan_cv.notify_all()
+            raise
 
-        scanned = scan_dicom_folder(self.folder_path)
-        with self._lock:
+        with self._scan_cv:
             if self._cache is None:
                 self._cache = scanned
+            self._scan_in_progress = False
+            self._scan_cv.notify_all()
             return self._cache or {}
 
     def refresh(self):
         """Rescan folder and refresh cache."""
-        if os.path.exists(self.folder_path):
-            scanned = scan_dicom_folder(self.folder_path)
-        else:
-            scanned = None
+        with self._scan_cv:
+            while self._scan_in_progress:
+                self._scan_cv.wait()
+            self._scan_in_progress = True
 
-        with self._lock:
+        try:
+            if os.path.exists(self.folder_path):
+                scanned = scan_dicom_folder(self.folder_path)
+            else:
+                scanned = None
+        except Exception:
+            with self._scan_cv:
+                self._scan_in_progress = False
+                self._scan_cv.notify_all()
+            raise
+
+        with self._scan_cv:
             self._cache = scanned
+            self._scan_in_progress = False
+            self._scan_cv.notify_all()
             return self._cache or {}
 
-    def format_studies(self):
+    def format_studies(self, studies=None):
         """Format studies in the JSON shape expected by the frontend."""
-        studies = self.get_data()
+        if studies is None:
+            studies = self.get_data()
         return [
             {
                 'studyInstanceUid': study_id,
@@ -570,11 +600,11 @@ def refresh_library():
             'error': error
         }), 500
 
-    library_source.refresh()
+    refreshed = library_source.refresh()
     return jsonify({
-        'available': os.path.exists(LIBRARY_FOLDER),
+        'available': available,
         'folder': LIBRARY_FOLDER_RAW,
-        'studies': library_source.format_studies()
+        'studies': library_source.format_studies(refreshed)
     })
 
 
