@@ -3352,7 +3352,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
             for (const study of studiesArray) {
                 const seriesMap = {};
-                for (const series of study.series) {
+                for (const series of (study.series || [])) {
                     seriesMap[series.seriesInstanceUid] = {
                         seriesInstanceUid: series.seriesInstanceUid,
                         seriesDescription: series.seriesDescription,
@@ -3414,7 +3414,9 @@ Copyright (c) 2026 Divergent Health Technologies
                 const result = normalizeStudiesPayload(payload, '/api/library');
                 state.libraryAvailable = !!result.available;
                 if (result.folder) state.libraryFolder = result.folder;
-                state.studies = result.studies;
+                if (Object.keys(result.studies).length > 0) {
+                    state.studies = result.studies;
+                }
                 await displayStudies();
             } catch (e) {
                 alert(`Failed to refresh library: ${e.message}`);

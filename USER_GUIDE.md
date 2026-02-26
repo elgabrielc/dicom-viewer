@@ -39,15 +39,17 @@ This viewer requires **Google Chrome** (version 86 or later) or **Microsoft Edge
 **Your DICOM Images**
 You'll need a folder containing your DICOM files. These files might have a `.dcm` extension, or they might have no extension at all - both are common. If you received your images on a CD, you may need to copy the contents to your computer first.
 
+### Quick Launch (macOS)
+
+Double-click `launch.command` in Finder to start the server and open the viewer in your browser. If you downloaded the file from GitHub, you may need to make it executable first: `chmod +x launch.command`.
+
 ### Loading Your Images
 
-1. **Open the viewer** in Chrome or Edge
-2. **Drag and drop** your folder onto the upload area in the center of the screen
-   - You can drop the entire folder, even if it contains multiple studies
-3. **Wait for scanning** to complete - a progress indicator will show how many files have been processed
-4. **View your studies** in the library table that appears
+**Persistent library**: When running locally, place DICOM files in `~/DICOMs` and they will load automatically every time you launch the viewer. Click **Refresh Library** to rescan after adding new files.
 
-The viewer will automatically organize your images by patient and study, even if you drop a folder containing multiple scans from different dates.
+**Drag and drop**: You can also drag and drop any folder onto the upload area. This overrides the library for the current session.
+
+The viewer will automatically organize your images by patient and study, even if your folder contains multiple scans from different dates.
 
 ---
 

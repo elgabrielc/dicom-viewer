@@ -1093,6 +1093,27 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
         expect(response.status()).toBe(404);
     });
 
+    test('GET /api/test-data/dicom rejects path traversal in study ID', async ({ page }) => {
+        const response = await page.request.get(
+            'http://127.0.0.1:5001/api/test-data/dicom/..%2F..%2F..%2Fetc/passwd/0'
+        );
+        expect(response.status()).toBe(404);
+    });
+
+    test('GET /api/library/dicom rejects path traversal in study ID', async ({ page }) => {
+        const response = await page.request.get(
+            'http://127.0.0.1:5001/api/library/dicom/..%2F..%2F..%2Fetc/passwd/0'
+        );
+        expect(response.status()).toBe(404);
+    });
+
+    test('GET /api/library/dicom returns 404 for unknown study', async ({ page }) => {
+        const response = await page.request.get(
+            'http://127.0.0.1:5001/api/library/dicom/nonexistent-study-id/nonexistent-series-id/0'
+        );
+        expect(response.status()).toBe(404);
+    });
+
     test('GET / serves the main application HTML', async ({ page }) => {
         const response = await page.request.get('http://127.0.0.1:5001/');
         expect(response.status()).toBe(200);
