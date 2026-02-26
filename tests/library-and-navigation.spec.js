@@ -27,6 +27,7 @@ const path = require('path');
  */
 
 const TEST_URL = 'http://127.0.0.1:5001/?test';
+const APP_URL = 'http://127.0.0.1:5001/';
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
 
 // Selectors - kept consistent with viewing-tools.spec.js
@@ -141,6 +142,45 @@ test.describe('Test Suite 14: Library View - Home Page Initial State', () => {
         await page.goto(HOME_URL);
         await page.waitForTimeout(300);
         expect(libraryRequests.length).toBe(0);
+    });
+
+    test('Library auto-load handles 200 non-JSON config response without crashing', async ({ page }) => {
+        const consoleWarnings = [];
+        page.on('console', msg => {
+            if (msg.type() === 'warning') {
+                consoleWarnings.push(msg.text());
+            }
+        });
+
+        await page.route('**/api/library/config', async route => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: '<html>proxy error page</html>'
+            });
+        });
+
+        await page.route('**/api/library/studies', async route => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    available: true,
+                    folder: '/tmp/mock-dicom-library',
+                    studies: []
+                })
+            });
+        });
+
+        await page.goto(APP_URL);
+
+        await expect(page.locator(LIBRARY_VIEW_SELECTOR)).toBeVisible();
+        await expect(page.locator('#refreshLibraryBtn')).toBeVisible();
+        await expect(page.locator('#emptyStateHint')).toContainText('No DICOM files found in /tmp/mock-dicom-library.');
+
+        await expect.poll(() => {
+            return consoleWarnings.some(w => w.includes('Failed to load library config:'));
+        }).toBe(true);
     });
 
     test('Home page shows study count in header when studies present', async ({ page }) => {
