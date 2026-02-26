@@ -77,9 +77,10 @@ Copyright (c) 2026 Divergent Health Technologies
 
         <section class="studies-section">
             <h2>Studies <span id="studyCount" class="count"></span></h2>
+            <button id="refreshLibraryBtn" class="library-refresh-btn" style="display: none; margin-bottom: 0.75rem;">Refresh Library</button>
             <div id="emptyState" class="empty-state">
                 <p>No studies loaded</p>
-                <p class="small">Drop a DICOM folder above to get started</p>
+                <p id="emptyStateHint" class="small">Drop a DICOM folder above to get started</p>
             </div>
             <table id="studiesTable" class="studies-table" style="display: none;">
                 <thead>
@@ -283,6 +284,8 @@ Copyright (c) 2026 Divergent Health Technologies
             currentSeries: null,
             currentSliceIndex: 0,
             sliceCache: new LRUCache(SLICE_CACHE_MAX_ENTRIES),
+            libraryAvailable: false,
+            libraryFolder: '',
             // Viewing tools state
             currentTool: 'wl',
             viewTransform: { panX: 0, panY: 0, zoom: 1 },
@@ -308,7 +311,9 @@ Copyright (c) 2026 Divergent Health Technologies
         const studiesTable = $('studiesTable');
         const studiesBody = $('studiesBody');
         const emptyState = $('emptyState');
+        const emptyStateHint = $('emptyStateHint');
         const studyCount = $('studyCount');
+        const refreshLibraryBtn = $('refreshLibraryBtn');
         const uploadProgress = $('uploadProgress');
         const progressText = $('progressText');
         const progressDetail = $('progressDetail');
@@ -1640,11 +1645,19 @@ Copyright (c) 2026 Divergent Health Technologies
             await migrateIfNeeded();
             await loadNotesForStudies();
 
+            refreshLibraryBtn.style.display = state.libraryAvailable ? 'inline-block' : 'none';
+
             const studies = Object.values(state.studies);
             if (!studies.length) {
                 emptyState.style.display = 'block';
                 studiesTable.style.display = 'none';
                 studyCount.textContent = '';
+                if (state.libraryAvailable) {
+                    const folderLabel = state.libraryFolder || 'your library folder';
+                    emptyStateHint.textContent = `No DICOM files found in ${folderLabel}.`;
+                } else {
+                    emptyStateHint.textContent = 'Drop a DICOM folder above to get started';
+                }
                 return;
             }
             emptyState.style.display = 'none';
@@ -2620,6 +2633,10 @@ Copyright (c) 2026 Divergent Health Technologies
                         buf = await file.arrayBuffer();
                     } else if (slice.blob) {
                         buf = await slice.blob.arrayBuffer();
+                    } else if (slice.apiBase) {
+                        const resp = await fetch(`${slice.apiBase}/dicom/${slice.studyId}/${slice.seriesId}/${slice.sliceIndex}`);
+                        if (!resp.ok) throw new Error(`Failed to load slice: ${resp.status}`);
+                        buf = await resp.arrayBuffer();
                     }
                     dataSet = dicomParser.parseDicom(new Uint8Array(buf));
                     state.sliceCache.set(index, dataSet);
@@ -2692,7 +2709,13 @@ Copyright (c) 2026 Divergent Health Technologies
                         // Handle both file handles and blobs
                         const getBuffer = s.fileHandle
                             ? s.fileHandle.getFile().then(f => f.arrayBuffer())
-                            : s.blob ? s.blob.arrayBuffer() : Promise.reject();
+                            : s.blob ? s.blob.arrayBuffer()
+                            : s.apiBase
+                                ? fetch(`${s.apiBase}/dicom/${s.studyId}/${s.seriesId}/${s.sliceIndex}`).then(r => {
+                                    if (!r.ok) throw new Error(`Failed to preload slice: ${r.status}`);
+                                    return r.arrayBuffer();
+                                })
+                                : Promise.reject();
                         getBuffer.then(buf => {
                             state.sliceCache.set(i, dicomParser.parseDicom(new Uint8Array(buf)));
                         }).catch(() => {});
@@ -3033,6 +3056,10 @@ Copyright (c) 2026 Divergent Health Technologies
         folderZone.addEventListener('drop', async e => {
             e.preventDefault();
             folderZone.classList.remove('dragover');
+            if (libraryAbort) {
+                libraryAbort.abort();
+                libraryAbort = null;
+            }
 
             uploadProgress.style.display = 'flex';
             progressText.textContent = 'Reading folder...';
@@ -3076,6 +3103,10 @@ Copyright (c) 2026 Divergent Health Technologies
 
         // Load sample scan (reusable for CT and MRI)
         async function loadSampleScan(samplePath, button, buttonLabel) {
+            if (libraryAbort) {
+                libraryAbort.abort();
+                libraryAbort = null;
+            }
             button.disabled = true;
             button.textContent = 'Loading...';
             uploadProgress.style.display = 'flex';
@@ -3298,40 +3329,39 @@ Copyright (c) 2026 Divergent Health Technologies
         canvas.style.cursor = getCursorForTool(state.currentTool, false);
 
         // =====================================================================
-        // TEST MODE
-        // When ?test is in the URL, load test data from the server API
-        // instead of requiring File System Access API folder drop.
-        // This enables automated testing with Playwright/Puppeteer.
+        // API DATA MODES
+        // Test mode (?test) and local library mode (personal)
         // =====================================================================
 
-        /** Test mode flag - set when ?test URL parameter is present */
-        const isTestMode = new URLSearchParams(window.location.search).has('test');
+        const searchParams = new URLSearchParams(window.location.search);
+        const isTestMode = searchParams.has('test');
+        const noLib = searchParams.has('nolib');
+        let libraryAbort = null;
 
         /**
-         * Load test data from the server API
-         * @returns {Promise<Object>} Studies object matching the normal state.studies format
+         * Load studies from an API endpoint and normalize to state.studies shape.
+         * Supports both test-data array responses and library object responses.
+         *
+         * @param {string} apiBase
+         * @param {RequestInit} options
+         * @returns {Promise<{studies: Object, available: boolean, folder: string}>}
          */
-        async function loadTestData() {
-            const response = await fetch('/api/test-data/studies');
-            if (!response.ok) throw new Error('Failed to load test data');
-
-            const studiesArray = await response.json();
+        function normalizeStudiesPayload(payload, apiBase) {
+            const studiesArray = Array.isArray(payload) ? payload : (payload.studies || []);
             const studies = {};
 
             for (const study of studiesArray) {
                 const seriesMap = {};
-                for (const series of study.series) {
+                for (const series of (study.series || [])) {
                     seriesMap[series.seriesInstanceUid] = {
                         seriesInstanceUid: series.seriesInstanceUid,
                         seriesDescription: series.seriesDescription,
                         seriesNumber: series.seriesNumber,
                         modality: series.modality,
-                        // Create slice objects that use API URLs instead of fileHandles
                         slices: Array.from({ length: series.sliceCount }, (_, i) => ({
                             instanceNumber: i + 1,
                             sliceLocation: 0,
-                            // Store API info for test mode loading
-                            testMode: true,
+                            apiBase,
                             studyId: study.studyInstanceUid,
                             seriesId: series.seriesInstanceUid,
                             sliceIndex: i
@@ -3351,82 +3381,52 @@ Copyright (c) 2026 Divergent Health Technologies
                 };
             }
 
-            return studies;
-        }
-
-        /**
-         * Load a slice in test mode (fetches from API instead of fileHandle)
-         * This is called from loadSlice when the slice has testMode: true
-         */
-        async function loadTestSlice(slice) {
-            const url = `/api/test-data/dicom/${slice.studyId}/${slice.seriesId}/${slice.sliceIndex}`;
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`Failed to load test slice: ${response.status}`);
-
-            const arrayBuffer = await response.arrayBuffer();
-            return dicomParser.parseDicom(new Uint8Array(arrayBuffer));
-        }
-
-        // Patch loadSlice to handle test mode
-        const originalLoadSlice = loadSlice;
-        loadSlice = async function(index) {
-            if (!state.currentSeries) return;
-            const slices = state.currentSeries.slices;
-            if (index < 0 || index >= slices.length) return;
-
-            const slice = slices[index];
-
-            // If this is a test mode slice, fetch from API
-            if (slice.testMode) {
-                state.currentSliceIndex = index;
-                updateSliceInfo();
-                imageLoading.style.display = 'block';
-
-                try {
-                    let dataSet = state.sliceCache.get(index);
-
-                    if (!dataSet) {
-                        dataSet = await loadTestSlice(slice);
-                        state.sliceCache.set(index, dataSet);
-                    }
-
-                    // Pass W/L override if user has adjusted values
-                    const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
-                        ? state.windowLevel : null;
-                    const info = await renderDicom(dataSet, wlOverride);
-
-                    // Update W/L display in toolbar
-                    updateWLDisplay();
-
-                    if (info && !info.error && !info.isBlank) {
-                        let metadataHtml = `
-                            <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                            <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
-                            <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
-                            <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
-                        `;
-                        metadataContent.innerHTML = metadataHtml;
-                    }
-
-                    // Preload adjacent slices
-                    for (let i = index - 2; i <= index + 2; i++) {
-                        if (i >= 0 && i < slices.length && !state.sliceCache.has(i)) {
-                            loadTestSlice(slices[i]).then(ds => {
-                                state.sliceCache.set(i, ds);
-                            }).catch(() => {});
-                        }
-                    }
-                } catch (e) {
-                    console.error('Error loading test slice:', e);
-                }
-
-                imageLoading.style.display = 'none';
-                return;
+            if (Array.isArray(payload)) {
+                return { studies, available: true, folder: '' };
             }
 
-            // Normal mode - use original function
-            return originalLoadSlice.call(this, index);
-        };
+            return {
+                studies,
+                available: !!payload.available,
+                folder: payload.folder || ''
+            };
+        }
+
+        async function loadStudiesFromApi(apiBase, options = {}) {
+            const response = await fetch(`${apiBase}/studies`, options);
+            if (!response.ok) throw new Error(`Failed to load studies: ${response.status}`);
+            const payload = await response.json();
+            return normalizeStudiesPayload(payload, apiBase);
+        }
+
+        async function refreshLibrary() {
+            if (libraryAbort) {
+                libraryAbort.abort();
+                libraryAbort = null;
+            }
+            refreshLibraryBtn.disabled = true;
+            const previousText = refreshLibraryBtn.textContent;
+            refreshLibraryBtn.textContent = 'Refreshing...';
+            try {
+                const response = await fetch('/api/library/refresh', { method: 'POST' });
+                if (!response.ok) throw new Error(`Failed to refresh library: ${response.status}`);
+                const payload = await response.json();
+                const result = normalizeStudiesPayload(payload, '/api/library');
+                state.libraryAvailable = !!result.available;
+                if (result.folder) state.libraryFolder = result.folder;
+                if (Object.keys(result.studies).length > 0) {
+                    state.studies = result.studies;
+                }
+                await displayStudies();
+            } catch (e) {
+                alert(`Failed to refresh library: ${e.message}`);
+            } finally {
+                refreshLibraryBtn.disabled = false;
+                refreshLibraryBtn.textContent = previousText;
+            }
+        }
+
+        refreshLibraryBtn.addEventListener('click', refreshLibrary);
 
         // Auto-load test data if in test mode
         if (isTestMode) {
@@ -3437,7 +3437,8 @@ Copyright (c) 2026 Divergent Health Technologies
                     progressText.textContent = 'Loading test data...';
                     progressDetail.textContent = '';
 
-                    state.studies = await loadTestData();
+                    const result = await loadStudiesFromApi('/api/test-data');
+                    state.studies = result.studies;
 
                     uploadProgress.style.display = 'none';
                     await displayStudies();
@@ -3475,6 +3476,23 @@ Copyright (c) 2026 Divergent Health Technologies
                     alert('Failed to load test data: ' + e.message);
                 }
             })();
+        } else if (CONFIG.features.libraryAutoLoad && !noLib) {
+            libraryAbort = new AbortController();
+            loadStudiesFromApi('/api/library', { signal: libraryAbort.signal })
+                .then(async result => {
+                    libraryAbort = null;
+                    state.libraryAvailable = !!result.available;
+                    if (result.folder) state.libraryFolder = result.folder;
+                    if (Object.keys(result.studies).length > 0) {
+                        state.studies = result.studies;
+                    }
+                    await displayStudies();
+                })
+                .catch(async e => {
+                    libraryAbort = null;
+                    if (e.name === 'AbortError') return;
+                    await displayStudies();
+                });
         } else {
             displayStudies();
         }
