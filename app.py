@@ -750,13 +750,14 @@ def update_library_config():
         return jsonify(response)
 
     try:
-        with LIBRARY_CONFIG_LOCK:
-            refreshed = library_source.set_folder(folder_path)
-            library_folder_raw = folder_raw
-            library_folder_source = 'settings'
+        refreshed = library_source.set_folder(folder_path)
     except Exception:
         app.logger.exception("Failed to rescan updated library folder: %s", folder_path)
         return jsonify({'error': 'Failed to scan library folder'}), 500
+
+    with LIBRARY_CONFIG_LOCK:
+        library_folder_raw = folder_raw
+        library_folder_source = 'settings'
 
     return jsonify({
         **_build_library_config_payload(),
