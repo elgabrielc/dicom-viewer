@@ -17,7 +17,9 @@ Routes:
     GET  /api/test-data/studies                             - List test studies
     GET  /api/test-data/dicom/<study>/<series>/<slice>      - Get DICOM bytes
     GET  /api/test-data/info                                - Test data info
+    GET  /api/library/config                                - Get local library config
     GET  /api/library/studies                               - List local library studies
+    POST /api/library/config                                - Update local library folder
     GET  /api/library/dicom/<study>/<series>/<slice>        - Get local library DICOM bytes
     POST /api/library/refresh                               - Rescan local library folder
     GET  /api/notes/?studies=uid1,uid2                      - Batch load notes
@@ -34,6 +36,7 @@ Routes:
 Copyright (c) 2026 Divergent Health Technologies
 """
 
+import json
 import os
 import re
 import shutil
@@ -64,9 +67,9 @@ TEST_DATA_FOLDER = os.environ.get(
     os.path.expanduser('~/claude 0/test-data-mri-1')
 )
 
-# Persistent local library folder (personal mode)
-LIBRARY_FOLDER_RAW = os.environ.get('DICOM_LIBRARY', '~/DICOMs')
-LIBRARY_FOLDER = os.path.expanduser(LIBRARY_FOLDER_RAW)
+# Persistent local library folder defaults (personal mode)
+DEFAULT_LIBRARY_FOLDER_RAW = '~/DICOMs'
+DEFAULT_LIBRARY_FOLDER = os.path.expanduser(DEFAULT_LIBRARY_FOLDER_RAW)
 
 # Notes database storage (SQLite + report files)
 DATA_DIR = os.environ.get(
@@ -75,6 +78,7 @@ DATA_DIR = os.environ.get(
 )
 DB_PATH = os.path.join(DATA_DIR, 'viewer.db')
 REPORTS_DIR = os.path.join(DATA_DIR, 'reports')
+SETTINGS_PATH = os.path.join(DATA_DIR, 'settings.json')
 
 REPORT_TYPE_MAP = {
     'pdf': ('pdf', 'pdf', 'application/pdf'),
@@ -95,6 +99,10 @@ MAX_BATCH_STUDY_UIDS = 200
 
 # Comment timestamps must be within this range of server time
 MAX_TIMESTAMP_DRIFT_MS = 365 * 24 * 60 * 60 * 1000  # 1 year
+
+# Settings/config synchronization
+SETTINGS_LOCK = threading.Lock()
+LIBRARY_CONFIG_LOCK = threading.Lock()
 
 # =============================================================================
 # SECURITY MIDDLEWARE
@@ -145,6 +153,88 @@ def _set_security_headers(response):
 def _ensure_data_dirs():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(REPORTS_DIR, exist_ok=True)
+
+
+def _load_settings_unlocked():
+    """Load persisted settings from disk (caller must hold SETTINGS_LOCK)."""
+    if not os.path.exists(SETTINGS_PATH):
+        return {}
+
+    try:
+        with open(SETTINGS_PATH, 'r', encoding='utf-8') as f:
+            payload = json.load(f)
+            if isinstance(payload, dict):
+                return payload
+    except (OSError, json.JSONDecodeError) as exc:
+        app.logger.warning("Failed to read settings file %s: %s", SETTINGS_PATH, exc)
+    return {}
+
+
+def _save_settings_unlocked(settings):
+    """Persist settings atomically (caller must hold SETTINGS_LOCK)."""
+    _ensure_data_dirs()
+    fd, temp_path = tempfile.mkstemp(
+        prefix='settings-',
+        suffix='.tmp',
+        dir=DATA_DIR
+    )
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, SETTINGS_PATH)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+def _load_settings():
+    """Load persisted settings from disk."""
+    with SETTINGS_LOCK:
+        return _load_settings_unlocked()
+
+
+def _save_settings(settings):
+    """Persist settings to disk."""
+    with SETTINGS_LOCK:
+        _save_settings_unlocked(settings)
+
+
+def _save_library_folder_setting(folder_raw):
+    """Persist library folder setting atomically under one lock."""
+    with SETTINGS_LOCK:
+        settings = _load_settings_unlocked()
+        settings['library_folder'] = folder_raw
+        _save_settings_unlocked(settings)
+
+
+def _resolve_library_folder():
+    """Resolve active library folder from env/settings/default precedence."""
+    env = os.environ.get('DICOM_LIBRARY')
+    if isinstance(env, str) and env.strip():
+        raw = env.strip()
+        return {
+            'folder': raw,
+            'folder_resolved': os.path.expanduser(raw),
+            'source': 'env'
+        }
+
+    settings = _load_settings()
+    saved = settings.get('library_folder')
+    if isinstance(saved, str) and saved.strip():
+        raw = saved.strip()
+        return {
+            'folder': raw,
+            'folder_resolved': os.path.expanduser(raw),
+            'source': 'settings'
+        }
+
+    return {
+        'folder': DEFAULT_LIBRARY_FOLDER_RAW,
+        'folder_resolved': DEFAULT_LIBRARY_FOLDER,
+        'source': 'default'
+    }
 
 
 def _parse_int(value, default=None):
@@ -436,6 +526,33 @@ class DicomFolderSource:
             self._scan_cv.notify_all()
             return self._cache or {}
 
+    def set_folder(self, new_path):
+        """Change source folder path and refresh cache from that folder."""
+        with self._scan_cv:
+            while self._scan_in_progress:
+                self._scan_cv.wait()
+            folder_path = new_path
+            self.folder_path = folder_path
+            self._cache = None
+            self._scan_in_progress = True
+
+        try:
+            if os.path.exists(folder_path):
+                scanned = scan_dicom_folder(folder_path)
+            else:
+                scanned = None
+        except Exception:
+            with self._scan_cv:
+                self._scan_in_progress = False
+                self._scan_cv.notify_all()
+            raise
+
+        with self._scan_cv:
+            self._cache = scanned
+            self._scan_in_progress = False
+            self._scan_cv.notify_all()
+            return self._cache or {}
+
     def format_studies(self, studies=None):
         """Format studies in the JSON shape expected by the frontend."""
         if studies is None:
@@ -497,7 +614,10 @@ class DicomFolderSource:
 
 
 test_source = DicomFolderSource(TEST_DATA_FOLDER)
-library_source = DicomFolderSource(LIBRARY_FOLDER)
+_active_library_config = _resolve_library_folder()
+library_folder_raw = _active_library_config['folder']
+library_folder_source = _active_library_config['source']
+library_source = DicomFolderSource(_active_library_config['folder_resolved'])
 
 
 # =============================================================================
@@ -545,30 +665,117 @@ def get_test_info():
 # =============================================================================
 
 def _ensure_library_folder():
-    """Create library folder lazily on first local-library access."""
-    try:
-        os.makedirs(LIBRARY_FOLDER, exist_ok=True)
+    """Ensure active library folder exists/readable (auto-create default only)."""
+    with LIBRARY_CONFIG_LOCK:
+        folder_path = library_source.folder_path
+        folder_label = library_folder_raw
+        folder_source = library_folder_source
+
+    if folder_source != 'default':
+        if not os.path.isdir(folder_path):
+            return False, f"Directory does not exist: {folder_label}"
+        if not os.access(folder_path, os.R_OK | os.X_OK):
+            return False, f"Directory is not readable: {folder_label}"
         return True, None
+
+    try:
+        os.makedirs(folder_path, exist_ok=True)
     except PermissionError:
-        app.logger.warning("Permission denied creating library folder: %s", LIBRARY_FOLDER)
-        return False, f"Permission denied creating {LIBRARY_FOLDER_RAW}"
+        app.logger.warning("Permission denied creating library folder: %s", folder_path)
+        return False, f"Permission denied creating {folder_label}"
     except OSError as exc:
-        app.logger.warning("Failed to create library folder %s: %s", LIBRARY_FOLDER, exc)
-        return False, f"Failed to create {LIBRARY_FOLDER_RAW}"
+        app.logger.warning("Failed to create library folder %s: %s", folder_path, exc)
+        return False, f"Failed to create {folder_label}"
+
+    if not os.access(folder_path, os.R_OK | os.X_OK):
+        return False, f"Directory is not readable: {folder_label}"
+    return True, None
+
+
+def _build_library_config_payload():
+    with LIBRARY_CONFIG_LOCK:
+        return {
+            'folder': library_folder_raw,
+            'folderResolved': library_source.folder_path,
+            'source': library_folder_source
+        }
+
+
+@app.route('/api/library/config')
+def get_library_config():
+    payload = _build_library_config_payload()
+    payload['overridden'] = payload['source'] == 'env'
+    return jsonify(payload)
+
+
+@app.route('/api/library/config', methods=['POST'])
+def update_library_config():
+    global library_folder_raw
+    global library_folder_source
+
+    payload = request.get_json(silent=True) or {}
+    folder = payload.get('folder')
+    if not isinstance(folder, str) or not folder.strip():
+        return jsonify({'error': 'Folder is required'}), 400
+
+    folder_raw = folder.strip()
+    folder_path = os.path.expanduser(folder_raw)
+
+    if not os.path.isdir(folder_path):
+        return jsonify({'error': f'Directory does not exist: {folder_raw}'}), 400
+
+    if not os.access(folder_path, os.R_OK | os.X_OK):
+        return jsonify({'error': f'Directory is not readable: {folder_raw}'}), 400
+
+    try:
+        _save_library_folder_setting(folder_raw)
+    except OSError as exc:
+        app.logger.warning("Failed to save library settings %s: %s", SETTINGS_PATH, exc)
+        return jsonify({'error': 'Failed to save settings'}), 500
+
+    with LIBRARY_CONFIG_LOCK:
+        source = library_folder_source
+
+    # Environment variable has highest precedence; keep runtime folder unchanged.
+    if source == 'env':
+        available, error = _ensure_library_folder()
+        response = {
+            **_build_library_config_payload(),
+            'available': available,
+            'studies': library_source.format_studies() if available else [],
+            'overridden': True
+        }
+        if error:
+            response['error'] = error
+        return jsonify(response)
+
+    try:
+        with LIBRARY_CONFIG_LOCK:
+            refreshed = library_source.set_folder(folder_path)
+            library_folder_raw = folder_raw
+            library_folder_source = 'settings'
+    except Exception:
+        app.logger.exception("Failed to rescan updated library folder: %s", folder_path)
+        return jsonify({'error': 'Failed to scan library folder'}), 500
+
+    return jsonify({
+        **_build_library_config_payload(),
+        'available': True,
+        'studies': library_source.format_studies(refreshed),
+        'overridden': False
+    })
 
 
 @app.route('/api/library/studies')
 def get_library_studies():
     """Get studies from local persistent library folder."""
-    available = os.path.exists(LIBRARY_FOLDER)
-    error = None
-    if not available:
-        available, error = _ensure_library_folder()
+    available, error = _ensure_library_folder()
+    current_config = _build_library_config_payload()
 
     payload = {
         'available': available,
-        'folder': LIBRARY_FOLDER_RAW,
-        'studies': library_source.format_studies()
+        'folder': current_config['folder'],
+        'studies': library_source.format_studies() if available else []
     }
     if error:
         payload['error'] = error
@@ -592,10 +799,11 @@ def get_library_dicom(study_id, series_id, slice_num):
 def refresh_library():
     """Rescan local library folder and return updated studies."""
     available, error = _ensure_library_folder()
+    current_config = _build_library_config_payload()
     if not available:
         return jsonify({
             'available': False,
-            'folder': LIBRARY_FOLDER_RAW,
+            'folder': current_config['folder'],
             'studies': [],
             'error': error
         }), 500
@@ -603,7 +811,7 @@ def refresh_library():
     refreshed = library_source.refresh()
     return jsonify({
         'available': available,
-        'folder': LIBRARY_FOLDER_RAW,
+        'folder': current_config['folder'],
         'studies': library_source.format_studies(refreshed)
     })
 

@@ -78,6 +78,15 @@ Copyright (c) 2026 Divergent Health Technologies
         <section class="studies-section">
             <h2>Studies <span id="studyCount" class="count"></span></h2>
             <button id="refreshLibraryBtn" class="library-refresh-btn" style="display: none; margin-bottom: 0.75rem;">Refresh Library</button>
+            <div id="libraryFolderConfig" class="library-folder-config" style="display: none;">
+                <label for="libraryFolderInput">Library Folder</label>
+                <div class="library-folder-controls">
+                    <input id="libraryFolderInput" type="text" placeholder="~/DICOMs" spellcheck="false" autocomplete="off">
+                    <button id="saveLibraryFolderBtn" class="library-refresh-btn library-folder-save-btn">Save</button>
+                </div>
+                <p id="libraryFolderStatus" class="library-folder-status" style="display: none;"></p>
+                <p id="libraryFolderMessage" class="library-folder-message" style="display: none;"></p>
+            </div>
             <div id="emptyState" class="empty-state">
                 <p>No studies loaded</p>
                 <p id="emptyStateHint" class="small">Drop a DICOM folder above to get started</p>
@@ -286,6 +295,9 @@ Copyright (c) 2026 Divergent Health Technologies
             sliceCache: new LRUCache(SLICE_CACHE_MAX_ENTRIES),
             libraryAvailable: false,
             libraryFolder: '',
+            libraryFolderResolved: '',
+            libraryFolderSource: '',
+            libraryConfigReachable: false,
             // Viewing tools state
             currentTool: 'wl',
             viewTransform: { panX: 0, panY: 0, zoom: 1 },
@@ -314,6 +326,11 @@ Copyright (c) 2026 Divergent Health Technologies
         const emptyStateHint = $('emptyStateHint');
         const studyCount = $('studyCount');
         const refreshLibraryBtn = $('refreshLibraryBtn');
+        const libraryFolderConfig = $('libraryFolderConfig');
+        const libraryFolderInput = $('libraryFolderInput');
+        const saveLibraryFolderBtn = $('saveLibraryFolderBtn');
+        const libraryFolderStatus = $('libraryFolderStatus');
+        const libraryFolderMessage = $('libraryFolderMessage');
         const uploadProgress = $('uploadProgress');
         const progressText = $('progressText');
         const progressDetail = $('progressDetail');
@@ -1646,6 +1663,7 @@ Copyright (c) 2026 Divergent Health Technologies
             await loadNotesForStudies();
 
             refreshLibraryBtn.style.display = state.libraryAvailable ? 'inline-block' : 'none';
+            libraryFolderConfig.style.display = (state.libraryAvailable || state.libraryConfigReachable) ? 'block' : 'none';
 
             const studies = Object.values(state.studies);
             if (!studies.length) {
@@ -3399,6 +3417,108 @@ Copyright (c) 2026 Divergent Health Technologies
             return normalizeStudiesPayload(payload, apiBase);
         }
 
+        function setLibraryFolderStatus(message, tone = '') {
+            if (!message) {
+                libraryFolderStatus.style.display = 'none';
+                libraryFolderStatus.textContent = '';
+                libraryFolderStatus.className = 'library-folder-status';
+                return;
+            }
+
+            libraryFolderStatus.textContent = message;
+            libraryFolderStatus.className = `library-folder-status ${tone}`.trim();
+            libraryFolderStatus.style.display = 'block';
+        }
+
+        function setLibraryFolderMessage(message, tone = '') {
+            if (!message) {
+                libraryFolderMessage.style.display = 'none';
+                libraryFolderMessage.textContent = '';
+                libraryFolderMessage.className = 'library-folder-message';
+                return;
+            }
+
+            libraryFolderMessage.textContent = message;
+            libraryFolderMessage.className = `library-folder-message ${tone}`.trim();
+            libraryFolderMessage.style.display = 'block';
+        }
+
+        function applyLibraryConfigPayload(payload, options = {}) {
+            const { preserveInput = false } = options;
+            state.libraryConfigReachable = true;
+            state.libraryFolderSource = payload.source || '';
+            state.libraryFolderResolved = payload.folderResolved || '';
+            state.libraryFolder = payload.folder || '';
+
+            if (!preserveInput) {
+                libraryFolderInput.value = state.libraryFolder;
+            }
+
+            if (state.libraryFolderSource === 'env') {
+                setLibraryFolderStatus(
+                    'Currently overridden by DICOM_LIBRARY environment variable.',
+                    'warning'
+                );
+            } else {
+                setLibraryFolderStatus('');
+            }
+        }
+
+        async function loadLibraryConfig() {
+            const response = await fetch('/api/library/config');
+            if (!response.ok) throw new Error(`Failed to load library config: ${response.status}`);
+            const payload = await response.json();
+            applyLibraryConfigPayload(payload);
+            return payload;
+        }
+
+        async function saveLibraryFolderConfig() {
+            const folder = libraryFolderInput.value.trim();
+            if (!folder) {
+                setLibraryFolderMessage('Enter a folder path.', 'error');
+                return;
+            }
+
+            saveLibraryFolderBtn.disabled = true;
+            const previousText = saveLibraryFolderBtn.textContent;
+            saveLibraryFolderBtn.textContent = 'Saving...';
+            setLibraryFolderMessage('');
+
+            try {
+                const response = await fetch('/api/library/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder })
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    throw new Error(payload.error || `Failed to save library folder: ${response.status}`);
+                }
+
+                const result = normalizeStudiesPayload(payload, '/api/library');
+                state.libraryAvailable = !!result.available;
+                state.studies = result.studies;
+                applyLibraryConfigPayload(payload, { preserveInput: !!payload.overridden });
+
+                if (payload.overridden) {
+                    libraryFolderInput.value = folder;
+                    setLibraryFolderMessage(
+                        'Saved. Will take effect when the DICOM_LIBRARY environment variable is removed.',
+                        'info'
+                    );
+                } else {
+                    setLibraryFolderMessage('Library folder updated.', 'success');
+                }
+
+                await displayStudies();
+            } catch (e) {
+                setLibraryFolderMessage(e.message || 'Failed to save library folder.', 'error');
+            } finally {
+                saveLibraryFolderBtn.disabled = false;
+                saveLibraryFolderBtn.textContent = previousText;
+            }
+        }
+
         async function refreshLibrary() {
             if (libraryAbort) {
                 libraryAbort.abort();
@@ -3409,14 +3529,14 @@ Copyright (c) 2026 Divergent Health Technologies
             refreshLibraryBtn.textContent = 'Refreshing...';
             try {
                 const response = await fetch('/api/library/refresh', { method: 'POST' });
-                if (!response.ok) throw new Error(`Failed to refresh library: ${response.status}`);
                 const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || `Failed to refresh library: ${response.status}`);
+                }
                 const result = normalizeStudiesPayload(payload, '/api/library');
                 state.libraryAvailable = !!result.available;
                 if (result.folder) state.libraryFolder = result.folder;
-                if (Object.keys(result.studies).length > 0) {
-                    state.studies = result.studies;
-                }
+                state.studies = result.studies;
                 await displayStudies();
             } catch (e) {
                 alert(`Failed to refresh library: ${e.message}`);
@@ -3427,6 +3547,13 @@ Copyright (c) 2026 Divergent Health Technologies
         }
 
         refreshLibraryBtn.addEventListener('click', refreshLibrary);
+        saveLibraryFolderBtn.addEventListener('click', saveLibraryFolderConfig);
+        libraryFolderInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveLibraryFolderConfig();
+            }
+        });
 
         // Auto-load test data if in test mode
         if (isTestMode) {
@@ -3477,19 +3604,26 @@ Copyright (c) 2026 Divergent Health Technologies
                 }
             })();
         } else if (CONFIG.features.libraryAutoLoad && !noLib) {
+            const libraryConfigPromise = loadLibraryConfig().catch(e => {
+                state.libraryConfigReachable = false;
+                setLibraryFolderStatus('');
+                console.warn('Failed to load library config:', e);
+                return null;
+            });
+
             libraryAbort = new AbortController();
             loadStudiesFromApi('/api/library', { signal: libraryAbort.signal })
                 .then(async result => {
                     libraryAbort = null;
+                    await libraryConfigPromise;
                     state.libraryAvailable = !!result.available;
                     if (result.folder) state.libraryFolder = result.folder;
-                    if (Object.keys(result.studies).length > 0) {
-                        state.studies = result.studies;
-                    }
+                    state.studies = result.studies;
                     await displayStudies();
                 })
                 .catch(async e => {
                     libraryAbort = null;
+                    await libraryConfigPromise;
                     if (e.name === 'AbortError') return;
                     await displayStudies();
                 });

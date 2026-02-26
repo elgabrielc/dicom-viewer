@@ -1,6 +1,9 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 /**
  * Playwright tests for DICOM Viewer - Library View and Navigation
@@ -1011,6 +1014,83 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
         expect(typeof body.available).toBe('boolean');
         expect(typeof body.folder).toBe('string');
         expect(Array.isArray(body.studies)).toBe(true);
+    });
+
+    test.describe('Library Config Endpoint Coverage', () => {
+        test.describe.configure({ mode: 'serial' });
+
+        test('GET /api/library/config returns expected payload shape', async ({ page }) => {
+            const response = await page.request.get('http://127.0.0.1:5001/api/library/config');
+            expect(response.status()).toBe(200);
+
+            const body = await response.json();
+            expect(body).toHaveProperty('folder');
+            expect(body).toHaveProperty('folderResolved');
+            expect(body).toHaveProperty('source');
+            expect(typeof body.folder).toBe('string');
+            expect(typeof body.folderResolved).toBe('string');
+            expect(['default', 'settings', 'env']).toContain(body.source);
+        });
+
+        test('POST /api/library/config returns 400 for missing folder', async ({ page }) => {
+            const response = await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                data: {}
+            });
+            expect(response.status()).toBe(400);
+
+            const body = await response.json();
+            expect(body).toHaveProperty('error');
+            expect(body.error).toContain('Folder is required');
+        });
+
+        test('POST /api/library/config returns 400 for nonexistent folder', async ({ page }) => {
+            const missingPath = path.join(os.tmpdir(), `dicom-missing-${Date.now()}-folder`);
+            const response = await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                data: { folder: missingPath }
+            });
+            expect(response.status()).toBe(400);
+
+            const body = await response.json();
+            expect(body).toHaveProperty('error');
+            expect(body.error).toContain('Directory does not exist');
+        });
+
+        test('POST /api/library/config updates active config or stays overridden by env', async ({ page }) => {
+            const beforeResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
+            expect(beforeResponse.status()).toBe(200);
+            const before = await beforeResponse.json();
+
+            const nextFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'dicom-library-config-'));
+            const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                data: { folder: nextFolder }
+            });
+            expect(saveResponse.status()).toBe(200);
+            const saveBody = await saveResponse.json();
+
+            expect(saveBody).toHaveProperty('overridden');
+            expect(typeof saveBody.overridden).toBe('boolean');
+            expect(saveBody).toHaveProperty('studies');
+            expect(Array.isArray(saveBody.studies)).toBe(true);
+
+            const afterResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
+            expect(afterResponse.status()).toBe(200);
+            const after = await afterResponse.json();
+
+            if (before.source === 'env') {
+                expect(saveBody.overridden).toBe(true);
+                expect(saveBody.source).toBe('env');
+                expect(saveBody.folderResolved).toBe(before.folderResolved);
+                expect(after.source).toBe('env');
+                expect(after.folderResolved).toBe(before.folderResolved);
+            } else {
+                expect(saveBody.overridden).toBe(false);
+                expect(saveBody.source).toBe('settings');
+                expect(saveBody.folderResolved).toBe(nextFolder);
+                expect(after.source).toBe('settings');
+                expect(after.folderResolved).toBe(nextFolder);
+                expect(after.folder).toBe(nextFolder);
+            }
+        });
     });
 
     test('POST /api/library/refresh returns expected payload shape', async ({ page }) => {
