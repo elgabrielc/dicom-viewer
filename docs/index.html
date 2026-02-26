@@ -3467,7 +3467,9 @@ Copyright (c) 2026 Divergent Health Technologies
         async function loadLibraryConfig() {
             const response = await fetch('/api/library/config');
             if (!response.ok) throw new Error(`Failed to load library config: ${response.status}`);
-            const payload = await response.json();
+            const payload = await response.json().catch(() => {
+                throw new Error('Library config response was not valid JSON');
+            });
             applyLibraryConfigPayload(payload);
             return payload;
         }
