@@ -95,8 +95,8 @@ Copyright (c) 2026 Divergent Health Technologies
                 <thead>
                     <tr>
                         <th style="width: 30px;"></th>
-                        <th>Patient Name</th>
-                        <th>Study Date</th>
+                        <th class="sortable" data-sort="name" role="button" tabindex="0" aria-sort="none">Patient Name <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="date" role="button" tabindex="0" aria-sort="descending">Study Date <span class="sort-arrow"></span></th>
                         <th>Description</th>
                         <th>Modality</th>
                         <th>Series</th>
@@ -298,6 +298,7 @@ Copyright (c) 2026 Divergent Health Technologies
             libraryFolderResolved: '',
             libraryFolderSource: '',
             libraryConfigReachable: false,
+            studySort: { column: 'date', direction: 'desc' },
             // Viewing tools state
             currentTool: 'wl',
             viewTransform: { panX: 0, panY: 0, zoom: 1 },
@@ -321,6 +322,7 @@ Copyright (c) 2026 Divergent Health Technologies
         const viewerView = $('viewerView');
         const folderZone = $('folderZone');
         const studiesTable = $('studiesTable');
+        const studiesTableHead = document.querySelector('#studiesTable thead');
         const studiesBody = $('studiesBody');
         const emptyState = $('emptyState');
         const emptyStateHint = $('emptyStateHint');
@@ -1666,6 +1668,35 @@ Copyright (c) 2026 Divergent Health Technologies
             libraryFolderConfig.style.display = (state.libraryAvailable || state.libraryConfigReachable) ? 'block' : 'none';
 
             const studies = Object.values(state.studies);
+            const { column, direction } = state.studySort;
+            studies.sort((a, b) => {
+                let aVal;
+                let bVal;
+
+                if (column === 'name') {
+                    aVal = (a.patientName || '').trim().toLocaleLowerCase();
+                    bVal = (b.patientName || '').trim().toLocaleLowerCase();
+                } else {
+                    // Normalize to keep YYYYMMDD and YYYY-MM-DD comparable
+                    aVal = (a.studyDate || '').replace(/\D/g, '');
+                    bVal = (b.studyDate || '').replace(/\D/g, '');
+                }
+
+                // Missing values always sort to the bottom
+                if (!aVal && !bVal) {
+                    return (a.studyInstanceUid || '').localeCompare(b.studyInstanceUid || '');
+                }
+                if (!aVal) return 1;
+                if (!bVal) return -1;
+
+                const cmp = aVal.localeCompare(bVal);
+                if (cmp !== 0) {
+                    return direction === 'asc' ? cmp : -cmp;
+                }
+
+                // Tie-breaker for deterministic rendering order
+                return (a.studyInstanceUid || '').localeCompare(b.studyInstanceUid || '');
+            });
             if (!studies.length) {
                 emptyState.style.display = 'block';
                 studiesTable.style.display = 'none';
@@ -1987,6 +2018,35 @@ Copyright (c) 2026 Divergent Health Technologies
             Object.keys(state.studies).forEach(studyUid => {
                 attachReportEventHandlers(studyUid);
             });
+
+            // Update sort indicators and aria state
+            document.querySelectorAll('.sortable').forEach(th => {
+                const arrow = th.querySelector('.sort-arrow');
+                if (!arrow) return;
+
+                if (th.dataset.sort === state.studySort.column) {
+                    arrow.textContent = state.studySort.direction === 'asc' ? ' \u25B2' : ' \u25BC';
+                    th.setAttribute('aria-sort', state.studySort.direction === 'asc' ? 'ascending' : 'descending');
+                } else {
+                    arrow.textContent = '';
+                    th.setAttribute('aria-sort', 'none');
+                }
+            });
+        }
+
+        function handleSortClick(e) {
+            const th = e.target.closest('.sortable');
+            if (!th) return;
+
+            const column = th.dataset.sort;
+            if (state.studySort.column === column) {
+                state.studySort.direction = state.studySort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.studySort.column = column;
+                state.studySort.direction = column === 'date' ? 'desc' : 'asc';
+            }
+
+            displayStudies();
         }
 
         // =====================================================================
@@ -3066,6 +3126,14 @@ Copyright (c) 2026 Divergent Health Technologies
         // EVENT HANDLERS
         // Drag-and-drop, keyboard navigation, mouse wheel scrolling
         // =====================================================================
+
+        studiesTableHead.addEventListener('click', handleSortClick);
+        studiesTableHead.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSortClick(e);
+            }
+        });
 
         // Drag-and-drop handlers for folder loading
         folderZone.addEventListener('dragover', e => { e.preventDefault(); folderZone.classList.add('dragover'); });

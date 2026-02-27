@@ -353,6 +353,19 @@ header .subtitle {
     letter-spacing: 0.5px;
 }
 
+.studies-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.studies-table th.sortable:hover {
+    color: #ccc;
+}
+
+.sort-arrow {
+    font-size: 0.7rem;
+}
+
 .studies-table tbody tr {
     cursor: pointer;
     transition: background-color 0.2s;
