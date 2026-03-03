@@ -47,6 +47,7 @@ Master index of all project documentation, organized by audience and purpose.
 |----------|----------|-------------|
 | [ADR Guide](./decisions/README.md) | docs/decisions/ | ADR conventions, template, and writing criteria |
 | [ADR 001: launch.command](./decisions/001-launch-command.md) | docs/decisions/ | Decision record for macOS double-click startup workflow |
+| [ADR 002: Persistent Local Library](./decisions/002-persistent-local-library.md) | docs/decisions/ | Decision record for persistent DICOM library with DicomFolderSource architecture |
 
 ---
 
@@ -104,7 +105,8 @@ Architecture Decision Records (ADRs) for significant decisions and rationale.
 ```
 docs/decisions/
 ├── README.md                               # ADR template and conventions
-└── 001-launch-command.md                   # Decision record for launch.command startup
+├── 001-launch-command.md                   # Decision record for launch.command startup
+└── 002-persistent-local-library.md         # Decision record for persistent DICOM library
 ```
 
 ---
