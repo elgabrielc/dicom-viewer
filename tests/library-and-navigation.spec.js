@@ -241,6 +241,113 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
         expect(headerString).toContain('Series');
     });
 
+    test('Sortable headers toggle order and keep missing values at bottom', async ({ page }) => {
+        await page.route('**/api/test-data/studies', async route => {
+            const response = await route.fetch();
+            const originalStudies = await response.json();
+            expect(Array.isArray(originalStudies)).toBe(true);
+            expect(originalStudies.length).toBeGreaterThan(0);
+
+            const baseStudy = originalStudies[0];
+            const fallbackSeries = [{
+                seriesInstanceUid: 'sort-seed-series',
+                seriesDescription: 'Synthetic',
+                modality: 'CT',
+                sliceCount: 1
+            }];
+            const baseSeries = Array.isArray(baseStudy.series) && baseStudy.series.length > 0
+                ? baseStudy.series
+                : fallbackSeries;
+            const baseSeriesCount = baseStudy.seriesCount ?? baseSeries.length;
+            const baseImageCount = baseStudy.imageCount ?? baseSeries.reduce((sum, series) => {
+                return sum + (series.sliceCount || 1);
+            }, 0);
+
+            const customStudies = [
+                {
+                    ...baseStudy,
+                    patientName: 'Mason, Zed',
+                    studyDate: '20240210',
+                    studyInstanceUid: baseStudy.studyInstanceUid,
+                    series: baseSeries,
+                    seriesCount: baseSeriesCount,
+                    imageCount: baseImageCount
+                },
+                {
+                    studyInstanceUid: 'sort-test-uid-a',
+                    patientName: 'Adams, Amy',
+                    studyDate: '20210102',
+                    studyDescription: 'Synthetic A',
+                    modality: 'CT',
+                    seriesCount: 1,
+                    imageCount: 1,
+                    series: fallbackSeries
+                },
+                {
+                    studyInstanceUid: 'sort-test-uid-b',
+                    patientName: '',
+                    studyDate: '20230303',
+                    studyDescription: 'Synthetic B',
+                    modality: 'CT',
+                    seriesCount: 1,
+                    imageCount: 1,
+                    series: fallbackSeries
+                },
+                {
+                    studyInstanceUid: 'sort-test-uid-c',
+                    patientName: 'Brown, Bob',
+                    studyDate: '',
+                    studyDescription: 'Synthetic C',
+                    modality: 'CT',
+                    seriesCount: 1,
+                    imageCount: 1,
+                    series: fallbackSeries
+                }
+            ];
+
+            await route.fulfill({ response, json: customStudies });
+        });
+
+        await page.goto(TEST_URL);
+        await waitForViewerReady(page);
+        await page.click(BACK_BUTTON_SELECTOR);
+        await expect(page.locator(STUDIES_TABLE_SELECTOR)).toBeVisible();
+
+        const nameHeader = page.locator('#studiesTable th.sortable[data-sort="name"]');
+        const dateHeader = page.locator('#studiesTable th.sortable[data-sort="date"]');
+
+        const getColumnTexts = async (columnIndex) => {
+            const cells = page.locator(`${STUDIES_BODY_SELECTOR} .study-row td:nth-child(${columnIndex})`);
+            const values = await cells.allInnerTexts();
+            return values.map(v => v.trim());
+        };
+
+        // Default sort: date descending
+        await expect(dateHeader).toHaveAttribute('aria-sort', 'descending');
+        await expect(nameHeader).toHaveAttribute('aria-sort', 'none');
+        const defaultDates = await getColumnTexts(3);
+        expect(defaultDates).toEqual(['2024-02-10', '2023-03-03', '2021-01-02', '-']);
+
+        // Toggle date -> ascending (missing still at bottom)
+        await dateHeader.click();
+        await expect(dateHeader).toHaveAttribute('aria-sort', 'ascending');
+        const ascDates = await getColumnTexts(3);
+        expect(ascDates).toEqual(['2021-01-02', '2023-03-03', '2024-02-10', '-']);
+
+        // Switch to name -> ascending
+        await nameHeader.click();
+        await expect(nameHeader).toHaveAttribute('aria-sort', 'ascending');
+        await expect(dateHeader).toHaveAttribute('aria-sort', 'none');
+        const ascNames = await getColumnTexts(2);
+        expect(ascNames).toEqual(['Adams, Amy', 'Brown, Bob', 'Mason, Zed', '-']);
+
+        // Toggle name -> descending (missing still at bottom)
+        await nameHeader.click();
+        await expect(nameHeader).toHaveAttribute('aria-sort', 'descending');
+        const descNames = await getColumnTexts(2);
+        expect(descNames).toEqual(['Mason, Zed', 'Brown, Bob', 'Adams, Amy', '-']);
+    });
+
     test('Studies table has at least one study row', async ({ page }) => {
         await setupLibraryFromTestMode(page);
 
