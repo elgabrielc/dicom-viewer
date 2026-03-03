@@ -41,6 +41,13 @@ Master index of all project documentation, organized by audience and purpose.
 | [3D Research](./planning/RESEARCH-3d-volume-rendering.md) | docs/planning/ | Benchmarking study of 3D rendering approaches |
 | [Measurement Tool Research](./planning/RESEARCH-measurement-tool.md) | docs/planning/ | Benchmarking of measurement tools (Horos, Ambra, Sectra) |
 
+### For Decisions
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| [ADR Guide](./decisions/README.md) | docs/decisions/ | ADR conventions, template, and writing criteria |
+| [ADR 001: launch.command](./decisions/001-launch-command.md) | docs/decisions/ | Decision record for macOS double-click startup workflow |
+
 ---
 
 ## Document Locations
@@ -73,7 +80,8 @@ docs/
 ├── DEPLOY.md              # Deployment guide
 ├── TESTING.md             # Testing documentation
 ├── BUGS.md                # Bug tracking
-└── planning/              # Planning and research documents
+├── planning/              # Planning and research documents
+└── decisions/             # Architecture Decision Records (ADRs)
 ```
 
 ### docs/planning/ Directory
@@ -87,6 +95,16 @@ docs/planning/
 ├── RESEARCH-measurement-tool.md            # Measurement tool benchmarking
 ├── RESEARCH-measurement-tool-prompt.md     # Research methodology
 └── RESEARCH-measurement-tool-thinking.md   # Research analysis
+```
+
+### docs/decisions/ Directory
+
+Architecture Decision Records (ADRs) for significant decisions and rationale.
+
+```
+docs/decisions/
+├── README.md                               # ADR template and conventions
+└── 001-launch-command.md                   # Decision record for launch.command startup
 ```
 
 ---
@@ -114,6 +132,7 @@ Start here to understand the project before contributing:
 2. **[API.md](./API.md)** - Backend endpoints (if modifying server)
 3. **[TESTING.md](./TESTING.md)** - Test requirements for new features
 4. **Relevant RESEARCH-*.md** - Prior art and design decisions
+5. **Relevant ADR-*.md** - Canonical accepted decisions and tradeoffs
 
 ### For Understanding 3D Plans
 
@@ -169,6 +188,9 @@ Project structure map showing workspace layout, file organization, and current w
 **RESEARCH-*.md**
 Research documents capturing benchmarking and analysis before feature implementation. Includes competitive analysis, technology comparisons, and design rationale.
 
+**ADR-*.md (`docs/decisions/`)**
+Architecture Decision Records for significant choices. ADRs capture context, decision, alternatives, implementation details, and consequences in an append-only decision log.
+
 ---
 
 ## Keeping Documentation Updated
@@ -189,13 +211,15 @@ Research documents capturing benchmarking and analysis before feature implementa
 | BUGS.md | Bug discovery and resolution |
 | SITEMAP.md | File structure changes |
 | INDEX.md | New documentation files |
+| docs/decisions/README.md and ADR-*.md | New significant decisions, status transitions, or superseding prior decisions |
 
 ### Documentation Requirements (from CLAUDE.md)
 
 - Keep SITEMAP.md accurate when project structure changes
 - Track bugs in BUGS.md with full context (symptoms, root cause, solution, prevention)
+- Record major decisions and rationale in ADRs under `docs/decisions/`
 - Document "why" not just "what" - future developers need context
 
 ---
 
-*Last updated: 2026-02-01*
+*Last updated: 2026-03-03*
