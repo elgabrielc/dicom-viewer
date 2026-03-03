@@ -52,6 +52,7 @@ Architecture Decision Records (ADRs) for significant project decisions and ratio
 |------|-------------|
 | `README.md` | ADR convention, template, and writing guidance |
 | `001-launch-command.md` | Decision record for macOS `launch.command` startup workflow |
+| `002-persistent-local-library.md` | Decision record for persistent DICOM library with DicomFolderSource, configurable folder, and apiBase pattern |
 
 ---
 
