@@ -44,6 +44,17 @@ Research, decisions, and reference materials for feature development.
 
 ---
 
+## Decisions (`dicom-viewer/docs/decisions/`)
+
+Architecture Decision Records (ADRs) for significant project decisions and rationale.
+
+| File | Description |
+|------|-------------|
+| `README.md` | ADR convention, template, and writing guidance |
+| `001-launch-command.md` | Decision record for macOS `launch.command` startup workflow |
+
+---
+
 ## DICOM Viewer Application (`dicom-viewer/`)
 
 ```
@@ -61,6 +72,7 @@ dicom-viewer/
 │   ├── sample/            # Demo CT scan
 │   ├── sample-mri/        # Demo MRI scan
 │   ├── planning/          # Research and feature planning
+│   ├── decisions/         # ADRs and architecture rationale
 │   ├── BUGS.md            # Bug tracking
 │   ├── DEPLOY.md          # Deployment guide
 │   ├── DEVELOPMENT_PHILOSOPHY.md  # Why we work this way
@@ -90,4 +102,4 @@ dicom-viewer/
 
 ---
 
-*Last updated: 2026-02-01*
+*Last updated: 2026-03-03*

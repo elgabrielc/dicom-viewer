@@ -242,6 +242,7 @@ After each test run, apply continuous improvement: analyze results, strengthen t
   - Why that solution was chosen (alternatives considered, tradeoffs)
   - Prevention control added (test, code guideline, or check to prevent recurrence)
 - **Update session log.** At the end of each session, append a summary to `docs/history/session-summaries.md` with date, session name, what was accomplished, and key decisions. This file is gitignored (private).
+- **Record major decisions as ADRs.** For new features, significant architecture choices, technology selections, or decisions likely to be revisited, write/update an ADR in `docs/decisions/`. Use ADR status updates as implementation progresses, and supersede with a new ADR when reversing a decision.
 
 ## Git Workflow Controls
 
@@ -353,6 +354,8 @@ Deployment mode is detected in `docs/js/config.js`:
 ---
 
 ## Past Decisions
+
+Canonical location for new decision records is `docs/decisions/` (Architecture Decision Records). This section is a historical snapshot.
 
 - Chose vanilla JS over React/Vue for simplicity and learning
 - Client-side processing to keep medical data in browser (privacy)

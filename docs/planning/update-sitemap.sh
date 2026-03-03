@@ -124,6 +124,38 @@ for file in *.md; do
     esac
 done
 
+# Decisions section
+cat >> "$SITEMAP" << 'DECISIONS'
+
+---
+
+## Decisions (`docs/decisions/`)
+
+Architecture Decision Records (ADRs) for significant project decisions and rationale.
+
+| File | Description |
+|------|-------------|
+DECISIONS
+
+if [[ -d "$PROJECT_ROOT/docs/decisions" ]]; then
+    cd "$PROJECT_ROOT/docs/decisions"
+    for file in *.md; do
+        [[ -e "$file" ]] || continue
+        case "$file" in
+            README.md)
+                echo "| \`README.md\` | ADR convention, template, and writing guidance |" >> "$SITEMAP"
+                ;;
+            [0-9][0-9][0-9]-*)
+                name="${file%.md}"
+                echo "| \`$file\` | ADR ${name:0:3} decision record |" >> "$SITEMAP"
+                ;;
+            *)
+                echo "| \`$file\` | |" >> "$SITEMAP"
+                ;;
+        esac
+    done
+fi
+
 # DICOM viewer section
 cat >> "$SITEMAP" << 'VIEWER'
 
@@ -139,7 +171,9 @@ dicom-viewer/
 │   ├── index.html         # Main SPA
 │   ├── css/               # Styles
 │   ├── js/                # JavaScript + WASM
-│   └── sample/            # Demo DICOM files
+│   ├── sample/            # Demo DICOM files
+│   ├── planning/          # Planning and research
+│   └── decisions/         # Architecture Decision Records (ADRs)
 ├── tests/                 # Playwright E2E tests
 ├── test-data/             # Test DICOM files
 └── uploads/               # Server upload destination
