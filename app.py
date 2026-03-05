@@ -1297,7 +1297,43 @@ def migrate_notes():
 # MAIN
 # =============================================================================
 
+def _find_free_port(preferred, host):
+    """Try preferred port, fall back to OS-assigned port on EADDRINUSE only."""
+    import errno
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, preferred))
+        sock.close()
+        return preferred
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            sock.close()
+            raise
+        sock.close()
+
+    # Let the OS pick a free port.
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((host, 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
 if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
     host = '0.0.0.0' if os.environ.get('FLASK_HOST') == '0.0.0.0' else '127.0.0.1'
-    app.run(debug=debug, host=host, port=5001)
+    explicit_port = os.environ.get('FLASK_PORT')
+    preferred = int(explicit_port) if explicit_port else 5001
+
+    if explicit_port:
+        # Explicit override: fail hard if unavailable.
+        port = preferred
+    else:
+        # Default 5001: auto-fallback on EADDRINUSE.
+        port = _find_free_port(preferred, host)
+        if port != preferred:
+            app.logger.warning("Port %d in use, using port %d instead", preferred, port)
+
+    app.run(debug=debug, host=host, port=port)
