@@ -3,13 +3,13 @@
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
     const { parseDicomMetadata } = app.dicom;
 
-    async function getAllFileHandles(dirHandle, path = '') {
+    async function getAllFileHandles(dirHandle) {
         const files = [];
         for await (const [name, handle] of dirHandle.entries()) {
             if (handle.kind === 'file') {
                 files.push({ handle, name });
             } else if (handle.kind === 'directory') {
-                files.push(...await getAllFileHandles(handle, path + name + '/'));
+                files.push(...await getAllFileHandles(handle));
             }
         }
         return files;
@@ -44,7 +44,12 @@
 
                 if (!studies[studyUid]) {
                     studies[studyUid] = {
-                        ...meta, series: {}, seriesCount: 0, imageCount: 0
+                        ...meta,
+                        series: {},
+                        seriesCount: 0,
+                        imageCount: 0,
+                        comments: [],
+                        reports: []
                     };
                 }
                 if (!studies[studyUid].series[seriesUid]) {
@@ -53,7 +58,8 @@
                         seriesDescription: meta.seriesDescription,
                         seriesNumber: meta.seriesNumber,
                         transferSyntax: meta.transferSyntax,
-                        slices: []
+                        slices: [],
+                        comments: []
                     };
                 }
                 studies[studyUid].series[seriesUid].slices.push({
@@ -104,6 +110,7 @@
                     seriesDescription: series.seriesDescription,
                     seriesNumber: series.seriesNumber,
                     modality: series.modality,
+                    comments: [],
                     slices: Array.from({ length: series.sliceCount }, (_, i) => ({
                         instanceNumber: i + 1,
                         sliceLocation: 0,
@@ -123,6 +130,8 @@
                 modality: study.modality,
                 seriesCount: study.seriesCount,
                 imageCount: study.imageCount,
+                comments: [],
+                reports: [],
                 series: seriesMap
             };
         }

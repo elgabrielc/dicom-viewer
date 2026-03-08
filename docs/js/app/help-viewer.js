@@ -41,6 +41,7 @@
             </a>
         `).join('');
 
+        // HELP_SECTIONS content is authored static HTML from help-content.js, not user input.
         contentEl.innerHTML = HELP_SECTIONS.map(section => `
             <section id="help-${escapeHtml(section.id)}" class="help-section" data-section-id="${escapeHtml(section.id)}">
                 <h2>${escapeHtml(section.title)}</h2>

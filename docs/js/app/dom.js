@@ -43,6 +43,7 @@
         loadSampleMriBtn: $('loadSampleMriBtn')
     };
 
+    // Scripts load at the end of body in the current static layout, so canvases exist here.
     dom.ctx = dom.canvas.getContext('2d');
     dom.measureCtx = dom.measurementCanvas.getContext('2d');
 

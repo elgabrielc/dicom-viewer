@@ -1,6 +1,7 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
+    const notesApi = window.NotesAPI;
     const {
         refreshLibraryBtn,
         libraryFolderConfig,
@@ -440,7 +441,7 @@
                 if (state.studies[studyUid]) {
                     state.studies[studyUid].description = textarea.value;
                     scheduleDescriptionSave(`study:${studyUid}`, () => {
-                        NotesAPI.saveStudyDescription(studyUid, textarea.value);
+                        notesApi.saveStudyDescription(studyUid, textarea.value);
                     });
                 }
             };
@@ -453,7 +454,7 @@
                 if (state.studies[studyUid]?.series[seriesUid]) {
                     state.studies[studyUid].series[seriesUid].description = textarea.value;
                     scheduleDescriptionSave(`series:${studyUid}:${seriesUid}`, () => {
-                        NotesAPI.saveSeriesDescription(studyUid, seriesUid, textarea.value);
+                        notesApi.saveSeriesDescription(studyUid, seriesUid, textarea.value);
                     });
                 }
             };

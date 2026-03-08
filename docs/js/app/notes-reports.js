@@ -1,6 +1,8 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
+    const config = window.CONFIG;
+    const notesApi = window.NotesAPI;
     const { $, studiesBody } = app.dom;
     const { escapeHtml, generateUUID } = app.utils;
 
@@ -123,7 +125,7 @@
         comments.push(comment);
         updateCommentListUI(studyUid, seriesUid);
 
-        const saved = await NotesAPI.addComment(studyUid, {
+        const saved = await notesApi.addComment(studyUid, {
             text: comment.text,
             time: comment.time,
             seriesUid
@@ -145,7 +147,7 @@
         comments.splice(idx, 1);
         updateCommentListUI(studyUid, seriesUid);
         if (!String(commentId).startsWith('local-')) {
-            await NotesAPI.deleteComment(studyUid, commentId);
+            await notesApi.deleteComment(studyUid, commentId);
         }
     }
 
@@ -164,7 +166,7 @@
             comments[idx].time = Date.now();
             updateCommentListUI(studyUid, seriesUid);
             if (!String(commentId).startsWith('local-')) {
-                await NotesAPI.updateComment(studyUid, commentId, {
+                await notesApi.updateComment(studyUid, commentId, {
                     text: comments[idx].text,
                     time: comments[idx].time
                 });
@@ -176,7 +178,7 @@
         const studyUids = Object.keys(state.studies);
         if (!studyUids.length) return;
 
-        const result = await NotesAPI.loadNotes(studyUids);
+        const result = await notesApi.loadNotes(studyUids);
         const notes = result?.studies || {};
 
         for (const [studyUid, entry] of Object.entries(notes)) {
@@ -247,8 +249,8 @@
     }
 
     async function migrateIfNeeded() {
-        if (!NotesAPI.isEnabled()) return;
-        if (typeof CONFIG !== 'undefined' && !CONFIG.features.notesServer) return;
+        if (!notesApi.isEnabled()) return;
+        if (config && !config.features.notesServer) return;
 
         let alreadyMigrated = false;
         try {
@@ -277,7 +279,7 @@
             return;
         }
 
-        const migrated = await NotesAPI.migrate(payload);
+        const migrated = await notesApi.migrate(payload);
         if (!migrated) return;
 
         if (payload?.version === 2 && payload?.comments) {
@@ -293,7 +295,7 @@
                         if (!blob) return;
                         const filename = report.name || 'report';
                         const file = new File([blob], filename, { type: blob.type || '' });
-                        await NotesAPI.uploadReport(studyUid, file, report);
+                        await notesApi.uploadReport(studyUid, file, report);
                     })());
                 }
             }
@@ -353,7 +355,7 @@
             blob: null
         };
 
-        const saved = await NotesAPI.uploadReport(studyUid, file, report);
+        const saved = await notesApi.uploadReport(studyUid, file, report);
         if (saved) {
             Object.assign(report, saved);
         } else {
@@ -374,8 +376,8 @@
         const removed = reports.splice(idx, 1)[0];
         updateReportListUI(studyUid);
 
-        const result = await NotesAPI.deleteReport(studyUid, reportId);
-        if (!result && NotesAPI.isEnabled()) {
+        const result = await notesApi.deleteReport(studyUid, reportId);
+        if (!result && notesApi.isEnabled()) {
             reports.splice(idx, 0, removed);
             updateReportListUI(studyUid);
             alert('Failed to delete report. Please try again.');
@@ -436,7 +438,7 @@
             url = URL.createObjectURL(report.blob);
             viewer.dataset.objectUrl = url;
         } else {
-            url = NotesAPI.getReportFileUrl(report.id);
+            url = notesApi.getReportFileUrl(report.id);
         }
 
         if (!url) {

@@ -1,6 +1,7 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
+    const config = window.CONFIG;
     const {
         $,
         folderZone,
@@ -314,7 +315,7 @@
 
     if (isTestMode) {
         initializeTestMode();
-    } else if (CONFIG.features.libraryAutoLoad && !noLib) {
+    } else if (config?.features?.libraryAutoLoad && !noLib) {
         initializeLibraryAutoLoad();
     } else {
         displayStudies();
