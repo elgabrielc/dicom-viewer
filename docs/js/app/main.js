@@ -36,6 +36,7 @@
     } = app.viewer;
     const {
         loadDroppedStudies,
+        loadDroppedPaths,
         loadSampleStudies,
         loadStudiesFromApi
     } = app.sources;
@@ -63,13 +64,29 @@
         }
     }
 
+    function setDragActive(isActive) {
+        folderZone.classList.toggle('dragover', isActive);
+    }
+
     async function handleDroppedFolder(e) {
         e.preventDefault();
-        folderZone.classList.remove('dragover');
+        setDragActive(false);
         abortLibraryLoad();
 
         try {
             state.studies = await loadDroppedStudies(e.dataTransfer.items);
+            await displayStudies();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    }
+
+    async function handleTauriDrop(paths) {
+        setDragActive(false);
+        abortLibraryLoad();
+
+        try {
+            state.studies = await loadDroppedPaths(paths);
             await displayStudies();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -164,15 +181,30 @@
         }
     });
 
-    folderZone.addEventListener('dragover', e => {
-        e.preventDefault();
-        folderZone.classList.add('dragover');
-    });
-    folderZone.addEventListener('dragleave', e => {
-        e.preventDefault();
-        folderZone.classList.remove('dragover');
-    });
-    folderZone.addEventListener('drop', handleDroppedFolder);
+    if (config?.deploymentMode === 'desktop') {
+        window.__TAURI__.webview.getCurrentWebview().onDragDropEvent(event => {
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+                setDragActive(true);
+            } else if (payload.type === 'drop') {
+                handleTauriDrop(payload.paths);
+            } else if (payload.type === 'leave' || payload.type === 'cancel') {
+                setDragActive(false);
+            }
+        }).catch(err => {
+            console.warn('Failed to register Tauri drag-drop handler:', err);
+        });
+    } else {
+        folderZone.addEventListener('dragover', e => {
+            e.preventDefault();
+            setDragActive(true);
+        });
+        folderZone.addEventListener('dragleave', e => {
+            e.preventDefault();
+            setDragActive(false);
+        });
+        folderZone.addEventListener('drop', handleDroppedFolder);
+    }
 
     backBtn.onclick = e => {
         e.preventDefault();

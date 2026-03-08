@@ -3,6 +3,68 @@
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
     const { parseDicomMetadata } = app.dicom;
 
+    function updateScanProgress(processed, total, valid) {
+        if (processed % 200 !== 0 && processed !== total) return;
+
+        const pct = Math.round((processed / total) * 100);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = `Scanning... ${pct}%`;
+        progressDetail.textContent = `${processed}/${total} files (${valid} DICOM)`;
+    }
+
+    function addSliceToStudies(studies, meta, source) {
+        const studyUid = meta.studyInstanceUid;
+        const seriesUid = meta.seriesInstanceUid || 'default';
+
+        if (!studies[studyUid]) {
+            studies[studyUid] = {
+                ...meta,
+                series: {},
+                seriesCount: 0,
+                imageCount: 0,
+                comments: [],
+                reports: []
+            };
+        }
+        if (!studies[studyUid].series[seriesUid]) {
+            studies[studyUid].series[seriesUid] = {
+                seriesInstanceUid: seriesUid,
+                seriesDescription: meta.seriesDescription,
+                seriesNumber: meta.seriesNumber,
+                transferSyntax: meta.transferSyntax,
+                slices: [],
+                comments: []
+            };
+        }
+        studies[studyUid].series[seriesUid].slices.push({
+            source,
+            instanceNumber: meta.instanceNumber,
+            sliceLocation: meta.sliceLocation
+        });
+    }
+
+    function finalizeStudies(studies) {
+        for (const study of Object.values(studies)) {
+            let count = 0;
+            for (const series of Object.values(study.series)) {
+                series.slices.sort((a, b) => a.instanceNumber - b.instanceNumber || a.sliceLocation - b.sliceLocation);
+                count += series.slices.length;
+            }
+            study.seriesCount = Object.keys(study.series).length;
+            study.imageCount = count;
+        }
+        return studies;
+    }
+
+    function joinPath(parent, child) {
+        const separator = parent.includes('\\') ? '\\' : '/';
+        return parent.endsWith(separator) ? `${parent}${child}` : `${parent}${separator}${child}`;
+    }
+
+    function getPathName(path) {
+        return path.split(/[\\/]/).pop() || path;
+    }
+
     async function getAllFileHandles(dirHandle) {
         const files = [];
         for await (const [name, handle] of dirHandle.entries()) {
@@ -16,70 +78,35 @@
     }
 
     async function processFiles(fileHandles) {
+        const files = fileHandles.map(({ handle, name }) => ({
+            name,
+            source: { kind: 'handle', handle }
+        }));
+        return processFilesFromSources(files);
+    }
+
+    async function processFilesFromSources(files) {
         const studies = {};
-        const total = fileHandles.length;
+        const total = files.length;
         let processed = 0;
         let valid = 0;
 
         const batchSize = 100;
-        for (let i = 0; i < fileHandles.length; i += batchSize) {
-            const batch = fileHandles.slice(i, i + batchSize);
-            await Promise.all(batch.map(async ({ handle }) => {
-                const file = await handle.getFile();
-                const meta = await parseDicomMetadata(file);
+        for (let i = 0; i < files.length; i += batchSize) {
+            const batch = files.slice(i, i + batchSize);
+            await Promise.all(batch.map(async ({ name, source }) => {
+                const buffer = await readSliceBuffer({ source }, 'scan');
+                const meta = await parseDicomMetadata(new Blob([buffer], { type: 'application/dicom' }));
                 processed++;
-
-                if (processed % 200 === 0 || processed === total) {
-                    const pct = Math.round((processed / total) * 100);
-                    progressFill.style.width = pct + '%';
-                    progressText.textContent = `Scanning... ${pct}%`;
-                    progressDetail.textContent = `${processed}/${total} files (${valid} DICOM)`;
-                }
+                updateScanProgress(processed, total, valid);
 
                 if (!meta?.studyInstanceUid) return;
                 valid++;
-
-                const studyUid = meta.studyInstanceUid;
-                const seriesUid = meta.seriesInstanceUid || 'default';
-
-                if (!studies[studyUid]) {
-                    studies[studyUid] = {
-                        ...meta,
-                        series: {},
-                        seriesCount: 0,
-                        imageCount: 0,
-                        comments: [],
-                        reports: []
-                    };
-                }
-                if (!studies[studyUid].series[seriesUid]) {
-                    studies[studyUid].series[seriesUid] = {
-                        seriesInstanceUid: seriesUid,
-                        seriesDescription: meta.seriesDescription,
-                        seriesNumber: meta.seriesNumber,
-                        transferSyntax: meta.transferSyntax,
-                        slices: [],
-                        comments: []
-                    };
-                }
-                studies[studyUid].series[seriesUid].slices.push({
-                    source: { kind: 'handle', handle },
-                    instanceNumber: meta.instanceNumber,
-                    sliceLocation: meta.sliceLocation
-                });
+                addSliceToStudies(studies, meta, source);
             }));
         }
 
-        for (const study of Object.values(studies)) {
-            let count = 0;
-            for (const series of Object.values(study.series)) {
-                series.slices.sort((a, b) => a.instanceNumber - b.instanceNumber || a.sliceLocation - b.sliceLocation);
-                count += series.slices.length;
-            }
-            study.seriesCount = Object.keys(study.series).length;
-            study.imageCount = count;
-        }
-        return studies;
+        return finalizeStudies(studies);
     }
 
     async function readSliceBuffer(slice, purpose = 'load') {
@@ -96,6 +123,10 @@
                 );
                 if (!resp.ok) throw new Error(`Failed to ${purpose} slice: ${resp.status}`);
                 return resp.arrayBuffer();
+            }
+            case 'path': {
+                const bytes = await window.__TAURI__.fs.readFile(source.path);
+                return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
             }
             default:
                 throw new Error(`Unknown source kind: ${source?.kind}`);
@@ -186,6 +217,54 @@
             }
 
             return await processFiles(fileHandles);
+        } finally {
+            uploadProgress.style.display = 'none';
+        }
+    }
+
+    async function collectPathSources(path) {
+        const entries = await window.__TAURI__.fs.readDir(path).catch(() => null);
+        if (!entries) {
+            return [{
+                name: getPathName(path),
+                source: { kind: 'path', path }
+            }];
+        }
+
+        const files = [];
+        for (const entry of entries) {
+            const entryPath = joinPath(path, entry.name);
+            if (entry.isDirectory) {
+                files.push(...await collectPathSources(entryPath));
+            } else if (entry.isFile) {
+                files.push({
+                    name: entry.name,
+                    source: { kind: 'path', path: entryPath }
+                });
+            }
+        }
+        return files;
+    }
+
+    async function loadDroppedPaths(paths) {
+        uploadProgress.style.display = 'flex';
+        progressText.textContent = 'Reading folder...';
+        progressDetail.textContent = '';
+        progressFill.style.width = '0%';
+
+        try {
+            progressText.textContent = 'Finding files...';
+            const files = [];
+            for (const path of paths) {
+                files.push(...await collectPathSources(path));
+            }
+            progressDetail.textContent = `Found ${files.length} files`;
+
+            if (!files.length) {
+                throw new Error('No files found');
+            }
+
+            return await processFilesFromSources(files);
         } finally {
             uploadProgress.style.display = 'none';
         }
@@ -286,10 +365,13 @@
     }
 
     app.sources = {
+        collectPathSources,
         getAllFileHandles,
         loadDroppedStudies,
+        loadDroppedPaths,
         loadSampleStudies,
         processFiles,
+        processFilesFromSources,
         readSliceBuffer,
         normalizeStudiesPayload,
         loadStudiesFromApi
