@@ -19,6 +19,12 @@
       }
     ],
     "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/reports/**"
+        ]
+      },
       "capabilities": [
         "main-capability"
       ],

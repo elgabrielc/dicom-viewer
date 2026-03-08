@@ -99,11 +99,47 @@ const NotesAPI = (() => {
         return entry;
     }
 
+    function normalizeReportId(value) {
+        if (value === null || value === undefined) return null;
+        return String(value);
+    }
+
     function findCommentById(comments, commentId) {
         if (!Array.isArray(comments)) return null;
         const target = normalizeCommentId(commentId);
         if (target === null) return null;
         return comments.find((comment) => normalizeCommentId(comment.id) === target) || null;
+    }
+
+    function findReportMetadata(store, reportId) {
+        const target = normalizeReportId(reportId);
+        if (!target || !store?.studies || typeof store.studies !== 'object') return null;
+
+        for (const [studyUid] of Object.entries(store.studies)) {
+            const studyEntry = ensureStudy(store, studyUid);
+            const report = studyEntry.reports.find((entry) => normalizeReportId(entry?.id) === target) || null;
+            if (report) {
+                return { studyUid, studyEntry, report };
+            }
+        }
+
+        return null;
+    }
+
+    function sanitizeFilenamePart(value, fallback = 'report') {
+        const safe = String(value || '')
+            .replace(/[^A-Za-z0-9._-]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+        return safe || fallback;
+    }
+
+    function getDesktopTauriApis() {
+        const tauri = window.__TAURI__;
+        return {
+            fs: tauri?.fs || null,
+            path: tauri?.path || null,
+            core: tauri?.core || null
+        };
     }
 
     // ---- LocalBackend ----
@@ -219,6 +255,93 @@ const NotesAPI = (() => {
 
         getReportFileUrl() {
             return '';
+        }
+    };
+
+    // ---- DesktopBackend ----
+    const DesktopBackend = {
+        ...LocalBackend,
+
+        async uploadReport(studyUid, file, report = {}) {
+            if (!studyUid || !file || !report?.id) return null;
+
+            const { fs, path } = getDesktopTauriApis();
+            if (!fs || !path) return null;
+
+            try {
+                const appDataPath = await path.appDataDir();
+                const reportsDir = await path.join(appDataPath, 'reports', studyUid);
+                await fs.mkdir(reportsDir, { recursive: true });
+
+                const filename = file.name || report.name || 'report';
+                const safeFilename = sanitizeFilenamePart(filename, 'report');
+                const filePath = await path.join(
+                    reportsDir,
+                    `${sanitizeFilenamePart(report.id, 'report')}_${safeFilename}`
+                );
+
+                const bytes = new Uint8Array(await file.arrayBuffer());
+                await fs.writeFile(filePath, bytes);
+
+                const store = loadStore();
+                const studyEntry = ensureStudy(store, studyUid);
+                const saved = {
+                    ...report,
+                    filePath,
+                    storedAt: new Date().toISOString()
+                };
+                delete saved.blob;
+
+                const target = normalizeReportId(saved.id);
+                studyEntry.reports = studyEntry.reports.filter((entry) => normalizeReportId(entry?.id) !== target);
+                studyEntry.reports.push(saved);
+                saveStore(store);
+                return clone(saved);
+            } catch (e) {
+                console.warn('DesktopBackend: failed to upload report:', e);
+                return null;
+            }
+        },
+
+        async deleteReport(studyUid, reportId) {
+            if (!studyUid || reportId === undefined || reportId === null) return false;
+
+            const store = loadStore();
+            const studyEntry = store.studies[studyUid];
+            if (!studyEntry) return true;
+
+            ensureStudy(store, studyUid);
+            const target = normalizeReportId(reportId);
+            const report = studyEntry.reports.find((entry) => normalizeReportId(entry?.id) === target) || null;
+            if (!report) return true;
+
+            if (report.filePath) {
+                const { fs } = getDesktopTauriApis();
+                if (!fs) return false;
+
+                try {
+                    if (await fs.exists(report.filePath)) {
+                        await fs.remove(report.filePath);
+                    }
+                } catch (e) {
+                    console.warn('DesktopBackend: failed to delete report file:', e);
+                    return false;
+                }
+            }
+
+            studyEntry.reports = studyEntry.reports.filter((entry) => normalizeReportId(entry?.id) !== target);
+            saveStore(store);
+            return true;
+        },
+
+        getReportFileUrl(reportId) {
+            const { core } = getDesktopTauriApis();
+            if (!core?.convertFileSrc) return '';
+
+            const match = findReportMetadata(loadStore(), reportId);
+            const filePath = match?.report?.filePath;
+            if (!filePath) return '';
+            return core.convertFileSrc(filePath);
         }
     };
 
@@ -382,6 +505,7 @@ const NotesAPI = (() => {
     // ---- Dispatcher ----
     function getBackend() {
         const mode = (typeof CONFIG !== 'undefined') ? CONFIG.deploymentMode : 'personal';
+        if (mode === 'desktop') return 'desktop';
         const hasServer = (typeof CONFIG !== 'undefined' && CONFIG.features)
             ? CONFIG.features.notesServer
             : mode === 'personal' || mode === 'cloud';
@@ -396,8 +520,12 @@ const NotesAPI = (() => {
         return true;
     }
 
-    async function withFallback(serverCall, localCall) {
-        if (getBackend() === 'local') {
+    async function withFallback(serverCall, localCall, desktopCall = localCall) {
+        const backend = getBackend();
+        if (backend === 'desktop') {
+            return await desktopCall();
+        }
+        if (backend === 'local') {
             return await localCall();
         }
 
@@ -464,7 +592,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.uploadReport(studyUid, file, meta),
-            () => LocalBackend.uploadReport(studyUid, file, meta)
+            () => LocalBackend.uploadReport(studyUid, file, meta),
+            () => DesktopBackend.uploadReport(studyUid, file, meta)
         );
     }
 
@@ -472,7 +601,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return false;
         return await withFallback(
             () => ServerBackend.deleteReport(studyUid, reportId),
-            () => LocalBackend.deleteReport(studyUid, reportId)
+            () => LocalBackend.deleteReport(studyUid, reportId),
+            () => DesktopBackend.deleteReport(studyUid, reportId)
         );
     }
 
@@ -486,8 +616,12 @@ const NotesAPI = (() => {
 
     function getReportFileUrl(reportId) {
         if (!isEnabled()) return '';
-        if (getBackend() === 'server') {
+        const backend = getBackend();
+        if (backend === 'server') {
             return ServerBackend.getReportFileUrl(reportId);
+        }
+        if (backend === 'desktop') {
+            return DesktopBackend.getReportFileUrl(reportId);
         }
         return LocalBackend.getReportFileUrl(reportId);
     }
