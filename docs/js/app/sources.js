@@ -2,6 +2,7 @@
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
     const { parseDicomMetadata } = app.dicom;
+    const DESKTOP_MAX_SCAN_DEPTH = 20;
 
     function updateScanProgress(processed, total, valid) {
         if (processed % 200 !== 0 && processed !== total) return;
@@ -56,9 +57,26 @@
         return studies;
     }
 
-    function joinPath(parent, child) {
+    async function joinPath(parent, child) {
+        const pathApi = window.__TAURI__?.path;
+        if (pathApi?.join) {
+            return pathApi.join(parent, child);
+        }
+
         const separator = parent.includes('\\') ? '\\' : '/';
         return parent.endsWith(separator) ? `${parent}${child}` : `${parent}${separator}${child}`;
+    }
+
+    async function normalizePath(path) {
+        const pathApi = window.__TAURI__?.path;
+        if (pathApi?.normalize) {
+            try {
+                return await pathApi.normalize(path);
+            } catch (e) {
+                console.warn('Failed to normalize desktop path:', path, e);
+            }
+        }
+        return path;
     }
 
     function getPathName(path) {
@@ -95,14 +113,18 @@
         for (let i = 0; i < files.length; i += batchSize) {
             const batch = files.slice(i, i + batchSize);
             await Promise.all(batch.map(async ({ name, source }) => {
-                const buffer = await readSliceBuffer({ source }, 'scan');
-                const meta = await parseDicomMetadata(new Blob([buffer], { type: 'application/dicom' }));
-                processed++;
-                updateScanProgress(processed, total, valid);
-
-                if (!meta?.studyInstanceUid) return;
-                valid++;
-                addSliceToStudies(studies, meta, source);
+                try {
+                    const buffer = await readSliceBuffer({ source }, 'scan');
+                    const meta = await parseDicomMetadata(new Blob([buffer], { type: 'application/dicom' }));
+                    if (!meta?.studyInstanceUid) return;
+                    valid++;
+                    addSliceToStudies(studies, meta, source);
+                } catch (e) {
+                    console.warn(`Skipping unreadable DICOM file during scan: ${name}`, e);
+                } finally {
+                    processed++;
+                    updateScanProgress(processed, total, valid);
+                }
             }));
         }
 
@@ -222,20 +244,82 @@
         }
     }
 
-    async function collectPathSources(path) {
-        const entries = await window.__TAURI__.fs.readDir(path).catch(() => null);
-        if (!entries) {
+    async function resolveDesktopPathSource(fs, path, readError) {
+        if (!fs?.stat) {
             return [{
                 name: getPathName(path),
                 source: { kind: 'path', path }
             }];
         }
 
+        try {
+            const info = await fs.stat(path);
+            if (info?.isFile) {
+                return [{
+                    name: getPathName(path),
+                    source: { kind: 'path', path }
+                }];
+            }
+
+            if (info?.isDirectory) {
+                throw new Error(`Failed to read directory: ${path}`);
+            }
+        } catch (statError) {
+            if (statError?.message === `Failed to read directory: ${path}`) {
+                throw statError;
+            }
+        }
+
+        if (readError instanceof Error) {
+            throw readError;
+        }
+        throw new Error(`Failed to access path: ${path}`);
+    }
+
+    async function collectPathSources(path, options = {}) {
+        const fs = window.__TAURI__?.fs;
+        if (!fs?.readDir) {
+            throw new Error('Desktop file APIs unavailable');
+        }
+
+        const {
+            depth = 0,
+            maxDepth = DESKTOP_MAX_SCAN_DEPTH,
+            visited = new Set()
+        } = options;
+        const normalizedPath = await normalizePath(path);
+
+        if (visited.has(normalizedPath)) {
+            console.warn('Skipping already-visited desktop scan path:', normalizedPath);
+            return [];
+        }
+        visited.add(normalizedPath);
+
+        let entries;
+        try {
+            entries = await fs.readDir(normalizedPath);
+        } catch (readError) {
+            return await resolveDesktopPathSource(fs, normalizedPath, readError);
+        }
+
         const files = [];
         for (const entry of entries) {
-            const entryPath = joinPath(path, entry.name);
+            const entryPath = await joinPath(normalizedPath, entry.name);
+            if (entry.isSymlink) {
+                console.warn('Skipping symlink during desktop scan:', entryPath);
+                continue;
+            }
+
             if (entry.isDirectory) {
-                files.push(...await collectPathSources(entryPath));
+                if (depth >= maxDepth) {
+                    console.warn('Skipping path beyond desktop scan depth limit:', entryPath);
+                    continue;
+                }
+                files.push(...await collectPathSources(entryPath, {
+                    depth: depth + 1,
+                    maxDepth,
+                    visited
+                }));
             } else if (entry.isFile) {
                 files.push({
                     name: entry.name,

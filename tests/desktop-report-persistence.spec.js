@@ -4,9 +4,10 @@ const { test, expect } = require('@playwright/test');
 
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
 
-async function installMockTauri(page) {
-    await page.addInitScript(() => {
+async function installMockTauri(page, options = {}) {
+    await page.addInitScript((options) => {
         const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
+        const failRemoveAll = !!options.failRemoveAll;
 
         function joinPaths(...parts) {
             const cleaned = parts
@@ -39,6 +40,9 @@ async function installMockTauri(page) {
                     return undefined;
                 },
                 async remove(filePath) {
+                    if (failRemoveAll) {
+                        throw new Error(`Mock remove failure for ${filePath}`);
+                    }
                     localStorage.removeItem(`${FILE_STORAGE_PREFIX}${filePath}`);
                 },
                 async writeFile(filePath, bytes) {
@@ -54,6 +58,9 @@ async function installMockTauri(page) {
                 },
                 async join(...parts) {
                     return joinPaths(...parts);
+                },
+                async normalize(path) {
+                    return joinPaths(path);
                 }
             },
             webview: {
@@ -66,7 +73,7 @@ async function installMockTauri(page) {
                 }
             }
         };
-    });
+    }, options);
 }
 
 test.describe('Desktop report persistence', () => {
@@ -158,5 +165,46 @@ test.describe('Desktop report persistence', () => {
         expect(persisted.remainingReports).toBe(0);
         expect(persisted.fileExistsAfterDelete).toBe(false);
         expect(persisted.reportUrlAfterDelete).toBe('');
+    });
+
+    test('desktop backend preserves metadata when report file deletion fails', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.test.study';
+        const reportId = 'desktop-report-delete-failure';
+
+        await installMockTauri(page, { failRemoveAll: true });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async ({ studyUid, reportId }) => {
+            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+            const file = new File([bytes], 'failure.pdf', { type: 'application/pdf' });
+            const meta = {
+                id: reportId,
+                name: file.name,
+                type: 'pdf',
+                size: file.size,
+                addedAt: Date.now(),
+                updatedAt: Date.now()
+            };
+
+            const saved = await window.NotesAPI.uploadReport(studyUid, file, meta);
+            const deleted = await window.NotesAPI.deleteReport(studyUid, reportId);
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
+
+            return {
+                deleted,
+                saved,
+                stored,
+                fileExists: stored?.filePath
+                    ? await window.__TAURI__.fs.exists(stored.filePath)
+                    : false
+            };
+        }, { studyUid, reportId });
+
+        expect(result.saved).not.toBeNull();
+        expect(result.deleted).toBe(false);
+        expect(result.stored).not.toBeNull();
+        expect(result.fileExists).toBe(true);
     });
 });

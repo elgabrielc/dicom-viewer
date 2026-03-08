@@ -304,6 +304,10 @@ header .subtitle {
     color: #a8c4e0;
 }
 
+.library-folder-message.warning {
+    color: #f0ad4e;
+}
+
 .library-folder-message.success {
     color: #7ed39a;
 }

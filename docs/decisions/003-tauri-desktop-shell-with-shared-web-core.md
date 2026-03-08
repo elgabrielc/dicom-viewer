@@ -1,7 +1,7 @@
 # ADR 003: Tauri Desktop Shell with Shared Web Core
 
 ## Status
-Accepted
+Accepted; initial implementation completed through Phase 3 on macOS, with signing/notarization still pending
 
 ## Context
 

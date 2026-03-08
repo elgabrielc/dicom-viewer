@@ -29,8 +29,12 @@
 
         setFolder(path) {
             const config = this.getConfig();
-            config.folder = path || null;
-            if (!path) {
+            const nextFolder = path || null;
+            if (config.folder !== nextFolder) {
+                config.lastScan = null;
+            }
+            config.folder = nextFolder;
+            if (!nextFolder) {
                 config.lastScan = null;
             }
             return this.saveConfig(config);
@@ -44,6 +48,13 @@
             const config = this.getConfig();
             config.folder = folderPath || config.folder || null;
             config.lastScan = new Date().toISOString();
+            return this.saveConfig(config);
+        },
+
+        markScanFailed(folderPath) {
+            const config = this.getConfig();
+            config.folder = folderPath || config.folder || null;
+            config.lastScan = null;
             return this.saveConfig(config);
         },
 

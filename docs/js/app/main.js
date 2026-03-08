@@ -22,11 +22,13 @@
     const { closeReportViewer } = app.notesReports;
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
     const {
+        applyDesktopLibraryScan,
         displayStudies,
         handleSortClick,
         loadLibraryConfig,
         refreshLibrary,
         saveLibraryFolderConfig,
+        setLibraryFolderMessage,
         setLibraryFolderStatus
     } = app.library;
     const {
@@ -187,10 +189,12 @@
             }
 
             const files = await app.desktopLibrary.scanFolder(state.libraryFolder);
-            state.studies = await app.sources.processFilesFromSources(files);
-            state.libraryAvailable = true;
-            app.desktopLibrary.markScanComplete(state.libraryFolder);
+            const studies = await app.sources.processFilesFromSources(files);
+            applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {
+            app.desktopLibrary.markScanFailed(state.libraryFolder);
+            state.libraryAvailable = !!state.libraryFolder;
+            setLibraryFolderMessage(e.message || 'Failed to auto-load desktop library.', 'error');
             console.warn('Failed to auto-load desktop library:', e);
         }
 
