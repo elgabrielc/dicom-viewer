@@ -63,7 +63,7 @@
                     };
                 }
                 studies[studyUid].series[seriesUid].slices.push({
-                    fileHandle: handle,
+                    source: { kind: 'handle', handle },
                     instanceNumber: meta.instanceNumber,
                     sliceLocation: meta.sliceLocation
                 });
@@ -83,19 +83,23 @@
     }
 
     async function readSliceBuffer(slice, purpose = 'load') {
-        if (slice.fileHandle) {
-            const file = await slice.fileHandle.getFile();
-            return await file.arrayBuffer();
+        const source = slice.source;
+
+        switch (source?.kind) {
+            case 'handle':
+                return (await source.handle.getFile()).arrayBuffer();
+            case 'blob':
+                return source.blob.arrayBuffer();
+            case 'api': {
+                const resp = await fetch(
+                    `${source.apiBase}/dicom/${source.studyId}/${source.seriesId}/${source.sliceIndex}`
+                );
+                if (!resp.ok) throw new Error(`Failed to ${purpose} slice: ${resp.status}`);
+                return resp.arrayBuffer();
+            }
+            default:
+                throw new Error(`Unknown source kind: ${source?.kind}`);
         }
-        if (slice.blob) {
-            return await slice.blob.arrayBuffer();
-        }
-        if (slice.apiBase) {
-            const resp = await fetch(`${slice.apiBase}/dicom/${slice.studyId}/${slice.seriesId}/${slice.sliceIndex}`);
-            if (!resp.ok) throw new Error(`Failed to ${purpose} slice: ${resp.status}`);
-            return await resp.arrayBuffer();
-        }
-        throw new Error('No slice source available');
     }
 
     function normalizeStudiesPayload(payload, apiBase) {
@@ -114,10 +118,13 @@
                     slices: Array.from({ length: series.sliceCount }, (_, i) => ({
                         instanceNumber: i + 1,
                         sliceLocation: 0,
-                        apiBase,
-                        studyId: study.studyInstanceUid,
-                        seriesId: series.seriesInstanceUid,
-                        sliceIndex: i
+                        source: {
+                            kind: 'api',
+                            apiBase,
+                            studyId: study.studyInstanceUid,
+                            seriesId: series.seriesInstanceUid,
+                            sliceIndex: i
+                        }
                     }))
                 };
             }
@@ -253,7 +260,7 @@
                 studies[studyUid].series[seriesUid].slices.push({
                     instanceNumber: meta.instanceNumber,
                     sliceLocation: meta.sliceLocation,
-                    blob
+                    source: { kind: 'blob', blob }
                 });
             }
 
