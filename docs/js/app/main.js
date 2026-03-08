@@ -1,209 +1,81 @@
-        // =====================================================================
-        // DICOM MEDICAL IMAGING VIEWER - CLIENT-SIDE APPLICATION
-        // =====================================================================
-        //
-        // This script implements the entire DICOM viewing workflow:
-        //   1. Drag-and-drop folder loading via File System Access API
-        //   2. DICOM file parsing and organization by study/series
-        //   3. Image decoding (uncompressed, JPEG Lossless, JPEG 2000)
-        //   4. Slice navigation and display
-        //   5. Study/series commenting
-        //
-        // The code is organized into the following sections:
-        //   - Global State
-        //   - DOM Element References
-        //   - Utility Functions
-        //   - DICOM Parsing
-        //   - File System Operations
-        //   - Study/Series Processing
-        //   - Comments System
-        //   - Library View (studies table)
-        //   - Transfer Syntax Support
-        //   - Image Decoding
-        //   - Rendering
-        //   - Viewer Controls
-        //   - Event Handlers
-        //
-        // =====================================================================
+// =====================================================================
+// DICOM MEDICAL IMAGING VIEWER - CLIENT-SIDE APPLICATION
+// =====================================================================
+//
+// This script implements the entire DICOM viewing workflow:
+//   1. Drag-and-drop folder loading via File System Access API
+//   2. DICOM file parsing and organization by study/series
+//   3. Image decoding (uncompressed, JPEG Lossless, JPEG 2000)
+//   4. Slice navigation and display
+//   5. Study/series commenting
+//
+// The code is organized into the following sections:
+//   - DICOM Parsing
+//   - File System Operations
+//   - Study/Series Processing
+//   - Comments System
+//   - Library View (studies table)
+//   - Transfer Syntax Support
+//   - Image Decoding
+//   - Rendering
+//   - Viewer Controls
+//   - Event Handlers
+//
+// =====================================================================
 
-        // =====================================================================
-        // LRU CACHE
-        // =====================================================================
+const { state } = window.DicomViewerApp;
+const {
+    $,
+    libraryView,
+    viewerView,
+    folderZone,
+    studiesTable,
+    studiesTableHead,
+    studiesBody,
+    emptyState,
+    emptyStateHint,
+    studyCount,
+    refreshLibraryBtn,
+    libraryFolderConfig,
+    libraryFolderInput,
+    saveLibraryFolderBtn,
+    libraryFolderStatus,
+    libraryFolderMessage,
+    uploadProgress,
+    progressText,
+    progressDetail,
+    progressFill,
+    canvas,
+    ctx,
+    slider,
+    sliceInfo,
+    seriesList,
+    metadataContent,
+    studyTitle,
+    imageLoading,
+    resetViewBtn,
+    wlDisplay,
+    measurementCanvas,
+    measureCtx,
+    calibrationWarning,
+    canvasContainer,
+    prevBtn,
+    nextBtn,
+    backBtn,
+    loadSampleCtBtn,
+    loadSampleMriBtn
+} = window.DicomViewerApp.dom;
+const {
+    formatDate,
+    getString,
+    getNumber,
+    generateUUID
+} = window.DicomViewerApp.utils;
 
-        /**
-         * Least Recently Used cache backed by a Map.
-         * JavaScript Maps iterate in insertion order, so deleting and
-         * re-inserting a key on access moves it to the end (most recent).
-         * Eviction removes from the front (least recent).
-         */
-        class LRUCache {
-            constructor(maxSize) {
-                this._maxSize = maxSize;
-                this._map = new Map();
-            }
-
-            get(key) {
-                if (!this._map.has(key)) return undefined;
-                // Move to end (most recently used)
-                const value = this._map.get(key);
-                this._map.delete(key);
-                this._map.set(key, value);
-                return value;
-            }
-
-            set(key, value) {
-                // If key already exists, delete first so re-insert moves it to end
-                if (this._map.has(key)) {
-                    this._map.delete(key);
-                }
-                this._map.set(key, value);
-                // Evict oldest entries if over capacity
-                while (this._map.size > this._maxSize) {
-                    const oldest = this._map.keys().next().value;
-                    this._map.delete(oldest);
-                }
-            }
-
-            has(key) {
-                return this._map.has(key);
-            }
-
-            clear() {
-                this._map.clear();
-            }
-        }
-
-        const SLICE_CACHE_MAX_ENTRIES = 100;
-
-        // =====================================================================
-        // GLOBAL STATE
-        // =====================================================================
-
-        /**
-         * Global application state
-         * @property {Object} studies - Map of studyInstanceUid -> study data
-         * @property {Object|null} currentStudy - Currently viewed study
-         * @property {Object|null} currentSeries - Currently viewed series
-         * @property {number} currentSliceIndex - Index of currently displayed slice
-         * @property {LRUCache} sliceCache - LRU cache of parsed DICOM datasets by slice index
-         * @property {string} currentTool - Active tool ('wl', 'pan', 'zoom', or null)
-         * @property {Object} viewTransform - Pan and zoom state
-         * @property {Object} windowLevel - Current W/L override (null = use DICOM values)
-         * @property {Object} baseWindowLevel - Original W/L values for reset
-         */
-        const state = {
-            studies: {},
-            currentStudy: null,
-            currentSeries: null,
-            currentSliceIndex: 0,
-            sliceCache: new LRUCache(SLICE_CACHE_MAX_ENTRIES),
-            libraryAvailable: false,
-            libraryFolder: '',
-            libraryFolderResolved: '',
-            libraryFolderSource: '',
-            libraryConfigReachable: false,
-            studySort: { column: 'date', direction: 'desc' },
-            // Viewing tools state
-            currentTool: 'wl',
-            viewTransform: { panX: 0, panY: 0, zoom: 1 },
-            windowLevel: { center: null, width: null },
-            baseWindowLevel: { center: null, width: null },
-            isDragging: false,
-            dragStart: { x: 0, y: 0 },
-            // Measurement tool state
-            measurements: new Map(),    // Map<sliceKey, Measurement[]> - keyed by study/series/slice
-            activeMeasurement: null,    // Measurement being drawn
-            pixelSpacing: null          // {row, col} in mm, or null if uncalibrated
-        };
-
-        // =====================================================================
-        // DOM ELEMENT REFERENCES
-        // =====================================================================
-
-        /** Shorthand for getElementById */
-        const $ = id => document.getElementById(id);
-        const libraryView = $('libraryView');
-        const viewerView = $('viewerView');
-        const folderZone = $('folderZone');
-        const studiesTable = $('studiesTable');
-        const studiesTableHead = document.querySelector('#studiesTable thead');
-        const studiesBody = $('studiesBody');
-        const emptyState = $('emptyState');
-        const emptyStateHint = $('emptyStateHint');
-        const studyCount = $('studyCount');
-        const refreshLibraryBtn = $('refreshLibraryBtn');
-        const libraryFolderConfig = $('libraryFolderConfig');
-        const libraryFolderInput = $('libraryFolderInput');
-        const saveLibraryFolderBtn = $('saveLibraryFolderBtn');
-        const libraryFolderStatus = $('libraryFolderStatus');
-        const libraryFolderMessage = $('libraryFolderMessage');
-        const uploadProgress = $('uploadProgress');
-        const progressText = $('progressText');
-        const progressDetail = $('progressDetail');
-        const progressFill = $('progressFill');
-        const canvas = $('imageCanvas');
-        const ctx = canvas.getContext('2d');
-        const slider = $('sliceSlider');
-        const sliceInfo = $('sliceInfo');
-        const seriesList = $('seriesList');
-        const metadataContent = $('metadataContent');
-        const studyTitle = $('studyTitle');
-        const imageLoading = $('imageLoading');
-        const resetViewBtn = $('resetViewBtn');
-        const wlDisplay = $('wlDisplay');
-        const measurementCanvas = $('measurementCanvas');
-        const measureCtx = measurementCanvas.getContext('2d');
-        const calibrationWarning = $('calibrationWarning');
-        const canvasContainer = document.querySelector('.canvas-container');
-        const prevBtn = $('prevSlice');
-        const nextBtn = $('nextSlice');
-        const backBtn = $('backBtn');
-        const loadSampleCtBtn = $('loadSampleCtBtn');
-        const loadSampleMriBtn = $('loadSampleMriBtn');
-
-        // =====================================================================
-        // UTILITY FUNCTIONS
-        // =====================================================================
-
-        /**
-         * Format DICOM date string (YYYYMMDD) to readable format (YYYY-MM-DD)
-         * @param {string} s - DICOM date string
-         * @returns {string} Formatted date or '-' if invalid
-         */
-        const formatDate = s => s?.length === 8 ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : s || '-';
-
-        /**
-         * Safely get string value from DICOM dataset
-         * @param {Object} ds - dicomParser dataset
-         * @param {string} tag - DICOM tag (e.g., 'x00100010' for PatientName)
-         * @returns {string} Tag value or empty string
-         */
-        const getString = (ds, tag) => { try { return ds.string(tag) || ''; } catch { return ''; }};
-
-        /**
-         * Safely get numeric value from DICOM dataset
-         * @param {Object} ds - dicomParser dataset
-         * @param {string} tag - DICOM tag
-         * @param {number} def - Default value if tag not found
-         * @returns {number} Tag value or default
-         */
-        const getNumber = (ds, tag, def = 0) => { try { const v = ds.string(tag); return v ? parseFloat(v) : def; } catch { return def; }};
-
-        // =====================================================================
-        // MEASUREMENT TOOL FUNCTIONS
-        // Length measurement with calibration from DICOM PixelSpacing
-        // =====================================================================
-
-        /**
-         * Generate a UUID v4 string
-         * @returns {string} UUID v4 format string
-         */
-        function generateUUID() {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-                const r = Math.random() * 16 | 0;
-                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-            });
-        }
+// =====================================================================
+// MEASUREMENT TOOL FUNCTIONS
+// Length measurement with calibration from DICOM PixelSpacing
+// =====================================================================
 
         /**
          * Get unique key for storing measurements by slice
