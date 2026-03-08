@@ -1,0 +1,17 @@
+[package]
+name = "dicom-viewer-desktop"
+version = "0.1.0"
+description = "Tauri desktop shell for DICOM Viewer"
+authors = ["Gabriel Casalduc <rgc@alumni.stanford.edu>"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-persisted-scope = "2"

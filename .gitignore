@@ -35,6 +35,8 @@ data/
 # Build outputs
 dist/
 build/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
 
 # Testing
 .coverage

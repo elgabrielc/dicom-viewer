@@ -2,6 +2,7 @@
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
     const notesApi = window.NotesAPI;
+    const config = window.CONFIG;
     const {
         refreshLibraryBtn,
         libraryFolderConfig,
@@ -17,7 +18,7 @@
     } = app.dom;
     const { escapeHtml, formatDate } = app.utils;
     const { getTransferSyntaxInfo } = app.dicom;
-    const { normalizeStudiesPayload } = app.sources;
+    const { normalizeStudiesPayload, processFilesFromSources } = app.sources;
 
     const openPanels = {
         studyPanels: new Set(),
@@ -63,6 +64,29 @@
         libraryFolderMessage.style.display = 'block';
     }
 
+    function applyDesktopLibraryScan(folder, studies) {
+        state.libraryFolder = folder;
+        state.libraryFolderResolved = folder;
+        state.libraryFolderSource = 'local';
+        state.libraryAvailable = true;
+        state.studies = studies;
+        applyLibraryConfigPayload({
+            folder,
+            folderResolved: folder,
+            source: 'local'
+        });
+
+        if (Object.keys(studies).length > 0) {
+            app.desktopLibrary.markScanComplete(folder);
+            setLibraryFolderMessage('');
+            return true;
+        }
+
+        app.desktopLibrary.markScanFailed(folder);
+        setLibraryFolderMessage(`No DICOM files found in ${folder}.`, 'warning');
+        return false;
+    }
+
     function applyLibraryConfigPayload(payload, options = {}) {
         const { preserveInput = false } = options;
         state.libraryConfigReachable = true;
@@ -85,6 +109,21 @@
     }
 
     async function loadLibraryConfig() {
+        if (config?.deploymentMode === 'desktop') {
+            libraryFolderInput.readOnly = true;
+            saveLibraryFolderBtn.textContent = 'Choose...';
+            const payload = app.desktopLibrary.getConfig();
+            applyLibraryConfigPayload({
+                folder: payload.folder || '',
+                folderResolved: payload.folder || '',
+                source: 'local'
+            });
+            return payload;
+        }
+
+        libraryFolderInput.readOnly = false;
+        saveLibraryFolderBtn.textContent = 'Save';
+
         const response = await fetch('/api/library/config');
         if (!response.ok) throw new Error(`Failed to load library config: ${response.status}`);
         const payload = await response.json().catch(() => {
@@ -95,18 +134,36 @@
     }
 
     async function saveLibraryFolderConfig() {
-        const folder = libraryFolderInput.value.trim();
-        if (!folder) {
-            setLibraryFolderMessage('Enter a folder path.', 'error');
-            return;
-        }
-
         saveLibraryFolderBtn.disabled = true;
         const previousText = saveLibraryFolderBtn.textContent;
-        saveLibraryFolderBtn.textContent = 'Saving...';
+        saveLibraryFolderBtn.textContent = config?.deploymentMode === 'desktop' ? 'Choosing...' : 'Saving...';
         setLibraryFolderMessage('');
 
         try {
+            if (config?.deploymentMode === 'desktop') {
+                const folder = await app.desktopLibrary.pickAndSetFolder();
+                if (!folder) {
+                    setLibraryFolderMessage('Library folder selection canceled.', 'info');
+                    return;
+                }
+
+                libraryFolderInput.value = folder;
+
+                const files = await app.desktopLibrary.scanFolder(folder);
+                const studies = await processFilesFromSources(files);
+                if (applyDesktopLibraryScan(folder, studies)) {
+                    setLibraryFolderMessage('Library folder updated.', 'success');
+                }
+                await displayStudies();
+                return;
+            }
+
+            const folder = libraryFolderInput.value.trim();
+            if (!folder) {
+                setLibraryFolderMessage('Enter a folder path.', 'error');
+                return;
+            }
+
             const response = await fetch('/api/library/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -151,6 +208,19 @@
         const previousText = refreshLibraryBtn.textContent;
         refreshLibraryBtn.textContent = 'Refreshing...';
         try {
+            if (config?.deploymentMode === 'desktop') {
+                const payload = app.desktopLibrary.getConfig();
+                if (!payload.folder) {
+                    throw new Error('Choose a library folder first.');
+                }
+
+                const files = await app.desktopLibrary.scanFolder(payload.folder);
+                const studies = await processFilesFromSources(files);
+                applyDesktopLibraryScan(payload.folder, studies);
+                await displayStudies();
+                return;
+            }
+
             const response = await fetch('/api/library/refresh', { method: 'POST' });
             const payload = await response.json();
             if (!response.ok) {
@@ -162,6 +232,13 @@
             state.studies = result.studies;
             await displayStudies();
         } catch (e) {
+            if (config?.deploymentMode === 'desktop') {
+                app.desktopLibrary.markScanFailed(state.libraryFolder);
+                state.libraryAvailable = !!state.libraryFolder;
+                setLibraryFolderMessage(e.message || 'Failed to refresh library.', 'error');
+                await displayStudies();
+                return;
+            }
             alert(`Failed to refresh library: ${e.message}`);
         } finally {
             refreshLibraryBtn.disabled = false;
@@ -555,12 +632,14 @@
     }
 
     app.library = {
+        applyDesktopLibraryScan,
         applyLibraryConfigPayload,
         displayStudies,
         handleSortClick,
         loadLibraryConfig,
         refreshLibrary,
         saveLibraryFolderConfig,
+        setLibraryFolderMessage,
         setLibraryFolderStatus
     };
 })();

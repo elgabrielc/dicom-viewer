@@ -36,6 +36,11 @@ Browser (index.html)
 Flask Server (app.py)
 └── Static file serving only (primary workflow)
 └── Optional server-side APIs (alternative workflow)
+
+Tauri Desktop Shell (desktop/src-tauri/)
+├── Native menu and window chrome
+├── App-data persistence for desktop reports
+└── Shared web core loaded from docs/
 ```
 
 ## Key Files
@@ -45,6 +50,7 @@ Flask Server (app.py)
 - `docs/js/` - OpenJPEG WASM decoder files
 - `docs/sample/` - Sample CT scan for demo (188 slices, anonymized)
 - `app.py` - Flask server (serves docs/, provides test mode API)
+- `desktop/` - Tauri desktop shell, native config, Rust entry point, app icons
 
 **Single source of truth**: All web assets live in `docs/`. Flask serves from there. GitHub Pages serves from there. No duplication.
 
@@ -254,24 +260,27 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 
 ## Deployment Modes
 
-The same codebase serves three different purposes:
+The same codebase serves four different purposes:
 
 | Mode | URL | Purpose | Audience |
 |------|-----|---------|----------|
 | **Demo site** | elgabrielc.github.io/dicom-viewer | Showcase features, let people try it | Public, anonymous visitors |
-| **Personal app** | localhost:5001 (or self-hosted) | Local medical image viewing | Individual user with their own data |
+| **Personal app** | localhost:5001 (or self-hosted) | Local medical image viewing with Flask-backed APIs | Individual user with their own data |
+| **Desktop app** | Tauri shell (`window.__TAURI__`) | Native macOS desktop workflow with local-first persistence | Individual user installing the desktop app |
 | **Cloud platform** | (future) app.divergent.health | Full-featured hosted service | Logged-in users with accounts |
 
 ### Key Differences
 
-| Behavior | Demo Site | Personal App | Cloud Platform |
-|----------|-----------|--------------|----------------|
-| Notes persistence | Disabled | localStorage | Server-side |
-| User accounts | None | None | Required |
-| Data storage | None | Local only | Cloud + local cache |
-| Sample scans | Primary use | For testing | For onboarding |
-| Sharing/collaboration | None | None | Planned |
-| Session length | Brief | Extended | Extended |
+| Behavior | Demo Site | Personal App | Desktop App | Cloud Platform |
+|----------|-----------|--------------|-------------|----------------|
+| Notes persistence | Disabled | Flask API or local fallback | localStorage | Server-side |
+| Report persistence | Disabled | Flask API | Tauri app data + local metadata | Server-side |
+| Library source | None | Flask library API | Tauri fs + persisted scope | Cloud + local cache |
+| User accounts | None | None | None | Required |
+| Data storage | None | Local only | Local only | Cloud + local cache |
+| Sample scans | Primary use | For testing | For onboarding and smoke tests | For onboarding |
+| Sharing/collaboration | None | None | None | Planned |
+| Session length | Brief | Extended | Extended | Extended |
 
 ### Design Principles
 
@@ -282,18 +291,22 @@ The same codebase serves three different purposes:
 
 **Personal app = full-featured local tool.** All features enabled, data persists in browser localStorage. The user owns their environment. No account needed.
 
+**Desktop app = native local-first shell.** The shared web core still lives under `docs/`, but Tauri provides file-system access, native menus, desktop report storage in app data, and installable packaging.
+
 **Cloud platform = hosted service with accounts.** (Future) Server-side persistence, sync across devices, collaboration features. localStorage becomes offline cache. This is the product offering.
 
 ### Implementation
 
-Detection is via hostname:
+Detection is via Tauri first, then hostname:
 ```javascript
-function shouldPersistNotes() {
-    return !window.location.hostname.endsWith('github.io');
+function deploymentMode() {
+    if (typeof window.__TAURI__ !== 'undefined') return 'desktop';
+    if (window.location.hostname.endsWith('github.io')) return 'demo';
+    return 'personal';
 }
 ```
 
-When adding features that persist state, check `shouldPersistNotes()` or add similar guards.
+When adding features that persist state or native affordances, route through `CONFIG.deploymentMode` and its feature flags instead of hard-coding hostname checks.
 
 Future: Cloud platform will add `isCloudPlatform()` check for server-sync features.
 
@@ -349,6 +362,7 @@ Deployment mode is detected in `docs/js/config.js`:
 - `demo` - GitHub Pages (stateless)
 - `preview` - Vercel PR previews (stateless)
 - `cloud` - Future hosted platform
+- `desktop` - Tauri shell (`window.__TAURI__`)
 - `personal` - Local development (full features)
 
 ---

@@ -22,11 +22,13 @@
     const { closeReportViewer } = app.notesReports;
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
     const {
+        applyDesktopLibraryScan,
         displayStudies,
         handleSortClick,
         loadLibraryConfig,
         refreshLibrary,
         saveLibraryFolderConfig,
+        setLibraryFolderMessage,
         setLibraryFolderStatus
     } = app.library;
     const {
@@ -36,6 +38,7 @@
     } = app.viewer;
     const {
         loadDroppedStudies,
+        loadDroppedPaths,
         loadSampleStudies,
         loadStudiesFromApi
     } = app.sources;
@@ -63,13 +66,29 @@
         }
     }
 
+    function setDragActive(isActive) {
+        folderZone.classList.toggle('dragover', isActive);
+    }
+
     async function handleDroppedFolder(e) {
         e.preventDefault();
-        folderZone.classList.remove('dragover');
+        setDragActive(false);
         abortLibraryLoad();
 
         try {
             state.studies = await loadDroppedStudies(e.dataTransfer.items);
+            await displayStudies();
+        } catch (err) {
+            alert(`Error: ${err.message}`);
+        }
+    }
+
+    async function handleTauriDrop(paths) {
+        setDragActive(false);
+        abortLibraryLoad();
+
+        try {
+            state.studies = await loadDroppedPaths(paths);
             await displayStudies();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -131,6 +150,11 @@
     }
 
     function initializeLibraryAutoLoad() {
+        if (config?.deploymentMode === 'desktop') {
+            initializeDesktopLibrary();
+            return;
+        }
+
         const libraryConfigPromise = loadLibraryConfig().catch(e => {
             state.libraryConfigReachable = false;
             setLibraryFolderStatus('');
@@ -156,6 +180,44 @@
             });
     }
 
+    async function initializeDesktopLibrary() {
+        try {
+            await loadLibraryConfig();
+            if (!state.libraryFolder) {
+                await displayStudies();
+                return;
+            }
+
+            const files = await app.desktopLibrary.scanFolder(state.libraryFolder);
+            const studies = await app.sources.processFilesFromSources(files);
+            applyDesktopLibraryScan(state.libraryFolder, studies);
+        } catch (e) {
+            app.desktopLibrary.markScanFailed(state.libraryFolder);
+            state.libraryAvailable = !!state.libraryFolder;
+            setLibraryFolderMessage(e.message || 'Failed to auto-load desktop library.', 'error');
+            console.warn('Failed to auto-load desktop library:', e);
+        }
+
+        await displayStudies();
+    }
+
+    function initializeDesktopMenuBridge() {
+        const eventApi = window.__TAURI__?.event;
+        if (!eventApi?.listen) return;
+
+        eventApi.listen('desktop://open-folder', () => {
+            saveLibraryFolderConfig();
+        }).catch(err => {
+            console.warn('Failed to register desktop open-folder menu handler:', err);
+        });
+
+        eventApi.listen('desktop://open-help', () => {
+            openHelpViewer();
+        }).catch(err => {
+            console.warn('Failed to register desktop help menu handler:', err);
+        });
+    }
+
     studiesTableHead.addEventListener('click', handleSortClick);
     studiesTableHead.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -164,15 +226,31 @@
         }
     });
 
-    folderZone.addEventListener('dragover', e => {
-        e.preventDefault();
-        folderZone.classList.add('dragover');
-    });
-    folderZone.addEventListener('dragleave', e => {
-        e.preventDefault();
-        folderZone.classList.remove('dragover');
-    });
-    folderZone.addEventListener('drop', handleDroppedFolder);
+    if (config?.deploymentMode === 'desktop') {
+        initializeDesktopMenuBridge();
+        window.__TAURI__.webview.getCurrentWebview().onDragDropEvent(event => {
+            const payload = event.payload;
+            if (payload.type === 'enter' || payload.type === 'over') {
+                setDragActive(true);
+            } else if (payload.type === 'drop') {
+                handleTauriDrop(payload.paths);
+            } else if (payload.type === 'leave' || payload.type === 'cancel') {
+                setDragActive(false);
+            }
+        }).catch(err => {
+            console.warn('Failed to register Tauri drag-drop handler:', err);
+        });
+    } else {
+        folderZone.addEventListener('dragover', e => {
+            e.preventDefault();
+            setDragActive(true);
+        });
+        folderZone.addEventListener('dragleave', e => {
+            e.preventDefault();
+            setDragActive(false);
+        });
+        folderZone.addEventListener('drop', handleDroppedFolder);
+    }
 
     backBtn.onclick = e => {
         e.preventDefault();
