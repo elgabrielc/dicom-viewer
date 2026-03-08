@@ -9,6 +9,7 @@
  * - demo: Public showcase on GitHub Pages (stateless)
  * - preview: PR preview on Vercel (stateless)
  * - cloud: Future hosted platform (app.divergent.health)
+ * - desktop: Tauri desktop shell (local-first)
  * - personal: Local development or self-hosted (full features)
  *
  * Copyright (c) 2026 Divergent Health Technologies
@@ -17,9 +18,13 @@
 const CONFIG = {
     /**
      * Detect deployment mode based on hostname
-     * @returns {'demo' | 'preview' | 'cloud' | 'personal'}
+     * @returns {'demo' | 'preview' | 'cloud' | 'desktop' | 'personal'}
      */
     get deploymentMode() {
+        if (typeof window.__TAURI__ !== 'undefined') {
+            return 'desktop';
+        }
+
         const hostname = window.location.hostname;
 
         // GitHub Pages - public demo
@@ -132,6 +137,7 @@ const CONFIG = {
             demo: 'Demo',
             preview: 'Preview',
             cloud: 'Cloud',
+            desktop: 'Desktop',
             personal: 'Personal',
         };
         return names[this.deploymentMode] || 'Unknown';
