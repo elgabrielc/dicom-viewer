@@ -1,6 +1,6 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
-    const { progressFill, progressText, progressDetail } = app.dom;
+    const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
     const { parseDicomMetadata } = app.dicom;
 
     async function getAllFileHandles(dirHandle, path = '') {
@@ -145,8 +145,134 @@
         return normalizeStudiesPayload(payload, apiBase);
     }
 
+    async function loadDroppedStudies(items) {
+        uploadProgress.style.display = 'flex';
+        progressText.textContent = 'Reading folder...';
+        progressDetail.textContent = '';
+        progressFill.style.width = '0%';
+
+        try {
+            if (!items?.[0]?.getAsFileSystemHandle) {
+                throw new Error('Please use Chrome or Edge for folder drop support');
+            }
+
+            const handle = await items[0].getAsFileSystemHandle();
+            if (handle.kind !== 'directory') {
+                throw new Error('Please drop a folder, not a file');
+            }
+
+            progressText.textContent = 'Finding files...';
+            const fileHandles = await getAllFileHandles(handle);
+            progressDetail.textContent = `Found ${fileHandles.length} files`;
+
+            if (!fileHandles.length) {
+                throw new Error('No files found');
+            }
+
+            return await processFiles(fileHandles);
+        } finally {
+            uploadProgress.style.display = 'none';
+        }
+    }
+
+    async function loadSampleStudies(samplePath, button, buttonLabel) {
+        button.disabled = true;
+        button.textContent = 'Loading...';
+        uploadProgress.style.display = 'flex';
+        progressText.textContent = 'Loading sample scan...';
+        progressDetail.textContent = '';
+        progressFill.style.width = '0%';
+
+        try {
+            const manifestRes = await fetch(`${samplePath}/manifest.json`);
+            const fileNames = await manifestRes.json();
+
+            progressText.textContent = 'Downloading DICOM files...';
+            progressDetail.textContent = `0/${fileNames.length} files`;
+
+            const filePromises = fileNames.map(async (name, i) => {
+                const res = await fetch(`${samplePath}/${name}`);
+                const blob = await res.blob();
+                if ((i + 1) % 5 === 0 || i === fileNames.length - 1) {
+                    const pct = Math.round(((i + 1) / fileNames.length) * 50);
+                    progressFill.style.width = `${pct}%`;
+                    progressDetail.textContent = `${i + 1}/${fileNames.length} files`;
+                }
+                return { name, blob };
+            });
+
+            const files = await Promise.all(filePromises);
+            progressText.textContent = 'Processing DICOM files...';
+            progressFill.style.width = '50%';
+
+            const studies = {};
+            let processed = 0;
+
+            for (const { blob } of files) {
+                const meta = await parseDicomMetadata(blob);
+                processed++;
+
+                const pct = 50 + Math.round((processed / files.length) * 50);
+                progressFill.style.width = `${pct}%`;
+                progressDetail.textContent = `Processing ${processed}/${files.length}`;
+
+                if (!meta?.studyInstanceUid) continue;
+
+                const studyUid = meta.studyInstanceUid;
+                const seriesUid = meta.seriesInstanceUid;
+
+                if (!studies[studyUid]) {
+                    studies[studyUid] = {
+                        ...meta,
+                        series: {},
+                        comments: []
+                    };
+                }
+
+                if (!studies[studyUid].series[seriesUid]) {
+                    studies[studyUid].series[seriesUid] = {
+                        seriesInstanceUid: seriesUid,
+                        seriesNumber: meta.seriesNumber,
+                        seriesDescription: meta.seriesDescription,
+                        modality: meta.modality,
+                        transferSyntax: meta.transferSyntax,
+                        slices: [],
+                        comments: []
+                    };
+                }
+
+                studies[studyUid].series[seriesUid].slices.push({
+                    instanceNumber: meta.instanceNumber,
+                    sliceLocation: meta.sliceLocation,
+                    blob
+                });
+            }
+
+            for (const study of Object.values(studies)) {
+                let imageCount = 0;
+                for (const series of Object.values(study.series)) {
+                    series.slices.sort((a, b) =>
+                        (a.sliceLocation ?? a.instanceNumber ?? 0) -
+                        (b.sliceLocation ?? b.instanceNumber ?? 0)
+                    );
+                    imageCount += series.slices.length;
+                }
+                study.seriesCount = Object.keys(study.series).length;
+                study.imageCount = imageCount;
+            }
+
+            return studies;
+        } finally {
+            uploadProgress.style.display = 'none';
+            button.textContent = buttonLabel;
+            button.disabled = false;
+        }
+    }
+
     app.sources = {
         getAllFileHandles,
+        loadDroppedStudies,
+        loadSampleStudies,
         processFiles,
         readSliceBuffer,
         normalizeStudiesPayload,

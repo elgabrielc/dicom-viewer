@@ -91,9 +91,9 @@ async function renderDicom(dataSet, wlOverride = null) {
     }
 
     // Extract pixel spacing for measurement calibration
-    const pixelSpacing = extractPixelSpacing(dataSet);
+    const pixelSpacing = app.tools.extractPixelSpacing(dataSet);
     state.pixelSpacing = pixelSpacing;
-    updateCalibrationWarning();
+    app.tools.updateCalibrationWarning();
 
     // Extract MRI-specific metadata
     const mrMetadata = {

@@ -61,6 +61,7 @@
         currentSeries: null,
         currentSliceIndex: 0,
         sliceCache: new LRUCache(SLICE_CACHE_MAX_ENTRIES),
+        libraryAbort: null,
         libraryAvailable: false,
         libraryFolder: '',
         libraryFolderResolved: '',
