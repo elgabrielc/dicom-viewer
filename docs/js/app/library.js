@@ -2,6 +2,7 @@
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
     const notesApi = window.NotesAPI;
+    const config = window.CONFIG;
     const {
         refreshLibraryBtn,
         libraryFolderConfig,
@@ -17,7 +18,7 @@
     } = app.dom;
     const { escapeHtml, formatDate } = app.utils;
     const { getTransferSyntaxInfo } = app.dicom;
-    const { normalizeStudiesPayload } = app.sources;
+    const { normalizeStudiesPayload, processFilesFromSources } = app.sources;
 
     const openPanels = {
         studyPanels: new Set(),
@@ -85,6 +86,21 @@
     }
 
     async function loadLibraryConfig() {
+        if (config?.deploymentMode === 'desktop') {
+            libraryFolderInput.readOnly = true;
+            saveLibraryFolderBtn.textContent = 'Choose...';
+            const payload = app.desktopLibrary.getConfig();
+            applyLibraryConfigPayload({
+                folder: payload.folder || '',
+                folderResolved: payload.folder || '',
+                source: 'local'
+            });
+            return payload;
+        }
+
+        libraryFolderInput.readOnly = false;
+        saveLibraryFolderBtn.textContent = 'Save';
+
         const response = await fetch('/api/library/config');
         if (!response.ok) throw new Error(`Failed to load library config: ${response.status}`);
         const payload = await response.json().catch(() => {
@@ -95,18 +111,44 @@
     }
 
     async function saveLibraryFolderConfig() {
-        const folder = libraryFolderInput.value.trim();
-        if (!folder) {
-            setLibraryFolderMessage('Enter a folder path.', 'error');
-            return;
-        }
-
         saveLibraryFolderBtn.disabled = true;
         const previousText = saveLibraryFolderBtn.textContent;
-        saveLibraryFolderBtn.textContent = 'Saving...';
+        saveLibraryFolderBtn.textContent = config?.deploymentMode === 'desktop' ? 'Choosing...' : 'Saving...';
         setLibraryFolderMessage('');
 
         try {
+            if (config?.deploymentMode === 'desktop') {
+                const folder = await app.desktopLibrary.pickAndSetFolder();
+                if (!folder) {
+                    setLibraryFolderMessage('Library folder selection canceled.', 'info');
+                    return;
+                }
+
+                libraryFolderInput.value = folder;
+                state.libraryFolder = folder;
+                state.libraryFolderResolved = folder;
+                state.libraryFolderSource = 'local';
+
+                const files = await app.desktopLibrary.scanFolder(folder);
+                state.studies = await processFilesFromSources(files);
+                state.libraryAvailable = true;
+                app.desktopLibrary.markScanComplete(folder);
+                applyLibraryConfigPayload({
+                    folder,
+                    folderResolved: folder,
+                    source: 'local'
+                });
+                setLibraryFolderMessage('Library folder updated.', 'success');
+                await displayStudies();
+                return;
+            }
+
+            const folder = libraryFolderInput.value.trim();
+            if (!folder) {
+                setLibraryFolderMessage('Enter a folder path.', 'error');
+                return;
+            }
+
             const response = await fetch('/api/library/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -151,6 +193,23 @@
         const previousText = refreshLibraryBtn.textContent;
         refreshLibraryBtn.textContent = 'Refreshing...';
         try {
+            if (config?.deploymentMode === 'desktop') {
+                const payload = app.desktopLibrary.getConfig();
+                if (!payload.folder) {
+                    throw new Error('Choose a library folder first.');
+                }
+
+                const files = await app.desktopLibrary.scanFolder(payload.folder);
+                state.libraryFolder = payload.folder;
+                state.libraryFolderResolved = payload.folder;
+                state.libraryFolderSource = 'local';
+                state.studies = await processFilesFromSources(files);
+                state.libraryAvailable = true;
+                app.desktopLibrary.markScanComplete(payload.folder);
+                await displayStudies();
+                return;
+            }
+
             const response = await fetch('/api/library/refresh', { method: 'POST' });
             const payload = await response.json();
             if (!response.ok) {

@@ -78,8 +78,8 @@ const CONFIG = {
             testMode: mode === 'personal',
 
             // Auto-load persistent local library from backend API
-            // Only in local/self-hosted personal mode
-            libraryAutoLoad: mode === 'personal',
+            // Personal uses Flask; desktop uses local Tauri-backed scans
+            libraryAutoLoad: mode === 'personal' || mode === 'desktop',
 
             // Analytics (future feature)
             // Only on cloud platform

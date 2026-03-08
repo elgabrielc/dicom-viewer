@@ -148,6 +148,11 @@
     }
 
     function initializeLibraryAutoLoad() {
+        if (config?.deploymentMode === 'desktop') {
+            initializeDesktopLibrary();
+            return;
+        }
+
         const libraryConfigPromise = loadLibraryConfig().catch(e => {
             state.libraryConfigReachable = false;
             setLibraryFolderStatus('');
@@ -171,6 +176,25 @@
                 if (e.name === 'AbortError') return;
                 await displayStudies();
             });
+    }
+
+    async function initializeDesktopLibrary() {
+        try {
+            await loadLibraryConfig();
+            if (!state.libraryFolder) {
+                await displayStudies();
+                return;
+            }
+
+            const files = await app.desktopLibrary.scanFolder(state.libraryFolder);
+            state.studies = await app.sources.processFilesFromSources(files);
+            state.libraryAvailable = true;
+            app.desktopLibrary.markScanComplete(state.libraryFolder);
+        } catch (e) {
+            console.warn('Failed to auto-load desktop library:', e);
+        }
+
+        await displayStudies();
     }
 
     studiesTableHead.addEventListener('click', handleSortClick);
