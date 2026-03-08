@@ -77,6 +77,13 @@ const {
     getTransferSyntaxInfo
 } = window.DicomViewerApp.dicom;
 const { renderDicom } = window.DicomViewerApp.rendering;
+const {
+    getAllFileHandles,
+    processFiles,
+    readSliceBuffer,
+    normalizeStudiesPayload,
+    loadStudiesFromApi
+} = window.DicomViewerApp.sources;
 
 // =====================================================================
 // MEASUREMENT TOOL FUNCTIONS
@@ -516,97 +523,6 @@ const { renderDicom } = window.DicomViewerApp.rendering;
             } else {
                 calibrationWarning.style.display = 'none';
             }
-        }
-
-        // =====================================================================
-        // FILE SYSTEM OPERATIONS
-        // Uses File System Access API (Chrome/Edge only)
-        // =====================================================================
-
-        /**
-         * Recursively get all file handles from a directory
-         * @param {FileSystemDirectoryHandle} dirHandle - Directory handle from drop event
-         * @param {string} path - Current path (for recursion)
-         * @returns {Promise<Array>} Array of {handle, name} objects
-         */
-        async function getAllFileHandles(dirHandle, path = '') {
-            const files = [];
-            for await (const [name, handle] of dirHandle.entries()) {
-                if (handle.kind === 'file') {
-                    files.push({ handle, name });
-                } else if (handle.kind === 'directory') {
-                    files.push(...await getAllFileHandles(handle, path + name + '/'));
-                }
-            }
-            return files;
-        }
-
-        /**
-         * Process array of file handles into organized study/series structure
-         * Parses each DICOM file's metadata and groups by StudyInstanceUID/SeriesInstanceUID
-         *
-         * @param {Array} fileHandles - Array of {handle, name} objects
-         * @returns {Promise<Object>} Map of studyInstanceUid -> study data
-         */
-        async function processFiles(fileHandles) {
-            const studies = {};
-            const total = fileHandles.length;
-            let processed = 0, valid = 0;
-
-            const batchSize = 100;
-            for (let i = 0; i < fileHandles.length; i += batchSize) {
-                const batch = fileHandles.slice(i, i + batchSize);
-                await Promise.all(batch.map(async ({ handle }) => {
-                    const file = await handle.getFile();
-                    const meta = await parseDicomMetadata(file);
-                    processed++;
-
-                    if (processed % 200 === 0 || processed === total) {
-                        const pct = Math.round((processed / total) * 100);
-                        progressFill.style.width = pct + '%';
-                        progressText.textContent = `Scanning... ${pct}%`;
-                        progressDetail.textContent = `${processed}/${total} files (${valid} DICOM)`;
-                    }
-
-                    if (!meta?.studyInstanceUid) return;
-                    valid++;
-
-                    const studyUid = meta.studyInstanceUid;
-                    const seriesUid = meta.seriesInstanceUid || 'default';
-
-                    if (!studies[studyUid]) {
-                        studies[studyUid] = {
-                            ...meta, series: {}, seriesCount: 0, imageCount: 0
-                        };
-                    }
-                    if (!studies[studyUid].series[seriesUid]) {
-                        studies[studyUid].series[seriesUid] = {
-                            seriesInstanceUid: seriesUid,
-                            seriesDescription: meta.seriesDescription,
-                            seriesNumber: meta.seriesNumber,
-                            transferSyntax: meta.transferSyntax,
-                            slices: []
-                        };
-                    }
-                    studies[studyUid].series[seriesUid].slices.push({
-                        fileHandle: handle,
-                        instanceNumber: meta.instanceNumber,
-                        sliceLocation: meta.sliceLocation
-                    });
-                }));
-            }
-
-            // Sort and count
-            for (const study of Object.values(studies)) {
-                let count = 0;
-                for (const series of Object.values(study.series)) {
-                    series.slices.sort((a, b) => a.instanceNumber - b.instanceNumber || a.sliceLocation - b.sliceLocation);
-                    count += series.slices.length;
-                }
-                study.seriesCount = Object.keys(study.series).length;
-                study.imageCount = count;
-            }
-            return studies;
         }
 
         // =====================================================================
@@ -1723,18 +1639,7 @@ const { renderDicom } = window.DicomViewerApp.rendering;
                 let dataSet = state.sliceCache.get(index);
 
                 if (!dataSet) {
-                    // Handle both file handles (drag-drop) and blobs (sample loading)
-                    let buf;
-                    if (slice.fileHandle) {
-                        const file = await slice.fileHandle.getFile();
-                        buf = await file.arrayBuffer();
-                    } else if (slice.blob) {
-                        buf = await slice.blob.arrayBuffer();
-                    } else if (slice.apiBase) {
-                        const resp = await fetch(`${slice.apiBase}/dicom/${slice.studyId}/${slice.seriesId}/${slice.sliceIndex}`);
-                        if (!resp.ok) throw new Error(`Failed to load slice: ${resp.status}`);
-                        buf = await resp.arrayBuffer();
-                    }
+                    const buf = await readSliceBuffer(slice, 'load');
                     dataSet = dicomParser.parseDicom(new Uint8Array(buf));
                     state.sliceCache.set(index, dataSet);
                 }
@@ -1803,17 +1708,7 @@ const { renderDicom } = window.DicomViewerApp.rendering;
                 for (let i = index - 3; i <= index + 3; i++) {
                     if (i >= 0 && i < slices.length && !state.sliceCache.has(i)) {
                         const s = slices[i];
-                        // Handle both file handles and blobs
-                        const getBuffer = s.fileHandle
-                            ? s.fileHandle.getFile().then(f => f.arrayBuffer())
-                            : s.blob ? s.blob.arrayBuffer()
-                            : s.apiBase
-                                ? fetch(`${s.apiBase}/dicom/${s.studyId}/${s.seriesId}/${s.sliceIndex}`).then(r => {
-                                    if (!r.ok) throw new Error(`Failed to preload slice: ${r.status}`);
-                                    return r.arrayBuffer();
-                                })
-                                : Promise.reject();
-                        getBuffer.then(buf => {
+                        readSliceBuffer(s, 'preload').then(buf => {
                             state.sliceCache.set(i, dicomParser.parseDicom(new Uint8Array(buf)));
                         }).catch(() => {});
                     }
@@ -2442,67 +2337,6 @@ const { renderDicom } = window.DicomViewerApp.rendering;
         const isTestMode = searchParams.has('test');
         const noLib = searchParams.has('nolib');
         let libraryAbort = null;
-
-        /**
-         * Load studies from an API endpoint and normalize to state.studies shape.
-         * Supports both test-data array responses and library object responses.
-         *
-         * @param {string} apiBase
-         * @param {RequestInit} options
-         * @returns {Promise<{studies: Object, available: boolean, folder: string}>}
-         */
-        function normalizeStudiesPayload(payload, apiBase) {
-            const studiesArray = Array.isArray(payload) ? payload : (payload.studies || []);
-            const studies = {};
-
-            for (const study of studiesArray) {
-                const seriesMap = {};
-                for (const series of (study.series || [])) {
-                    seriesMap[series.seriesInstanceUid] = {
-                        seriesInstanceUid: series.seriesInstanceUid,
-                        seriesDescription: series.seriesDescription,
-                        seriesNumber: series.seriesNumber,
-                        modality: series.modality,
-                        slices: Array.from({ length: series.sliceCount }, (_, i) => ({
-                            instanceNumber: i + 1,
-                            sliceLocation: 0,
-                            apiBase,
-                            studyId: study.studyInstanceUid,
-                            seriesId: series.seriesInstanceUid,
-                            sliceIndex: i
-                        }))
-                    };
-                }
-
-                studies[study.studyInstanceUid] = {
-                    patientName: study.patientName,
-                    studyDate: study.studyDate,
-                    studyDescription: study.studyDescription,
-                    studyInstanceUid: study.studyInstanceUid,
-                    modality: study.modality,
-                    seriesCount: study.seriesCount,
-                    imageCount: study.imageCount,
-                    series: seriesMap
-                };
-            }
-
-            if (Array.isArray(payload)) {
-                return { studies, available: true, folder: '' };
-            }
-
-            return {
-                studies,
-                available: !!payload.available,
-                folder: payload.folder || ''
-            };
-        }
-
-        async function loadStudiesFromApi(apiBase, options = {}) {
-            const response = await fetch(`${apiBase}/studies`, options);
-            if (!response.ok) throw new Error(`Failed to load studies: ${response.status}`);
-            const payload = await response.json();
-            return normalizeStudiesPayload(payload, apiBase);
-        }
 
         function setLibraryFolderStatus(message, tone = '') {
             if (!message) {
