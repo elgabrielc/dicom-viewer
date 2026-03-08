@@ -53,6 +53,7 @@ Architecture Decision Records (ADRs) for significant project decisions and ratio
 | `README.md` | ADR convention, template, and writing guidance |
 | `001-launch-command.md` | Decision record for macOS `launch.command` startup workflow |
 | `002-persistent-local-library.md` | Decision record for persistent DICOM library with DicomFolderSource, configurable folder, and apiBase pattern |
+| `003-tauri-desktop-shell-with-shared-web-core.md` | Decision record for the shared web core plus Tauri desktop shell direction |
 
 ---
 
@@ -63,6 +64,7 @@ dicom-viewer/
 ├── .github/workflows/     # CI/CD configuration
 │   └── pr-validate.yml    # PR validation (runs tests)
 ├── app.py                 # Flask backend
+├── desktop/               # Tauri desktop shell, Rust entry point, icons, build config
 ├── requirements.txt       # Python dependencies
 ├── CLAUDE.md              # Claude Code context and instructions
 ├── CONTRIBUTING.md        # Contribution guidelines
@@ -78,7 +80,7 @@ dicom-viewer/
 │   ├── DEPLOY.md          # Deployment guide
 │   ├── DEVELOPMENT_PHILOSOPHY.md  # Why we work this way
 │   └── TESTING.md         # Test documentation
-├── tests/                 # Playwright E2E tests
+├── tests/                 # Playwright E2E tests, including mocked desktop integration checks
 ├── test-fixtures/         # Minimal DICOM data for CI
 └── uploads/               # Server upload destination
 ```
@@ -103,4 +105,4 @@ dicom-viewer/
 
 ---
 
-*Last updated: 2026-03-03*
+*Last updated: 2026-03-08*

@@ -197,6 +197,23 @@
         await displayStudies();
     }
 
+    function initializeDesktopMenuBridge() {
+        const eventApi = window.__TAURI__?.event;
+        if (!eventApi?.listen) return;
+
+        eventApi.listen('desktop://open-folder', () => {
+            saveLibraryFolderConfig();
+        }).catch(err => {
+            console.warn('Failed to register desktop open-folder menu handler:', err);
+        });
+
+        eventApi.listen('desktop://open-help', () => {
+            openHelpViewer();
+        }).catch(err => {
+            console.warn('Failed to register desktop help menu handler:', err);
+        });
+    }
+
     studiesTableHead.addEventListener('click', handleSortClick);
     studiesTableHead.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -206,6 +223,7 @@
     });
 
     if (config?.deploymentMode === 'desktop') {
+        initializeDesktopMenuBridge();
         window.__TAURI__.webview.getCurrentWebview().onDragDropEvent(event => {
             const payload = event.payload;
             if (payload.type === 'enter' || payload.type === 'over') {
