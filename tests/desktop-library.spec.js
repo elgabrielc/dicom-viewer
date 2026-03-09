@@ -76,6 +76,16 @@ async function installMockDesktop(page, options = {}) {
             stats[normalizePath(path)] = value;
         }
 
+        const fileBytes = {};
+        for (const [path, value] of Object.entries(options.fileBytes || {})) {
+            fileBytes[normalizePath(path)] = value;
+        }
+
+        const readFileFailures = {};
+        for (const [path, value] of Object.entries(options.readFileFailures || {})) {
+            readFileFailures[normalizePath(path)] = Number(value || 0);
+        }
+
         window.__TAURI__ = {
             dialog: {
                 async open() {
@@ -96,8 +106,15 @@ async function installMockDesktop(page, options = {}) {
                     }
                     return dirs[normalized];
                 },
-                async readFile() {
-                    return new Uint8Array([0]);
+                async readFile(path) {
+                    const normalized = normalizePath(path);
+                    const remainingFailures = readFileFailures[normalized] || 0;
+                    if (remainingFailures > 0) {
+                        readFileFailures[normalized] = remainingFailures - 1;
+                        throw new Error(`Transient read failure: ${normalized}`);
+                    }
+                    const bytes = fileBytes[normalized] || [0];
+                    return Uint8Array.from(bytes);
                 },
                 async stat(path) {
                     const normalized = normalizePath(path);
@@ -129,6 +146,28 @@ async function installMockDesktop(page, options = {}) {
 }
 
 test.describe('Desktop library scanning', () => {
+    test('desktop path reads retry transient filesystem failures', async ({ page }) => {
+        await installMockDesktop(page, {
+            fileBytes: {
+                '/library/image.dcm': [1, 2, 3, 4]
+            },
+            readFileFailures: {
+                '/library/image.dcm': 2
+            }
+        });
+
+        await page.goto(HOME_URL);
+
+        const bytes = await page.evaluate(async () => {
+            const buffer = await window.DicomViewerApp.sources.readSliceBuffer({
+                source: { kind: 'path', path: '/library/image.dcm' }
+            }, 'scan');
+            return Array.from(new Uint8Array(buffer));
+        });
+
+        expect(bytes).toEqual([1, 2, 3, 4]);
+    });
+
     test('renderable image metadata helper excludes non-image DICOM objects', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);

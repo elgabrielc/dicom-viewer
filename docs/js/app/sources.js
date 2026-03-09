@@ -3,6 +3,10 @@
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
     const { parseDicomMetadata, isRenderableImageMetadata } = app.dicom;
     const DESKTOP_MAX_SCAN_DEPTH = 20;
+    const DEFAULT_SCAN_CONCURRENCY = 100;
+    const DESKTOP_PATH_SCAN_CONCURRENCY = 16;
+    const DESKTOP_PATH_READ_ATTEMPTS = 3;
+    const DESKTOP_PATH_READ_RETRY_DELAY_MS = 50;
 
     function updateScanProgress(processed, total, valid) {
         if (processed % 200 !== 0 && processed !== total) return;
@@ -83,6 +87,44 @@
         return path.split(/[\\/]/).pop() || path;
     }
 
+    function wait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function getScanConcurrency(files) {
+        return files.some(({ source }) => source?.kind === 'path')
+            ? DESKTOP_PATH_SCAN_CONCURRENCY
+            : DEFAULT_SCAN_CONCURRENCY;
+    }
+
+    async function withRetries(task, options = {}) {
+        const {
+            attempts = 1,
+            retryDelayMs = 0,
+            onRetry = null
+        } = options;
+
+        let lastError = null;
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return await task();
+            } catch (error) {
+                lastError = error;
+                if (attempt >= attempts) break;
+
+                if (typeof onRetry === 'function') {
+                    onRetry(error, attempt + 1);
+                }
+
+                if (retryDelayMs > 0) {
+                    await wait(retryDelayMs * attempt);
+                }
+            }
+        }
+
+        throw lastError;
+    }
+
     async function getAllFileHandles(dirHandle) {
         const files = [];
         for await (const [name, handle] of dirHandle.entries()) {
@@ -109,9 +151,9 @@
         let processed = 0;
         let valid = 0;
 
-        const batchSize = 100;
-        for (let i = 0; i < files.length; i += batchSize) {
-            const batch = files.slice(i, i + batchSize);
+        const concurrency = getScanConcurrency(files);
+        for (let i = 0; i < files.length; i += concurrency) {
+            const batch = files.slice(i, i + concurrency);
             await Promise.all(batch.map(async ({ name, source }) => {
                 try {
                     const buffer = await readSliceBuffer({ source }, 'scan');
@@ -147,7 +189,19 @@
                 return resp.arrayBuffer();
             }
             case 'path': {
-                const bytes = await window.__TAURI__.fs.readFile(source.path);
+                const bytes = await withRetries(
+                    () => window.__TAURI__.fs.readFile(source.path),
+                    {
+                        attempts: DESKTOP_PATH_READ_ATTEMPTS,
+                        retryDelayMs: DESKTOP_PATH_READ_RETRY_DELAY_MS,
+                        onRetry: (error, nextAttempt) => {
+                            console.warn(
+                                `Retrying desktop file read (${nextAttempt}/${DESKTOP_PATH_READ_ATTEMPTS}) for ${source.path}:`,
+                                error
+                            );
+                        }
+                    }
+                );
                 return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
             }
             default:
