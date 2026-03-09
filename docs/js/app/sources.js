@@ -5,16 +5,33 @@
     const DESKTOP_MAX_SCAN_DEPTH = 20;
     const DEFAULT_SCAN_CONCURRENCY = 100;
     const DESKTOP_PATH_SCAN_CONCURRENCY = 16;
+    const DESKTOP_PATH_BATCH_SIZE = 128;
     const DESKTOP_PATH_READ_ATTEMPTS = 3;
     const DESKTOP_PATH_READ_RETRY_DELAY_MS = 50;
+    const SCAN_PROGRESS_UPDATE_INTERVAL = 200;
 
     function updateScanProgress(processed, total, valid) {
-        if (processed % 200 !== 0 && processed !== total) return;
+        if (processed % SCAN_PROGRESS_UPDATE_INTERVAL !== 0 && processed !== total) return;
 
         const pct = Math.round((processed / total) * 100);
+        progressFill.style.animation = 'none';
         progressFill.style.width = pct + '%';
         progressText.textContent = `Scanning... ${pct}%`;
         progressDetail.textContent = `${processed}/${total} files (${valid} viewable DICOM)`;
+    }
+
+    function showIndeterminateProgress(text, detail = '') {
+        uploadProgress.style.display = 'flex';
+        progressFill.style.width = '100%';
+        progressFill.style.animation = 'progress-pulse 1.5s ease-in-out infinite';
+        progressText.textContent = text;
+        progressDetail.textContent = detail;
+    }
+
+    function hideProgressOverlay() {
+        uploadProgress.style.display = 'none';
+        progressFill.style.width = '0%';
+        progressFill.style.animation = 'none';
     }
 
     function addSliceToStudies(studies, meta, source) {
@@ -125,6 +142,31 @@
         throw lastError;
     }
 
+    function safeEmitDesktopPathProgress(onProgress, stats, options = {}) {
+        if (typeof onProgress !== 'function') return;
+
+        const { force = false, currentPath = '', complete = false } = options;
+        const shouldEmit = force ||
+            stats.discovered === 0 ||
+            stats.discovered % SCAN_PROGRESS_UPDATE_INTERVAL === 0 ||
+            stats.processed % SCAN_PROGRESS_UPDATE_INTERVAL === 0 ||
+            stats.processed === stats.discovered;
+
+        if (!shouldEmit) return;
+
+        try {
+            onProgress({
+                discovered: stats.discovered,
+                processed: stats.processed,
+                valid: stats.valid,
+                currentPath,
+                complete
+            });
+        } catch (error) {
+            console.warn('Desktop path scan progress callback failed:', error);
+        }
+    }
+
     async function getAllFileHandles(dirHandle) {
         const files = [];
         for await (const [name, handle] of dirHandle.entries()) {
@@ -171,6 +213,28 @@
         }
 
         return finalizeStudies(studies);
+    }
+
+    async function processDesktopPathFileBatch(files, studies, stats, onProgress) {
+        for (let i = 0; i < files.length; i += DESKTOP_PATH_SCAN_CONCURRENCY) {
+            const batch = files.slice(i, i + DESKTOP_PATH_SCAN_CONCURRENCY);
+            await Promise.all(batch.map(async ({ name, source }) => {
+                try {
+                    const buffer = await readSliceBuffer({ source }, 'scan');
+                    const meta = await parseDicomMetadata(buffer);
+                    if (!isRenderableImageMetadata(meta)) return;
+                    stats.valid++;
+                    addSliceToStudies(studies, meta, source);
+                } catch (e) {
+                    console.warn(`Skipping unreadable DICOM file during scan: ${name}`, e);
+                } finally {
+                    stats.processed++;
+                    safeEmitDesktopPathProgress(onProgress, stats, { currentPath: source?.path || '' });
+                }
+            }));
+
+            await wait(0);
+        }
     }
 
     async function readSliceBuffer(slice, purpose = 'load') {
@@ -384,27 +448,125 @@
         return files;
     }
 
+    async function loadStudiesFromDesktopPaths(paths, options = {}) {
+        const fs = window.__TAURI__?.fs;
+        if (!fs?.readDir) {
+            throw new Error('Desktop file APIs unavailable');
+        }
+
+        const {
+            maxDepth = DESKTOP_MAX_SCAN_DEPTH,
+            onProgress = null
+        } = options;
+
+        const studies = {};
+        const pendingFiles = [];
+        const stats = { discovered: 0, processed: 0, valid: 0 };
+        const visited = new Set();
+        const stack = (Array.isArray(paths) ? paths : [paths])
+            .filter(Boolean)
+            .map(path => ({ path, depth: 0 }))
+            .reverse();
+
+        async function flushPendingFiles(force = false) {
+            while (pendingFiles.length >= DESKTOP_PATH_BATCH_SIZE || (force && pendingFiles.length > 0)) {
+                const batchSize = force ? pendingFiles.length : DESKTOP_PATH_BATCH_SIZE;
+                const batch = pendingFiles.splice(0, batchSize);
+                await processDesktopPathFileBatch(batch, studies, stats, onProgress);
+            }
+        }
+
+        safeEmitDesktopPathProgress(onProgress, stats, { force: true, complete: false });
+
+        while (stack.length) {
+            const current = stack.pop();
+            const normalizedPath = await normalizePath(current.path);
+
+            if (visited.has(normalizedPath)) {
+                console.warn('Skipping already-visited desktop scan path:', normalizedPath);
+                continue;
+            }
+            visited.add(normalizedPath);
+
+            let entries;
+            try {
+                entries = await fs.readDir(normalizedPath);
+            } catch (readError) {
+                const fileEntries = await resolveDesktopPathSource(fs, normalizedPath, readError);
+                for (const fileEntry of fileEntries) {
+                    pendingFiles.push(fileEntry);
+                    stats.discovered++;
+                    safeEmitDesktopPathProgress(onProgress, stats, { currentPath: fileEntry.source?.path || normalizedPath });
+                    if (pendingFiles.length >= DESKTOP_PATH_BATCH_SIZE) {
+                        await flushPendingFiles();
+                    }
+                }
+                continue;
+            }
+
+            for (const entry of entries) {
+                const entryPath = await joinPath(normalizedPath, entry.name);
+                if (entry.isSymlink) {
+                    console.warn('Skipping symlink during desktop scan:', entryPath);
+                    continue;
+                }
+
+                if (entry.isDirectory) {
+                    if (current.depth >= maxDepth) {
+                        console.warn('Skipping path beyond desktop scan depth limit:', entryPath);
+                        continue;
+                    }
+                    stack.push({
+                        path: entryPath,
+                        depth: current.depth + 1
+                    });
+                    continue;
+                }
+
+                if (!entry.isFile) continue;
+
+                pendingFiles.push({
+                    name: entry.name,
+                    source: { kind: 'path', path: entryPath }
+                });
+                stats.discovered++;
+                safeEmitDesktopPathProgress(onProgress, stats, { currentPath: entryPath });
+
+                if (pendingFiles.length >= DESKTOP_PATH_BATCH_SIZE) {
+                    await flushPendingFiles();
+                }
+            }
+
+            await wait(0);
+        }
+
+        await flushPendingFiles(true);
+        safeEmitDesktopPathProgress(onProgress, stats, { force: true, complete: true });
+        return finalizeStudies(studies);
+    }
+
     async function loadDroppedPaths(paths) {
-        uploadProgress.style.display = 'flex';
-        progressText.textContent = 'Reading folder...';
-        progressDetail.textContent = '';
-        progressFill.style.width = '0%';
+        let lastProgress = { discovered: 0, processed: 0, valid: 0 };
 
         try {
-            progressText.textContent = 'Finding files...';
-            const files = [];
-            for (const path of paths) {
-                files.push(...await collectPathSources(path));
-            }
-            progressDetail.textContent = `Found ${files.length} files`;
+            showIndeterminateProgress('Scanning desktop folder...', '0 files processed (0 viewable DICOM)');
+            const studies = await loadStudiesFromDesktopPaths(paths, {
+                onProgress: (stats) => {
+                    lastProgress = stats;
+                    showIndeterminateProgress(
+                        'Scanning desktop folder...',
+                        `${stats.processed}/${stats.discovered} files processed (${stats.valid} viewable DICOM)`
+                    );
+                }
+            });
 
-            if (!files.length) {
+            if (!lastProgress.discovered) {
                 throw new Error('No files found');
             }
 
-            return await processFilesFromSources(files);
+            return studies;
         } finally {
-            uploadProgress.style.display = 'none';
+            hideProgressOverlay();
         }
     }
 
@@ -496,7 +658,7 @@
 
             return studies;
         } finally {
-            uploadProgress.style.display = 'none';
+            hideProgressOverlay();
             button.textContent = buttonLabel;
             button.disabled = false;
         }
@@ -508,6 +670,7 @@
         isRenderableImageMetadata,
         loadDroppedStudies,
         loadDroppedPaths,
+        loadStudiesFromDesktopPaths,
         loadSampleStudies,
         processFiles,
         processFilesFromSources,

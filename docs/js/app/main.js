@@ -29,7 +29,8 @@
         refreshLibrary,
         saveLibraryFolderConfig,
         setLibraryFolderMessage,
-        setLibraryFolderStatus
+        setLibraryFolderStatus,
+        updateDesktopScanMessage
     } = app.library;
     const {
         closeViewer,
@@ -207,8 +208,9 @@
                 throw new Error('Desktop runtime is not ready yet.');
             }
 
-            const files = await app.desktopLibrary.scanFolder(state.libraryFolder);
-            const studies = await app.sources.processFilesFromSources(files);
+            const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
+                onProgress: stats => updateDesktopScanMessage(stats, 'Loading saved library folder...')
+            });
             applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {
             app.desktopLibrary.markScanFailed(state.libraryFolder);

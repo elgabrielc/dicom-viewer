@@ -146,6 +146,64 @@ async function installMockDesktop(page, options = {}) {
 }
 
 test.describe('Desktop library scanning', () => {
+    test('desktop path study scan starts processing before the full tree is materialized', async ({ page }) => {
+        const rootEntries = [];
+        const nestedEntries = [];
+        const fileBytes = {};
+
+        for (let index = 1; index <= 128; index++) {
+            const name = `root-${String(index).padStart(3, '0')}.dcm`;
+            rootEntries.push({ name, isDirectory: false, isFile: true, isSymlink: false });
+            fileBytes[`/library/${name}`] = [index];
+        }
+
+        for (let index = 1; index <= 2; index++) {
+            const name = `nested-${String(index).padStart(3, '0')}.dcm`;
+            nestedEntries.push({ name, isDirectory: false, isFile: true, isSymlink: false });
+            fileBytes[`/library/nested/${name}`] = [index];
+        }
+
+        rootEntries.push({ name: 'nested', isDirectory: true, isFile: false, isSymlink: false });
+
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': rootEntries,
+                '/library/nested': nestedEntries
+            },
+            fileBytes
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const summary = await page.evaluate(async () => {
+            const progress = [];
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library'], {
+                onProgress: (stats) => {
+                    progress.push({
+                        discovered: stats.discovered,
+                        processed: stats.processed,
+                        valid: stats.valid,
+                        complete: stats.complete
+                    });
+                }
+            });
+            return {
+                studyCount: Object.keys(studies).length,
+                progress
+            };
+        });
+
+        expect(summary.studyCount).toBe(0);
+        expect(summary.progress.some((entry) => entry.discovered === 128 && entry.processed === 128)).toBe(true);
+        expect(summary.progress.at(-1)).toMatchObject({
+            discovered: 130,
+            processed: 130,
+            valid: 0,
+            complete: true
+        });
+    });
+
     test('desktop path reads retry transient filesystem failures', async ({ page }) => {
         await installMockDesktop(page, {
             fileBytes: {

@@ -53,6 +53,11 @@
             return app.sources.collectPathSources(folderPath);
         },
 
+        loadStudies(folderPath, options = {}) {
+            this.getRuntime();
+            return app.sources.loadStudiesFromDesktopPaths([folderPath], options);
+        },
+
         markScanComplete(folderPath) {
             const config = this.getConfig();
             config.folder = folderPath || config.folder || null;
