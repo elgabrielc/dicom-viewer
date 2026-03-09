@@ -260,6 +260,45 @@ test.describe('Desktop library scanning', () => {
         expect(result.missingDimensions).toBe(false);
     });
 
+    test('metadata scan helper reads numeric DICOM tags when string access is empty', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const dataSet = {
+                string(tag) {
+                    const values = {
+                        x00200013: '',
+                        x00201041: ''
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    const values = {
+                        x00280010: 512,
+                        x00280011: 512,
+                        x00200013: 7
+                    };
+                    return values[tag];
+                },
+                elements: {
+                    x7fe00010: {}
+                }
+            };
+
+            const { getMetadataNumber } = window.DicomViewerApp.dicom;
+            return {
+                rows: getMetadataNumber(dataSet, 'x00280010', 0),
+                cols: getMetadataNumber(dataSet, 'x00280011', 0),
+                instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0)
+            };
+        });
+
+        expect(result.rows).toBe(512);
+        expect(result.cols).toBe(512);
+        expect(result.instanceNumber).toBe(7);
+    });
+
     test('saved desktop library config is visible before startup scan completes', async ({ page }) => {
         await installMockDesktop(page, {
             initialConfig: {

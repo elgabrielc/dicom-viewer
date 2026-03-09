@@ -27,6 +27,43 @@
         throw new Error('Unsupported DICOM metadata source');
     }
 
+    function getMetadataNumber(dataSet, tag, fallback = 0) {
+        const stringValue = getNumber(dataSet, tag, Number.NaN);
+        if (Number.isFinite(stringValue)) {
+            return stringValue;
+        }
+
+        try {
+            const uint16Value = dataSet.uint16?.(tag);
+            if (Number.isFinite(uint16Value)) {
+                return uint16Value;
+            }
+        } catch {}
+
+        try {
+            const int16Value = dataSet.int16?.(tag);
+            if (Number.isFinite(int16Value)) {
+                return int16Value;
+            }
+        } catch {}
+
+        try {
+            const uint32Value = dataSet.uint32?.(tag);
+            if (Number.isFinite(uint32Value)) {
+                return uint32Value;
+            }
+        } catch {}
+
+        try {
+            const int32Value = dataSet.int32?.(tag);
+            if (Number.isFinite(int32Value)) {
+                return int32Value;
+            }
+        } catch {}
+
+        return fallback;
+    }
+
     /**
      * Parse DICOM file metadata without loading pixel data (fast scan)
      * Used during folder import to organize files by study/series.
@@ -39,8 +76,8 @@
             const byteArray = await toDicomByteArray(input);
             const dataSet = dicomParser.parseDicom(byteArray, { untilTag: 'x7fe00010' });
             const transferSyntax = getString(dataSet, 'x00020010');
-            const rows = getNumber(dataSet, 'x00280010', 0);
-            const cols = getNumber(dataSet, 'x00280011', 0);
+            const rows = getMetadataNumber(dataSet, 'x00280010', 0);
+            const cols = getMetadataNumber(dataSet, 'x00280011', 0);
             const pixelDataElement = dataSet.elements?.x7fe00010;
             return {
                 patientName: getString(dataSet, 'x00100010'),
@@ -51,8 +88,8 @@
                 seriesInstanceUid: getString(dataSet, 'x0020000e'),
                 seriesNumber: getString(dataSet, 'x00200011'),
                 modality: getString(dataSet, 'x00080060'),
-                instanceNumber: getNumber(dataSet, 'x00200013', 0),
-                sliceLocation: getNumber(dataSet, 'x00201041', 0),
+                instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0),
+                sliceLocation: getMetadataNumber(dataSet, 'x00201041', 0),
                 transferSyntax: transferSyntax,
                 sopClassUid: getString(dataSet, 'x00080016'),
                 rows,
@@ -502,6 +539,7 @@
 
     app.dicom = {
         parseDicomMetadata,
+        getMetadataNumber,
         isCompressed,
         isJpegLossless,
         isJpegBaseline,
