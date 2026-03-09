@@ -157,7 +157,7 @@
             await Promise.all(batch.map(async ({ name, source }) => {
                 try {
                     const buffer = await readSliceBuffer({ source }, 'scan');
-                    const meta = await parseDicomMetadata(new Blob([buffer], { type: 'application/dicom' }));
+                    const meta = await parseDicomMetadata(buffer);
                     if (!isRenderableImageMetadata(meta)) return;
                     valid++;
                     addSliceToStudies(studies, meta, source);

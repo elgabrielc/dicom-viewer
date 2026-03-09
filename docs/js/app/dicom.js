@@ -7,17 +7,36 @@
     // DICOM PARSING
     // =====================================================================
 
+    async function toDicomByteArray(input) {
+        if (input instanceof Uint8Array) {
+            return input;
+        }
+
+        if (input instanceof ArrayBuffer) {
+            return new Uint8Array(input);
+        }
+
+        if (input?.buffer instanceof ArrayBuffer && typeof input.byteLength === 'number') {
+            return new Uint8Array(input.buffer, input.byteOffset || 0, input.byteLength);
+        }
+
+        if (input?.arrayBuffer) {
+            return new Uint8Array(await input.arrayBuffer());
+        }
+
+        throw new Error('Unsupported DICOM metadata source');
+    }
+
     /**
      * Parse DICOM file metadata without loading pixel data (fast scan)
      * Used during folder import to organize files by study/series.
      *
-     * @param {File} file - File object from File System Access API
+     * @param {File|Blob|ArrayBuffer|Uint8Array} input - Source bytes or file-like object
      * @returns {Promise<Object|null>} Metadata object or null if not valid DICOM
      */
-    async function parseDicomMetadata(file) {
+    async function parseDicomMetadata(input) {
         try {
-            const arrayBuffer = await file.arrayBuffer();
-            const byteArray = new Uint8Array(arrayBuffer);
+            const byteArray = await toDicomByteArray(input);
             const dataSet = dicomParser.parseDicom(byteArray, { untilTag: 'x7fe00010' });
             const transferSyntax = getString(dataSet, 'x00020010');
             const rows = getNumber(dataSet, 'x00280010', 0);
