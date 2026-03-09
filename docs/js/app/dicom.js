@@ -1,7 +1,7 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { canvas, ctx } = app.dom;
-    const { getString, getNumber } = app.utils;
+    const { getString, getNumber, createStagedError, normalizeStagedError } = app.utils;
 
     // =====================================================================
     // DICOM PARSING
@@ -329,7 +329,7 @@
      * @param {number} rows - Image height
      * @param {number} cols - Image width
      * @param {number} bitsAllocated - Bits per pixel (8 or 16)
-     * @returns {TypedArray|null} Decoded pixel data or null on failure
+     * @returns {TypedArray} Decoded pixel data
      */
     function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex = 0) {
         try {
@@ -365,8 +365,7 @@
             }
 
             if (!frameData) {
-                console.error('Could not extract frame data');
-                return null;
+                throw createStagedError('frame-extraction', 'Could not extract JPEG Lossless frame data.');
             }
 
             const decoder = new jpeg.lossless.Decoder();
@@ -380,7 +379,7 @@
             }
         } catch (e) {
             console.error('JPEG Lossless decode error:', e);
-            return null;
+            throw normalizeStagedError(e, 'decode');
         }
     }
 
@@ -388,24 +387,16 @@
     // JPEG 2000 Decoding (OpenJPEG WebAssembly)
     // ---------------------------------------------------------------------
 
-    /** Cached OpenJPEG WASM module instance */
-    let openjpegModule = null;
-    /** Promise for OpenJPEG initialization (prevents multiple init) */
-    let openjpegInitPromise = null;
+    const JPEG2000_DECODE_TIMEOUT_MS = 10000;
+    let nextJpeg2000RequestId = 1;
+    const jpeg2000WorkerState = {
+        worker: null,
+        workerUrl: null,
+        activeRequest: null,
+        queue: []
+    };
 
     function resolveOpenJpegAssetUrl(fileName, runtime = window) {
-        const scriptSrc = runtime?.document
-            ?.querySelector('script[src$="js/openjpegwasm_decode.js"], script[src*="openjpegwasm_decode.js"]')
-            ?.src;
-
-        if (scriptSrc) {
-            try {
-                return new URL(fileName, scriptSrc).toString();
-            } catch (e) {
-                console.warn('Failed to resolve OpenJPEG asset from script URL:', scriptSrc, e);
-            }
-        }
-
         const href = runtime?.location?.href;
         if (href) {
             try {
@@ -418,34 +409,197 @@
         return `js/${fileName}`;
     }
 
-    /**
-     * Initialize the OpenJPEG WebAssembly decoder
-     * Lazily loaded on first JPEG 2000 image
-     * @returns {Promise<Object>} Initialized OpenJPEG module
-     */
-    async function initOpenJPEG() {
-        if (openjpegModule) return openjpegModule;
-        if (openjpegInitPromise) return openjpegInitPromise;
-
-        openjpegInitPromise = (async () => {
+    function resolveJpeg2000WorkerUrl(runtime = window) {
+        const href = runtime?.location?.href;
+        if (href) {
             try {
-                console.log('Initializing OpenJPEG WASM...');
-                // OpenJPEGWASM is loaded from the script tag
-                if (typeof OpenJPEGWASM === 'function') {
-                    openjpegModule = await OpenJPEGWASM({
-                        locateFile: (path) => resolveOpenJpegAssetUrl(path)
-                    });
-                    console.log('OpenJPEG WASM initialized successfully');
-                    return openjpegModule;
-                }
-                throw new Error('OpenJPEGWASM not found');
+                return new URL('js/app/decode-worker.js', href).toString();
             } catch (e) {
-                console.error('Failed to initialize OpenJPEG:', e);
-                throw e;
+                console.warn('Failed to resolve JPEG 2000 worker URL from page URL:', href, e);
             }
-        })();
+        }
 
-        return openjpegInitPromise;
+        return 'js/app/decode-worker.js';
+    }
+
+    function disposeJpeg2000Worker() {
+        if (!jpeg2000WorkerState.worker) return;
+        try {
+            jpeg2000WorkerState.worker.terminate();
+        } catch {}
+        jpeg2000WorkerState.worker = null;
+        jpeg2000WorkerState.workerUrl = null;
+    }
+
+    function formatJpeg2000WorkerError(event, workerUrl) {
+        const eventMessage = event?.error?.message || event?.message || 'JPEG 2000 worker error';
+        return createStagedError('codec-init', `${eventMessage} (${workerUrl})`);
+    }
+
+    function pumpJpeg2000WorkerQueue() {
+        if (jpeg2000WorkerState.activeRequest || !jpeg2000WorkerState.queue.length) {
+            return;
+        }
+
+        if (typeof Worker === 'undefined') {
+            const error = createStagedError('codec-init', 'Web Workers are not available for JPEG 2000 decode.');
+            while (jpeg2000WorkerState.queue.length) {
+                jpeg2000WorkerState.queue.shift().reject(error);
+            }
+            return;
+        }
+
+        if (!jpeg2000WorkerState.worker) {
+            jpeg2000WorkerState.workerUrl = resolveJpeg2000WorkerUrl();
+            try {
+                jpeg2000WorkerState.worker = new Worker(jpeg2000WorkerState.workerUrl);
+            } catch (error) {
+                jpeg2000WorkerState.worker = null;
+                while (jpeg2000WorkerState.queue.length) {
+                    jpeg2000WorkerState.queue.shift().reject(normalizeStagedError(error, 'codec-init'));
+                }
+                return;
+            }
+
+            jpeg2000WorkerState.worker.onmessage = (event) => {
+                const payload = event?.data || {};
+                const activeRequest = jpeg2000WorkerState.activeRequest;
+                if (!activeRequest) {
+                    return;
+                }
+                if (payload.requestId !== activeRequest.requestId) {
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                    disposeJpeg2000Worker();
+                    activeRequest.reject(
+                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an unexpected response.')
+                    );
+                    pumpJpeg2000WorkerQueue();
+                    return;
+                }
+                if (payload.type === 'error') {
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                    activeRequest.reject(
+                        createStagedError(
+                            payload.stage || 'decode',
+                            payload.message || 'JPEG 2000 worker decode failed'
+                        )
+                    );
+                    pumpJpeg2000WorkerQueue();
+                    return;
+                }
+                if (payload.type !== 'decoded' || !payload.pixelData) {
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                    disposeJpeg2000Worker();
+                    activeRequest.reject(
+                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an invalid response.')
+                    );
+                    pumpJpeg2000WorkerQueue();
+                    return;
+                }
+
+                if (payload.frameInfo?.width && activeRequest.expectedCols && payload.frameInfo.width !== activeRequest.expectedCols) {
+                    console.warn(
+                        'JPEG 2000 worker width mismatch:',
+                        payload.frameInfo.width,
+                        'expected',
+                        activeRequest.expectedCols
+                    );
+                }
+                if (payload.frameInfo?.height && activeRequest.expectedRows && payload.frameInfo.height !== activeRequest.expectedRows) {
+                    console.warn(
+                        'JPEG 2000 worker height mismatch:',
+                        payload.frameInfo.height,
+                        'expected',
+                        activeRequest.expectedRows
+                    );
+                }
+
+                clearTimeout(activeRequest.timeoutId);
+                jpeg2000WorkerState.activeRequest = null;
+                activeRequest.resolve(payload.pixelData);
+                pumpJpeg2000WorkerQueue();
+            };
+
+            jpeg2000WorkerState.worker.onerror = (event) => {
+                const activeRequest = jpeg2000WorkerState.activeRequest;
+                if (activeRequest) {
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                }
+
+                const error = formatJpeg2000WorkerError(event, jpeg2000WorkerState.workerUrl);
+                disposeJpeg2000Worker();
+                activeRequest?.reject(error);
+                pumpJpeg2000WorkerQueue();
+            };
+        }
+
+        const request = jpeg2000WorkerState.queue.shift();
+        jpeg2000WorkerState.activeRequest = request;
+        request.timeoutId = setTimeout(() => {
+            if (jpeg2000WorkerState.activeRequest?.requestId !== request.requestId) {
+                return;
+            }
+            jpeg2000WorkerState.activeRequest = null;
+            disposeJpeg2000Worker();
+            request.reject(
+                createStagedError(
+                    'decode-timeout',
+                    `JPEG 2000 decode timeout (${JPEG2000_DECODE_TIMEOUT_MS / 1000}s, ${request.frameByteLength} bytes)`
+                )
+            );
+            pumpJpeg2000WorkerQueue();
+        }, JPEG2000_DECODE_TIMEOUT_MS);
+
+        try {
+            jpeg2000WorkerState.worker.postMessage(
+                {
+                    type: 'decode-j2k',
+                    requestId: request.requestId,
+                    frameData: request.frameData,
+                    bitsAllocated: request.bitsAllocated,
+                    pixelRepresentation: request.pixelRepresentation,
+                    expectedRows: request.expectedRows,
+                    expectedCols: request.expectedCols
+                },
+                [request.frameData.buffer]
+            );
+        } catch (error) {
+            clearTimeout(request.timeoutId);
+            jpeg2000WorkerState.activeRequest = null;
+            disposeJpeg2000Worker();
+            request.reject(normalizeStagedError(error, 'decode'));
+            pumpJpeg2000WorkerQueue();
+        }
+    }
+
+    function decodeJ2KInWorker(frameData, bitsAllocated, pixelRepresentation, expectedRows, expectedCols) {
+        return new Promise((resolve, reject) => {
+            if (typeof Worker === 'undefined') {
+                reject(new Error('Web Workers are not available for JPEG 2000 decode.'));
+                return;
+            }
+
+            // getEncapsulatedFrameData() returns a view into the parsed dataset buffer.
+            // Transfer a copy so we do not detach the cached dicomParser dataset bytes.
+            const frameDataCopy = new Uint8Array(frameData);
+            jpeg2000WorkerState.queue.push({
+                requestId: nextJpeg2000RequestId++,
+                frameData: frameDataCopy,
+                frameByteLength: frameDataCopy.byteLength,
+                bitsAllocated,
+                pixelRepresentation,
+                expectedRows,
+                expectedCols,
+                resolve,
+                reject,
+                timeoutId: null
+            });
+            pumpJpeg2000WorkerQueue();
+        });
     }
 
     /**
@@ -457,7 +611,7 @@
      * @param {number} cols - Image width
      * @param {number} bitsAllocated - Bits per pixel
      * @param {number} pixelRepresentation - 0=unsigned, 1=signed
-     * @returns {Promise<TypedArray|null>} Decoded pixel data or null on failure
+     * @returns {Promise<TypedArray>} Decoded pixel data
      */
     async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
         try {
@@ -465,61 +619,36 @@
 
             const jp2DataElement = dataSet.elements.x7fe00010;
             if (!jp2DataElement.encapsulatedPixelData) {
-                console.error('Pixel data is not encapsulated');
-                return null;
+                throw createStagedError('frame-extraction', 'JPEG 2000 pixel data is not encapsulated.');
             }
 
             const fragments = jp2DataElement.fragments;
             if (!fragments || fragments.length === 0) {
-                console.error('No fragments found for JPEG 2000');
-                return null;
+                throw createStagedError('frame-extraction', 'No fragments found for JPEG 2000 pixel data.');
             }
 
-            const j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, frameIndex);
+            let j2kData;
+            try {
+                j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, frameIndex);
+            } catch (error) {
+                throw createStagedError(
+                    'frame-extraction',
+                    String(error?.message || error || 'Failed to extract encapsulated JPEG 2000 frame data.')
+                );
+            }
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
-            // Initialize and use OpenJPEG decoder
-            const oj = await initOpenJPEG();
-
-            // Use the J2KDecoder class from the WASM module
-            const decoder = new oj.J2KDecoder();
-            const encodedBuffer = decoder.getEncodedBuffer(j2kData.length);
-            encodedBuffer.set(j2kData);
-
-            decoder.decode();
-
-            const decoded = decoder.getDecodedBuffer();
-            const frameInfo = decoder.getFrameInfo();
-
-            console.log('JPEG 2000 decoded:', frameInfo.width, 'x', frameInfo.height,
-                        'components:', frameInfo.componentCount, 'bpp:', frameInfo.bitsPerSample);
-
-            // Copy decoded data to a new array before cleanup
-            let pixelData;
-            if (frameInfo.bitsPerSample > 8) {
-                if (frameInfo.isSigned) {
-                    pixelData = new Int16Array(decoded.length / 2);
-                    const view = new DataView(decoded.buffer, decoded.byteOffset, decoded.byteLength);
-                    for (let i = 0; i < pixelData.length; i++) {
-                        pixelData[i] = view.getInt16(i * 2, true);
-                    }
-                } else {
-                    pixelData = new Uint16Array(decoded.length / 2);
-                    const view = new DataView(decoded.buffer, decoded.byteOffset, decoded.byteLength);
-                    for (let i = 0; i < pixelData.length; i++) {
-                        pixelData[i] = view.getUint16(i * 2, true);
-                    }
-                }
-            } else {
-                pixelData = new Uint8Array(decoded);
-            }
-
-            decoder.delete();
-            return pixelData;
+            return await decodeJ2KInWorker(
+                j2kData,
+                bitsAllocated,
+                pixelRepresentation,
+                rows,
+                cols
+            );
 
         } catch (e) {
             console.error('JPEG 2000 decode error:', e);
-            return null;
+            throw normalizeStagedError(e, 'decode');
         }
     }
 
@@ -531,7 +660,7 @@
      * @param {Object} pixelDataElement - Pixel data element (unused)
      * @param {number} rows - Image height
      * @param {number} cols - Image width
-     * @returns {Promise<Object|null>} {pixels, isRgb} or null on failure
+     * @returns {Promise<Object>} {pixels, isRgb}
      */
     async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex = 0) {
         try {
@@ -555,7 +684,7 @@
             return { pixels, isRgb: true };
         } catch (e) {
             console.error('JPEG Baseline decode error:', e);
-            return null;
+            throw normalizeStagedError(e, 'decode');
         }
     }
 
@@ -577,8 +706,10 @@
         displayBlankSlice,
         decodeJpegLossless,
         decodeJpeg2000,
+        decodeJ2KInWorker,
         decodeJpegBaseline,
         isRenderableImageMetadata,
-        resolveOpenJpegAssetUrl
+        resolveOpenJpegAssetUrl,
+        resolveJpeg2000WorkerUrl
     };
 })();

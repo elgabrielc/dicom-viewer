@@ -49,7 +49,7 @@
             const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
                 ? state.windowLevel
                 : null;
-            const info = await renderDicom(dataSet, wlOverride, slice.frameIndex || 0);
+            const info = await renderDicom(dataSet, wlOverride, slice.frameIndex || 0, slice);
 
             updateWLDisplay();
 

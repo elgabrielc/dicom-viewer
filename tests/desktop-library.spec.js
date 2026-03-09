@@ -636,6 +636,175 @@ test.describe('Desktop library scanning', () => {
         expect(result.after).toEqual(result.before);
     });
 
+    test('renderDicom can suppress error canvas writes for composable callers', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 2;
+            canvas.height = 2;
+            ctx.fillStyle = 'rgb(21, 43, 65)';
+            ctx.fillRect(0, 0, 2, 2);
+            const before = Array.from(ctx.getImageData(0, 0, 2, 2).data);
+
+            const info = await window.DicomViewerApp.rendering.renderDicom({
+                elements: {},
+                string() {
+                    return '';
+                },
+                uint16() {
+                    return 0;
+                }
+            }, null, 0, null, { displayErrors: false });
+
+            return {
+                info,
+                after: Array.from(ctx.getImageData(0, 0, 2, 2).data),
+                canvasSize: { width: canvas.width, height: canvas.height },
+                before
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            errorMessage: 'No pixel data found'
+        });
+        expect(result.canvasSize).toEqual({ width: 2, height: 2 });
+        expect(result.after).toEqual(result.before);
+    });
+
+    test('renderDicom error overlay includes stage-level diagnostics', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const ctx = document.getElementById('imageCanvas').getContext('2d');
+            const drawnText = [];
+            const originalFillText = ctx.fillText.bind(ctx);
+            ctx.fillText = (...args) => {
+                drawnText.push(String(args[0]));
+                return originalFillText(...args);
+            };
+
+            try {
+                const info = await window.DicomViewerApp.rendering.renderDicom({
+                    elements: {},
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.4.90',
+                            x00080060: 'RF'
+                        };
+                        return values[tag] || '';
+                    },
+                    uint16() {
+                        return 0;
+                    }
+                });
+
+                return {
+                    info,
+                    drawnText
+                };
+            } finally {
+                ctx.fillText = originalFillText;
+            }
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            stage: 'frame-extraction'
+        });
+        expect(result.info.diagnosticLines).toEqual(expect.arrayContaining([
+            'Stage: frame-extraction',
+            'Transfer Syntax: JPEG 2000 Lossless',
+            'Modality: RF'
+        ]));
+        expect(result.drawnText).toEqual(expect.arrayContaining([
+            'Stage: frame-extraction',
+            'Transfer Syntax: JPEG 2000 Lossless',
+            'Modality: RF'
+        ]));
+    });
+
+    test('renderDicom fallback diagnostics include both js and native failure stages', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const ctx = document.getElementById('imageCanvas').getContext('2d');
+            const drawnText = [];
+            const originalFillText = ctx.fillText.bind(ctx);
+            ctx.fillText = (...args) => {
+                drawnText.push(String(args[0]));
+                return originalFillText(...args);
+            };
+
+            app.desktopDecode.decodeFrameWithPixels = async () => {
+                const error = new Error('Native decoder timed out');
+                error.stage = 'decode-timeout';
+                throw error;
+            };
+
+            try {
+                const info = await app.rendering.renderDicom({
+                    elements: {},
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.1',
+                            x00080060: 'CT',
+                            x00280004: 'MONOCHROME2'
+                        };
+                        return values[tag] || '';
+                    },
+                    uint16(tag) {
+                        const values = {
+                            x00280010: 4,
+                            x00280011: 4,
+                            x00280100: 16,
+                            x00280103: 0,
+                            x00280002: 1
+                        };
+                        return values[tag] || 0;
+                    }
+                }, null, 0, {
+                    frameIndex: 0,
+                    source: {
+                        kind: 'path',
+                        path: '/library/fallback-failure.dcm'
+                    }
+                });
+
+                return {
+                    info,
+                    drawnText
+                };
+            } finally {
+                ctx.fillText = originalFillText;
+            }
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            stage: 'frame-extraction',
+            jsErrorStage: 'frame-extraction',
+            nativeErrorStage: 'decode-timeout'
+        });
+        expect(result.info.diagnosticLines).toEqual(expect.arrayContaining([
+            'Stage: frame-extraction',
+            'Transfer Syntax: Explicit VR Little Endian',
+            'Modality: CT',
+            'JS Stage: frame-extraction',
+            'Native Stage: decode-timeout'
+        ]));
+        expect(result.drawnText).toEqual(expect.arrayContaining([
+            'JS Stage: frame-extraction',
+            'Native Stage: decode-timeout'
+        ]));
+    });
+
     test('decodeDicom returns a detached copy of uncompressed pixel data', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
@@ -759,6 +928,48 @@ test.describe('Desktop library scanning', () => {
         expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
     });
 
+    test('decodeNative rejects native payloads whose sample count does not match the geometry', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const message = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            app.desktopDecode.decodeFrameWithPixels = async () => ({
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 16,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 50,
+                windowWidth: 100,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                pixelData: new Uint16Array([10, 20, 30])
+            });
+
+            try {
+                await app.rendering.decodeNative({
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.1',
+                            x00080060: 'CT',
+                            x00280004: 'MONOCHROME2',
+                            x00281050: '50',
+                            x00281051: '100'
+                        };
+                        return values[tag] || '';
+                    }
+                }, '/library/bad-native.dcm', 0);
+                return null;
+            } catch (error) {
+                return String(error?.message || error);
+            }
+        });
+
+        expect(message).toContain('expected 4');
+    });
+
     test('renderDicom matches decodeDicom plus renderPixels for a known slice', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
@@ -837,6 +1048,194 @@ test.describe('Desktop library scanning', () => {
         expect(result.wrapperPixels).toEqual(result.splitPixels);
         expect(result.wrapperBaseWindowLevel).toEqual(result.splitBaseWindowLevel);
         expect(result.wrapperPixelSpacing).toEqual(result.splitPixelSpacing);
+    });
+
+    test('viewer loadSlice falls back to native desktop decode after an explicit js-first decode error', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const slice = {
+                frameIndex: 0,
+                sliceLocation: 12.34,
+                source: {
+                    kind: 'path',
+                    path: '/library/native-fallback.dcm'
+                }
+            };
+            const cacheKey = app.sources.getSliceCacheKey(slice, 0);
+            const nativeCalls = [];
+
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-1'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-1',
+                slices: [slice]
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            // Intentionally omit Pixel Data so the js-first route returns a decode error
+            // and the viewer must fall back to the native desktop path for this slice.
+            app.state.sliceCache.set(cacheKey, {
+                elements: {},
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'CT',
+                        x00280004: 'MONOCHROME2',
+                        x00280030: '0.5\\0.25',
+                        x00281050: '40',
+                        x00281051: '400',
+                        x00281052: '0',
+                        x00281053: '1'
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    const values = {
+                        x00280010: 4,
+                        x00280011: 4,
+                        x00280100: 16,
+                        x00280103: 0,
+                        x00280002: 1
+                    };
+                    return values[tag] || 0;
+                }
+            });
+            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+                nativeCalls.push({ path, frameIndex });
+                return {
+                    rows: 4,
+                    cols: 4,
+                    bitsAllocated: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 1500,
+                    windowWidth: 3000,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelDataLength: 32,
+                    pixelData: new Uint16Array(Array.from({ length: 16 }, (_, index) => index * 200))
+                };
+            };
+
+            await app.viewer.loadSlice(0);
+
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            const imageData = Array.from(ctx.getImageData(0, 0, 4, 4).data);
+
+            return {
+                route: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT'),
+                nativeCalls,
+                firstChannel: imageData.filter((_, index) => index % 4 === 0),
+                baseWindowLevel: app.state.baseWindowLevel,
+                pixelSpacing: app.state.pixelSpacing,
+                metadataText: document.getElementById('metadataContent').textContent
+            };
+        });
+
+        expect(result.route).toBe('js-first');
+        expect(result.nativeCalls).toEqual([
+            {
+                path: '/library/native-fallback.dcm',
+                frameIndex: 0
+            }
+        ]);
+        expect(result.firstChannel).toEqual([
+            0, 17, 34, 51,
+            68, 85, 102, 119,
+            136, 153, 170, 187,
+            204, 221, 238, 255
+        ]);
+        expect(result.baseWindowLevel).toEqual({ center: 1500, width: 3000 });
+        expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
+        expect(result.metadataText).toContain('CT');
+        expect(result.metadataText).toContain('4 x 4');
+    });
+
+    test('decodeWithFallback uses native-first routing for JPEG 2000 RF desktop slices', async ({ page }) => {
+        const consoleMessages = [];
+        page.on('console', (message) => {
+            consoleMessages.push(message.text());
+        });
+
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const nativeCalls = [];
+            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+                nativeCalls.push({ path, frameIndex });
+                return {
+                    rows: 1,
+                    cols: 2,
+                    bitsAllocated: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 150,
+                    windowWidth: 300,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelDataLength: 4,
+                    pixelData: new Uint16Array([100, 200])
+                };
+            };
+
+            // This fixture is intentionally skeletal because native-first routing should
+            // use the desktop path before the JS decoder ever touches Pixel Data tags.
+            const dataSet = {
+                elements: {},
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.4.90',
+                        x00080060: 'RF',
+                        x00280004: 'MONOCHROME2'
+                    };
+                    return values[tag] || '';
+                },
+                uint16() {
+                    return 0;
+                }
+            };
+
+            const decoded = await app.rendering.decodeWithFallback(dataSet, 0, {
+                frameIndex: 0,
+                source: {
+                    kind: 'path',
+                    path: '/risk/rf-j2k.dcm'
+                }
+            });
+
+            return {
+                route: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
+                nativeCalls,
+                pixelValues: Array.from(decoded.pixelData),
+                modality: decoded.modality,
+                transferSyntax: decoded.transferSyntax
+            };
+        });
+
+        expect(result.route).toBe('native-first');
+        expect(result.nativeCalls).toEqual([
+            {
+                path: '/risk/rf-j2k.dcm',
+                frameIndex: 0
+            }
+        ]);
+        expect(result.pixelValues).toEqual([100, 200]);
+        expect(result.modality).toBe('RF');
+        expect(result.transferSyntax).toBe('1.2.840.10008.1.2.4.90');
+        expect(consoleMessages.some((message) => message.includes('No pixel data element found'))).toBe(false);
     });
 
     test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {

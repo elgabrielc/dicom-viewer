@@ -145,6 +145,9 @@
             core: {
                 convertFileSrc(filePath, protocol) {
                     return internals.convertFileSrc(filePath, protocol);
+                },
+                invoke(command, args, options) {
+                    return invoke(command, args, options);
                 }
             },
             dialog: {

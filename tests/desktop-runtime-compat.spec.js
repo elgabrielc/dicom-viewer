@@ -1,6 +1,8 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
 
 const HOME_URL = 'http://127.0.0.1:5001/';
 
@@ -108,6 +110,7 @@ test('desktop runtime shim enables desktop mode when only __TAURI_INTERNALS__ is
     const result = await page.evaluate(() => ({
         deploymentMode: window.CONFIG.deploymentMode,
         hasGlobalTauri: typeof window.__TAURI__ !== 'undefined',
+        hasCoreInvoke: typeof window.__TAURI__?.core?.invoke === 'function',
         hasDialogApi: typeof window.__TAURI__?.dialog?.open === 'function',
         hasFsApi: typeof window.__TAURI__?.fs?.readDir === 'function',
         libraryConfigVisible: getComputedStyle(document.getElementById('libraryFolderConfig')).display !== 'none'
@@ -115,6 +118,7 @@ test('desktop runtime shim enables desktop mode when only __TAURI_INTERNALS__ is
 
     expect(result.deploymentMode).toBe('desktop');
     expect(result.hasGlobalTauri).toBe(true);
+    expect(result.hasCoreInvoke).toBe(true);
     expect(result.hasDialogApi).toBe(true);
     expect(result.hasFsApi).toBe(true);
     expect(result.libraryConfigVisible).toBe(true);
@@ -244,6 +248,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
         return {
             hasReadyPromise: typeof window.__DICOM_VIEWER_TAURI_READY__?.then === 'function',
             hasGlobalTauri: typeof window.__TAURI__ !== 'undefined',
+            hasCoreInvoke: typeof runtime?.core?.invoke === 'function',
             hasDialogApi: typeof runtime?.dialog?.open === 'function',
             hasFsApi: typeof runtime?.fs?.readDir === 'function'
         };
@@ -251,14 +256,36 @@ test('tauri runtime shim installs when internals arrive after the script loads',
 
     expect(result.hasReadyPromise).toBe(true);
     expect(result.hasGlobalTauri).toBe(true);
+    expect(result.hasCoreInvoke).toBe(true);
     expect(result.hasDialogApi).toBe(true);
     expect(result.hasFsApi).toBe(true);
 });
 
-test('OpenJPEG asset URL resolves relative to the decoder script', async ({ page }) => {
+test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', async ({ page }) => {
     await page.goto('http://127.0.0.1:5001/?nolib');
 
     const result = await page.evaluate(() => window.DicomViewerApp.dicom.resolveOpenJpegAssetUrl('openjpegwasm_decode.wasm'));
 
     expect(result).toMatch(/\/js\/openjpegwasm_decode\.wasm$/);
+});
+
+test('desktop CSP allows the JPEG 2000 worker to load OpenJPEG WASM', async () => {
+    const tauriConfigPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'tauri.conf.json');
+    const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, 'utf8'));
+
+    expect(tauriConfig.app.security.csp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
+});
+
+test('desktop fs scope includes the native decode cache directory', async () => {
+    const capabilityPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'capabilities', 'default.json');
+    const capability = JSON.parse(fs.readFileSync(capabilityPath, 'utf8'));
+    const fsScope = capability.permissions.find(
+        permission => permission && typeof permission === 'object' && permission.identifier === 'fs:scope'
+    );
+
+    expect(fsScope?.allow).toEqual(expect.arrayContaining([
+        { path: '$APPDATA/decode-cache' },
+        { path: '$APPDATA/decode-cache/**' }
+    ]));
 });
