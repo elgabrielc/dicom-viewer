@@ -36,6 +36,7 @@ Research, decisions, and reference materials for feature development.
 
 | File | Description |
 |------|-------------|
+| `PLAN-tauri-desktop-app.md` | Historical implementation plan for the Tauri desktop shell, restored from the original Claude-authored planning doc and annotated with the commits/PRs that completed it |
 | `PLAN-notes.md` | Notes feature (descriptions + comments): design decisions, storage rationale, future improvements, recommended tests |
 | `RESEARCH-3d-volume-rendering.md` | 3D volume rendering research: architecture decisions, modularity, graceful degradation, testability considerations. Related: [CLAUDE.md Current Work](#current-work-in-progress) |
 | `RESEARCH-measurement-tool.md` | Benchmarking of measurement tools (Horos, NilRead, Ambra, Sectra UniView): calibration, pixel spacing, interaction models, display formats, clinical warnings. Related: [Feature Inventory - Measurement tool](../index.html) |
@@ -106,4 +107,4 @@ dicom-viewer/
 
 ---
 
-*Last updated: 2026-03-08*
+*Last updated: 2026-03-09*

@@ -37,6 +37,7 @@ Master index of all project documentation, organized by audience and purpose.
 | Document | Location | Description |
 |----------|----------|-------------|
 | [3D Volume Rendering Plan](../3D_VOLUME_RENDERING_PLAN.md) | Root | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
+| [Tauri Desktop Plan](./planning/PLAN-tauri-desktop-app.md) | docs/planning/ | Restored historical plan for the Tauri desktop shell, with the original 6-PR breakdown and the commits/PRs that completed it |
 | [Project Sitemap](./planning/SITEMAP.md) | docs/planning/ | File structure map and active work tracking |
 | [3D Research](./planning/RESEARCH-3d-volume-rendering.md) | docs/planning/ | Benchmarking study of 3D rendering approaches |
 | [Measurement Tool Research](./planning/RESEARCH-measurement-tool.md) | docs/planning/ | Benchmarking of measurement tools (Horos, Ambra, Sectra) |
@@ -48,6 +49,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [ADR Guide](./decisions/README.md) | docs/decisions/ | ADR conventions, template, and writing criteria |
 | [ADR 001: launch.command](./decisions/001-launch-command.md) | docs/decisions/ | Decision record for macOS double-click startup workflow |
 | [ADR 002: Persistent Local Library](./decisions/002-persistent-local-library.md) | docs/decisions/ | Decision record for persistent DICOM library with DicomFolderSource architecture |
+| [ADR 003: Tauri Desktop Shell](./decisions/003-tauri-desktop-shell-with-shared-web-core.md) | docs/decisions/ | Decision record for the shared web core plus Tauri desktop shell direction |
 
 ---
 
@@ -91,6 +93,7 @@ Research, decision logs, and feature planning.
 
 ```
 docs/planning/
+├── PLAN-tauri-desktop-app.md                # Historical Tauri desktop implementation plan
 ├── SITEMAP.md                              # Project structure map
 ├── RESEARCH-3d-volume-rendering.md         # 3D rendering research
 ├── RESEARCH-measurement-tool.md            # Measurement tool benchmarking
@@ -187,6 +190,9 @@ Bug tracking with full context. Each bug includes how it was encountered, root c
 **SITEMAP.md**
 Project structure map showing workspace layout, file organization, and current work in progress. Keep updated when adding or moving files.
 
+**PLAN-tauri-desktop-app.md**
+Historical implementation plan for the Tauri desktop shell. Restores the original 6-PR breakdown and maps it to the commits and PRs that shipped the desktop app.
+
 **RESEARCH-*.md**
 Research documents capturing benchmarking and analysis before feature implementation. Includes competitive analysis, technology comparisons, and design rationale.
 
@@ -224,4 +230,4 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 
 ---
 
-*Last updated: 2026-03-03*
+*Last updated: 2026-03-09*
