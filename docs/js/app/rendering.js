@@ -1,5 +1,6 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const config = window.CONFIG;
     const { state } = app;
     const { canvas, ctx } = app.dom;
     const { getString, getNumber } = app.utils;
@@ -18,6 +19,10 @@
         decodeJpeg2000,
         decodeJpegBaseline
     } = app.dicom;
+    const HIGH_RISK_SYNTAXES = new Map([
+        ['1.2.840.10008.1.2.4.90', new Set(['RF', 'XA'])],
+        ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])]
+    ]);
 
     function getPixelDataArrayType(bitsAllocated, pixelRepresentation) {
         if (bitsAllocated <= 8) {
@@ -137,6 +142,137 @@
         };
     }
 
+    function getMrMetadata(dataSet) {
+        return {
+            repetitionTime: getNumber(dataSet, 'x00180080', 0),     // (0018,0080) TR
+            echoTime: getNumber(dataSet, 'x00180081', 0),          // (0018,0081) TE
+            flipAngle: getNumber(dataSet, 'x00181314', 0),         // (0018,1314) Flip Angle
+            magneticFieldStrength: getNumber(dataSet, 'x00180087', 0), // (0018,0087) Field Strength
+            protocolName: getString(dataSet, 'x00181030'),         // (0018,1030) Protocol Name
+            sequenceName: getString(dataSet, 'x00180024'),         // (0018,0024) Sequence Name
+            scanningSequence: getString(dataSet, 'x00180020'),     // (0018,0020) Scanning Sequence
+            mrAcquisitionType: getString(dataSet, 'x00180023')    // (0018,0023) MR Acquisition Type (2D/3D)
+        };
+    }
+
+    function resolveWindowLevel(dataSet, modality, preferredWindowCenter = null, preferredWindowWidth = null) {
+        const modalityDefaults = getModalityDefaults(modality);
+        const storedWindowCenter = getNumber(dataSet, 'x00281050', 0);  // (0028,1050)
+        const storedWindowWidth = getNumber(dataSet, 'x00281051', 0);   // (0028,1051)
+        const hasPreferredWindowLevel = Number.isFinite(preferredWindowCenter) &&
+            Number.isFinite(preferredWindowWidth) &&
+            (preferredWindowCenter !== 0 || preferredWindowWidth !== 0);
+        const hasStoredWindowLevel = storedWindowCenter !== 0 || storedWindowWidth !== 0;
+        const hasWindowLevel = hasPreferredWindowLevel || hasStoredWindowLevel;
+
+        let windowCenter = hasPreferredWindowLevel ? preferredWindowCenter : storedWindowCenter;
+        let windowWidth = hasPreferredWindowLevel ? preferredWindowWidth : storedWindowWidth;
+
+        if (!hasWindowLevel) {
+            windowCenter = modalityDefaults.windowCenter;
+            windowWidth = modalityDefaults.windowWidth;
+        }
+
+        return {
+            windowCenter,
+            windowWidth,
+            hasWindowLevel
+        };
+    }
+
+    function finalizeDecodedImage(decoded, hasWindowLevel) {
+        if (isBlankSlice(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept)) {
+            console.log('Detected blank slice (all pixels same value)');
+            return {
+                ...decoded,
+                isBlank: true
+            };
+        }
+
+        let { windowCenter, windowWidth } = decoded;
+        if (!hasWindowLevel && (decoded.modality === 'MR' || decoded.modality === 'PT' || decoded.modality === 'NM')) {
+            const autoWL = calculateAutoWindowLevel(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept);
+            windowCenter = autoWL.windowCenter;
+            windowWidth = autoWL.windowWidth;
+            console.log(`Auto window/level for ${decoded.modality}: C=${windowCenter} W=${windowWidth}`);
+        }
+
+        return {
+            ...decoded,
+            windowCenter,
+            windowWidth,
+            isBlank: false
+        };
+    }
+
+    function getDecodeFailureMessage(error) {
+        if (!error) {
+            return 'Unknown decode error';
+        }
+        if (typeof error === 'string') {
+            return error;
+        }
+        if (error.errorMessage) {
+            return error.errorDetails ? `${error.errorMessage}: ${error.errorDetails}` : error.errorMessage;
+        }
+        if (error.message) {
+            return error.message;
+        }
+        return String(error);
+    }
+
+    function buildFallbackDecodeError(dataSet, jsError = null, nativeError = null) {
+        const transferSyntax = getString(dataSet, 'x00020010');
+        const modality = getString(dataSet, 'x00080060');
+        const tsInfo = getTransferSyntaxInfo(transferSyntax);
+
+        if (!nativeError && jsError?.error) {
+            return {
+                ...jsError,
+                stage: jsError.stage || 'decode',
+                transferSyntax: jsError.transferSyntax || transferSyntax,
+                modality: jsError.modality || modality,
+                tsInfo: jsError.tsInfo || tsInfo
+            };
+        }
+
+        const detailParts = [];
+        if (jsError) {
+            detailParts.push(`JS: ${getDecodeFailureMessage(jsError)}`);
+        }
+        if (nativeError) {
+            detailParts.push(`Native: ${getDecodeFailureMessage(nativeError)}`);
+        }
+
+        return buildDecodeError(
+            'Image decode failed',
+            detailParts.join(' | ') || tsInfo.name,
+            {
+                stage: 'decode',
+                transferSyntax,
+                modality,
+                tsInfo,
+                jsErrorMessage: jsError ? getDecodeFailureMessage(jsError) : null,
+                nativeErrorMessage: nativeError ? getDecodeFailureMessage(nativeError) : null
+            }
+        );
+    }
+
+    function canUseNativeDecode(slice) {
+        return config?.deploymentMode === 'desktop' &&
+            typeof slice?.source?.path === 'string' &&
+            slice.source.path.length > 0 &&
+            typeof app.desktopDecode?.decodeFrameWithPixels === 'function';
+    }
+
+    function getDecodeRoute(transferSyntax, modality) {
+        const riskyModalities = HIGH_RISK_SYNTAXES.get(transferSyntax);
+        if (riskyModalities?.has(modality)) {
+            return 'native-first';
+        }
+        return 'js-first';
+    }
+
     function renderDecodeError(errorInfo) {
         state.pixelSpacing = null;
         app.tools.updateCalibrationWarning();
@@ -163,32 +299,17 @@
         const rescaleIntercept = getNumber(dataSet, 'x00281052', 0); // (0028,1052)
 
         // Window/level for display - use modality-appropriate defaults
-        const modalityDefaults = getModalityDefaults(modality);
-        let windowCenter = getNumber(dataSet, 'x00281050', 0);  // (0028,1050)
-        let windowWidth = getNumber(dataSet, 'x00281051', 0);   // (0028,1051)
-
-        // If window/level not in DICOM, use modality defaults
-        // (we'll potentially override with auto-calculation for MRI later)
-        const hasWindowLevel = windowCenter !== 0 || windowWidth !== 0;
-        if (!hasWindowLevel) {
-            windowCenter = modalityDefaults.windowCenter;
-            windowWidth = modalityDefaults.windowWidth;
-        }
+        const {
+            windowCenter,
+            windowWidth,
+            hasWindowLevel
+        } = resolveWindowLevel(dataSet, modality);
 
         // Extract pixel spacing for measurement calibration
         const pixelSpacing = app.tools.extractPixelSpacing(dataSet);
 
         // Extract MRI-specific metadata
-        const mrMetadata = {
-            repetitionTime: getNumber(dataSet, 'x00180080', 0),     // (0018,0080) TR
-            echoTime: getNumber(dataSet, 'x00180081', 0),          // (0018,0081) TE
-            flipAngle: getNumber(dataSet, 'x00181314', 0),         // (0018,1314) Flip Angle
-            magneticFieldStrength: getNumber(dataSet, 'x00180087', 0), // (0018,0087) Field Strength
-            protocolName: getString(dataSet, 'x00181030'),         // (0018,1030) Protocol Name
-            sequenceName: getString(dataSet, 'x00180024'),         // (0018,0024) Sequence Name
-            scanningSequence: getString(dataSet, 'x00180020'),     // (0018,0020) Scanning Sequence
-            mrAcquisitionType: getString(dataSet, 'x00180023')    // (0018,0023) MR Acquisition Type (2D/3D)
-        };
+        const mrMetadata = getMrMetadata(dataSet);
 
         // Get transfer syntax to determine compression format
         const transferSyntax = getString(dataSet, 'x00020010');  // (0002,0010)
@@ -282,40 +403,7 @@
             }
         }
 
-        // Check for blank/uniform slices (common in MPR reconstructions as padding)
-        // This must be done before window/level calculations
-        if (isBlankSlice(pixelData, rescaleSlope, rescaleIntercept)) {
-            console.log('Detected blank slice (all pixels same value)');
-            return {
-                pixelData,
-                rows,
-                cols,
-                bitsAllocated,
-                pixelRepresentation,
-                samplesPerPixel,
-                photometricInterpretation,
-                windowCenter,
-                windowWidth,
-                rescaleSlope,
-                rescaleIntercept,
-                transferSyntax, modality,
-                mrMetadata,
-                pixelSpacing,
-                isBlank: true,
-                skipWindowLevel
-            };
-        }
-
-        // For MRI without window/level in DICOM, calculate auto window/level
-        // based on actual pixel data statistics
-        if (!hasWindowLevel && (modality === 'MR' || modality === 'PT' || modality === 'NM')) {
-            const autoWL = calculateAutoWindowLevel(pixelData, rescaleSlope, rescaleIntercept);
-            windowCenter = autoWL.windowCenter;
-            windowWidth = autoWL.windowWidth;
-            console.log(`Auto window/level for ${modality}: C=${windowCenter} W=${windowWidth}`);
-        }
-
-        return {
+        return finalizeDecodedImage({
             pixelData,
             rows,
             cols,
@@ -331,9 +419,101 @@
             transferSyntax,
             mrMetadata,
             pixelSpacing,
-            isBlank: false,
             skipWindowLevel
-        };
+        }, hasWindowLevel);
+    }
+
+    async function decodeNative(dataSet, filePath, frameIndex = 0) {
+        if (!filePath) {
+            throw new Error('Native decode requires a desktop path-backed slice.');
+        }
+
+        const nativeDecoded = await app.desktopDecode.decodeFrameWithPixels(filePath, frameIndex);
+        const modality = getString(dataSet, 'x00080060');
+        const transferSyntax = getString(dataSet, 'x00020010');
+        const {
+            windowCenter,
+            windowWidth,
+            hasWindowLevel
+        } = resolveWindowLevel(
+            dataSet,
+            modality,
+            nativeDecoded.windowCenter,
+            nativeDecoded.windowWidth
+        );
+        const rescaleSlope = Number.isFinite(nativeDecoded.rescaleSlope)
+            ? nativeDecoded.rescaleSlope
+            : getNumber(dataSet, 'x00281053', 1);
+        const rescaleIntercept = Number.isFinite(nativeDecoded.rescaleIntercept)
+            ? nativeDecoded.rescaleIntercept
+            : getNumber(dataSet, 'x00281052', 0);
+
+        return finalizeDecodedImage({
+            ...nativeDecoded,
+            windowCenter,
+            windowWidth,
+            rescaleSlope,
+            rescaleIntercept,
+            modality,
+            transferSyntax,
+            mrMetadata: getMrMetadata(dataSet),
+            pixelSpacing: app.tools.extractPixelSpacing(dataSet),
+            skipWindowLevel: false
+        }, hasWindowLevel);
+    }
+
+    async function decodeWithFallback(dataSet, frameIndex = 0, slice = null) {
+        const transferSyntax = getString(dataSet, 'x00020010');
+        const modality = getString(dataSet, 'x00080060');
+        const route = getDecodeRoute(transferSyntax, modality);
+        const nativeEligible = canUseNativeDecode(slice);
+        let nativeError = null;
+
+        if (route === 'native-first' && nativeEligible) {
+            try {
+                return await decodeNative(dataSet, slice.source.path, frameIndex);
+            } catch (error) {
+                nativeError = error;
+                console.warn('Native decode failed, falling back to JS:', error);
+            }
+
+            try {
+                const decoded = await decodeDicom(dataSet, frameIndex);
+                if (decoded && !decoded.error) {
+                    return decoded;
+                }
+                return buildFallbackDecodeError(dataSet, decoded, nativeError);
+            } catch (jsError) {
+                return buildFallbackDecodeError(dataSet, jsError, nativeError);
+            }
+        }
+
+        try {
+            const decoded = await decodeDicom(dataSet, frameIndex);
+            if (decoded && !decoded.error) {
+                return decoded;
+            }
+
+            if (!nativeEligible) {
+                return decoded || buildFallbackDecodeError(dataSet, null, null);
+            }
+
+            try {
+                return await decodeNative(dataSet, slice.source.path, frameIndex);
+            } catch (error) {
+                return buildFallbackDecodeError(dataSet, decoded, error);
+            }
+        } catch (jsError) {
+            if (!nativeEligible) {
+                return buildFallbackDecodeError(dataSet, jsError, null);
+            }
+
+            try {
+                return await decodeNative(dataSet, slice.source.path, frameIndex);
+            } catch (nativeFallbackError) {
+                return buildFallbackDecodeError(dataSet, jsError, nativeFallbackError);
+            }
+        }
     }
 
     function renderPixels(decoded, wlOverride = null) {
@@ -410,8 +590,8 @@
      * @param {Object|null} wlOverride - Optional {center, width} to override DICOM values
      * @returns {Promise<Object>} Rendering info {rows, cols, wc, ww, transferSyntax} or {error: true}
      */
-    async function renderDicom(dataSet, wlOverride = null, frameIndex = 0) {
-        const decoded = await decodeDicom(dataSet, frameIndex);
+    async function renderDicom(dataSet, wlOverride = null, frameIndex = 0, slice = null) {
+        const decoded = await decodeWithFallback(dataSet, frameIndex, slice);
         if (!decoded) {
             return renderDecodeError(buildDecodeError('Image decode failed', 'Unknown decode error'));
         }
@@ -425,6 +605,9 @@
     app.rendering = {
         displayError,
         decodeDicom,
+        decodeNative,
+        decodeWithFallback,
+        getDecodeRoute,
         renderPixels,
         renderDicom
     };

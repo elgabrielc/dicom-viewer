@@ -839,6 +839,181 @@ test.describe('Desktop library scanning', () => {
         expect(result.wrapperPixelSpacing).toEqual(result.splitPixelSpacing);
     });
 
+    test('viewer loadSlice falls back to native desktop decode for path-backed slices', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const slice = {
+                frameIndex: 0,
+                sliceLocation: 12.34,
+                source: {
+                    kind: 'path',
+                    path: '/library/native-fallback.dcm'
+                }
+            };
+            const cacheKey = app.sources.getSliceCacheKey(slice, 0);
+            const nativeCalls = [];
+
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-1'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-1',
+                slices: [slice]
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            app.state.sliceCache.set(cacheKey, {
+                elements: {},
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'CT',
+                        x00280004: 'MONOCHROME2',
+                        x00280030: '0.5\\0.25',
+                        x00281050: '40',
+                        x00281051: '400',
+                        x00281052: '0',
+                        x00281053: '1'
+                    };
+                    return values[tag] || '';
+                },
+                uint16() {
+                    return 0;
+                }
+            });
+            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+                nativeCalls.push({ path, frameIndex });
+                return {
+                    rows: 4,
+                    cols: 4,
+                    bitsAllocated: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 1500,
+                    windowWidth: 3000,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelDataLength: 32,
+                    pixelData: new Uint16Array(Array.from({ length: 16 }, (_, index) => index * 200))
+                };
+            };
+
+            await app.viewer.loadSlice(0);
+
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            const imageData = Array.from(ctx.getImageData(0, 0, 4, 4).data);
+
+            return {
+                nativeCalls,
+                firstChannel: imageData.filter((_, index) => index % 4 === 0),
+                baseWindowLevel: app.state.baseWindowLevel,
+                pixelSpacing: app.state.pixelSpacing,
+                metadataText: document.getElementById('metadataContent').textContent
+            };
+        });
+
+        expect(result.nativeCalls).toEqual([
+            {
+                path: '/library/native-fallback.dcm',
+                frameIndex: 0
+            }
+        ]);
+        expect(result.firstChannel).toEqual([
+            0, 17, 34, 51,
+            68, 85, 102, 119,
+            136, 153, 170, 187,
+            204, 221, 238, 255
+        ]);
+        expect(result.baseWindowLevel).toEqual({ center: 1500, width: 3000 });
+        expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
+        expect(result.metadataText).toContain('CT');
+        expect(result.metadataText).toContain('4 x 4');
+    });
+
+    test('decodeWithFallback uses native-first routing for JPEG 2000 RF desktop slices', async ({ page }) => {
+        const consoleMessages = [];
+        page.on('console', (message) => {
+            consoleMessages.push(message.text());
+        });
+
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const nativeCalls = [];
+            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+                nativeCalls.push({ path, frameIndex });
+                return {
+                    rows: 1,
+                    cols: 2,
+                    bitsAllocated: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 150,
+                    windowWidth: 300,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelDataLength: 4,
+                    pixelData: new Uint16Array([100, 200])
+                };
+            };
+
+            const dataSet = {
+                elements: {},
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.4.90',
+                        x00080060: 'RF',
+                        x00280004: 'MONOCHROME2'
+                    };
+                    return values[tag] || '';
+                },
+                uint16() {
+                    return 0;
+                }
+            };
+
+            const decoded = await app.rendering.decodeWithFallback(dataSet, 0, {
+                frameIndex: 0,
+                source: {
+                    kind: 'path',
+                    path: '/risk/rf-j2k.dcm'
+                }
+            });
+
+            return {
+                route: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
+                nativeCalls,
+                pixelValues: Array.from(decoded.pixelData),
+                modality: decoded.modality,
+                transferSyntax: decoded.transferSyntax
+            };
+        });
+
+        expect(result.route).toBe('native-first');
+        expect(result.nativeCalls).toEqual([
+            {
+                path: '/risk/rf-j2k.dcm',
+                frameIndex: 0
+            }
+        ]);
+        expect(result.pixelValues).toEqual([100, 200]);
+        expect(result.modality).toBe('RF');
+        expect(result.transferSyntax).toBe('1.2.840.10008.1.2.4.90');
+        expect(consoleMessages.some((message) => message.includes('No pixel data element found'))).toBe(false);
+    });
+
     test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
