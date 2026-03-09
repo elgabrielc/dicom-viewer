@@ -1,7 +1,7 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { canvas, ctx } = app.dom;
-    const { getString, getNumber } = app.utils;
+    const { getString, getNumber, createStagedError, normalizeStagedError } = app.utils;
 
     // =====================================================================
     // DICOM PARSING
@@ -319,32 +319,6 @@
     // IMAGE DECODING
     // Different compression formats require different decoders
     // =====================================================================
-
-    function createStagedError(stage, message, extra = {}) {
-        const error = new Error(message);
-        error.stage = stage;
-        Object.assign(error, extra);
-        return error;
-    }
-
-    function normalizeStagedError(error, fallbackStage = 'decode') {
-        if (error instanceof Error) {
-            if (typeof error.stage !== 'string' || !error.stage) {
-                error.stage = fallbackStage;
-            }
-            return error;
-        }
-
-        if (error && typeof error === 'object') {
-            return createStagedError(
-                typeof error.stage === 'string' && error.stage ? error.stage : fallbackStage,
-                String(error.message || 'Unknown decode error'),
-                { details: error.details }
-            );
-        }
-
-        return createStagedError(fallbackStage, String(error || 'Unknown decode error'));
-    }
 
     /**
      * Decode JPEG Lossless compressed pixel data

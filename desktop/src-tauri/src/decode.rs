@@ -1,10 +1,10 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Mutex,
+        LazyLock, Mutex,
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -24,8 +24,12 @@ const DECODE_CACHE_DIR_NAME: &str = "decode-cache";
 const DECODE_CACHE_MANIFEST_NAME: &str = "manifest.json";
 const MAX_DECODE_CACHE_ENTRIES: usize = 1000;
 const MAX_DECODE_CACHE_BYTES: u64 = 500 * 1024 * 1024;
+const MAX_DECODE_CACHE_EVICTIONS_PER_WRITE: usize = 20;
 
 type DecodeResult<T> = Result<T, DecodeError>;
+
+static PENDING_CACHE_TOUCHES: LazyLock<Mutex<HashMap<String, u128>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -366,10 +370,6 @@ fn build_cache_key(
 
 fn read_cached_frame(cache_paths: &DecodeCachePaths, cache_key: &str) -> Option<DecodedFrame> {
     let entry_paths = cache_paths.entry_paths(cache_key);
-    if !entry_paths.pixel_bytes.exists() || !entry_paths.metadata.exists() {
-        return None;
-    }
-
     let metadata_text = fs::read_to_string(&entry_paths.metadata).ok()?;
     let metadata: DecodedFrameMetadata = serde_json::from_str(&metadata_text).ok()?;
     let pixel_bytes = fs::read(&entry_paths.pixel_bytes).ok()?;
@@ -377,9 +377,7 @@ fn read_cached_frame(cache_paths: &DecodeCachePaths, cache_key: &str) -> Option<
         return None;
     }
 
-    if let Err(error) = touch_cache_manifest(cache_paths, cache_key, metadata.pixel_data_length) {
-        eprintln!("Failed to update decode cache manifest after hit: {error}");
-    }
+    record_cache_touch(cache_key);
 
     Some(DecodedFrame {
         metadata,
@@ -395,15 +393,18 @@ fn write_cached_frame(
     fs::create_dir_all(&cache_paths.dir)
         .map_err(|error| format!("Failed to create cache directory: {error}"))?;
 
+    let mut manifest = load_cache_manifest(cache_paths)?;
+    reconcile_cache_directory(cache_paths, &mut manifest)?;
+
     let entry_paths = cache_paths.entry_paths(cache_key);
-    fs::write(&entry_paths.pixel_bytes, &decoded_frame.pixel_bytes)
+    write_atomic_file(&entry_paths.pixel_bytes, &decoded_frame.pixel_bytes)
         .map_err(|error| format!("Failed to write cached pixels: {error}"))?;
-    let metadata_json = serde_json::to_vec_pretty(&decoded_frame.metadata)
+    let metadata_json = serde_json::to_vec(&decoded_frame.metadata)
         .map_err(|error| format!("Failed to serialize cached metadata: {error}"))?;
-    fs::write(&entry_paths.metadata, metadata_json)
+    write_atomic_file(&entry_paths.metadata, &metadata_json)
         .map_err(|error| format!("Failed to write cached metadata: {error}"))?;
 
-    let mut manifest = load_cache_manifest(cache_paths)?;
+    apply_pending_cache_touches(&mut manifest);
     upsert_manifest_entry(
         &mut manifest,
         cache_key,
@@ -414,17 +415,8 @@ fn write_cached_frame(
         &mut manifest,
         MAX_DECODE_CACHE_ENTRIES,
         MAX_DECODE_CACHE_BYTES,
+        MAX_DECODE_CACHE_EVICTIONS_PER_WRITE,
     )?;
-    save_cache_manifest(cache_paths, &manifest)
-}
-
-fn touch_cache_manifest(
-    cache_paths: &DecodeCachePaths,
-    cache_key: &str,
-    pixel_data_length: usize,
-) -> Result<(), String> {
-    let mut manifest = load_cache_manifest(cache_paths)?;
-    upsert_manifest_entry(&mut manifest, cache_key, pixel_data_length);
     save_cache_manifest(cache_paths, &manifest)
 }
 
@@ -435,24 +427,17 @@ fn load_cache_manifest(cache_paths: &DecodeCachePaths) -> Result<DecodeCacheMani
 
     let manifest_json = fs::read_to_string(&cache_paths.manifest)
         .map_err(|error| format!("Failed to read cache manifest: {error}"))?;
-    let mut manifest: DecodeCacheManifest = serde_json::from_str(&manifest_json)
-        .map_err(|error| format!("Failed to parse cache manifest: {error}"))?;
-
-    manifest.entries.retain(|entry| {
-        let paths = cache_paths.entry_paths(&entry.key);
-        paths.pixel_bytes.exists() && paths.metadata.exists()
-    });
-
-    Ok(manifest)
+    serde_json::from_str(&manifest_json)
+        .map_err(|error| format!("Failed to parse cache manifest: {error}"))
 }
 
 fn save_cache_manifest(
     cache_paths: &DecodeCachePaths,
     manifest: &DecodeCacheManifest,
 ) -> Result<(), String> {
-    let manifest_json = serde_json::to_vec_pretty(manifest)
+    let manifest_json = serde_json::to_vec(manifest)
         .map_err(|error| format!("Failed to serialize cache manifest: {error}"))?;
-    fs::write(&cache_paths.manifest, manifest_json)
+    write_atomic_file(&cache_paths.manifest, &manifest_json)
         .map_err(|error| format!("Failed to write cache manifest: {error}"))
 }
 
@@ -474,6 +459,7 @@ fn enforce_cache_limits(
     manifest: &mut DecodeCacheManifest,
     max_entries: usize,
     max_bytes: u64,
+    max_evictions_per_pass: usize,
 ) -> Result<(), String> {
     manifest
         .entries
@@ -484,8 +470,11 @@ fn enforce_cache_limits(
         .iter()
         .map(|entry| entry.pixel_data_length as u64)
         .sum::<u64>();
+    let mut evictions = 0usize;
 
-    while manifest.entries.len() > max_entries || total_bytes > max_bytes {
+    while (manifest.entries.len() > max_entries || total_bytes > max_bytes)
+        && evictions < max_evictions_per_pass
+    {
         let stale_entry = manifest.entries.remove(0);
         total_bytes = total_bytes.saturating_sub(stale_entry.pixel_data_length as u64);
         let stale_paths = cache_paths.entry_paths(&stale_entry.key);
@@ -493,9 +482,175 @@ fn enforce_cache_limits(
             .map_err(|error| format!("Failed to evict cached pixel payload: {error}"))?;
         remove_if_exists(&stale_paths.metadata)
             .map_err(|error| format!("Failed to evict cached metadata: {error}"))?;
+        evictions += 1;
     }
 
     Ok(())
+}
+
+fn reconcile_cache_directory(
+    cache_paths: &DecodeCachePaths,
+    manifest: &mut DecodeCacheManifest,
+) -> Result<(), String> {
+    #[derive(Default)]
+    struct DiscoveredCacheFiles {
+        has_pixels: bool,
+        has_metadata: bool,
+    }
+
+    let mut discovered = HashMap::<String, DiscoveredCacheFiles>::new();
+    for entry in fs::read_dir(&cache_paths.dir)
+        .map_err(|error| format!("Failed to read cache directory: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("Failed to inspect cache directory entry: {error}"))?;
+        let path = entry.path();
+        if path == cache_paths.manifest {
+            continue;
+        }
+
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        if file_name.contains(".tmp-") {
+            remove_if_exists(&path)
+                .map_err(|error| format!("Failed to remove stale cache temp file: {error}"))?;
+            continue;
+        }
+
+        match path.extension().and_then(|extension| extension.to_str()) {
+            Some("raw") => {
+                let key = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .ok_or_else(|| format!("Failed to read cache key from {}", path.display()))?;
+                discovered.entry(key.to_string()).or_default().has_pixels = true;
+            }
+            Some("json") => {
+                let key = path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .ok_or_else(|| format!("Failed to read cache key from {}", path.display()))?;
+                discovered.entry(key.to_string()).or_default().has_metadata = true;
+            }
+            _ => {}
+        }
+    }
+
+    manifest.entries.retain(|entry| {
+        discovered
+            .get(&entry.key)
+            .is_some_and(|files| files.has_pixels && files.has_metadata)
+    });
+    let manifest_keys = manifest
+        .entries
+        .iter()
+        .map(|entry| entry.key.clone())
+        .collect::<HashSet<_>>();
+
+    for (key, files) in discovered {
+        let entry_paths = cache_paths.entry_paths(&key);
+        if !files.has_pixels || !files.has_metadata {
+            remove_if_exists(&entry_paths.pixel_bytes)
+                .map_err(|error| format!("Failed to remove partial cached pixel payload: {error}"))?;
+            remove_if_exists(&entry_paths.metadata)
+                .map_err(|error| format!("Failed to remove partial cached metadata: {error}"))?;
+            continue;
+        }
+
+        if manifest_keys.contains(&key) {
+            continue;
+        }
+
+        let metadata_text = match fs::read_to_string(&entry_paths.metadata) {
+            Ok(text) => text,
+            Err(_) => {
+                remove_if_exists(&entry_paths.pixel_bytes)
+                    .map_err(|error| format!("Failed to remove unreadable cached pixel payload: {error}"))?;
+                remove_if_exists(&entry_paths.metadata)
+                    .map_err(|error| format!("Failed to remove unreadable cached metadata: {error}"))?;
+                continue;
+            }
+        };
+        let metadata: DecodedFrameMetadata = match serde_json::from_str(&metadata_text) {
+            Ok(metadata) => metadata,
+            Err(_) => {
+                remove_if_exists(&entry_paths.pixel_bytes)
+                    .map_err(|error| format!("Failed to remove invalid cached pixel payload: {error}"))?;
+                remove_if_exists(&entry_paths.metadata)
+                    .map_err(|error| format!("Failed to remove invalid cached metadata: {error}"))?;
+                continue;
+            }
+        };
+        let pixel_byte_length = match fs::metadata(&entry_paths.pixel_bytes) {
+            Ok(metadata_info) => metadata_info.len() as usize,
+            Err(_) => {
+                remove_if_exists(&entry_paths.pixel_bytes)
+                    .map_err(|error| format!("Failed to remove missing cached pixel payload: {error}"))?;
+                remove_if_exists(&entry_paths.metadata)
+                    .map_err(|error| format!("Failed to remove missing cached metadata: {error}"))?;
+                continue;
+            }
+        };
+
+        if pixel_byte_length != metadata.pixel_data_length {
+            remove_if_exists(&entry_paths.pixel_bytes)
+                .map_err(|error| format!("Failed to remove mismatched cached pixel payload: {error}"))?;
+            remove_if_exists(&entry_paths.metadata)
+                .map_err(|error| format!("Failed to remove mismatched cached metadata: {error}"))?;
+            continue;
+        }
+
+        manifest.entries.push(DecodeCacheManifestEntry {
+            key,
+            pixel_data_length: metadata.pixel_data_length,
+            last_accessed_ms: current_time_ms(),
+        });
+    }
+
+    Ok(())
+}
+
+fn record_cache_touch(cache_key: &str) {
+    let mut pending_touches = PENDING_CACHE_TOUCHES
+        .lock()
+        .expect("decode cache touches poisoned");
+    pending_touches.insert(cache_key.to_string(), current_time_ms());
+}
+
+fn apply_pending_cache_touches(manifest: &mut DecodeCacheManifest) {
+    let pending_touches = {
+        let mut pending_touches = PENDING_CACHE_TOUCHES
+            .lock()
+            .expect("decode cache touches poisoned");
+        std::mem::take(&mut *pending_touches)
+    };
+
+    if pending_touches.is_empty() {
+        return;
+    }
+
+    for entry in &mut manifest.entries {
+        if let Some(last_accessed_ms) = pending_touches.get(&entry.key) {
+            entry.last_accessed_ms = entry.last_accessed_ms.max(*last_accessed_ms);
+        }
+    }
+}
+
+fn write_atomic_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let temp_path = temporary_cache_path(path);
+    fs::write(&temp_path, bytes)?;
+    fs::rename(temp_path, path)
+}
+
+fn temporary_cache_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("cache-entry");
+    path.with_file_name(format!(
+        ".{file_name}.tmp-{}-{}",
+        std::process::id(),
+        current_time_ms()
+    ))
 }
 
 fn remove_if_exists(path: &Path) -> std::io::Result<()> {
@@ -513,6 +668,7 @@ fn current_time_ms() -> u128 {
         .as_millis()
 }
 
+#[cfg(test)]
 fn decode_frame_impl(path: &Path, frame_index: u32) -> DecodeResult<DecodedFrame> {
     let object = open_file(path).map_err(|error| {
         DecodeError::new(
@@ -724,7 +880,7 @@ mod tests {
             fs::write(&entry_paths.metadata, "{}").expect("metadata payload should be written");
         }
 
-        enforce_cache_limits(&cache_paths, &mut manifest, 1, 4).expect("eviction should succeed");
+        enforce_cache_limits(&cache_paths, &mut manifest, 1, 4, 1).expect("eviction should succeed");
 
         assert_eq!(manifest.entries.len(), 1);
         assert_eq!(manifest.entries[0].key, "newest");
@@ -753,6 +909,60 @@ mod tests {
 
         assert_eq!(second.pixel_bytes, cached_bytes);
         assert_eq!(second.metadata, first.metadata);
+
+        let _ = fs::remove_dir_all(&cache_paths.dir);
+    }
+
+    #[test]
+    fn reconcile_cache_directory_removes_orphans_and_restores_complete_pairs() {
+        let cache_paths = test_cache_paths("decode-cache-reconcile");
+        let complete_key = "complete";
+        let orphan_raw_key = "orphan-raw";
+        let orphan_json_key = "orphan-json";
+        let temp_file = cache_paths.dir.join(".dangling.tmp-1-1");
+
+        let complete_paths = cache_paths.entry_paths(complete_key);
+        let orphan_raw_paths = cache_paths.entry_paths(orphan_raw_key);
+        let orphan_json_paths = cache_paths.entry_paths(orphan_json_key);
+        let complete_metadata = DecodedFrameMetadata {
+            rows: 1,
+            cols: 1,
+            bits_allocated: 16,
+            pixel_representation: 0,
+            samples_per_pixel: 1,
+            planar_configuration: 0,
+            photometric_interpretation: "MONOCHROME2".into(),
+            window_center: None,
+            window_width: None,
+            rescale_slope: None,
+            rescale_intercept: None,
+            pixel_data_length: 2,
+        };
+
+        fs::write(&complete_paths.pixel_bytes, [1, 0]).expect("complete payload should be written");
+        fs::write(
+            &complete_paths.metadata,
+            serde_json::to_vec(&complete_metadata).expect("complete metadata should serialize"),
+        )
+        .expect("complete metadata should be written");
+        fs::write(&orphan_raw_paths.pixel_bytes, [9, 9]).expect("orphan raw should be written");
+        fs::write(
+            &orphan_json_paths.metadata,
+            serde_json::to_vec(&complete_metadata).expect("orphan metadata should serialize"),
+        )
+        .expect("orphan metadata should be written");
+        fs::write(&temp_file, [0, 1, 2]).expect("temp file should be written");
+
+        let mut manifest = DecodeCacheManifest::default();
+        reconcile_cache_directory(&cache_paths, &mut manifest).expect("reconcile should succeed");
+
+        assert_eq!(manifest.entries.len(), 1);
+        assert_eq!(manifest.entries[0].key, complete_key);
+        assert!(complete_paths.pixel_bytes.exists());
+        assert!(complete_paths.metadata.exists());
+        assert!(!orphan_raw_paths.pixel_bytes.exists());
+        assert!(!orphan_json_paths.metadata.exists());
+        assert!(!temp_file.exists());
 
         let _ = fs::remove_dir_all(&cache_paths.dir);
     }

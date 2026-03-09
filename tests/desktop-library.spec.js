@@ -728,6 +728,83 @@ test.describe('Desktop library scanning', () => {
         ]));
     });
 
+    test('renderDicom fallback diagnostics include both js and native failure stages', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const ctx = document.getElementById('imageCanvas').getContext('2d');
+            const drawnText = [];
+            const originalFillText = ctx.fillText.bind(ctx);
+            ctx.fillText = (...args) => {
+                drawnText.push(String(args[0]));
+                return originalFillText(...args);
+            };
+
+            app.desktopDecode.decodeFrameWithPixels = async () => {
+                const error = new Error('Native decoder timed out');
+                error.stage = 'decode-timeout';
+                throw error;
+            };
+
+            try {
+                const info = await app.rendering.renderDicom({
+                    elements: {},
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.1',
+                            x00080060: 'CT',
+                            x00280004: 'MONOCHROME2'
+                        };
+                        return values[tag] || '';
+                    },
+                    uint16(tag) {
+                        const values = {
+                            x00280010: 4,
+                            x00280011: 4,
+                            x00280100: 16,
+                            x00280103: 0,
+                            x00280002: 1
+                        };
+                        return values[tag] || 0;
+                    }
+                }, null, 0, {
+                    frameIndex: 0,
+                    source: {
+                        kind: 'path',
+                        path: '/library/fallback-failure.dcm'
+                    }
+                });
+
+                return {
+                    info,
+                    drawnText
+                };
+            } finally {
+                ctx.fillText = originalFillText;
+            }
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            stage: 'frame-extraction',
+            jsErrorStage: 'frame-extraction',
+            nativeErrorStage: 'decode-timeout'
+        });
+        expect(result.info.diagnosticLines).toEqual(expect.arrayContaining([
+            'Stage: frame-extraction',
+            'Transfer Syntax: Explicit VR Little Endian',
+            'Modality: CT',
+            'JS Stage: frame-extraction',
+            'Native Stage: decode-timeout'
+        ]));
+        expect(result.drawnText).toEqual(expect.arrayContaining([
+            'JS Stage: frame-extraction',
+            'Native Stage: decode-timeout'
+        ]));
+    });
+
     test('decodeDicom returns a detached copy of uncompressed pixel data', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);

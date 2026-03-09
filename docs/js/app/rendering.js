@@ -3,7 +3,7 @@
     const config = window.CONFIG;
     const { state } = app;
     const { canvas, ctx } = app.dom;
-    const { getString, getNumber } = app.utils;
+    const { getString, getNumber, getPixelDataArrayType } = app.utils;
     const {
         isCompressed,
         isJpegLossless,
@@ -25,19 +25,6 @@
         ['1.2.840.10008.1.2.4.90', new Set(['RF', 'XA'])],
         ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])]
     ]);
-
-    function getPixelDataArrayType(bitsAllocated, pixelRepresentation) {
-        if (bitsAllocated <= 8) {
-            return pixelRepresentation === 1 ? Int8Array : Uint8Array;
-        }
-        if (bitsAllocated <= 16) {
-            return pixelRepresentation === 1 ? Int16Array : Uint16Array;
-        }
-        if (bitsAllocated <= 32) {
-            return pixelRepresentation === 1 ? Int32Array : Uint32Array;
-        }
-        throw new Error(`Unsupported Bits Allocated value: ${bitsAllocated}`);
-    }
 
     function getUncompressedFramePixelData(
         dataSet,
