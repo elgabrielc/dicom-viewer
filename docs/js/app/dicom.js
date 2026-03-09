@@ -103,6 +103,7 @@
             const rows = getMetadataNumber(dataSet, 'x00280010', 0);
             const cols = getMetadataNumber(dataSet, 'x00280011', 0);
             const pixelDataElement = dataSet.elements?.x7fe00010;
+            const numberOfFrames = getNumberOfFrames(dataSet);
             return {
                 patientName: getString(dataSet, 'x00100010'),
                 studyDate: getString(dataSet, 'x00080020'),
@@ -118,6 +119,7 @@
                 sopClassUid: getString(dataSet, 'x00080016'),
                 rows,
                 cols,
+                numberOfFrames,
                 hasPixelData: !!pixelDataElement && rows > 0 && cols > 0
             };
         } catch { return null; }
@@ -328,13 +330,13 @@
      * @param {number} bitsAllocated - Bits per pixel (8 or 16)
      * @returns {TypedArray|null} Decoded pixel data or null on failure
      */
-    function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated) {
+    function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex = 0) {
         try {
             let frameData;
 
             // Try using dicomParser's built-in function first
             if (pixelDataElement.fragments && pixelDataElement.fragments.length > 0) {
-                frameData = getEncapsulatedFrameData(dataSet, pixelDataElement, 0);
+                frameData = getEncapsulatedFrameData(dataSet, pixelDataElement, frameIndex);
             } else {
                 // Manually parse encapsulated pixel data
                 const byteArray = dataSet.byteArray;
@@ -456,7 +458,7 @@
      * @param {number} pixelRepresentation - 0=unsigned, 1=signed
      * @returns {Promise<TypedArray|null>} Decoded pixel data or null on failure
      */
-    async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation) {
+    async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
         try {
             console.log('Attempting JPEG 2000 decode for', rows, 'x', cols, 'image');
 
@@ -472,7 +474,7 @@
                 return null;
             }
 
-            const j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, 0);
+            const j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, frameIndex);
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
             // Initialize and use OpenJPEG decoder
@@ -530,9 +532,9 @@
      * @param {number} cols - Image width
      * @returns {Promise<Object|null>} {pixels, isRgb} or null on failure
      */
-    async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols) {
+    async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex = 0) {
         try {
-            const frames = getEncapsulatedFrameData(dataSet, dataSet.elements.x7fe00010, 0);
+            const frames = getEncapsulatedFrameData(dataSet, dataSet.elements.x7fe00010, frameIndex);
 
             const blob = new Blob([frames], { type: 'image/jpeg' });
             const bitmap = await createImageBitmap(blob);
@@ -561,6 +563,7 @@
         parseDicomMetadata,
         toDicomByteArray,
         getMetadataNumber,
+        getNumberOfFrames,
         getEncapsulatedFrameData,
         isCompressed,
         isJpegLossless,

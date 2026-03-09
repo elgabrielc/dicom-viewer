@@ -18,7 +18,7 @@
     const { escapeHtml } = app.utils;
     const { toDicomByteArray } = app.dicom;
     const { renderDicom } = app.rendering;
-    const { readSliceBuffer } = app.sources;
+    const { readSliceBuffer, getSliceCacheKey } = app.sources;
     const {
         drawMeasurements,
         resetViewForNewSeries,
@@ -38,18 +38,19 @@
 
         try {
             const slice = slices[index];
-            let dataSet = state.sliceCache.get(index);
+            const cacheKey = getSliceCacheKey(slice, index);
+            let dataSet = state.sliceCache.get(cacheKey);
 
             if (!dataSet) {
                 const buf = await readSliceBuffer(slice, 'load');
                 dataSet = dicomParser.parseDicom(await toDicomByteArray(buf));
-                state.sliceCache.set(index, dataSet);
+                state.sliceCache.set(cacheKey, dataSet);
             }
 
             const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
                 ? state.windowLevel
                 : null;
-            const info = await renderDicom(dataSet, wlOverride);
+            const info = await renderDicom(dataSet, wlOverride, slice.frameIndex || 0);
 
             updateWLDisplay();
 
@@ -103,11 +104,13 @@
             }
 
             for (let i = index - VIEWER_PRELOAD_RADIUS; i <= index + VIEWER_PRELOAD_RADIUS; i++) {
-                if (i >= 0 && i < slices.length && !state.sliceCache.has(i)) {
+                if (i >= 0 && i < slices.length) {
                     const preloadSlice = slices[i];
+                    const preloadCacheKey = getSliceCacheKey(preloadSlice, i);
+                    if (state.sliceCache.has(preloadCacheKey)) continue;
                     readSliceBuffer(preloadSlice, 'preload').then(buf => {
                         toDicomByteArray(buf).then(byteArray => {
-                            state.sliceCache.set(i, dicomParser.parseDicom(byteArray));
+                            state.sliceCache.set(preloadCacheKey, dicomParser.parseDicom(byteArray));
                         }).catch(() => {});
                     }).catch(() => {});
                 }

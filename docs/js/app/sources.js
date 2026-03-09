@@ -58,24 +58,50 @@
                 comments: []
             };
         }
-        studies[studyUid].series[seriesUid].slices.push({
+        studies[studyUid].series[seriesUid].slices.push(...expandFrameSlices(meta, source));
+    }
+
+    function expandFrameSlices(meta, source) {
+        const frameCount = Math.max(1, meta?.numberOfFrames || 1);
+        return Array.from({ length: frameCount }, (_, frameIndex) => ({
             source,
+            frameIndex,
             instanceNumber: meta.instanceNumber,
             sliceLocation: meta.sliceLocation
-        });
+        }));
     }
 
     function finalizeStudies(studies) {
         for (const study of Object.values(studies)) {
             let count = 0;
             for (const series of Object.values(study.series)) {
-                series.slices.sort((a, b) => a.instanceNumber - b.instanceNumber || a.sliceLocation - b.sliceLocation);
+                series.slices.sort((a, b) =>
+                    (a.instanceNumber ?? 0) - (b.instanceNumber ?? 0) ||
+                    (a.sliceLocation ?? 0) - (b.sliceLocation ?? 0) ||
+                    (a.frameIndex ?? 0) - (b.frameIndex ?? 0)
+                );
                 count += series.slices.length;
             }
             study.seriesCount = Object.keys(study.series).length;
             study.imageCount = count;
         }
         return studies;
+    }
+
+    function getSliceCacheKey(slice, fallbackKey = null) {
+        const source = slice?.source;
+        switch (source?.kind) {
+            case 'path':
+                return `path:${source.path}`;
+            case 'api':
+                return `api:${source.apiBase}|${source.studyId}|${source.seriesId}|${source.sliceIndex}`;
+            case 'blob':
+                return source.blob || fallbackKey;
+            case 'handle':
+                return source.handle || fallbackKey;
+            default:
+                return fallbackKey ?? source ?? null;
+        }
     }
 
     async function joinPath(parent, child) {
@@ -613,50 +639,10 @@
 
                 if (!isRenderableImageMetadata(meta)) continue;
 
-                const studyUid = meta.studyInstanceUid;
-                const seriesUid = meta.seriesInstanceUid;
-
-                if (!studies[studyUid]) {
-                    studies[studyUid] = {
-                        ...meta,
-                        series: {},
-                        comments: []
-                    };
-                }
-
-                if (!studies[studyUid].series[seriesUid]) {
-                    studies[studyUid].series[seriesUid] = {
-                        seriesInstanceUid: seriesUid,
-                        seriesNumber: meta.seriesNumber,
-                        seriesDescription: meta.seriesDescription,
-                        modality: meta.modality,
-                        transferSyntax: meta.transferSyntax,
-                        slices: [],
-                        comments: []
-                    };
-                }
-
-                studies[studyUid].series[seriesUid].slices.push({
-                    instanceNumber: meta.instanceNumber,
-                    sliceLocation: meta.sliceLocation,
-                    source: { kind: 'blob', blob }
-                });
+                addSliceToStudies(studies, meta, { kind: 'blob', blob });
             }
 
-            for (const study of Object.values(studies)) {
-                let imageCount = 0;
-                for (const series of Object.values(study.series)) {
-                    series.slices.sort((a, b) =>
-                        (a.sliceLocation ?? a.instanceNumber ?? 0) -
-                        (b.sliceLocation ?? b.instanceNumber ?? 0)
-                    );
-                    imageCount += series.slices.length;
-                }
-                study.seriesCount = Object.keys(study.series).length;
-                study.imageCount = imageCount;
-            }
-
-            return studies;
+            return finalizeStudies(studies);
         } finally {
             hideProgressOverlay();
             button.textContent = buttonLabel;
@@ -676,6 +662,8 @@
         processFilesFromSources,
         readSliceBuffer,
         normalizeStudiesPayload,
-        loadStudiesFromApi
+        loadStudiesFromApi,
+        expandFrameSlices,
+        getSliceCacheKey
     };
 })();

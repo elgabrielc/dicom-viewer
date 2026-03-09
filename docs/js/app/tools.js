@@ -321,13 +321,17 @@
 
     async function reRenderCurrentSlice() {
         if (!state.currentSeries) return;
-        const dataSet = state.sliceCache.get(state.currentSliceIndex);
+        const slice = state.currentSeries.slices[state.currentSliceIndex];
+        if (!slice) return;
+
+        const cacheKey = app.sources?.getSliceCacheKey?.(slice, state.currentSliceIndex);
+        const dataSet = state.sliceCache.get(cacheKey);
         if (!dataSet) return;
 
         const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
             ? state.windowLevel
             : null;
-        await app.rendering.renderDicom(dataSet, wlOverride);
+        await app.rendering.renderDicom(dataSet, wlOverride, slice.frameIndex || 0);
     }
 
     function handleWLDrag(dx, dy) {

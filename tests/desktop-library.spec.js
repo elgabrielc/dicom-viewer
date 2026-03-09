@@ -324,6 +324,87 @@ test.describe('Desktop library scanning', () => {
         });
     });
 
+    test('multi-frame metadata expands into virtual slices that share a cache key', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const source = { kind: 'path', path: '/library/multi-frame.dcm' };
+            const slices = window.DicomViewerApp.sources.expandFrameSlices({
+                numberOfFrames: 4,
+                instanceNumber: 12,
+                sliceLocation: 34.5
+            }, source);
+
+            return {
+                count: slices.length,
+                frameIndexes: slices.map((slice) => slice.frameIndex),
+                sameSourceReference: slices.every((slice) => slice.source === source),
+                cacheKeys: slices.map((slice, index) =>
+                    window.DicomViewerApp.sources.getSliceCacheKey(slice, index)
+                )
+            };
+        });
+
+        expect(result.count).toBe(4);
+        expect(result.frameIndexes).toEqual([0, 1, 2, 3]);
+        expect(result.sameSourceReference).toBe(true);
+        expect(new Set(result.cacheKeys)).toEqual(new Set(['path:/library/multi-frame.dcm']));
+    });
+
+    test('renderDicom selects the requested frame from an uncompressed multi-frame dataset', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const frame0Pixels = Array.from({ length: 16 }, (_, index) => index * 100);
+            const frame1Pixels = Array.from({ length: 16 }, (_, index) => 4000 + (index * 100));
+            const buffer = new ArrayBuffer(32 * 2);
+            const pixels = new Uint16Array(buffer);
+            pixels.set([...frame0Pixels, ...frame1Pixels]);
+
+            const dataSet = {
+                byteArray: new Uint8Array(buffer),
+                elements: {
+                    x7fe00010: {
+                        dataOffset: 0,
+                        length: buffer.byteLength
+                    }
+                },
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'DX'
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    const values = {
+                        x00280010: 4,
+                        x00280011: 4,
+                        x00280100: 16,
+                        x00280103: 0,
+                        x00280002: 1
+                    };
+                    return values[tag];
+                }
+            };
+
+            await window.DicomViewerApp.rendering.renderDicom(dataSet, { center: 3500, width: 7000 }, 0);
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            const frame0 = ctx.getImageData(0, 0, 1, 1).data[0];
+
+            await window.DicomViewerApp.rendering.renderDicom(dataSet, { center: 3500, width: 7000 }, 1);
+            const frame1 = ctx.getImageData(0, 0, 1, 1).data[0];
+
+            return { frame0, frame1 };
+        });
+
+        expect(result.frame0).toBe(0);
+        expect(result.frame1).toBeGreaterThan(result.frame0);
+    });
+
     test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
