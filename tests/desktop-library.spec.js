@@ -636,6 +636,45 @@ test.describe('Desktop library scanning', () => {
         expect(result.after).toEqual(result.before);
     });
 
+    test('renderDicom can suppress error canvas writes for composable callers', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 2;
+            canvas.height = 2;
+            ctx.fillStyle = 'rgb(21, 43, 65)';
+            ctx.fillRect(0, 0, 2, 2);
+            const before = Array.from(ctx.getImageData(0, 0, 2, 2).data);
+
+            const info = await window.DicomViewerApp.rendering.renderDicom({
+                elements: {},
+                string() {
+                    return '';
+                },
+                uint16() {
+                    return 0;
+                }
+            }, null, 0, null, { displayErrors: false });
+
+            return {
+                info,
+                after: Array.from(ctx.getImageData(0, 0, 2, 2).data),
+                canvasSize: { width: canvas.width, height: canvas.height },
+                before
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            errorMessage: 'No pixel data found'
+        });
+        expect(result.canvasSize).toEqual({ width: 2, height: 2 });
+        expect(result.after).toEqual(result.before);
+    });
+
     test('decodeDicom returns a detached copy of uncompressed pixel data', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
@@ -759,6 +798,48 @@ test.describe('Desktop library scanning', () => {
         expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
     });
 
+    test('decodeNative rejects native payloads whose sample count does not match the geometry', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const message = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            app.desktopDecode.decodeFrameWithPixels = async () => ({
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 16,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 50,
+                windowWidth: 100,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                pixelData: new Uint16Array([10, 20, 30])
+            });
+
+            try {
+                await app.rendering.decodeNative({
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.1',
+                            x00080060: 'CT',
+                            x00280004: 'MONOCHROME2',
+                            x00281050: '50',
+                            x00281051: '100'
+                        };
+                        return values[tag] || '';
+                    }
+                }, '/library/bad-native.dcm', 0);
+                return null;
+            } catch (error) {
+                return String(error?.message || error);
+            }
+        });
+
+        expect(message).toContain('expected 4');
+    });
+
     test('renderDicom matches decodeDicom plus renderPixels for a known slice', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
@@ -839,7 +920,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.wrapperPixelSpacing).toEqual(result.splitPixelSpacing);
     });
 
-    test('viewer loadSlice falls back to native desktop decode for path-backed slices', async ({ page }) => {
+    test('viewer loadSlice falls back to native desktop decode after an explicit js-first decode error', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -867,6 +948,8 @@ test.describe('Desktop library scanning', () => {
             app.state.windowLevel = { center: null, width: null };
             app.state.baseWindowLevel = { center: null, width: null };
             app.state.pixelSpacing = null;
+            // Intentionally omit Pixel Data so the js-first route returns a decode error
+            // and the viewer must fall back to the native desktop path for this slice.
             app.state.sliceCache.set(cacheKey, {
                 elements: {},
                 string(tag) {
@@ -882,8 +965,15 @@ test.describe('Desktop library scanning', () => {
                     };
                     return values[tag] || '';
                 },
-                uint16() {
-                    return 0;
+                uint16(tag) {
+                    const values = {
+                        x00280010: 4,
+                        x00280011: 4,
+                        x00280100: 16,
+                        x00280103: 0,
+                        x00280002: 1
+                    };
+                    return values[tag] || 0;
                 }
             });
             app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
@@ -912,6 +1002,7 @@ test.describe('Desktop library scanning', () => {
             const imageData = Array.from(ctx.getImageData(0, 0, 4, 4).data);
 
             return {
+                route: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT'),
                 nativeCalls,
                 firstChannel: imageData.filter((_, index) => index % 4 === 0),
                 baseWindowLevel: app.state.baseWindowLevel,
@@ -920,6 +1011,7 @@ test.describe('Desktop library scanning', () => {
             };
         });
 
+        expect(result.route).toBe('js-first');
         expect(result.nativeCalls).toEqual([
             {
                 path: '/library/native-fallback.dcm',
@@ -969,6 +1061,8 @@ test.describe('Desktop library scanning', () => {
                 };
             };
 
+            // This fixture is intentionally skeletal because native-first routing should
+            // use the desktop path before the JS decoder ever touches Pixel Data tags.
             const dataSet = {
                 elements: {},
                 string(tag) {
