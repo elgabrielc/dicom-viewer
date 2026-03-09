@@ -331,7 +331,7 @@
         const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
             ? state.windowLevel
             : null;
-        await app.rendering.renderDicom(dataSet, wlOverride, slice.frameIndex || 0);
+        await app.rendering.renderDicom(dataSet, wlOverride, slice.frameIndex || 0, slice);
     }
 
     function handleWLDrag(dx, dy) {
