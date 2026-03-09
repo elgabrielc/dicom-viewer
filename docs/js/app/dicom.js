@@ -320,6 +320,32 @@
     // Different compression formats require different decoders
     // =====================================================================
 
+    function createStagedError(stage, message, extra = {}) {
+        const error = new Error(message);
+        error.stage = stage;
+        Object.assign(error, extra);
+        return error;
+    }
+
+    function normalizeStagedError(error, fallbackStage = 'decode') {
+        if (error instanceof Error) {
+            if (typeof error.stage !== 'string' || !error.stage) {
+                error.stage = fallbackStage;
+            }
+            return error;
+        }
+
+        if (error && typeof error === 'object') {
+            return createStagedError(
+                typeof error.stage === 'string' && error.stage ? error.stage : fallbackStage,
+                String(error.message || 'Unknown decode error'),
+                { details: error.details }
+            );
+        }
+
+        return createStagedError(fallbackStage, String(error || 'Unknown decode error'));
+    }
+
     /**
      * Decode JPEG Lossless compressed pixel data
      * Uses the jpeg-lossless-decoder-js library
@@ -329,7 +355,7 @@
      * @param {number} rows - Image height
      * @param {number} cols - Image width
      * @param {number} bitsAllocated - Bits per pixel (8 or 16)
-     * @returns {TypedArray|null} Decoded pixel data or null on failure
+     * @returns {TypedArray} Decoded pixel data
      */
     function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex = 0) {
         try {
@@ -365,8 +391,7 @@
             }
 
             if (!frameData) {
-                console.error('Could not extract frame data');
-                return null;
+                throw createStagedError('frame-extraction', 'Could not extract JPEG Lossless frame data.');
             }
 
             const decoder = new jpeg.lossless.Decoder();
@@ -380,7 +405,7 @@
             }
         } catch (e) {
             console.error('JPEG Lossless decode error:', e);
-            return null;
+            throw normalizeStagedError(e, 'decode');
         }
     }
 
@@ -434,7 +459,7 @@
 
     function formatJpeg2000WorkerError(event, workerUrl) {
         const eventMessage = event?.error?.message || event?.message || 'JPEG 2000 worker error';
-        return new Error(`${eventMessage} (${workerUrl})`);
+        return createStagedError('codec-init', `${eventMessage} (${workerUrl})`);
     }
 
     function pumpJpeg2000WorkerQueue() {
@@ -443,7 +468,7 @@
         }
 
         if (typeof Worker === 'undefined') {
-            const error = new Error('Web Workers are not available for JPEG 2000 decode.');
+            const error = createStagedError('codec-init', 'Web Workers are not available for JPEG 2000 decode.');
             while (jpeg2000WorkerState.queue.length) {
                 jpeg2000WorkerState.queue.shift().reject(error);
             }
@@ -457,7 +482,7 @@
             } catch (error) {
                 jpeg2000WorkerState.worker = null;
                 while (jpeg2000WorkerState.queue.length) {
-                    jpeg2000WorkerState.queue.shift().reject(error);
+                    jpeg2000WorkerState.queue.shift().reject(normalizeStagedError(error, 'codec-init'));
                 }
                 return;
             }
@@ -472,14 +497,21 @@
                     clearTimeout(activeRequest.timeoutId);
                     jpeg2000WorkerState.activeRequest = null;
                     disposeJpeg2000Worker();
-                    activeRequest.reject(new Error('JPEG 2000 worker returned an unexpected response.'));
+                    activeRequest.reject(
+                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an unexpected response.')
+                    );
                     pumpJpeg2000WorkerQueue();
                     return;
                 }
                 if (payload.type === 'error') {
                     clearTimeout(activeRequest.timeoutId);
                     jpeg2000WorkerState.activeRequest = null;
-                    activeRequest.reject(new Error(payload.message || 'JPEG 2000 worker decode failed'));
+                    activeRequest.reject(
+                        createStagedError(
+                            payload.stage || 'decode',
+                            payload.message || 'JPEG 2000 worker decode failed'
+                        )
+                    );
                     pumpJpeg2000WorkerQueue();
                     return;
                 }
@@ -487,7 +519,9 @@
                     clearTimeout(activeRequest.timeoutId);
                     jpeg2000WorkerState.activeRequest = null;
                     disposeJpeg2000Worker();
-                    activeRequest.reject(new Error('JPEG 2000 worker returned an invalid response.'));
+                    activeRequest.reject(
+                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an invalid response.')
+                    );
                     pumpJpeg2000WorkerQueue();
                     return;
                 }
@@ -538,7 +572,8 @@
             jpeg2000WorkerState.activeRequest = null;
             disposeJpeg2000Worker();
             request.reject(
-                new Error(
+                createStagedError(
+                    'decode-timeout',
                     `JPEG 2000 decode timeout (${JPEG2000_DECODE_TIMEOUT_MS / 1000}s, ${request.frameByteLength} bytes)`
                 )
             );
@@ -562,7 +597,7 @@
             clearTimeout(request.timeoutId);
             jpeg2000WorkerState.activeRequest = null;
             disposeJpeg2000Worker();
-            request.reject(error);
+            request.reject(normalizeStagedError(error, 'decode'));
             pumpJpeg2000WorkerQueue();
         }
     }
@@ -602,7 +637,7 @@
      * @param {number} cols - Image width
      * @param {number} bitsAllocated - Bits per pixel
      * @param {number} pixelRepresentation - 0=unsigned, 1=signed
-     * @returns {Promise<TypedArray|null>} Decoded pixel data or null on failure
+     * @returns {Promise<TypedArray>} Decoded pixel data
      */
     async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
         try {
@@ -610,17 +645,23 @@
 
             const jp2DataElement = dataSet.elements.x7fe00010;
             if (!jp2DataElement.encapsulatedPixelData) {
-                console.error('Pixel data is not encapsulated');
-                return null;
+                throw createStagedError('frame-extraction', 'JPEG 2000 pixel data is not encapsulated.');
             }
 
             const fragments = jp2DataElement.fragments;
             if (!fragments || fragments.length === 0) {
-                console.error('No fragments found for JPEG 2000');
-                return null;
+                throw createStagedError('frame-extraction', 'No fragments found for JPEG 2000 pixel data.');
             }
 
-            const j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, frameIndex);
+            let j2kData;
+            try {
+                j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, frameIndex);
+            } catch (error) {
+                throw createStagedError(
+                    'frame-extraction',
+                    String(error?.message || error || 'Failed to extract encapsulated JPEG 2000 frame data.')
+                );
+            }
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
             return await decodeJ2KInWorker(
@@ -633,7 +674,7 @@
 
         } catch (e) {
             console.error('JPEG 2000 decode error:', e);
-            return null;
+            throw normalizeStagedError(e, 'decode');
         }
     }
 
@@ -645,7 +686,7 @@
      * @param {Object} pixelDataElement - Pixel data element (unused)
      * @param {number} rows - Image height
      * @param {number} cols - Image width
-     * @returns {Promise<Object|null>} {pixels, isRgb} or null on failure
+     * @returns {Promise<Object>} {pixels, isRgb}
      */
     async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex = 0) {
         try {
@@ -669,7 +710,7 @@
             return { pixels, isRgb: true };
         } catch (e) {
             console.error('JPEG Baseline decode error:', e);
-            return null;
+            throw normalizeStagedError(e, 'decode');
         }
     }
 

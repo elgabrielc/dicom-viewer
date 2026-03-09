@@ -96,7 +96,7 @@
      * @param {string} message - Main error message
      * @param {string} details - Additional details (e.g., format name)
      */
-    function displayError(message, details) {
+    function displayError(message, details, diagnostics = []) {
         canvas.width = 512;
         canvas.height = 512;
         ctx.fillStyle = '#1a1a2e';
@@ -111,15 +111,24 @@
         ctx.font = '14px -apple-system, sans-serif';
         ctx.fillText(message, canvas.width / 2, 240);
 
+        let nextLineY = 270;
         if (details) {
             ctx.fillStyle = '#888';
             ctx.font = '12px -apple-system, sans-serif';
-            ctx.fillText(details, canvas.width / 2, 270);
+            ctx.fillText(details, canvas.width / 2, nextLineY);
+            nextLineY += 28;
+        }
+
+        for (const diagnosticLine of diagnostics.filter(Boolean)) {
+            ctx.fillStyle = '#9aa5b1';
+            ctx.font = '12px -apple-system, sans-serif';
+            ctx.fillText(diagnosticLine, canvas.width / 2, nextLineY);
+            nextLineY += 20;
         }
 
         ctx.fillStyle = '#666';
         ctx.font = '12px -apple-system, sans-serif';
-        ctx.fillText('This format may require additional decoders', canvas.width / 2, 310);
+        ctx.fillText('This format may require additional decoders', canvas.width / 2, Math.max(nextLineY + 12, 310));
     }
 
     function buildRenderInfo(decoded, windowCenter, windowWidth, extra = {}) {
@@ -140,8 +149,35 @@
             error: true,
             errorMessage,
             errorDetails,
+            stage: extra.stage || 'decode',
             ...extra
         };
+    }
+
+    function getDecodeFailureStage(error, fallbackStage = 'decode') {
+        return typeof error?.stage === 'string' && error.stage ? error.stage : fallbackStage;
+    }
+
+    function buildDecodeDiagnosticLines(errorInfo) {
+        const diagnosticLines = [];
+        if (errorInfo.stage) {
+            diagnosticLines.push(`Stage: ${errorInfo.stage}`);
+        }
+        if (errorInfo.tsInfo?.name) {
+            diagnosticLines.push(`Transfer Syntax: ${errorInfo.tsInfo.name}`);
+        } else if (errorInfo.transferSyntax) {
+            diagnosticLines.push(`Transfer Syntax UID: ${errorInfo.transferSyntax}`);
+        }
+        if (errorInfo.modality) {
+            diagnosticLines.push(`Modality: ${errorInfo.modality}`);
+        }
+        if (errorInfo.jsErrorStage) {
+            diagnosticLines.push(`JS Stage: ${errorInfo.jsErrorStage}`);
+        }
+        if (errorInfo.nativeErrorStage) {
+            diagnosticLines.push(`Native Stage: ${errorInfo.nativeErrorStage}`);
+        }
+        return diagnosticLines.slice(0, 5);
     }
 
     function getOptionalNumber(dataSet, tag) {
@@ -262,7 +298,7 @@
         if (!nativeFailure && jsFailure?.error) {
             return {
                 ...jsFailure,
-                stage: jsFailure.stage || 'decode',
+                stage: getDecodeFailureStage(jsFailure),
                 transferSyntax: jsFailure.transferSyntax || transferSyntax,
                 modality: jsFailure.modality || modality,
                 tsInfo: jsFailure.tsInfo || tsInfo
@@ -281,11 +317,13 @@
             'Image decode failed',
             detailParts.join(' | ') || tsInfo.name,
             {
-                stage: 'decode',
+                stage: getDecodeFailureStage(jsFailure, getDecodeFailureStage(nativeFailure)),
                 transferSyntax,
                 modality,
                 tsInfo,
+                jsErrorStage: jsFailure ? getDecodeFailureStage(jsFailure) : null,
                 jsErrorMessage: jsFailure ? getDecodeFailureMessage(jsFailure) : null,
+                nativeErrorStage: nativeFailure ? getDecodeFailureStage(nativeFailure) : null,
                 nativeErrorMessage: nativeFailure ? getDecodeFailureMessage(nativeFailure) : null
             }
         );
@@ -308,13 +346,21 @@
 
     function renderDecodeError(errorInfo, options = {}) {
         const { display = true } = options;
+        const normalizedError = {
+            ...errorInfo,
+            diagnosticLines: errorInfo.diagnosticLines || buildDecodeDiagnosticLines(errorInfo)
+        };
         state.pixelSpacing = null;
         app.tools.updateCalibrationWarning();
         if (display) {
-            displayError(errorInfo.errorMessage, errorInfo.errorDetails);
+            displayError(
+                normalizedError.errorMessage,
+                normalizedError.errorDetails,
+                normalizedError.diagnosticLines
+            );
             app.tools.drawMeasurements?.();
         }
-        return errorInfo;
+        return normalizedError;
     }
 
     async function decodeDicom(dataSet, frameIndex = 0) {
@@ -360,7 +406,12 @@
             return buildDecodeError(
                 'No pixel data found',
                 'The DICOM file may be corrupted or incomplete',
-                { transferSyntax, tsInfo: transferSyntaxInfo }
+                {
+                    stage: 'frame-extraction',
+                    transferSyntax,
+                    modality,
+                    tsInfo: transferSyntaxInfo
+                }
             );
         }
 
@@ -373,38 +424,64 @@
         if (isCompressedData) {
             // Decode compressed pixel data using appropriate decoder
             if (isJpeg2000(transferSyntax)) {
-                pixelData = await decodeJpeg2000(
-                    dataSet,
-                    pixelDataElement,
-                    rows,
-                    cols,
-                    bitsAllocated,
-                    pixelRepresentation,
-                    frameIndex
-                );
-                if (!pixelData) {
+                try {
+                    pixelData = await decodeJpeg2000(
+                        dataSet,
+                        pixelDataElement,
+                        rows,
+                        cols,
+                        bitsAllocated,
+                        pixelRepresentation,
+                        frameIndex
+                    );
+                } catch (error) {
                     return buildDecodeError(
                         'JPEG 2000 decode failed',
-                        transferSyntaxInfo.name,
-                        { transferSyntax, tsInfo: transferSyntaxInfo }
+                        getDecodeFailureMessage(error),
+                        {
+                            stage: getDecodeFailureStage(error),
+                            transferSyntax,
+                            modality,
+                            tsInfo: transferSyntaxInfo
+                        }
                     );
                 }
             } else if (isJpegLossless(transferSyntax)) {
-                pixelData = decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex);
-                if (!pixelData) {
+                try {
+                    pixelData = decodeJpegLossless(
+                        dataSet,
+                        pixelDataElement,
+                        rows,
+                        cols,
+                        bitsAllocated,
+                        frameIndex
+                    );
+                } catch (error) {
                     return buildDecodeError(
                         'JPEG Lossless decode failed',
-                        transferSyntaxInfo.name,
-                        { transferSyntax, tsInfo: transferSyntaxInfo }
+                        getDecodeFailureMessage(error),
+                        {
+                            stage: getDecodeFailureStage(error),
+                            transferSyntax,
+                            modality,
+                            tsInfo: transferSyntaxInfo
+                        }
                     );
                 }
             } else if (isJpegBaseline(transferSyntax)) {
-                const result = await decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex);
-                if (!result) {
+                let result;
+                try {
+                    result = await decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex);
+                } catch (error) {
                     return buildDecodeError(
                         'JPEG decode failed',
-                        transferSyntaxInfo.name,
-                        { transferSyntax, tsInfo: transferSyntaxInfo }
+                        getDecodeFailureMessage(error),
+                        {
+                            stage: getDecodeFailureStage(error),
+                            transferSyntax,
+                            modality,
+                            tsInfo: transferSyntaxInfo
+                        }
                     );
                 }
                 pixelData = result.pixels;
@@ -414,7 +491,12 @@
                 return buildDecodeError(
                     'Unsupported compression format',
                     transferSyntaxInfo.name,
-                    { transferSyntax, tsInfo: transferSyntaxInfo }
+                    {
+                        stage: 'decode',
+                        transferSyntax,
+                        modality,
+                        tsInfo: transferSyntaxInfo
+                    }
                 );
             }
         } else {
@@ -433,8 +515,13 @@
                 console.error('Native pixel data decode error:', error);
                 return buildDecodeError(
                     'Native pixel data decode failed',
-                    String(error?.message || error || 'Unknown native decode error'),
-                    { transferSyntax, tsInfo: transferSyntaxInfo }
+                    getDecodeFailureMessage(error),
+                    {
+                        stage: getDecodeFailureStage(error, 'pixel-conversion'),
+                        transferSyntax,
+                        modality,
+                        tsInfo: transferSyntaxInfo
+                    }
                 );
             }
         }
@@ -461,7 +548,9 @@
 
     async function decodeNative(dataSet, filePath, frameIndex = 0) {
         if (!filePath) {
-            throw new Error('Native decode requires a desktop path-backed slice.');
+            const error = new Error('Native decode requires a desktop path-backed slice.');
+            error.stage = 'decode';
+            throw error;
         }
 
         const nativeDecoded = await app.desktopDecode.decodeFrameWithPixels(filePath, frameIndex);
@@ -510,7 +599,12 @@
                 photometricInterpretation !== 'MONOCHROME1' &&
                 photometricInterpretation !== 'MONOCHROME2'
         };
-        validateRenderedPixelData(decoded, 'Native decode');
+        try {
+            validateRenderedPixelData(decoded, 'Native decode');
+        } catch (error) {
+            error.stage = getDecodeFailureStage(error, 'pixel-conversion');
+            throw error;
+        }
         return finalizeDecodedImage(decoded, hasWindowLevel);
     }
 

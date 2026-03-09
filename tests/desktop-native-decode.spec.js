@@ -62,8 +62,14 @@ async function installMockDesktopDecode(page, options = {}) {
                     case 'plugin:event|unlisten':
                         return null;
                     case 'decode_frame':
+                        if (opts.decodeFrameError) {
+                            throw opts.decodeFrameError;
+                        }
                         return metadata;
                     case 'take_decoded_frame': {
+                        if (opts.takeDecodedFrameError) {
+                            throw opts.takeDecodedFrameError;
+                        }
                         const frame = decodedFrames.get(args.decodeId);
                         if (!frame) {
                             throw new Error(`Decoded frame not found: ${args.decodeId}`);
@@ -172,44 +178,81 @@ test('desktop decode bridge surfaces a runtime-ready error when invoke is unavai
     const message = await page.evaluate(async () => {
         try {
             await window.DicomViewerApp.desktopDecode.decodeFrame('/mock/no-runtime.dcm', 0);
-            return null;
+            return {};
         } catch (error) {
-            return String(error?.message || error);
+            return {
+                message: String(error?.message || error),
+                stage: error?.stage || null
+            };
         }
     });
 
-    expect(message).toContain('Desktop decode runtime is not ready');
+    expect(message.message).toContain('Desktop decode runtime is not ready');
+    expect(message.stage).toBe('codec-init');
+});
+
+test('desktop decode bridge preserves structured native error stages', async ({ page }) => {
+    await installMockDesktopDecode(page, {
+        decodeFrameError: {
+            stage: 'decode-timeout',
+            message: 'Native decode timed out after 30s.'
+        }
+    });
+    await page.goto(HOME_URL);
+
+    const failure = await page.evaluate(async () => {
+        try {
+            await window.DicomViewerApp.desktopDecode.decodeFrame('/mock/study/timeout.dcm', 0);
+            return {};
+        } catch (error) {
+            return {
+                message: String(error?.message || error),
+                stage: error?.stage || null
+            };
+        }
+    });
+
+    expect(failure.message).toContain('Native decode timed out after 30s.');
+    expect(failure.stage).toBe('decode-timeout');
 });
 
 test('desktop decode bridge surfaces invalid decode ids', async ({ page }) => {
     await installMockDesktopDecode(page);
     await page.goto(HOME_URL);
 
-    const message = await page.evaluate(async () => {
+    const failure = await page.evaluate(async () => {
         try {
             await window.DicomViewerApp.desktopDecode.takeDecodedFrame('missing-decode-id');
-            return null;
+            return {};
         } catch (error) {
-            return String(error?.message || error);
+            return {
+                message: String(error?.message || error),
+                stage: error?.stage || null
+            };
         }
     });
 
-    expect(message).toContain('Decoded frame not found: missing-decode-id');
+    expect(failure.message).toContain('Decoded frame not found: missing-decode-id');
+    expect(failure.stage).toBe('pixel-transfer');
 });
 
 test('desktop decode bridge rejects malformed binary payloads', async ({ page }) => {
     await installMockDesktopDecode(page, { binaryResponseMode: 'invalid-object' });
     await page.goto(HOME_URL);
 
-    const message = await page.evaluate(async () => {
+    const failure = await page.evaluate(async () => {
         try {
             await window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/bad-payload.dcm', 0);
-            return null;
+            return {};
         } catch (error) {
-            return String(error?.message || error);
+            return {
+                message: String(error?.message || error),
+                stage: error?.stage || null
+            };
         }
     });
 
-    expect(message).toContain('Unexpected decoded frame payload shape');
-    expect(message).toContain('bogus');
+    expect(failure.message).toContain('Unexpected decoded frame payload shape');
+    expect(failure.message).toContain('bogus');
+    expect(failure.stage).toBe('pixel-conversion');
 });

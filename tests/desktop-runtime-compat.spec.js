@@ -276,3 +276,16 @@ test('desktop CSP allows the JPEG 2000 worker to load OpenJPEG WASM', async () =
     expect(tauriConfig.app.security.csp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
     expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
 });
+
+test('desktop fs scope includes the native decode cache directory', async () => {
+    const capabilityPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'capabilities', 'default.json');
+    const capability = JSON.parse(fs.readFileSync(capabilityPath, 'utf8'));
+    const fsScope = capability.permissions.find(
+        permission => permission && typeof permission === 'object' && permission.identifier === 'fs:scope'
+    );
+
+    expect(fsScope?.allow).toEqual(expect.arrayContaining([
+        { path: '$APPDATA/decode-cache' },
+        { path: '$APPDATA/decode-cache/**' }
+    ]));
+});
