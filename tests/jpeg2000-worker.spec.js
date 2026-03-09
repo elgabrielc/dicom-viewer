@@ -5,8 +5,8 @@ const fs = require('fs');
 const path = require('path');
 
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
-const MR2_J2K_PATH = path.join(__dirname, '..', 'test-data', 'mri-samples', 'MR2_J2KI.dcm');
-const MR2_UNCOMPRESSED_PATH = path.join(__dirname, '..', 'test-data', 'mri-samples', 'MR2_UNCI.dcm');
+const MR2_J2K_PATH = path.join(__dirname, '..', 'test-fixtures', 'MR2_J2KI.dcm');
+const MR2_UNCOMPRESSED_PATH = path.join(__dirname, '..', 'test-fixtures', 'MR2_UNCI.dcm');
 
 test('JPEG 2000 worker URL resolves relative to the app root and the decoder is no longer eagerly loaded', async ({ page }) => {
     await page.goto(HOME_URL);
