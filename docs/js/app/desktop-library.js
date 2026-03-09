@@ -4,6 +4,14 @@
     const DesktopLibrary = {
         CONFIG_KEY: 'dicom-viewer-library-config',
 
+        getRuntime() {
+            const tauri = window.__TAURI__;
+            if (!tauri?.dialog?.open || !tauri?.fs?.readDir || !tauri?.path?.join) {
+                throw new Error('Desktop runtime is not ready. Quit and reopen the app if this persists.');
+            }
+            return tauri;
+        },
+
         getConfig() {
             try {
                 const saved = localStorage.getItem(this.CONFIG_KEY);
@@ -41,7 +49,13 @@
         },
 
         scanFolder(folderPath) {
+            this.getRuntime();
             return app.sources.collectPathSources(folderPath);
+        },
+
+        loadStudies(folderPath, options = {}) {
+            this.getRuntime();
+            return app.sources.loadStudiesFromDesktopPaths([folderPath], options);
         },
 
         markScanComplete(folderPath) {
@@ -59,7 +73,8 @@
         },
 
         async pickAndSetFolder() {
-            const selected = await window.__TAURI__.dialog.open({
+            const tauri = this.getRuntime();
+            const selected = await tauri.dialog.open({
                 directory: true,
                 recursive: true,
                 title: 'Choose DICOM Library Folder'

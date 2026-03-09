@@ -7,19 +7,103 @@
     // DICOM PARSING
     // =====================================================================
 
+    async function toDicomByteArray(input) {
+        if (input instanceof Uint8Array) {
+            return input;
+        }
+
+        if (input instanceof ArrayBuffer) {
+            return new Uint8Array(input);
+        }
+
+        if (input?.buffer instanceof ArrayBuffer && typeof input.byteLength === 'number') {
+            return new Uint8Array(input.buffer, input.byteOffset || 0, input.byteLength);
+        }
+
+        if (input?.arrayBuffer) {
+            return new Uint8Array(await input.arrayBuffer());
+        }
+
+        throw new Error('Unsupported DICOM metadata source');
+    }
+
+    function getMetadataNumber(dataSet, tag, fallback = 0) {
+        const stringValue = getNumber(dataSet, tag, Number.NaN);
+        if (Number.isFinite(stringValue)) {
+            return stringValue;
+        }
+
+        try {
+            const uint16Value = dataSet.uint16?.(tag);
+            if (Number.isFinite(uint16Value)) {
+                return uint16Value;
+            }
+        } catch {}
+
+        try {
+            const int16Value = dataSet.int16?.(tag);
+            if (Number.isFinite(int16Value)) {
+                return int16Value;
+            }
+        } catch {}
+
+        try {
+            const uint32Value = dataSet.uint32?.(tag);
+            if (Number.isFinite(uint32Value)) {
+                return uint32Value;
+            }
+        } catch {}
+
+        try {
+            const int32Value = dataSet.int32?.(tag);
+            if (Number.isFinite(int32Value)) {
+                return int32Value;
+            }
+        } catch {}
+
+        return fallback;
+    }
+
+    function getNumberOfFrames(dataSet) {
+        const frameCount = getMetadataNumber(dataSet, 'x00280008', 1);
+        return Number.isFinite(frameCount) && frameCount > 0 ? frameCount : 1;
+    }
+
+    function getEncapsulatedFrameData(dataSet, pixelDataElement, frameIndex = 0) {
+        try {
+            return dicomParser.readEncapsulatedImageFrame(dataSet, pixelDataElement, frameIndex);
+        } catch (error) {
+            const frameCount = getNumberOfFrames(dataSet);
+            const message = String(error?.message || error || '');
+            const isEmptyBasicOffsetTable = message.includes('basicOffsetTable has zero entries');
+
+            if (!isEmptyBasicOffsetTable || frameCount > 1) {
+                throw error;
+            }
+
+            console.warn(
+                'Falling back to fragment-concatenated encapsulated frame decode for single-frame image with empty Basic Offset Table.'
+            );
+            return dicomParser.readEncapsulatedPixelData(dataSet, pixelDataElement, frameIndex);
+        }
+    }
+
     /**
      * Parse DICOM file metadata without loading pixel data (fast scan)
      * Used during folder import to organize files by study/series.
      *
-     * @param {File} file - File object from File System Access API
+     * @param {File|Blob|ArrayBuffer|Uint8Array} input - Source bytes or file-like object
      * @returns {Promise<Object|null>} Metadata object or null if not valid DICOM
      */
-    async function parseDicomMetadata(file) {
+    async function parseDicomMetadata(input) {
         try {
-            const arrayBuffer = await file.arrayBuffer();
-            const byteArray = new Uint8Array(arrayBuffer);
+            const byteArray = await toDicomByteArray(input);
             const dataSet = dicomParser.parseDicom(byteArray, { untilTag: 'x7fe00010' });
             const transferSyntax = getString(dataSet, 'x00020010');
+            const rows = getMetadataNumber(dataSet, 'x00280010', 0);
+            const cols = getMetadataNumber(dataSet, 'x00280011', 0);
+            const pixelDataElement = dataSet.elements?.x7fe00010;
+            const numberOfFrames = getNumberOfFrames(dataSet);
             return {
                 patientName: getString(dataSet, 'x00100010'),
                 studyDate: getString(dataSet, 'x00080020'),
@@ -29,11 +113,26 @@
                 seriesInstanceUid: getString(dataSet, 'x0020000e'),
                 seriesNumber: getString(dataSet, 'x00200011'),
                 modality: getString(dataSet, 'x00080060'),
-                instanceNumber: getNumber(dataSet, 'x00200013', 0),
-                sliceLocation: getNumber(dataSet, 'x00201041', 0),
+                sopInstanceUid: getString(dataSet, 'x00080018'),
+                instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0),
+                sliceLocation: getMetadataNumber(dataSet, 'x00201041', 0),
                 transferSyntax: transferSyntax,
+                sopClassUid: getString(dataSet, 'x00080016'),
+                rows,
+                cols,
+                numberOfFrames,
+                hasPixelData: !!pixelDataElement && rows > 0 && cols > 0
             };
         } catch { return null; }
+    }
+
+    function isRenderableImageMetadata(meta) {
+        return !!(
+            meta?.studyInstanceUid &&
+            meta?.hasPixelData &&
+            meta?.rows > 0 &&
+            meta?.cols > 0
+        );
     }
 
 
@@ -232,15 +331,13 @@
      * @param {number} bitsAllocated - Bits per pixel (8 or 16)
      * @returns {TypedArray|null} Decoded pixel data or null on failure
      */
-    function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated) {
+    function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex = 0) {
         try {
             let frameData;
 
             // Try using dicomParser's built-in function first
             if (pixelDataElement.fragments && pixelDataElement.fragments.length > 0) {
-                frameData = dicomParser.readEncapsulatedPixelDataFromFragments(
-                    dataSet, pixelDataElement, 0
-                );
+                frameData = getEncapsulatedFrameData(dataSet, pixelDataElement, frameIndex);
             } else {
                 // Manually parse encapsulated pixel data
                 const byteArray = dataSet.byteArray;
@@ -296,6 +393,31 @@
     /** Promise for OpenJPEG initialization (prevents multiple init) */
     let openjpegInitPromise = null;
 
+    function resolveOpenJpegAssetUrl(fileName, runtime = window) {
+        const scriptSrc = runtime?.document
+            ?.querySelector('script[src$="js/openjpegwasm_decode.js"], script[src*="openjpegwasm_decode.js"]')
+            ?.src;
+
+        if (scriptSrc) {
+            try {
+                return new URL(fileName, scriptSrc).toString();
+            } catch (e) {
+                console.warn('Failed to resolve OpenJPEG asset from script URL:', scriptSrc, e);
+            }
+        }
+
+        const href = runtime?.location?.href;
+        if (href) {
+            try {
+                return new URL(`js/${fileName}`, href).toString();
+            } catch (e) {
+                console.warn('Failed to resolve OpenJPEG asset from page URL:', href, e);
+            }
+        }
+
+        return `js/${fileName}`;
+    }
+
     /**
      * Initialize the OpenJPEG WebAssembly decoder
      * Lazily loaded on first JPEG 2000 image
@@ -311,7 +433,7 @@
                 // OpenJPEGWASM is loaded from the script tag
                 if (typeof OpenJPEGWASM === 'function') {
                     openjpegModule = await OpenJPEGWASM({
-                        locateFile: (path) => 'js/' + path
+                        locateFile: (path) => resolveOpenJpegAssetUrl(path)
                     });
                     console.log('OpenJPEG WASM initialized successfully');
                     return openjpegModule;
@@ -337,7 +459,7 @@
      * @param {number} pixelRepresentation - 0=unsigned, 1=signed
      * @returns {Promise<TypedArray|null>} Decoded pixel data or null on failure
      */
-    async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation) {
+    async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
         try {
             console.log('Attempting JPEG 2000 decode for', rows, 'x', cols, 'image');
 
@@ -353,9 +475,7 @@
                 return null;
             }
 
-            // Get the first fragment (single frame)
-            const fragment = fragments[0];
-            const j2kData = new Uint8Array(dataSet.byteArray.buffer, fragment.position, fragment.length);
+            const j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, frameIndex);
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
             // Initialize and use OpenJPEG decoder
@@ -413,11 +533,9 @@
      * @param {number} cols - Image width
      * @returns {Promise<Object|null>} {pixels, isRgb} or null on failure
      */
-    async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols) {
+    async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex = 0) {
         try {
-            const frames = dicomParser.readEncapsulatedPixelDataFromFragments(
-                dataSet, dataSet.elements.x7fe00010, 0
-            );
+            const frames = getEncapsulatedFrameData(dataSet, dataSet.elements.x7fe00010, frameIndex);
 
             const blob = new Blob([frames], { type: 'image/jpeg' });
             const bitmap = await createImageBitmap(blob);
@@ -444,6 +562,10 @@
 
     app.dicom = {
         parseDicomMetadata,
+        toDicomByteArray,
+        getMetadataNumber,
+        getNumberOfFrames,
+        getEncapsulatedFrameData,
         isCompressed,
         isJpegLossless,
         isJpegBaseline,
@@ -455,6 +577,8 @@
         displayBlankSlice,
         decodeJpegLossless,
         decodeJpeg2000,
-        decodeJpegBaseline
+        decodeJpegBaseline,
+        isRenderableImageMetadata,
+        resolveOpenJpegAssetUrl
     };
 })();

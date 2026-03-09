@@ -18,6 +18,21 @@
         decodeJpegBaseline
     } = app.dicom;
 
+    function getUncompressedFramePixelData(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
+        const samplesPerPixel = dataSet.uint16('x00280002') || 1;
+        const framePixelCount = rows * cols * samplesPerPixel;
+        const bytesPerSample = bitsAllocated > 8 ? 2 : 1;
+        const frameOffset = pixelDataElement.dataOffset + (frameIndex * framePixelCount * bytesPerSample);
+
+        if (bitsAllocated === 16) {
+            return pixelRepresentation === 1
+                ? new Int16Array(dataSet.byteArray.buffer, frameOffset, framePixelCount)
+                : new Uint16Array(dataSet.byteArray.buffer, frameOffset, framePixelCount);
+        }
+
+        return new Uint8Array(dataSet.byteArray.buffer, frameOffset, framePixelCount);
+    }
+
     // =====================================================================
     // RENDERING
     // Converts decoded pixel data to visible image on canvas
@@ -62,7 +77,7 @@
      * @param {Object|null} wlOverride - Optional {center, width} to override DICOM values
      * @returns {Promise<Object>} Rendering info {rows, cols, wc, ww, transferSyntax} or {error: true}
      */
-    async function renderDicom(dataSet, wlOverride = null) {
+    async function renderDicom(dataSet, wlOverride = null, frameIndex = 0) {
         // Extract image dimensions and pixel format from DICOM tags
         const rows = dataSet.uint16('x00280010');              // (0028,0010) Rows
         const cols = dataSet.uint16('x00280011');              // (0028,0011) Columns
@@ -130,19 +145,27 @@
         if (isCompressedData) {
             // Decode compressed pixel data using appropriate decoder
             if (isJpeg2000(transferSyntax)) {
-                pixelData = await decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation);
+                pixelData = await decodeJpeg2000(
+                    dataSet,
+                    pixelDataElement,
+                    rows,
+                    cols,
+                    bitsAllocated,
+                    pixelRepresentation,
+                    frameIndex
+                );
                 if (!pixelData) {
                     displayError('JPEG 2000 decode failed', transferSyntaxInfo.name);
                     return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
                 }
             } else if (isJpegLossless(transferSyntax)) {
-                pixelData = decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated);
+                pixelData = decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex);
                 if (!pixelData) {
                     displayError('JPEG Lossless decode failed', transferSyntaxInfo.name);
                     return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
                 }
             } else if (isJpegBaseline(transferSyntax)) {
-                const result = await decodeJpegBaseline(dataSet, pixelDataElement, rows, cols);
+                const result = await decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex);
                 if (!result) {
                     displayError('JPEG decode failed', transferSyntaxInfo.name);
                     return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
@@ -156,13 +179,15 @@
             }
         } else {
             // Uncompressed pixel data - create typed array view directly on buffer
-            if (bitsAllocated === 16) {
-                pixelData = pixelRepresentation === 1
-                    ? new Int16Array(dataSet.byteArray.buffer, pixelDataElement.dataOffset, pixelDataElement.length / 2)
-                    : new Uint16Array(dataSet.byteArray.buffer, pixelDataElement.dataOffset, pixelDataElement.length / 2);
-            } else {
-                pixelData = new Uint8Array(dataSet.byteArray.buffer, pixelDataElement.dataOffset, pixelDataElement.length);
-            }
+            pixelData = getUncompressedFramePixelData(
+                dataSet,
+                pixelDataElement,
+                rows,
+                cols,
+                bitsAllocated,
+                pixelRepresentation,
+                frameIndex
+            );
         }
 
         // Check for blank/uniform slices (common in MPR reconstructions as padding)

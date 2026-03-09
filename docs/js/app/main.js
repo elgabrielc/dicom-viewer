@@ -1,4 +1,4 @@
-(() => {
+(async () => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
     const config = window.CONFIG;
@@ -29,7 +29,8 @@
         refreshLibrary,
         saveLibraryFolderConfig,
         setLibraryFolderMessage,
-        setLibraryFolderStatus
+        setLibraryFolderStatus,
+        updateDesktopScanMessage
     } = app.library;
     const {
         closeViewer,
@@ -180,6 +181,17 @@
             });
     }
 
+    async function waitForDesktopRuntime() {
+        if (window.__TAURI__) return window.__TAURI__;
+
+        const ready = window.__DICOM_VIEWER_TAURI_READY__;
+        if (ready && typeof ready.then === 'function') {
+            return await ready;
+        }
+
+        return window.__TAURI__ || null;
+    }
+
     async function initializeDesktopLibrary() {
         try {
             await loadLibraryConfig();
@@ -188,8 +200,17 @@
                 return;
             }
 
-            const files = await app.desktopLibrary.scanFolder(state.libraryFolder);
-            const studies = await app.sources.processFilesFromSources(files);
+            setLibraryFolderMessage('Loading saved library folder...', 'info');
+            await displayStudies();
+
+            const runtime = await waitForDesktopRuntime();
+            if (!runtime?.fs || !runtime?.path) {
+                throw new Error('Desktop runtime is not ready yet.');
+            }
+
+            const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
+                onProgress: stats => updateDesktopScanMessage(stats, 'Loading saved library folder...')
+            });
             applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {
             app.desktopLibrary.markScanFailed(state.libraryFolder);
@@ -218,17 +239,23 @@
         });
     }
 
-    studiesTableHead.addEventListener('click', handleSortClick);
-    studiesTableHead.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleSortClick(e);
+    async function initializeDesktopRuntimeBridge() {
+        const runtime = await waitForDesktopRuntime();
+        if (!runtime) {
+            console.warn('Desktop runtime APIs unavailable at startup; continuing without native bridge.');
+            return;
         }
-    });
 
-    if (config?.deploymentMode === 'desktop') {
         initializeDesktopMenuBridge();
-        window.__TAURI__.webview.getCurrentWebview().onDragDropEvent(event => {
+
+        const currentWebview = runtime.webview?.getCurrentWebview?.();
+        const registerDragDrop = currentWebview?.onDragDropEvent;
+        if (typeof registerDragDrop !== 'function') {
+            console.warn('Desktop drag-drop API unavailable at startup; continuing without native drag events.');
+            return;
+        }
+
+        await registerDragDrop.call(currentWebview, event => {
             const payload = event.payload;
             if (payload.type === 'enter' || payload.type === 'over') {
                 setDragActive(true);
@@ -240,6 +267,18 @@
         }).catch(err => {
             console.warn('Failed to register Tauri drag-drop handler:', err);
         });
+    }
+
+    studiesTableHead.addEventListener('click', handleSortClick);
+    studiesTableHead.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSortClick(e);
+        }
+    });
+
+    if (config?.deploymentMode === 'desktop') {
+        initializeDesktopRuntimeBridge();
     } else {
         folderZone.addEventListener('dragover', e => {
             e.preventDefault();

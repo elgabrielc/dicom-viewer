@@ -18,7 +18,7 @@
     } = app.dom;
     const { escapeHtml, formatDate } = app.utils;
     const { getTransferSyntaxInfo } = app.dicom;
-    const { normalizeStudiesPayload, processFilesFromSources } = app.sources;
+    const { normalizeStudiesPayload } = app.sources;
 
     const openPanels = {
         studyPanels: new Set(),
@@ -108,6 +108,23 @@
         }
     }
 
+    function updateDesktopScanMessage(stats, label = 'Scanning library folder...') {
+        if (!stats) {
+            setLibraryFolderMessage(label, 'info');
+            return;
+        }
+
+        if (!stats.discovered) {
+            setLibraryFolderMessage(label, 'info');
+            return;
+        }
+
+        setLibraryFolderMessage(
+            `${label} ${stats.processed}/${stats.discovered} files processed (${stats.valid} viewable DICOM).`,
+            'info'
+        );
+    }
+
     async function loadLibraryConfig() {
         if (config?.deploymentMode === 'desktop') {
             libraryFolderInput.readOnly = true;
@@ -149,8 +166,9 @@
 
                 libraryFolderInput.value = folder;
 
-                const files = await app.desktopLibrary.scanFolder(folder);
-                const studies = await processFilesFromSources(files);
+                const studies = await app.desktopLibrary.loadStudies(folder, {
+                    onProgress: stats => updateDesktopScanMessage(stats)
+                });
                 if (applyDesktopLibraryScan(folder, studies)) {
                     setLibraryFolderMessage('Library folder updated.', 'success');
                 }
@@ -214,8 +232,9 @@
                     throw new Error('Choose a library folder first.');
                 }
 
-                const files = await app.desktopLibrary.scanFolder(payload.folder);
-                const studies = await processFilesFromSources(files);
+                const studies = await app.desktopLibrary.loadStudies(payload.folder, {
+                    onProgress: stats => updateDesktopScanMessage(stats)
+                });
                 applyDesktopLibraryScan(payload.folder, studies);
                 await displayStudies();
                 return;
@@ -640,6 +659,7 @@
         refreshLibrary,
         saveLibraryFolderConfig,
         setLibraryFolderMessage,
-        setLibraryFolderStatus
+        setLibraryFolderStatus,
+        updateDesktopScanMessage
     };
 })();
