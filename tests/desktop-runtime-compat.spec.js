@@ -110,6 +110,7 @@ test('desktop runtime shim enables desktop mode when only __TAURI_INTERNALS__ is
     const result = await page.evaluate(() => ({
         deploymentMode: window.CONFIG.deploymentMode,
         hasGlobalTauri: typeof window.__TAURI__ !== 'undefined',
+        hasCoreInvoke: typeof window.__TAURI__?.core?.invoke === 'function',
         hasDialogApi: typeof window.__TAURI__?.dialog?.open === 'function',
         hasFsApi: typeof window.__TAURI__?.fs?.readDir === 'function',
         libraryConfigVisible: getComputedStyle(document.getElementById('libraryFolderConfig')).display !== 'none'
@@ -117,6 +118,7 @@ test('desktop runtime shim enables desktop mode when only __TAURI_INTERNALS__ is
 
     expect(result.deploymentMode).toBe('desktop');
     expect(result.hasGlobalTauri).toBe(true);
+    expect(result.hasCoreInvoke).toBe(true);
     expect(result.hasDialogApi).toBe(true);
     expect(result.hasFsApi).toBe(true);
     expect(result.libraryConfigVisible).toBe(true);
@@ -246,6 +248,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
         return {
             hasReadyPromise: typeof window.__DICOM_VIEWER_TAURI_READY__?.then === 'function',
             hasGlobalTauri: typeof window.__TAURI__ !== 'undefined',
+            hasCoreInvoke: typeof runtime?.core?.invoke === 'function',
             hasDialogApi: typeof runtime?.dialog?.open === 'function',
             hasFsApi: typeof runtime?.fs?.readDir === 'function'
         };
@@ -253,6 +256,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
 
     expect(result.hasReadyPromise).toBe(true);
     expect(result.hasGlobalTauri).toBe(true);
+    expect(result.hasCoreInvoke).toBe(true);
     expect(result.hasDialogApi).toBe(true);
     expect(result.hasFsApi).toBe(true);
 });

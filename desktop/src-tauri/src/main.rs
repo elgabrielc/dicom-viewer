@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod decode;
+
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
     AppHandle, Emitter, Manager, Runtime,
@@ -17,7 +19,11 @@ fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> 
         name: Some(package_info.name.clone()),
         version: Some(package_info.version.to_string()),
         copyright: config.bundle.copyright.clone(),
-        authors: config.bundle.publisher.clone().map(|publisher| vec![publisher]),
+        authors: config
+            .bundle
+            .publisher
+            .clone()
+            .map(|publisher| vec![publisher]),
         ..Default::default()
     };
 
@@ -70,6 +76,7 @@ fn emit_menu_event<R: Runtime>(app: &AppHandle<R>, event_name: &str) {
 
 fn main() {
     tauri::Builder::default()
+        .manage(decode::DecodeStore::default())
         .setup(|app| {
             let menu = build_menu(app)?;
             app.set_menu(menu)?;
@@ -78,6 +85,10 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
+        .invoke_handler(tauri::generate_handler![
+            decode::decode_frame,
+            decode::take_decoded_frame
+        ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),
             MENU_OPEN_HELP => emit_menu_event(app, EVENT_OPEN_HELP),
