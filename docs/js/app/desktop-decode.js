@@ -1,31 +1,6 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
-
-    function createNativeError(message, stage = 'decode', extra = {}) {
-        const error = new Error(message);
-        error.stage = stage;
-        Object.assign(error, extra);
-        return error;
-    }
-
-    function normalizeNativeError(error, fallbackStage = 'decode') {
-        if (error instanceof Error) {
-            if (typeof error.stage !== 'string' || !error.stage) {
-                error.stage = fallbackStage;
-            }
-            return error;
-        }
-
-        if (error && typeof error === 'object') {
-            return createNativeError(
-                String(error.message || 'Unknown native decode error'),
-                typeof error.stage === 'string' && error.stage ? error.stage : fallbackStage,
-                { details: error.details }
-            );
-        }
-
-        return createNativeError(String(error || 'Unknown native decode error'), fallbackStage);
-    }
+    const { createStagedError, normalizeStagedError, getPixelDataArrayType } = app.utils;
 
     function describeBinaryPayload(payload) {
         if (payload === null) {
@@ -57,43 +32,34 @@
             return normalizeBinaryResponse(bytes.data);
         }
 
-        throw createNativeError(
+        throw createStagedError(
+            'pixel-conversion',
             `Unexpected decoded frame payload shape: ${describeBinaryPayload(bytes)}`,
-            'pixel-conversion'
         );
-    }
-
-    function getPixelDataArrayType(bitsAllocated, pixelRepresentation) {
-        if (bitsAllocated <= 8) {
-            return pixelRepresentation === 1 ? Int8Array : Uint8Array;
-        }
-        if (bitsAllocated <= 16) {
-            return pixelRepresentation === 1 ? Int16Array : Uint16Array;
-        }
-        if (bitsAllocated <= 32) {
-            return pixelRepresentation === 1 ? Int32Array : Uint32Array;
-        }
-        throw new Error(`Unsupported Bits Allocated value from native decode: ${bitsAllocated}`);
     }
 
     function coercePixelData(bytes, bitsAllocated, pixelRepresentation) {
         if (!Number.isFinite(bitsAllocated) || bitsAllocated <= 0 || bitsAllocated % 8 !== 0) {
-            throw createNativeError(
+            throw createStagedError(
+                'pixel-conversion',
                 `Native decode returned a non-byte-aligned Bits Allocated value: ${bitsAllocated}`,
-                'pixel-conversion'
             );
         }
 
         const bytesPerSample = bitsAllocated / 8;
         if (bytes.byteLength % bytesPerSample !== 0) {
-            throw createNativeError(
+            throw createStagedError(
+                'pixel-conversion',
                 `Decoded frame payload length ${bytes.byteLength} is not aligned to ${bitsAllocated}-bit samples.`,
-                'pixel-conversion'
             );
         }
 
         const sampleCount = bytes.byteLength / bytesPerSample;
-        const PixelArrayType = getPixelDataArrayType(bitsAllocated, pixelRepresentation);
+        const PixelArrayType = getPixelDataArrayType(
+            bitsAllocated,
+            pixelRepresentation,
+            'Unsupported Bits Allocated value from native decode'
+        );
         return new PixelArrayType(bytes.buffer, bytes.byteOffset, sampleCount).slice();
     }
 
@@ -101,9 +67,9 @@
         getRuntime() {
             const tauri = window.__TAURI__;
             if (typeof tauri?.core?.invoke !== 'function') {
-                throw createNativeError(
-                    'Desktop decode runtime is not ready. Quit and reopen the app if this persists.',
-                    'codec-init'
+                throw createStagedError(
+                    'codec-init',
+                    'Desktop decode runtime is not ready. Quit and reopen the app if this persists.'
                 );
             }
             return tauri;
@@ -113,7 +79,7 @@
             try {
                 return await this.getRuntime().core.invoke('decode_frame', { path, frameIndex });
             } catch (error) {
-                throw normalizeNativeError(error, 'decode');
+                throw normalizeStagedError(error, 'decode');
             }
         },
 
@@ -122,20 +88,20 @@
                 const bytes = await this.getRuntime().core.invoke('take_decoded_frame', { decodeId });
                 return normalizeBinaryResponse(bytes);
             } catch (error) {
-                throw normalizeNativeError(error, 'pixel-transfer');
+                throw normalizeStagedError(error, 'pixel-transfer');
             }
         },
 
         async decodeFrameWithPixels(path, frameIndex = 0) {
             const metadata = await this.decodeFrame(path, frameIndex);
             if (!metadata?.decodeId) {
-                throw createNativeError('Native decode response did not include a decodeId.', 'pixel-transfer');
+                throw createStagedError('pixel-transfer', 'Native decode response did not include a decodeId.');
             }
             const pixelBytes = await this.takeDecodedFrame(metadata.decodeId);
             if (Number.isFinite(metadata.pixelDataLength) && metadata.pixelDataLength !== pixelBytes.byteLength) {
-                throw createNativeError(
-                    `Decoded frame payload length mismatch: expected ${metadata.pixelDataLength} byte(s), received ${pixelBytes.byteLength}.`,
-                    'pixel-conversion'
+                throw createStagedError(
+                    'pixel-conversion',
+                    `Decoded frame payload length mismatch: expected ${metadata.pixelDataLength} byte(s), received ${pixelBytes.byteLength}.`
                 );
             }
 

@@ -237,37 +237,6 @@ test('decodeJpeg2000 decodes a real JPEG 2000 DICOM to the same pixels as its un
             bitsAllocated,
             pixelRepresentation
         );
-        if (!decodedPixels) {
-            let workerErrorMessage = null;
-            try {
-                const frameData = window.DicomViewerApp.dicom.getEncapsulatedFrameData(
-                    jpeg2000DataSet,
-                    jpeg2000DataSet.elements.x7fe00010,
-                    0
-                );
-                await window.DicomViewerApp.dicom.decodeJ2KInWorker(
-                    frameData,
-                    bitsAllocated,
-                    pixelRepresentation,
-                    rows,
-                    cols
-                );
-            } catch (error) {
-                workerErrorMessage = String(error?.message || error);
-            }
-
-            return {
-                decodedType: null,
-                sampleCount,
-                allEqual: false,
-                firstEightDecoded: [],
-                firstEightNative: [],
-                checksumDecoded: null,
-                checksumNative: null,
-                workerErrorMessage
-            };
-        }
-
         const nativePixels = readUncompressedPixels(uncompressedDataSet, sampleCount);
 
         let allEqual = decodedPixels.length === nativePixels.length;
