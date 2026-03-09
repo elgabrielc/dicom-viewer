@@ -8,6 +8,7 @@
         isJpegLossless,
         isJpegBaseline,
         isJpeg2000,
+        getNumberOfFrames,
         getTransferSyntaxInfo,
         getModalityDefaults,
         calculateAutoWindowLevel,
@@ -18,19 +19,64 @@
         decodeJpegBaseline
     } = app.dicom;
 
-    function getUncompressedFramePixelData(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
-        const samplesPerPixel = dataSet.uint16('x00280002') || 1;
-        const framePixelCount = rows * cols * samplesPerPixel;
-        const bytesPerSample = bitsAllocated > 8 ? 2 : 1;
-        const frameOffset = pixelDataElement.dataOffset + (frameIndex * framePixelCount * bytesPerSample);
+    function getPixelDataArrayType(bitsAllocated, pixelRepresentation) {
+        if (bitsAllocated <= 8) {
+            return pixelRepresentation === 1 ? Int8Array : Uint8Array;
+        }
+        if (bitsAllocated <= 16) {
+            return pixelRepresentation === 1 ? Int16Array : Uint16Array;
+        }
+        if (bitsAllocated <= 32) {
+            return pixelRepresentation === 1 ? Int32Array : Uint32Array;
+        }
+        throw new Error(`Unsupported Bits Allocated value: ${bitsAllocated}`);
+    }
 
-        if (bitsAllocated === 16) {
-            return pixelRepresentation === 1
-                ? new Int16Array(dataSet.byteArray.buffer, frameOffset, framePixelCount)
-                : new Uint16Array(dataSet.byteArray.buffer, frameOffset, framePixelCount);
+    function getUncompressedFramePixelData(
+        dataSet,
+        pixelDataElement,
+        rows,
+        cols,
+        bitsAllocated,
+        pixelRepresentation,
+        samplesPerPixel,
+        frameIndex = 0
+    ) {
+        if (bitsAllocated % 8 !== 0) {
+            throw new Error(`Native pixel data with Bits Allocated ${bitsAllocated} is not byte-aligned.`);
         }
 
-        return new Uint8Array(dataSet.byteArray.buffer, frameOffset, framePixelCount);
+        const framePixelCount = rows * cols * samplesPerPixel;
+        const bytesPerSample = Math.max(1, Math.ceil(bitsAllocated / 8));
+        const expectedFrameBytes = framePixelCount * bytesPerSample;
+        const numberOfFrames = getNumberOfFrames(dataSet);
+        const totalPixelBytes = Number.isFinite(pixelDataElement.length)
+            ? pixelDataElement.length
+            : (dataSet.byteArray.byteLength - pixelDataElement.dataOffset);
+
+        if (frameIndex < 0 || frameIndex >= numberOfFrames) {
+            throw new Error(`Frame index ${frameIndex} is outside the available native frames (${numberOfFrames}).`);
+        }
+
+        const evenlyDivisibleStride = numberOfFrames > 0 && totalPixelBytes % numberOfFrames === 0
+            ? totalPixelBytes / numberOfFrames
+            : null;
+        const frameStrideBytes = evenlyDivisibleStride && evenlyDivisibleStride >= expectedFrameBytes
+            ? evenlyDivisibleStride
+            : expectedFrameBytes;
+        const frameDataOffset = pixelDataElement.dataOffset + (frameIndex * frameStrideBytes);
+        const frameDataEnd = frameDataOffset + expectedFrameBytes;
+        const pixelDataEnd = pixelDataElement.dataOffset + totalPixelBytes;
+
+        if (frameDataEnd > pixelDataEnd) {
+            throw new Error('Native pixel data is shorter than the requested frame payload.');
+        }
+
+        const PixelArrayType = getPixelDataArrayType(bitsAllocated, pixelRepresentation);
+        const bufferOffset = dataSet.byteArray.byteOffset + frameDataOffset;
+
+        // Return a detached copy so future consumers can safely mutate decoded.pixelData.
+        return new PixelArrayType(dataSet.byteArray.buffer, bufferOffset, framePixelCount).slice();
     }
 
     // =====================================================================
@@ -82,6 +128,23 @@
         };
     }
 
+    function buildDecodeError(errorMessage, errorDetails, extra = {}) {
+        return {
+            error: true,
+            errorMessage,
+            errorDetails,
+            ...extra
+        };
+    }
+
+    function renderDecodeError(errorInfo) {
+        state.pixelSpacing = null;
+        app.tools.updateCalibrationWarning();
+        displayError(errorInfo.errorMessage, errorInfo.errorDetails);
+        app.tools.drawMeasurements?.();
+        return errorInfo;
+    }
+
     async function decodeDicom(dataSet, frameIndex = 0) {
         // Extract image dimensions and pixel format from DICOM tags
         const rows = dataSet.uint16('x00280010');              // (0028,0010) Rows
@@ -124,10 +187,7 @@
             protocolName: getString(dataSet, 'x00181030'),         // (0018,1030) Protocol Name
             sequenceName: getString(dataSet, 'x00180024'),         // (0018,0024) Sequence Name
             scanningSequence: getString(dataSet, 'x00180020'),     // (0018,0020) Scanning Sequence
-            mrAcquisitionType: getString(dataSet, 'x00180023'),    // (0018,0023) MR Acquisition Type (2D/3D)
-            tr: getNumber(dataSet, 'x00180080', 0),
-            te: getNumber(dataSet, 'x00180081', 0),
-            fieldStrength: getNumber(dataSet, 'x00180087', 0)
+            mrAcquisitionType: getString(dataSet, 'x00180023')    // (0018,0023) MR Acquisition Type (2D/3D)
         };
 
         // Get transfer syntax to determine compression format
@@ -140,8 +200,11 @@
 
         if (!pixelDataElement) {
             console.error('No pixel data element found');
-            displayError('No pixel data found', 'The DICOM file may be corrupted or incomplete');
-            return { error: true };
+            return buildDecodeError(
+                'No pixel data found',
+                'The DICOM file may be corrupted or incomplete',
+                { transferSyntax, tsInfo: transferSyntaxInfo }
+            );
         }
 
         let pixelData;
@@ -163,39 +226,60 @@
                     frameIndex
                 );
                 if (!pixelData) {
-                    displayError('JPEG 2000 decode failed', transferSyntaxInfo.name);
-                    return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
+                    return buildDecodeError(
+                        'JPEG 2000 decode failed',
+                        transferSyntaxInfo.name,
+                        { transferSyntax, tsInfo: transferSyntaxInfo }
+                    );
                 }
             } else if (isJpegLossless(transferSyntax)) {
                 pixelData = decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex);
                 if (!pixelData) {
-                    displayError('JPEG Lossless decode failed', transferSyntaxInfo.name);
-                    return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
+                    return buildDecodeError(
+                        'JPEG Lossless decode failed',
+                        transferSyntaxInfo.name,
+                        { transferSyntax, tsInfo: transferSyntaxInfo }
+                    );
                 }
             } else if (isJpegBaseline(transferSyntax)) {
                 const result = await decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex);
                 if (!result) {
-                    displayError('JPEG decode failed', transferSyntaxInfo.name);
-                    return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
+                    return buildDecodeError(
+                        'JPEG decode failed',
+                        transferSyntaxInfo.name,
+                        { transferSyntax, tsInfo: transferSyntaxInfo }
+                    );
                 }
                 pixelData = result.pixels;
                 skipWindowLevel = result.isRgb; // Already 0-255 from JPEG decode
             } else {
                 // Unsupported compression format
-                displayError('Unsupported compression format', transferSyntaxInfo.name);
-                return { error: true, transferSyntax, tsInfo: transferSyntaxInfo };
+                return buildDecodeError(
+                    'Unsupported compression format',
+                    transferSyntaxInfo.name,
+                    { transferSyntax, tsInfo: transferSyntaxInfo }
+                );
             }
         } else {
-            // Uncompressed pixel data - create typed array view directly on buffer
-            pixelData = getUncompressedFramePixelData(
-                dataSet,
-                pixelDataElement,
-                rows,
-                cols,
-                bitsAllocated,
-                pixelRepresentation,
-                frameIndex
-            );
+            try {
+                pixelData = getUncompressedFramePixelData(
+                    dataSet,
+                    pixelDataElement,
+                    rows,
+                    cols,
+                    bitsAllocated,
+                    pixelRepresentation,
+                    samplesPerPixel,
+                    frameIndex
+                );
+            } catch (error) {
+                console.error('Native pixel data decode error:', error);
+                return buildDecodeError(
+                    'Native pixel data decode failed',
+                    String(error?.message || error || 'Unknown native decode error'),
+                    { transferSyntax, tsInfo: transferSyntaxInfo }
+                );
+            }
         }
 
         // Check for blank/uniform slices (common in MPR reconstructions as padding)
@@ -287,7 +371,7 @@
         // Calculate window/level range (min/max displayable values)
         const windowMin = windowCenter - windowWidth / 2;
         const windowMax = windowCenter + windowWidth / 2;
-        const windowRange = Math.max(windowMax - windowMin, 1);
+        const windowDivisor = Math.max(windowMax - windowMin, 1);
 
         // Apply rescale and window/level transform to each pixel
         for (let i = 0; i < decoded.pixelData.length; i++) {
@@ -301,7 +385,7 @@
                 let pixelValue = decoded.pixelData[i] * decoded.rescaleSlope + decoded.rescaleIntercept;
                 // Clamp to window range and scale to 0-255
                 pixelValue = Math.max(windowMin, Math.min(windowMax, pixelValue));
-                grayscaleValue = Math.round(((pixelValue - windowMin) / windowRange) * 255);
+                grayscaleValue = Math.round(((pixelValue - windowMin) / windowDivisor) * 255);
             }
             // Set RGBA values (grayscale = R=G=B, alpha=255)
             const pixelIndex = i * 4;
@@ -328,7 +412,12 @@
      */
     async function renderDicom(dataSet, wlOverride = null, frameIndex = 0) {
         const decoded = await decodeDicom(dataSet, frameIndex);
-        if (!decoded || decoded.error) return decoded || { error: true };
+        if (!decoded) {
+            return renderDecodeError(buildDecodeError('Image decode failed', 'Unknown decode error'));
+        }
+        if (decoded.error) {
+            return renderDecodeError(decoded);
+        }
         return renderPixels(decoded, wlOverride);
     }
 

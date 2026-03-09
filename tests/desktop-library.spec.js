@@ -448,6 +448,59 @@ test.describe('Desktop library scanning', () => {
         expect(result.frame1).toBeGreaterThan(result.frame0);
     });
 
+    test('decodeDicom selects the requested frame from a 32-bit uncompressed multi-frame dataset', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const frame0Pixels = [10, 20, 30, 40];
+            const frame1Pixels = [100000, 100100, 100200, 100300];
+            const buffer = new ArrayBuffer(8 * 4);
+            const pixels = new Uint32Array(buffer);
+            pixels.set([...frame0Pixels, ...frame1Pixels]);
+
+            const dataSet = {
+                byteArray: new Uint8Array(buffer),
+                elements: {
+                    x7fe00010: {
+                        dataOffset: 0,
+                        length: buffer.byteLength
+                    }
+                },
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'CT',
+                        x00280004: 'MONOCHROME2',
+                        x00281050: '128',
+                        x00281051: '256'
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    const values = {
+                        x00280010: 2,
+                        x00280011: 2,
+                        x00280100: 32,
+                        x00280103: 0,
+                        x00280002: 1,
+                        x00280008: 2
+                    };
+                    return values[tag];
+                }
+            };
+
+            const decoded = await window.DicomViewerApp.rendering.decodeDicom(dataSet, 1);
+            return {
+                pixelDataType: decoded.pixelData.constructor.name,
+                pixelValues: Array.from(decoded.pixelData)
+            };
+        });
+
+        expect(result.pixelDataType).toBe('Uint32Array');
+        expect(result.pixelValues).toEqual([100000, 100100, 100200, 100300]);
+    });
+
     test('decodeDicom returns the normalized intermediate contract for uncompressed CT data', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
@@ -534,15 +587,109 @@ test.describe('Desktop library scanning', () => {
         });
         expect(result.mrMetadataKeys).toEqual(expect.arrayContaining([
             'echoTime',
-            'fieldStrength',
             'flipAngle',
             'magneticFieldStrength',
+            'mrAcquisitionType',
             'protocolName',
             'repetitionTime',
+            'scanningSequence',
             'sequenceName',
-            'te',
-            'tr'
         ]));
+    });
+
+    test('decodeDicom does not write to the canvas when it returns an error', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 2;
+            canvas.height = 2;
+            ctx.fillStyle = 'rgb(12, 34, 56)';
+            ctx.fillRect(0, 0, 2, 2);
+            const before = Array.from(ctx.getImageData(0, 0, 2, 2).data);
+
+            const info = await window.DicomViewerApp.rendering.decodeDicom({
+                elements: {},
+                string() {
+                    return '';
+                },
+                uint16() {
+                    return 0;
+                }
+            }, 0);
+
+            return {
+                info,
+                after: Array.from(ctx.getImageData(0, 0, 2, 2).data),
+                canvasSize: { width: canvas.width, height: canvas.height },
+                before
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            errorMessage: 'No pixel data found'
+        });
+        expect(result.canvasSize).toEqual({ width: 2, height: 2 });
+        expect(result.after).toEqual(result.before);
+    });
+
+    test('decodeDicom returns a detached copy of uncompressed pixel data', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const buffer = new ArrayBuffer(4 * 2);
+            const backingPixels = new Uint16Array(buffer);
+            backingPixels.set([100, 200, 300, 400]);
+
+            const dataSet = {
+                byteArray: new Uint8Array(buffer),
+                elements: {
+                    x7fe00010: {
+                        dataOffset: 0,
+                        length: buffer.byteLength
+                    }
+                },
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'CT',
+                        x00280004: 'MONOCHROME2',
+                        x00281050: '40',
+                        x00281051: '400'
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    const values = {
+                        x00280010: 2,
+                        x00280011: 2,
+                        x00280100: 16,
+                        x00280103: 0,
+                        x00280002: 1,
+                        x00280008: 1
+                    };
+                    return values[tag];
+                }
+            };
+
+            const decoded = await window.DicomViewerApp.rendering.decodeDicom(dataSet, 0);
+            const sharesBuffer = decoded.pixelData.buffer === buffer;
+            decoded.pixelData[0] = 9999;
+
+            return {
+                sharesBuffer,
+                backingFirstValue: backingPixels[0],
+                decodedFirstValue: decoded.pixelData[0]
+            };
+        });
+
+        expect(result.sharesBuffer).toBe(false);
+        expect(result.backingFirstValue).toBe(100);
+        expect(result.decodedFirstValue).toBe(9999);
     });
 
     test('renderPixels renders a hand-constructed decode contract to the canvas', async ({ page }) => {
@@ -576,10 +723,7 @@ test.describe('Desktop library scanning', () => {
                     protocolName: '',
                     sequenceName: '',
                     scanningSequence: '',
-                    mrAcquisitionType: '',
-                    tr: 0,
-                    te: 0,
-                    fieldStrength: 0
+                    mrAcquisitionType: ''
                 },
                 pixelSpacing: { row: 0.5, col: 0.25 },
                 isBlank: false,
