@@ -1,6 +1,7 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { state } = app;
+    const config = window.CONFIG;
     const {
         libraryView,
         viewerView,
@@ -15,6 +16,7 @@
         nextBtn
     } = app.dom;
     const { escapeHtml } = app.utils;
+    const { toDicomByteArray } = app.dicom;
     const { renderDicom } = app.rendering;
     const { readSliceBuffer } = app.sources;
     const {
@@ -22,6 +24,8 @@
         resetViewForNewSeries,
         updateWLDisplay
     } = app.tools;
+
+    const VIEWER_PRELOAD_RADIUS = config?.deploymentMode === 'desktop' ? 1 : 3;
 
     async function loadSlice(index) {
         if (!state.currentSeries) return;
@@ -38,7 +42,7 @@
 
             if (!dataSet) {
                 const buf = await readSliceBuffer(slice, 'load');
-                dataSet = dicomParser.parseDicom(new Uint8Array(buf));
+                dataSet = dicomParser.parseDicom(await toDicomByteArray(buf));
                 state.sliceCache.set(index, dataSet);
             }
 
@@ -98,11 +102,13 @@
                 `;
             }
 
-            for (let i = index - 3; i <= index + 3; i++) {
+            for (let i = index - VIEWER_PRELOAD_RADIUS; i <= index + VIEWER_PRELOAD_RADIUS; i++) {
                 if (i >= 0 && i < slices.length && !state.sliceCache.has(i)) {
                     const preloadSlice = slices[i];
                     readSliceBuffer(preloadSlice, 'preload').then(buf => {
-                        state.sliceCache.set(i, dicomParser.parseDicom(new Uint8Array(buf)));
+                        toDicomByteArray(buf).then(byteArray => {
+                            state.sliceCache.set(i, dicomParser.parseDicom(byteArray));
+                        }).catch(() => {});
                     }).catch(() => {});
                 }
             }

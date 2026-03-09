@@ -220,10 +220,16 @@ test.describe('Desktop library scanning', () => {
             const buffer = await window.DicomViewerApp.sources.readSliceBuffer({
                 source: { kind: 'path', path: '/library/image.dcm' }
             }, 'scan');
-            return Array.from(new Uint8Array(buffer));
+            return {
+                isUint8Array: buffer instanceof Uint8Array,
+                bytes: Array.from(buffer)
+            };
         });
 
-        expect(bytes).toEqual([1, 2, 3, 4]);
+        expect(bytes).toEqual({
+            isUint8Array: true,
+            bytes: [1, 2, 3, 4]
+        });
     });
 
     test('renderable image metadata helper excludes non-image DICOM objects', async ({ page }) => {
@@ -297,6 +303,25 @@ test.describe('Desktop library scanning', () => {
         expect(result.rows).toBe(512);
         expect(result.cols).toBe(512);
         expect(result.instanceNumber).toBe(7);
+    });
+
+    test('byte-array helper preserves typed-array inputs without cloning', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const bytes = Uint8Array.from([9, 8, 7, 6]).subarray(1, 3);
+            const normalized = await window.DicomViewerApp.dicom.toDicomByteArray(bytes);
+            return {
+                sameReference: normalized === bytes,
+                bytes: Array.from(normalized)
+            };
+        });
+
+        expect(result).toEqual({
+            sameReference: true,
+            bytes: [8, 7]
+        });
     });
 
     test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {

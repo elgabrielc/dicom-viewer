@@ -4,8 +4,8 @@
     const { parseDicomMetadata, isRenderableImageMetadata } = app.dicom;
     const DESKTOP_MAX_SCAN_DEPTH = 20;
     const DEFAULT_SCAN_CONCURRENCY = 100;
-    const DESKTOP_PATH_SCAN_CONCURRENCY = 16;
-    const DESKTOP_PATH_BATCH_SIZE = 128;
+    const DESKTOP_PATH_SCAN_CONCURRENCY = 4;
+    const DESKTOP_PATH_BATCH_SIZE = 32;
     const DESKTOP_PATH_READ_ATTEMPTS = 3;
     const DESKTOP_PATH_READ_RETRY_DELAY_MS = 50;
     const SCAN_PROGRESS_UPDATE_INTERVAL = 200;
@@ -266,7 +266,7 @@
                         }
                     }
                 );
-                return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                return bytes;
             }
             default:
                 throw new Error(`Unknown source kind: ${source?.kind}`);

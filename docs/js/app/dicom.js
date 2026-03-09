@@ -559,6 +559,7 @@
 
     app.dicom = {
         parseDicomMetadata,
+        toDicomByteArray,
         getMetadataNumber,
         getEncapsulatedFrameData,
         isCompressed,

@@ -41,7 +41,7 @@
         }
     }
 
-    const SLICE_CACHE_MAX_ENTRIES = 100;
+    const SLICE_CACHE_MAX_ENTRIES = window.CONFIG?.deploymentMode === 'desktop' ? 24 : 100;
 
     /**
      * Global application state
