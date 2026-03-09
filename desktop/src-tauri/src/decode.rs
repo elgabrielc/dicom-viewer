@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -13,9 +13,11 @@ use dicom_dictionary_std::tags;
 use dicom_object::{open_file, DefaultDicomObject};
 use dicom_pixeldata::{DecodedPixelData, PixelDecoder};
 use serde::Serialize;
-use tauri::{ipc::Response, State};
+use tauri::{ipc::Response, AppHandle, Runtime, State};
+use tauri_plugin_fs::FsExt;
 
 const DECODE_TIMEOUT_SECS: u64 = 30;
+const MAX_DECODE_STORE_ENTRIES: usize = 8;
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -35,49 +37,108 @@ pub struct DecodeFrameMetadata {
     pub pixel_data_length: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct DecodedFrameMetadata {
+    rows: u16,
+    cols: u16,
+    bits_allocated: u16,
+    pixel_representation: u16,
+    samples_per_pixel: u16,
+    planar_configuration: u16,
+    photometric_interpretation: String,
+    window_center: Option<f64>,
+    window_width: Option<f64>,
+    rescale_slope: Option<f64>,
+    rescale_intercept: Option<f64>,
+    pixel_data_length: usize,
+}
+
+impl DecodedFrameMetadata {
+    fn into_response(self, decode_id: String) -> DecodeFrameMetadata {
+        DecodeFrameMetadata {
+            decode_id,
+            rows: self.rows,
+            cols: self.cols,
+            bits_allocated: self.bits_allocated,
+            pixel_representation: self.pixel_representation,
+            samples_per_pixel: self.samples_per_pixel,
+            planar_configuration: self.planar_configuration,
+            photometric_interpretation: self.photometric_interpretation,
+            window_center: self.window_center,
+            window_width: self.window_width,
+            rescale_slope: self.rescale_slope,
+            rescale_intercept: self.rescale_intercept,
+            pixel_data_length: self.pixel_data_length,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct DecodedFrame {
-    metadata: DecodeFrameMetadata,
+    metadata: DecodedFrameMetadata,
     pixel_bytes: Vec<u8>,
+}
+
+#[derive(Default)]
+struct DecodeStoreEntries {
+    order: VecDeque<String>,
+    pixels_by_id: HashMap<String, Vec<u8>>,
 }
 
 #[derive(Default)]
 pub struct DecodeStore {
     next_id: AtomicU64,
-    entries: Mutex<HashMap<String, Vec<u8>>>,
+    entries: Mutex<DecodeStoreEntries>,
 }
 
 impl DecodeStore {
     fn insert(&self, pixel_bytes: Vec<u8>) -> String {
+        // Uniqueness only depends on atomicity here; we do not need cross-thread ordering.
         let id = self.next_id.fetch_add(1, Ordering::Relaxed) + 1;
         let decode_id = format!("decode-{id}");
-        self.entries
-            .lock()
-            .expect("decode store poisoned")
-            .insert(decode_id.clone(), pixel_bytes);
+        let mut entries = self.entries.lock().expect("decode store poisoned");
+        entries.pixels_by_id.insert(decode_id.clone(), pixel_bytes);
+        entries.order.push_back(decode_id.clone());
+
+        while entries.order.len() > MAX_DECODE_STORE_ENTRIES {
+            if let Some(stale_decode_id) = entries.order.pop_front() {
+                entries.pixels_by_id.remove(&stale_decode_id);
+            }
+        }
+
         decode_id
     }
 
     fn take(&self, decode_id: &str) -> Option<Vec<u8>> {
+        let mut entries = self.entries.lock().expect("decode store poisoned");
+        let pixel_bytes = entries.pixels_by_id.remove(decode_id)?;
+        if let Some(index) = entries.order.iter().position(|id| id == decode_id) {
+            entries.order.remove(index);
+        }
+        Some(pixel_bytes)
+    }
+
+    #[cfg(test)]
+    fn pending_count(&self) -> usize {
         self.entries
             .lock()
             .expect("decode store poisoned")
-            .remove(decode_id)
+            .pixels_by_id
+            .len()
     }
 }
 
 #[tauri::command]
-pub async fn decode_frame(
+pub async fn decode_frame<R: Runtime>(
+    app: AppHandle<R>,
     path: String,
     frame_index: u32,
     store: State<'_, DecodeStore>,
 ) -> Result<DecodeFrameMetadata, String> {
-    let decode_result = run_decode_with_timeout(path, frame_index).await?;
+    let scoped_path = validate_decode_path(&app, &path)?;
+    let decode_result = run_decode_with_timeout(scoped_path, frame_index).await?;
     let decode_id = store.insert(decode_result.pixel_bytes);
-    Ok(DecodeFrameMetadata {
-        decode_id,
-        ..decode_result.metadata
-    })
+    Ok(decode_result.metadata.into_response(decode_id))
 }
 
 #[tauri::command]
@@ -91,23 +152,46 @@ pub fn take_decoded_frame(
     Ok(Response::new(pixel_bytes))
 }
 
-async fn run_decode_with_timeout(path: String, frame_index: u32) -> Result<DecodedFrame, String> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(decode_frame_impl(&path, frame_index));
-    });
+async fn run_decode_with_timeout(path: PathBuf, frame_index: u32) -> Result<DecodedFrame, String> {
+    let decode_task = tokio::task::spawn_blocking(move || decode_frame_impl(&path, frame_index));
 
-    match tokio::time::timeout(Duration::from_secs(DECODE_TIMEOUT_SECS), rx).await {
+    match tokio::time::timeout(Duration::from_secs(DECODE_TIMEOUT_SECS), decode_task).await {
         Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("Native decode worker ended before producing a result.".into()),
+        Ok(Err(error)) => Err(format!(
+            "Native decode worker ended before producing a result: {error}"
+        )),
         Err(_) => Err(format!(
-            "Native decode timed out after {DECODE_TIMEOUT_SECS}s. The decode thread may still be running."
+            "Native decode timed out after {DECODE_TIMEOUT_SECS}s while waiting on the bounded blocking pool."
         )),
     }
 }
 
-fn decode_frame_impl(path: &str, frame_index: u32) -> Result<DecodedFrame, String> {
-    let object = open_file(path).map_err(|e| format!("Failed to open DICOM file {path}: {e}"))?;
+fn validate_decode_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<PathBuf, String> {
+    let requested_path = PathBuf::from(path);
+    if requested_path.as_os_str().is_empty() {
+        return Err("Decode path is empty.".into());
+    }
+    if !requested_path.is_absolute() {
+        return Err(format!("Decode path must be absolute: {path}"));
+    }
+
+    let canonical_path = requested_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to open DICOM file {path}: {e}"))?;
+
+    if !app.fs_scope().is_allowed(&canonical_path) {
+        return Err(format!(
+            "Decode path is outside the allowed desktop file scope: {}",
+            canonical_path.display()
+        ));
+    }
+
+    Ok(canonical_path)
+}
+
+fn decode_frame_impl(path: &Path, frame_index: u32) -> Result<DecodedFrame, String> {
+    let object = open_file(path)
+        .map_err(|e| format!("Failed to open DICOM file {}: {e}", path.display()))?;
 
     let rows = required_u16(&object, tags::ROWS, "Rows")?;
     let cols = required_u16(&object, tags::COLUMNS, "Columns")?;
@@ -131,8 +215,7 @@ fn decode_frame_impl(path: &str, frame_index: u32) -> Result<DecodedFrame, Strin
     let pixel_bytes = decoded_pixels_to_bytes(decoded);
 
     Ok(DecodedFrame {
-        metadata: DecodeFrameMetadata {
-            decode_id: String::new(),
+        metadata: DecodedFrameMetadata {
             rows,
             cols,
             bits_allocated,
@@ -214,10 +297,26 @@ mod tests {
     }
 
     #[test]
+    fn decode_store_evicts_oldest_entries_when_capacity_is_exceeded() {
+        let store = DecodeStore::default();
+        let mut decode_ids = Vec::new();
+
+        for value in 0..=MAX_DECODE_STORE_ENTRIES {
+            decode_ids.push(store.insert(vec![value as u8]));
+        }
+
+        assert_eq!(store.pending_count(), MAX_DECODE_STORE_ENTRIES);
+        assert_eq!(store.take(&decode_ids[0]), None);
+        assert_eq!(
+            store.take(decode_ids.last().unwrap()),
+            Some(vec![MAX_DECODE_STORE_ENTRIES as u8])
+        );
+    }
+
+    #[test]
     fn decode_frame_impl_decodes_real_jpeg2000_fixture() {
         let fixture = fixture_path("test-data/mri-samples/MR2_J2KI.dcm");
-        let decoded =
-            decode_frame_impl(fixture.to_str().unwrap(), 0).expect("fixture should decode");
+        let decoded = decode_frame_impl(&fixture, 0).expect("fixture should decode");
 
         assert_eq!(decoded.metadata.rows, 1024);
         assert_eq!(decoded.metadata.cols, 1024);
