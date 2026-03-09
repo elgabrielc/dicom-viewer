@@ -113,6 +113,7 @@
                 seriesInstanceUid: getString(dataSet, 'x0020000e'),
                 seriesNumber: getString(dataSet, 'x00200011'),
                 modality: getString(dataSet, 'x00080060'),
+                sopInstanceUid: getString(dataSet, 'x00080018'),
                 instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0),
                 sliceLocation: getMetadataNumber(dataSet, 'x00201041', 0),
                 transferSyntax: transferSyntax,

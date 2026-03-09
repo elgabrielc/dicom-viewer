@@ -55,10 +55,21 @@
                 seriesNumber: meta.seriesNumber,
                 transferSyntax: meta.transferSyntax,
                 slices: [],
-                comments: []
+                comments: [],
+                seenSliceKeys: new Set()
             };
         }
-        studies[studyUid].series[seriesUid].slices.push(...expandFrameSlices(meta, source));
+        const series = studies[studyUid].series[seriesUid];
+        for (const slice of expandFrameSlices(meta, source)) {
+            const sliceKey = getSliceDedupKey(slice);
+            if (sliceKey && series.seenSliceKeys.has(sliceKey)) {
+                continue;
+            }
+            if (sliceKey) {
+                series.seenSliceKeys.add(sliceKey);
+            }
+            series.slices.push(slice);
+        }
     }
 
     function expandFrameSlices(meta, source) {
@@ -66,9 +77,17 @@
         return Array.from({ length: frameCount }, (_, frameIndex) => ({
             source,
             frameIndex,
+            sopInstanceUid: meta.sopInstanceUid || '',
             instanceNumber: meta.instanceNumber,
             sliceLocation: meta.sliceLocation
         }));
+    }
+
+    function getSliceDedupKey(slice) {
+        if (!slice?.sopInstanceUid) {
+            return null;
+        }
+        return `${slice.sopInstanceUid}|${slice.frameIndex || 0}`;
     }
 
     function finalizeStudies(studies) {
@@ -81,6 +100,7 @@
                     (a.frameIndex ?? 0) - (b.frameIndex ?? 0)
                 );
                 count += series.slices.length;
+                delete series.seenSliceKeys;
             }
             study.seriesCount = Object.keys(study.series).length;
             study.imageCount = count;
@@ -664,6 +684,7 @@
         normalizeStudiesPayload,
         loadStudiesFromApi,
         expandFrameSlices,
+        getSliceDedupKey,
         getSliceCacheKey
     };
 })();

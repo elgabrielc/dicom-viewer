@@ -332,6 +332,7 @@ test.describe('Desktop library scanning', () => {
             const source = { kind: 'path', path: '/library/multi-frame.dcm' };
             const slices = window.DicomViewerApp.sources.expandFrameSlices({
                 numberOfFrames: 4,
+                sopInstanceUid: '1.2.3.4',
                 instanceNumber: 12,
                 sliceLocation: 34.5
             }, source);
@@ -340,6 +341,7 @@ test.describe('Desktop library scanning', () => {
                 count: slices.length,
                 frameIndexes: slices.map((slice) => slice.frameIndex),
                 sameSourceReference: slices.every((slice) => slice.source === source),
+                dedupeKeys: slices.map((slice) => window.DicomViewerApp.sources.getSliceDedupKey(slice)),
                 cacheKeys: slices.map((slice, index) =>
                     window.DicomViewerApp.sources.getSliceCacheKey(slice, index)
                 )
@@ -349,7 +351,48 @@ test.describe('Desktop library scanning', () => {
         expect(result.count).toBe(4);
         expect(result.frameIndexes).toEqual([0, 1, 2, 3]);
         expect(result.sameSourceReference).toBe(true);
+        expect(result.dedupeKeys).toEqual([
+            '1.2.3.4|0',
+            '1.2.3.4|1',
+            '1.2.3.4|2',
+            '1.2.3.4|3'
+        ]);
         expect(new Set(result.cacheKeys)).toEqual(new Set(['path:/library/multi-frame.dcm']));
+    });
+
+    test('scan dedupes duplicate DICOM copies with the same SOP instance UID', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const summary = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const blob = await dicomResponse.blob();
+
+            const studies = await window.DicomViewerApp.sources.processFilesFromSources([
+                { name: 'first-copy.dcm', source: { kind: 'blob', blob } },
+                { name: 'second-copy.dcm', source: { kind: 'blob', blob } }
+            ]);
+
+            const loadedStudy = Object.values(studies)[0];
+            const loadedSeries = Object.values(loadedStudy.series)[0];
+            return {
+                studyCount: Object.keys(studies).length,
+                seriesCount: Object.keys(loadedStudy.series).length,
+                sliceCount: loadedSeries.slices.length
+            };
+        });
+
+        expect(summary).toEqual({
+            studyCount: 1,
+            seriesCount: 1,
+            sliceCount: 1
+        });
     });
 
     test('renderDicom selects the requested frame from an uncompressed multi-frame dataset', async ({ page }) => {
