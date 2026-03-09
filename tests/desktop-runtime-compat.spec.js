@@ -1,6 +1,8 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 const { test, expect } = require('@playwright/test');
+const fs = require('fs');
+const path = require('path');
 
 const HOME_URL = 'http://127.0.0.1:5001/';
 
@@ -261,4 +263,12 @@ test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', asy
     const result = await page.evaluate(() => window.DicomViewerApp.dicom.resolveOpenJpegAssetUrl('openjpegwasm_decode.wasm'));
 
     expect(result).toMatch(/\/js\/openjpegwasm_decode\.wasm$/);
+});
+
+test('desktop CSP allows the JPEG 2000 worker to load OpenJPEG WASM', async () => {
+    const tauriConfigPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'tauri.conf.json');
+    const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, 'utf8'));
+
+    expect(tauriConfig.app.security.csp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
 });

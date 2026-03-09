@@ -61,7 +61,7 @@ Tauri Desktop Shell (desktop/src-tauri/)
 | Uncompressed (Implicit/Explicit VR) | Supported | Native TypedArray |
 | JPEG Lossless | Supported | jpeg-lossless-decoder-js |
 | JPEG Baseline/Extended | Supported | Browser native |
-| JPEG 2000 | Supported | OpenJPEG WASM |
+| JPEG 2000 | Supported | OpenJPEG WASM (8/16/32-bit sample paths) |
 | RLE, JPEG-LS, MPEG | Not Supported | - |
 
 ## Current Work: 3D Volume Rendering

@@ -23,7 +23,12 @@ async function initOpenJpegWorker() {
         });
     })();
 
-    return openjpegModulePromise;
+    try {
+        return await openjpegModulePromise;
+    } catch (error) {
+        openjpegModulePromise = null;
+        throw error;
+    }
 }
 
 function createPixelArray(bitsPerSample, isSigned, sampleCount) {
@@ -46,6 +51,7 @@ function copyDecodedPixels(decoded, frameInfo, bitsAllocated, pixelRepresentatio
     const isSigned = typeof frameInfo?.isSigned === 'boolean'
         ? frameInfo.isSigned
         : pixelRepresentation === 1;
+    // Some parametric maps and NM SUV studies use 32-bit samples; keep them intact.
     const bytesPerSample = Math.max(1, Math.ceil(bitsPerSample / 8));
 
     if (![1, 2, 4].includes(bytesPerSample)) {
@@ -110,6 +116,7 @@ self.onmessage = async (event) => {
         self.postMessage(
             {
                 type: 'decoded',
+                requestId: payload.requestId,
                 pixelData,
                 frameInfo
             },
@@ -118,6 +125,7 @@ self.onmessage = async (event) => {
     } catch (error) {
         self.postMessage({
             type: 'error',
+            requestId: payload.requestId,
             stage: 'decode',
             message: String(error?.message || error || 'Unknown JPEG 2000 worker error')
         });
