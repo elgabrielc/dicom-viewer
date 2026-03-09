@@ -69,20 +69,27 @@
         ctx.fillText('This format may require additional decoders', canvas.width / 2, 310);
     }
 
-    /**
-     * Render a DICOM dataset to the canvas
-     * Handles decompression, window/level adjustment, and display
-     *
-     * @param {Object} dataSet - Parsed dicomParser dataset with pixel data
-     * @param {Object|null} wlOverride - Optional {center, width} to override DICOM values
-     * @returns {Promise<Object>} Rendering info {rows, cols, wc, ww, transferSyntax} or {error: true}
-     */
-    async function renderDicom(dataSet, wlOverride = null, frameIndex = 0) {
+    function buildRenderInfo(decoded, windowCenter, windowWidth, extra = {}) {
+        return {
+            rows: decoded.rows,
+            cols: decoded.cols,
+            wc: windowCenter,
+            ww: windowWidth,
+            transferSyntax: decoded.transferSyntax,
+            modality: decoded.modality,
+            mrMetadata: decoded.mrMetadata,
+            ...extra
+        };
+    }
+
+    async function decodeDicom(dataSet, frameIndex = 0) {
         // Extract image dimensions and pixel format from DICOM tags
         const rows = dataSet.uint16('x00280010');              // (0028,0010) Rows
         const cols = dataSet.uint16('x00280011');              // (0028,0011) Columns
         const bitsAllocated = dataSet.uint16('x00280100') || 16;  // (0028,0100) Bits Allocated
         const pixelRepresentation = dataSet.uint16('x00280103') || 0;  // (0028,0103) 0=unsigned, 1=signed
+        const samplesPerPixel = dataSet.uint16('x00280002') || 1;
+        const photometricInterpretation = getString(dataSet, 'x00280004');
 
         // Get modality for appropriate defaults
         const modality = getString(dataSet, 'x00080060');  // (0008,0060) Modality
@@ -107,8 +114,6 @@
 
         // Extract pixel spacing for measurement calibration
         const pixelSpacing = app.tools.extractPixelSpacing(dataSet);
-        state.pixelSpacing = pixelSpacing;
-        app.tools.updateCalibrationWarning();
 
         // Extract MRI-specific metadata
         const mrMetadata = {
@@ -120,6 +125,9 @@
             sequenceName: getString(dataSet, 'x00180024'),         // (0018,0024) Sequence Name
             scanningSequence: getString(dataSet, 'x00180020'),     // (0018,0020) Scanning Sequence
             mrAcquisitionType: getString(dataSet, 'x00180023'),    // (0018,0023) MR Acquisition Type (2D/3D)
+            tr: getNumber(dataSet, 'x00180080', 0),
+            te: getNumber(dataSet, 'x00180081', 0),
+            fieldStrength: getNumber(dataSet, 'x00180087', 0)
         };
 
         // Get transfer syntax to determine compression format
@@ -194,13 +202,23 @@
         // This must be done before window/level calculations
         if (isBlankSlice(pixelData, rescaleSlope, rescaleIntercept)) {
             console.log('Detected blank slice (all pixels same value)');
-            displayBlankSlice(rows, cols);
             return {
-                rows, cols,
-                wc: windowCenter, ww: windowWidth,
+                pixelData,
+                rows,
+                cols,
+                bitsAllocated,
+                pixelRepresentation,
+                samplesPerPixel,
+                photometricInterpretation,
+                windowCenter,
+                windowWidth,
+                rescaleSlope,
+                rescaleIntercept,
                 transferSyntax, modality,
                 mrMetadata,
-                isBlank: true
+                pixelSpacing,
+                isBlank: true,
+                skipWindowLevel
             };
         }
 
@@ -211,6 +229,40 @@
             windowCenter = autoWL.windowCenter;
             windowWidth = autoWL.windowWidth;
             console.log(`Auto window/level for ${modality}: C=${windowCenter} W=${windowWidth}`);
+        }
+
+        return {
+            pixelData,
+            rows,
+            cols,
+            bitsAllocated,
+            pixelRepresentation,
+            samplesPerPixel,
+            photometricInterpretation,
+            windowCenter,
+            windowWidth,
+            rescaleSlope,
+            rescaleIntercept,
+            modality,
+            transferSyntax,
+            mrMetadata,
+            pixelSpacing,
+            isBlank: false,
+            skipWindowLevel
+        };
+    }
+
+    function renderPixels(decoded, wlOverride = null) {
+        let windowCenter = decoded.windowCenter;
+        let windowWidth = decoded.windowWidth;
+
+        state.pixelSpacing = decoded.pixelSpacing || null;
+        app.tools.updateCalibrationWarning();
+
+        if (decoded.isBlank) {
+            displayBlankSlice(decoded.rows, decoded.cols);
+            app.tools.drawMeasurements?.();
+            return buildRenderInfo(decoded, windowCenter, windowWidth, { isBlank: true });
         }
 
         // Store base W/L values for reset (only on first render, not re-renders)
@@ -225,30 +277,31 @@
         }
 
         // Set canvas size to match image dimensions
-        canvas.width = cols;
-        canvas.height = rows;
+        canvas.width = decoded.cols;
+        canvas.height = decoded.rows;
 
         // Create image data buffer for canvas
-        const imageData = ctx.createImageData(cols, rows);
+        const imageData = ctx.createImageData(decoded.cols, decoded.rows);
         const outputPixels = imageData.data;
 
         // Calculate window/level range (min/max displayable values)
         const windowMin = windowCenter - windowWidth / 2;
         const windowMax = windowCenter + windowWidth / 2;
+        const windowRange = Math.max(windowMax - windowMin, 1);
 
         // Apply rescale and window/level transform to each pixel
-        for (let i = 0; i < pixelData.length; i++) {
+        for (let i = 0; i < decoded.pixelData.length; i++) {
             let grayscaleValue;
-            if (skipWindowLevel) {
+            if (decoded.skipWindowLevel) {
                 // Already 0-255 (e.g., from JPEG baseline decode)
-                grayscaleValue = pixelData[i];
+                grayscaleValue = decoded.pixelData[i];
             } else {
                 // Apply rescale slope/intercept
                 // CT: converts to Hounsfield Units; MR: arbitrary signal intensity
-                let pixelValue = pixelData[i] * rescaleSlope + rescaleIntercept;
+                let pixelValue = decoded.pixelData[i] * decoded.rescaleSlope + decoded.rescaleIntercept;
                 // Clamp to window range and scale to 0-255
                 pixelValue = Math.max(windowMin, Math.min(windowMax, pixelValue));
-                grayscaleValue = Math.round(((pixelValue - windowMin) / (windowMax - windowMin)) * 255);
+                grayscaleValue = Math.round(((pixelValue - windowMin) / windowRange) * 255);
             }
             // Set RGBA values (grayscale = R=G=B, alpha=255)
             const pixelIndex = i * 4;
@@ -258,20 +311,32 @@
             outputPixels[pixelIndex + 3] = 255;             // A (opaque)
         }
 
-        // Draw to canvas
+        // Draw to canvas and keep the measurement overlay aligned with the new image size.
         ctx.putImageData(imageData, 0, 0);
+        app.tools.drawMeasurements?.();
 
-        return {
-            rows, cols,
-            wc: windowCenter, ww: windowWidth,
-            transferSyntax, modality,
-            mrMetadata
-        };
+        return buildRenderInfo(decoded, windowCenter, windowWidth);
+    }
+
+    /**
+     * Render a DICOM dataset to the canvas
+     * Handles decompression, window/level adjustment, and display
+     *
+     * @param {Object} dataSet - Parsed dicomParser dataset with pixel data
+     * @param {Object|null} wlOverride - Optional {center, width} to override DICOM values
+     * @returns {Promise<Object>} Rendering info {rows, cols, wc, ww, transferSyntax} or {error: true}
+     */
+    async function renderDicom(dataSet, wlOverride = null, frameIndex = 0) {
+        const decoded = await decodeDicom(dataSet, frameIndex);
+        if (!decoded || decoded.error) return decoded || { error: true };
+        return renderPixels(decoded, wlOverride);
     }
 
 
     app.rendering = {
         displayError,
+        decodeDicom,
+        renderPixels,
         renderDicom
     };
 })();
