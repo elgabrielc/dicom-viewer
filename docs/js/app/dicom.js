@@ -64,6 +64,30 @@
         return fallback;
     }
 
+    function getNumberOfFrames(dataSet) {
+        const frameCount = getMetadataNumber(dataSet, 'x00280008', 1);
+        return Number.isFinite(frameCount) && frameCount > 0 ? frameCount : 1;
+    }
+
+    function getEncapsulatedFrameData(dataSet, pixelDataElement, frameIndex = 0) {
+        try {
+            return dicomParser.readEncapsulatedImageFrame(dataSet, pixelDataElement, frameIndex);
+        } catch (error) {
+            const frameCount = getNumberOfFrames(dataSet);
+            const message = String(error?.message || error || '');
+            const isEmptyBasicOffsetTable = message.includes('basicOffsetTable has zero entries');
+
+            if (!isEmptyBasicOffsetTable || frameCount > 1) {
+                throw error;
+            }
+
+            console.warn(
+                'Falling back to fragment-concatenated encapsulated frame decode for single-frame image with empty Basic Offset Table.'
+            );
+            return dicomParser.readEncapsulatedPixelData(dataSet, pixelDataElement, frameIndex);
+        }
+    }
+
     /**
      * Parse DICOM file metadata without loading pixel data (fast scan)
      * Used during folder import to organize files by study/series.
@@ -310,9 +334,7 @@
 
             // Try using dicomParser's built-in function first
             if (pixelDataElement.fragments && pixelDataElement.fragments.length > 0) {
-                frameData = dicomParser.readEncapsulatedPixelDataFromFragments(
-                    dataSet, pixelDataElement, 0
-                );
+                frameData = getEncapsulatedFrameData(dataSet, pixelDataElement, 0);
             } else {
                 // Manually parse encapsulated pixel data
                 const byteArray = dataSet.byteArray;
@@ -450,7 +472,7 @@
                 return null;
             }
 
-            const j2kData = dicomParser.readEncapsulatedImageFrame(dataSet, jp2DataElement, 0);
+            const j2kData = getEncapsulatedFrameData(dataSet, jp2DataElement, 0);
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
             // Initialize and use OpenJPEG decoder
@@ -510,9 +532,7 @@
      */
     async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols) {
         try {
-            const frames = dicomParser.readEncapsulatedPixelDataFromFragments(
-                dataSet, dataSet.elements.x7fe00010, 0
-            );
+            const frames = getEncapsulatedFrameData(dataSet, dataSet.elements.x7fe00010, 0);
 
             const blob = new Blob([frames], { type: 'image/jpeg' });
             const bitmap = await createImageBitmap(blob);
@@ -540,6 +560,7 @@
     app.dicom = {
         parseDicomMetadata,
         getMetadataNumber,
+        getEncapsulatedFrameData,
         isCompressed,
         isJpegLossless,
         isJpegBaseline,

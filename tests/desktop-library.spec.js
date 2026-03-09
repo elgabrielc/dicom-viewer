@@ -299,6 +299,41 @@ test.describe('Desktop library scanning', () => {
         expect(result.instanceNumber).toBe(7);
     });
 
+    test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const parser = globalThis.dicomParser || window.dicomParser || dicomParser;
+            const byteArray = Uint8Array.from([
+                0xfe, 0xff, 0x00, 0xe0, 0x00, 0x00, 0x00, 0x00,
+                0xfe, 0xff, 0x00, 0xe0, 0x03, 0x00, 0x00, 0x00,
+                0x07, 0x08, 0x09
+            ]);
+
+            const frame = window.DicomViewerApp.dicom.getEncapsulatedFrameData({
+                byteArrayParser: parser.littleEndianByteArrayParser,
+                byteArray,
+                string() {
+                    return '';
+                }
+            }, {
+                tag: 'x7fe00010',
+                dataOffset: 0,
+                encapsulatedPixelData: true,
+                hadUndefinedLength: true,
+                basicOffsetTable: [],
+                fragments: [{ offset: 0, position: 16, length: 3 }]
+            }, 0);
+
+            return {
+                frame: Array.from(frame)
+            };
+        });
+
+        expect(result.frame).toEqual([7, 8, 9]);
+    });
+
     test('saved desktop library config is visible before startup scan completes', async ({ page }) => {
         await installMockDesktop(page, {
             initialConfig: {
