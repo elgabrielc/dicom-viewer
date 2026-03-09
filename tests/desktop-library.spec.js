@@ -3,6 +3,7 @@
 const { test, expect } = require('@playwright/test');
 
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
+const AUTOLOAD_URL = 'http://127.0.0.1:5001/';
 
 function normalizePath(input) {
     const text = String(input || '').replace(/\\/g, '/');
@@ -68,14 +69,24 @@ async function installMockDesktop(page, options = {}) {
             readDirErrors[normalizePath(path)] = message;
         }
 
+        const readDirDelayMs = Number(options.readDirDelayMs || 0);
+
         const stats = {};
         for (const [path, value] of Object.entries(options.stats || {})) {
             stats[normalizePath(path)] = value;
         }
 
         window.__TAURI__ = {
+            dialog: {
+                async open() {
+                    return null;
+                }
+            },
             fs: {
                 async readDir(path) {
+                    if (readDirDelayMs > 0) {
+                        await new Promise((resolve) => setTimeout(resolve, readDirDelayMs));
+                    }
                     const normalized = normalizePath(path);
                     if (Object.prototype.hasOwnProperty.call(readDirErrors, normalized)) {
                         throw new Error(readDirErrors[normalized]);
@@ -118,6 +129,58 @@ async function installMockDesktop(page, options = {}) {
 }
 
 test.describe('Desktop library scanning', () => {
+    test('renderable image metadata helper excludes non-image DICOM objects', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const { isRenderableImageMetadata } = window.DicomViewerApp.sources;
+            return {
+                image: isRenderableImageMetadata({
+                    studyInstanceUid: '1.2.3',
+                    hasPixelData: true,
+                    rows: 2991,
+                    cols: 1580
+                }),
+                structuredReport: isRenderableImageMetadata({
+                    studyInstanceUid: '1.2.3',
+                    hasPixelData: false,
+                    rows: 0,
+                    cols: 0,
+                    sopClassUid: '1.2.840.10008.5.1.4.1.1.88.22'
+                }),
+                missingDimensions: isRenderableImageMetadata({
+                    studyInstanceUid: '1.2.3',
+                    hasPixelData: true,
+                    rows: 0,
+                    cols: 1580
+                })
+            };
+        });
+
+        expect(result.image).toBe(true);
+        expect(result.structuredReport).toBe(false);
+        expect(result.missingDimensions).toBe(false);
+    });
+
+    test('saved desktop library config is visible before startup scan completes', async ({ page }) => {
+        await installMockDesktop(page, {
+            initialConfig: {
+                folder: '/slow-library',
+                lastScan: '2026-03-07T12:00:00.000Z'
+            },
+            dirs: {
+                '/slow-library': []
+            },
+            readDirDelayMs: 500
+        });
+
+        await page.goto(AUTOLOAD_URL);
+        await expect(page.locator('#libraryFolderConfig')).toBeVisible();
+        await expect(page.locator('#libraryFolderInput')).toHaveValue('/slow-library');
+        await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
+    });
+
     test('desktop auto-load does not mark empty folders as a successful scan', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {

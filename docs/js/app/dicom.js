@@ -20,6 +20,9 @@
             const byteArray = new Uint8Array(arrayBuffer);
             const dataSet = dicomParser.parseDicom(byteArray, { untilTag: 'x7fe00010' });
             const transferSyntax = getString(dataSet, 'x00020010');
+            const rows = getNumber(dataSet, 'x00280010', 0);
+            const cols = getNumber(dataSet, 'x00280011', 0);
+            const pixelDataElement = dataSet.elements?.x7fe00010;
             return {
                 patientName: getString(dataSet, 'x00100010'),
                 studyDate: getString(dataSet, 'x00080020'),
@@ -32,8 +35,21 @@
                 instanceNumber: getNumber(dataSet, 'x00200013', 0),
                 sliceLocation: getNumber(dataSet, 'x00201041', 0),
                 transferSyntax: transferSyntax,
+                sopClassUid: getString(dataSet, 'x00080016'),
+                rows,
+                cols,
+                hasPixelData: !!pixelDataElement && rows > 0 && cols > 0
             };
         } catch { return null; }
+    }
+
+    function isRenderableImageMetadata(meta) {
+        return !!(
+            meta?.studyInstanceUid &&
+            meta?.hasPixelData &&
+            meta?.rows > 0 &&
+            meta?.cols > 0
+        );
     }
 
 
@@ -296,6 +312,31 @@
     /** Promise for OpenJPEG initialization (prevents multiple init) */
     let openjpegInitPromise = null;
 
+    function resolveOpenJpegAssetUrl(fileName, runtime = window) {
+        const scriptSrc = runtime?.document
+            ?.querySelector('script[src$="js/openjpegwasm_decode.js"], script[src*="openjpegwasm_decode.js"]')
+            ?.src;
+
+        if (scriptSrc) {
+            try {
+                return new URL(fileName, scriptSrc).toString();
+            } catch (e) {
+                console.warn('Failed to resolve OpenJPEG asset from script URL:', scriptSrc, e);
+            }
+        }
+
+        const href = runtime?.location?.href;
+        if (href) {
+            try {
+                return new URL(`js/${fileName}`, href).toString();
+            } catch (e) {
+                console.warn('Failed to resolve OpenJPEG asset from page URL:', href, e);
+            }
+        }
+
+        return `js/${fileName}`;
+    }
+
     /**
      * Initialize the OpenJPEG WebAssembly decoder
      * Lazily loaded on first JPEG 2000 image
@@ -311,7 +352,7 @@
                 // OpenJPEGWASM is loaded from the script tag
                 if (typeof OpenJPEGWASM === 'function') {
                     openjpegModule = await OpenJPEGWASM({
-                        locateFile: (path) => 'js/' + path
+                        locateFile: (path) => resolveOpenJpegAssetUrl(path)
                     });
                     console.log('OpenJPEG WASM initialized successfully');
                     return openjpegModule;
@@ -353,9 +394,7 @@
                 return null;
             }
 
-            // Get the first fragment (single frame)
-            const fragment = fragments[0];
-            const j2kData = new Uint8Array(dataSet.byteArray.buffer, fragment.position, fragment.length);
+            const j2kData = dicomParser.readEncapsulatedImageFrame(dataSet, jp2DataElement, 0);
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
             // Initialize and use OpenJPEG decoder
@@ -455,6 +494,8 @@
         displayBlankSlice,
         decodeJpegLossless,
         decodeJpeg2000,
-        decodeJpegBaseline
+        decodeJpegBaseline,
+        isRenderableImageMetadata,
+        resolveOpenJpegAssetUrl
     };
 })();

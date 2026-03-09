@@ -17,15 +17,29 @@
 
 const CONFIG = {
     /**
-     * Detect deployment mode based on hostname
+     * Detect deployment mode from a window-like runtime object.
+     * Accepts an override to keep the logic testable without mutating `window.location`.
+     * @param {Window|Object} runtime
      * @returns {'demo' | 'preview' | 'cloud' | 'desktop' | 'personal'}
      */
-    get deploymentMode() {
-        if (typeof window.__TAURI__ !== 'undefined') {
+    detectDeploymentMode(runtime = window) {
+        const location = runtime?.location || {};
+        const protocol = location.protocol || '';
+        const hostname = location.hostname || '';
+
+        if (typeof runtime?.__TAURI__ !== 'undefined') {
             return 'desktop';
         }
 
-        const hostname = window.location.hostname;
+        // Packaged Tauri apps load local assets from a Tauri localhost origin
+        // even before the convenience globals are available to page scripts.
+        if (protocol === 'tauri:' || hostname === 'tauri.localhost') {
+            return 'desktop';
+        }
+
+        if (runtime?.__TAURI_INTERNALS__?.metadata?.currentWindow) {
+            return 'desktop';
+        }
 
         // GitHub Pages - public demo
         if (hostname.endsWith('github.io')) {
@@ -44,6 +58,14 @@ const CONFIG = {
 
         // Local development or self-hosted
         return 'personal';
+    },
+
+    /**
+     * Detect deployment mode based on hostname
+     * @returns {'demo' | 'preview' | 'cloud' | 'desktop' | 'personal'}
+     */
+    get deploymentMode() {
+        return this.detectDeploymentMode(window);
     },
 
     /**

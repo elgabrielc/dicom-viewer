@@ -1,7 +1,7 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
-    const { parseDicomMetadata } = app.dicom;
+    const { parseDicomMetadata, isRenderableImageMetadata } = app.dicom;
     const DESKTOP_MAX_SCAN_DEPTH = 20;
 
     function updateScanProgress(processed, total, valid) {
@@ -10,7 +10,7 @@
         const pct = Math.round((processed / total) * 100);
         progressFill.style.width = pct + '%';
         progressText.textContent = `Scanning... ${pct}%`;
-        progressDetail.textContent = `${processed}/${total} files (${valid} DICOM)`;
+        progressDetail.textContent = `${processed}/${total} files (${valid} viewable DICOM)`;
     }
 
     function addSliceToStudies(studies, meta, source) {
@@ -116,7 +116,7 @@
                 try {
                     const buffer = await readSliceBuffer({ source }, 'scan');
                     const meta = await parseDicomMetadata(new Blob([buffer], { type: 'application/dicom' }));
-                    if (!meta?.studyInstanceUid) return;
+                    if (!isRenderableImageMetadata(meta)) return;
                     valid++;
                     addSliceToStudies(studies, meta, source);
                 } catch (e) {
@@ -395,7 +395,7 @@
                 progressFill.style.width = `${pct}%`;
                 progressDetail.textContent = `Processing ${processed}/${files.length}`;
 
-                if (!meta?.studyInstanceUid) continue;
+                if (!isRenderableImageMetadata(meta)) continue;
 
                 const studyUid = meta.studyInstanceUid;
                 const seriesUid = meta.seriesInstanceUid;
@@ -451,6 +451,7 @@
     app.sources = {
         collectPathSources,
         getAllFileHandles,
+        isRenderableImageMetadata,
         loadDroppedStudies,
         loadDroppedPaths,
         loadSampleStudies,
