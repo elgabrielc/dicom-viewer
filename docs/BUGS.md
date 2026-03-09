@@ -12,6 +12,59 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-004: Packaged Tauri app hid desktop library UI and included non-image DICOM objects
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | High |
+| **Found** | 2026-03-08 |
+| **Resolved** | 2026-03-08 |
+| **Commit** | 7f330b1 |
+
+**How Encountered:**
+In the packaged macOS Tauri app, the saved desktop library controls were missing at startup until a sample study was loaded. After the library became visible, one real XR study from `/Users/gabriel/Desktop/radiology all discs` showed bogus series entries with `No pixel data found`, and a valid JPEG 2000 image series showed `JPEG 2000 decode failed`.
+
+**Root Cause:**
+This was a combination of three desktop-only issues:
+1. Packaged Tauri startup raced the plain-script frontend. The app could detect "desktop" before `window.__TAURI__` was ready, so desktop library initialization and native bridge setup were inconsistent.
+2. Desktop folder scans admitted any parseable DICOM object with a study UID, including Structured Reports and other non-image objects that have no renderable pixel data.
+3. JPEG 2000 decoding in packaged mode assumed a simple `js/<asset>` path for the WASM asset and manually read the first fragment instead of the full encapsulated frame, which was brittle for the packaged webview runtime.
+
+**Solution:**
+- Added a plain-script Tauri compatibility shim and startup readiness promise so packaged desktop mode waits for the runtime before initializing desktop-only features.
+- Rendered the saved desktop library configuration immediately on startup while the background rescan continues.
+- Tightened desktop scan admission to include only renderable image metadata (`study UID` + `pixel data` + non-zero `rows/cols`).
+- Updated JPEG 2000 loading to resolve the WASM asset relative to the decoder script and read the encapsulated image frame through `dicomParser.readEncapsulatedImageFrame(...)`.
+- Applied the same renderable-image filter to sample loading for consistency across sources.
+
+**Why This Solution:**
+Alternatives considered:
+- *Only hide bad series in the viewer* - Rejected; non-image objects should be filtered out at ingest so library counts and series lists stay correct.
+- *Hardcode another packaged asset path* - Rejected; brittle across local server, preview, and Tauri packaged origins.
+- *Treat the startup issue as cosmetic* - Rejected; it made desktop configuration look unavailable and obscured whether persisted library state had loaded.
+
+Chose a runtime-shim plus renderable-image admission model because it fixes the root contract mismatch between web and packaged desktop sources, instead of layering special cases on the viewer.
+
+**Prevention:**
+- Added Playwright coverage for packaged Tauri runtime detection and late-arriving `__TAURI_INTERNALS__`.
+- Added Playwright coverage ensuring saved desktop library config is visible before a slow startup scan completes.
+- Added a regression test for the renderable-image metadata helper so non-image DICOM objects stay excluded from library scans.
+- Kept the full Playwright suite as the shared regression guard, then rebuilt the packaged macOS bundle from the fixed tree.
+
+**Files Changed:**
+- `docs/index.html`
+- `docs/js/config.js`
+- `docs/js/tauri-compat.js`
+- `docs/js/app/main.js`
+- `docs/js/app/desktop-library.js`
+- `docs/js/app/dicom.js`
+- `docs/js/app/sources.js`
+- `tests/desktop-library.spec.js`
+- `tests/desktop-runtime-compat.spec.js`
+
+---
+
 ### BUG-003: Playwright tests fail when Flask server not running
 
 | Field | Value |
@@ -174,4 +227,4 @@ Series with 500+ slices may take several seconds to parse. This is expected give
 
 ---
 
-*Last updated: 2026-02-01*
+*Last updated: 2026-03-08*
