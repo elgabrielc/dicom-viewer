@@ -389,20 +389,15 @@
     // ---------------------------------------------------------------------
 
     const JPEG2000_DECODE_TIMEOUT_MS = 10000;
+    let nextJpeg2000RequestId = 1;
+    const jpeg2000WorkerState = {
+        worker: null,
+        workerUrl: null,
+        activeRequest: null,
+        queue: []
+    };
 
     function resolveOpenJpegAssetUrl(fileName, runtime = window) {
-        const scriptSrc = runtime?.document
-            ?.querySelector('script[src$="js/openjpegwasm_decode.js"], script[src*="openjpegwasm_decode.js"]')
-            ?.src;
-
-        if (scriptSrc) {
-            try {
-                return new URL(fileName, scriptSrc).toString();
-            } catch (e) {
-                console.warn('Failed to resolve OpenJPEG asset from script URL:', scriptSrc, e);
-            }
-        }
-
         const href = runtime?.location?.href;
         if (href) {
             try {
@@ -428,82 +423,173 @@
         return 'js/app/decode-worker.js';
     }
 
-    function decodeJ2KInWorker(frameData, bitsAllocated, pixelRepresentation, expectedRows, expectedCols) {
-        return new Promise((resolve, reject) => {
-            if (typeof Worker !== 'function') {
-                reject(new Error('Web Workers are not available for JPEG 2000 decode.'));
+    function disposeJpeg2000Worker() {
+        if (!jpeg2000WorkerState.worker) return;
+        try {
+            jpeg2000WorkerState.worker.terminate();
+        } catch {}
+        jpeg2000WorkerState.worker = null;
+        jpeg2000WorkerState.workerUrl = null;
+    }
+
+    function formatJpeg2000WorkerError(event, workerUrl) {
+        const eventMessage = event?.error?.message || event?.message || 'JPEG 2000 worker error';
+        return new Error(`${eventMessage} (${workerUrl})`);
+    }
+
+    function pumpJpeg2000WorkerQueue() {
+        if (jpeg2000WorkerState.activeRequest || !jpeg2000WorkerState.queue.length) {
+            return;
+        }
+
+        if (typeof Worker === 'undefined') {
+            const error = new Error('Web Workers are not available for JPEG 2000 decode.');
+            while (jpeg2000WorkerState.queue.length) {
+                jpeg2000WorkerState.queue.shift().reject(error);
+            }
+            return;
+        }
+
+        if (!jpeg2000WorkerState.worker) {
+            jpeg2000WorkerState.workerUrl = resolveJpeg2000WorkerUrl();
+            try {
+                jpeg2000WorkerState.worker = new Worker(jpeg2000WorkerState.workerUrl);
+            } catch (error) {
+                jpeg2000WorkerState.worker = null;
+                while (jpeg2000WorkerState.queue.length) {
+                    jpeg2000WorkerState.queue.shift().reject(error);
+                }
                 return;
             }
 
-            const worker = new Worker(resolveJpeg2000WorkerUrl());
-            let settled = false;
-
-            function finish(callback, value) {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timeoutId);
-                worker.terminate();
-                callback(value);
-            }
-
-            const timeoutId = setTimeout(() => {
-                finish(reject, new Error(`JPEG 2000 decode timeout (${JPEG2000_DECODE_TIMEOUT_MS / 1000}s)`));
-            }, JPEG2000_DECODE_TIMEOUT_MS);
-
-            worker.onmessage = (event) => {
+            jpeg2000WorkerState.worker.onmessage = (event) => {
                 const payload = event?.data || {};
+                const activeRequest = jpeg2000WorkerState.activeRequest;
+                if (!activeRequest) {
+                    return;
+                }
+                if (payload.requestId !== activeRequest.requestId) {
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                    disposeJpeg2000Worker();
+                    activeRequest.reject(new Error('JPEG 2000 worker returned an unexpected response.'));
+                    pumpJpeg2000WorkerQueue();
+                    return;
+                }
                 if (payload.type === 'error') {
-                    finish(reject, new Error(payload.message || 'JPEG 2000 worker decode failed'));
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                    activeRequest.reject(new Error(payload.message || 'JPEG 2000 worker decode failed'));
+                    pumpJpeg2000WorkerQueue();
                     return;
                 }
                 if (payload.type !== 'decoded' || !payload.pixelData) {
-                    finish(reject, new Error('JPEG 2000 worker returned an invalid response.'));
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                    disposeJpeg2000Worker();
+                    activeRequest.reject(new Error('JPEG 2000 worker returned an invalid response.'));
+                    pumpJpeg2000WorkerQueue();
                     return;
                 }
 
-                if (payload.frameInfo?.width && expectedCols && payload.frameInfo.width !== expectedCols) {
+                if (payload.frameInfo?.width && activeRequest.expectedCols && payload.frameInfo.width !== activeRequest.expectedCols) {
                     console.warn(
                         'JPEG 2000 worker width mismatch:',
                         payload.frameInfo.width,
                         'expected',
-                        expectedCols
+                        activeRequest.expectedCols
                     );
                 }
-                if (payload.frameInfo?.height && expectedRows && payload.frameInfo.height !== expectedRows) {
+                if (payload.frameInfo?.height && activeRequest.expectedRows && payload.frameInfo.height !== activeRequest.expectedRows) {
                     console.warn(
                         'JPEG 2000 worker height mismatch:',
                         payload.frameInfo.height,
                         'expected',
-                        expectedRows
+                        activeRequest.expectedRows
                     );
                 }
 
-                finish(resolve, payload.pixelData);
+                clearTimeout(activeRequest.timeoutId);
+                jpeg2000WorkerState.activeRequest = null;
+                activeRequest.resolve(payload.pixelData);
+                pumpJpeg2000WorkerQueue();
             };
 
-            worker.onerror = (event) => {
-                finish(reject, event?.error || new Error(event?.message || 'JPEG 2000 worker error'));
+            jpeg2000WorkerState.worker.onerror = (event) => {
+                const activeRequest = jpeg2000WorkerState.activeRequest;
+                if (activeRequest) {
+                    clearTimeout(activeRequest.timeoutId);
+                    jpeg2000WorkerState.activeRequest = null;
+                }
+
+                const error = formatJpeg2000WorkerError(event, jpeg2000WorkerState.workerUrl);
+                disposeJpeg2000Worker();
+                activeRequest?.reject(error);
+                pumpJpeg2000WorkerQueue();
             };
+        }
+
+        const request = jpeg2000WorkerState.queue.shift();
+        jpeg2000WorkerState.activeRequest = request;
+        request.timeoutId = setTimeout(() => {
+            if (jpeg2000WorkerState.activeRequest?.requestId !== request.requestId) {
+                return;
+            }
+            jpeg2000WorkerState.activeRequest = null;
+            disposeJpeg2000Worker();
+            request.reject(
+                new Error(
+                    `JPEG 2000 decode timeout (${JPEG2000_DECODE_TIMEOUT_MS / 1000}s, ${request.frameByteLength} bytes)`
+                )
+            );
+            pumpJpeg2000WorkerQueue();
+        }, JPEG2000_DECODE_TIMEOUT_MS);
+
+        try {
+            jpeg2000WorkerState.worker.postMessage(
+                {
+                    type: 'decode-j2k',
+                    requestId: request.requestId,
+                    frameData: request.frameData,
+                    bitsAllocated: request.bitsAllocated,
+                    pixelRepresentation: request.pixelRepresentation,
+                    expectedRows: request.expectedRows,
+                    expectedCols: request.expectedCols
+                },
+                [request.frameData.buffer]
+            );
+        } catch (error) {
+            clearTimeout(request.timeoutId);
+            jpeg2000WorkerState.activeRequest = null;
+            disposeJpeg2000Worker();
+            request.reject(error);
+            pumpJpeg2000WorkerQueue();
+        }
+    }
+
+    function decodeJ2KInWorker(frameData, bitsAllocated, pixelRepresentation, expectedRows, expectedCols) {
+        return new Promise((resolve, reject) => {
+            if (typeof Worker === 'undefined') {
+                reject(new Error('Web Workers are not available for JPEG 2000 decode.'));
+                return;
+            }
 
             // getEncapsulatedFrameData() returns a view into the parsed dataset buffer.
             // Transfer a copy so we do not detach the cached dicomParser dataset bytes.
             const frameDataCopy = new Uint8Array(frameData);
-
-            try {
-                worker.postMessage(
-                    {
-                        type: 'decode-j2k',
-                        frameData: frameDataCopy,
-                        bitsAllocated,
-                        pixelRepresentation,
-                        expectedRows,
-                        expectedCols
-                    },
-                    [frameDataCopy.buffer]
-                );
-            } catch (error) {
-                finish(reject, error);
-            }
+            jpeg2000WorkerState.queue.push({
+                requestId: nextJpeg2000RequestId++,
+                frameData: frameDataCopy,
+                frameByteLength: frameDataCopy.byteLength,
+                bitsAllocated,
+                pixelRepresentation,
+                expectedRows,
+                expectedCols,
+                resolve,
+                reject,
+                timeoutId: null
+            });
+            pumpJpeg2000WorkerQueue();
         });
     }
 
