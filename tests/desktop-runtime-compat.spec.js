@@ -255,7 +255,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
     expect(result.hasFsApi).toBe(true);
 });
 
-test('OpenJPEG asset URL resolves relative to the decoder script', async ({ page }) => {
+test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', async ({ page }) => {
     await page.goto('http://127.0.0.1:5001/?nolib');
 
     const result = await page.evaluate(() => window.DicomViewerApp.dicom.resolveOpenJpegAssetUrl('openjpegwasm_decode.wasm'));
