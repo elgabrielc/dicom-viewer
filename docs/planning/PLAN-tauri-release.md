@@ -2,7 +2,7 @@
 
 ## Overview
 
-Ship the Tauri desktop app as a real macOS release artifact: signed, notarized, stapled, and downloadable as a DMG.
+Ship the Tauri desktop app as a real macOS release artifact: signed, notarized, stapled, and downloadable as a plain DMG.
 
 **Status**: Planned
 **As of**: March 9, 2026
@@ -16,6 +16,16 @@ Related documents:
 ---
 
 ## Current State
+
+### Current artifact policy
+
+The official release path is now a plain DMG that skips Finder window styling.
+
+- Use `npm run build:plain-dmg` in `desktop/` for local packaging
+- This path builds the `.app`, stages the app plus an `Applications` symlink, and creates a functional DMG with `hdiutil`
+- It intentionally avoids the Finder AppleScript styling step used by Tauri's generated `create-dmg` flow
+- Reason: on March 9, 2026 the styled DMG flow was verified to fail in automation with Finder `AppleEvent timed out (-1712)`, while the plain DMG path worked
+- A polished drag-to-Applications DMG can be added later as a separate manual-release path
 
 ### Already done
 
@@ -53,7 +63,7 @@ Produce these release artifacts:
 | Artifact | Purpose |
 |----------|---------|
 | Signed `.app` | Native macOS application bundle |
-| Notarized, stapled `.dmg` | Public installer/download artifact |
+| Notarized, stapled plain `.dmg` | Public installer/download artifact |
 | SHA256 checksum | Integrity verification for the published release |
 | Release notes | Version, install notes, known limitations |
 | Clean-Mac QA checklist | Manual release gate evidence |
@@ -67,7 +77,7 @@ The release is not complete until all of these are true:
 - `npx playwright test` passes on the release candidate commit
 - `cargo test --manifest-path desktop/src-tauri/Cargo.toml` passes
 - macOS CI builds the app bundle successfully
-- Signed DMG build succeeds in CI
+- Signed plain DMG build succeeds in CI
 - Apple notarization succeeds
 - Stapling succeeds for the shipped artifacts
 - Clean-Mac install/launch checklist passes end-to-end
@@ -140,14 +150,26 @@ Move from an unsigned build smoke to a repeatable release artifact pipeline.
 npm run tauri build -- --bundles app
 ```
 
+The plain DMG path is now a repo-owned wrapper:
+
+```bash
+npm run build:plain-dmg
+```
+
+That script:
+- builds the app bundle with `tauri build -- --bundles app`
+- stages `DICOM Viewer.app` plus an `Applications` symlink
+- packages a plain DMG with `hdiutil`
+- skips Finder AppleScript styling entirely
+
 ### Required release work
 
 1. Add a release-oriented macOS workflow or extend the existing macOS build path.
 2. Build the desktop app from `desktop/`.
-3. Produce a DMG bundle:
+3. Produce a plain DMG bundle:
 
 ```bash
-npm run tauri build -- --bundles dmg
+npm run build:plain-dmg
 ```
 
 4. Sign the generated app bundle.
@@ -158,13 +180,13 @@ npm run tauri build -- --bundles dmg
 ### Deliverables
 
 - Signed `.app`
-- Notarized, stapled `.dmg`
+- Notarized, stapled plain `.dmg`
 - SHA256 checksum file
 - Build log with signing/notarization success
 
 ### Exit criteria
 
-- CI can produce a signed, notarized, stapled DMG without manual patching
+- CI can produce a signed, notarized, stapled plain DMG without manual patching
 
 ---
 
@@ -182,7 +204,7 @@ Validate the actual user experience on a machine that does not have a dev enviro
 
 ### Manual checklist
 
-1. Download the DMG from the release artifact.
+1. Download the plain DMG from the release artifact.
 2. Open the DMG and drag the app to `Applications`.
 3. Launch the app through Finder.
 4. Confirm Gatekeeper behavior is normal for a signed/notarized app.
@@ -213,7 +235,7 @@ Turn the validated artifact into a public release that users can download confid
 ### Tasks
 
 1. Create a GitHub release from the release candidate tag.
-2. Upload the stapled DMG.
+2. Upload the stapled plain DMG.
 3. Upload the checksum file.
 4. Publish release notes with:
    - version number
@@ -227,6 +249,18 @@ Turn the validated artifact into a public release that users can download confid
 
 - Public release page exists
 - Downloadable artifact matches the validated build
+
+---
+
+## Future Enhancement: Styled DMG
+
+The Finder-styled DMG is deferred work, not the current release path.
+
+If we revisit it later, treat it as a manual-release enhancement with its own validation:
+
+- restore a polished Finder layout only after the AppleScript timeout is understood and reliable
+- keep the plain DMG path as the automation-safe fallback
+- do not block signed/notarized releases on Finder cosmetics
 
 ---
 
