@@ -1,25 +1,49 @@
 use std::{
     collections::{HashMap, VecDeque},
+    fs,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
         Mutex,
     },
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use dicom_core::Tag;
 use dicom_dictionary_std::tags;
 use dicom_object::{open_file, DefaultDicomObject};
 use dicom_pixeldata::{DecodedPixelData, PixelDecoder};
-use serde::Serialize;
-use tauri::{ipc::Response, AppHandle, Runtime, State};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tauri::{ipc::Response, AppHandle, Manager, Runtime, State};
 use tauri_plugin_fs::FsExt;
 
 const DECODE_TIMEOUT_SECS: u64 = 30;
 const MAX_DECODE_STORE_ENTRIES: usize = 8;
+const DECODE_CACHE_DIR_NAME: &str = "decode-cache";
+const DECODE_CACHE_MANIFEST_NAME: &str = "manifest.json";
+const MAX_DECODE_CACHE_ENTRIES: usize = 1000;
+const MAX_DECODE_CACHE_BYTES: u64 = 500 * 1024 * 1024;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+type DecodeResult<T> = Result<T, DecodeError>;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DecodeError {
+    pub stage: String,
+    pub message: String,
+}
+
+impl DecodeError {
+    fn new(stage: &str, message: impl Into<String>) -> Self {
+        Self {
+            stage: stage.to_string(),
+            message: message.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodeFrameMetadata {
     pub decode_id: String,
@@ -37,7 +61,7 @@ pub struct DecodeFrameMetadata {
     pub pixel_data_length: usize,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct DecodedFrameMetadata {
     rows: u16,
     cols: u16,
@@ -73,7 +97,7 @@ impl DecodedFrameMetadata {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 struct DecodedFrame {
     metadata: DecodedFrameMetadata,
     pixel_bytes: Vec<u8>,
@@ -128,15 +152,58 @@ impl DecodeStore {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct DecodeCachePaths {
+    dir: PathBuf,
+    manifest: PathBuf,
+}
+
+impl DecodeCachePaths {
+    fn new(dir: PathBuf) -> Self {
+        Self {
+            manifest: dir.join(DECODE_CACHE_MANIFEST_NAME),
+            dir,
+        }
+    }
+
+    fn entry_paths(&self, cache_key: &str) -> DecodeCacheEntryPaths {
+        DecodeCacheEntryPaths {
+            pixel_bytes: self.dir.join(format!("{cache_key}.raw")),
+            metadata: self.dir.join(format!("{cache_key}.json")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct DecodeCacheEntryPaths {
+    pixel_bytes: PathBuf,
+    metadata: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct DecodeCacheManifest {
+    entries: Vec<DecodeCacheManifestEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct DecodeCacheManifestEntry {
+    key: String,
+    pixel_data_length: usize,
+    last_accessed_ms: u128,
+}
+
 #[tauri::command]
 pub async fn decode_frame<R: Runtime>(
     app: AppHandle<R>,
     path: String,
     frame_index: u32,
     store: State<'_, DecodeStore>,
-) -> Result<DecodeFrameMetadata, String> {
+) -> DecodeResult<DecodeFrameMetadata> {
     let scoped_path = validate_decode_path(&app, &path)?;
-    let decode_result = run_decode_with_timeout(scoped_path, frame_index).await?;
+    let cache_paths = resolve_cache_paths(&app)?;
+    let decode_result = run_decode_with_timeout(scoped_path, frame_index, cache_paths).await?;
     let decode_id = store.insert(decode_result.pixel_bytes);
     Ok(decode_result.metadata.into_response(decode_id))
 }
@@ -145,73 +212,348 @@ pub async fn decode_frame<R: Runtime>(
 pub fn take_decoded_frame(
     decode_id: String,
     store: State<'_, DecodeStore>,
-) -> Result<Response, String> {
+) -> DecodeResult<Response> {
     let pixel_bytes = store
         .take(&decode_id)
-        .ok_or_else(|| format!("Decoded frame not found: {decode_id}"))?;
+        .ok_or_else(|| DecodeError::new("pixel-transfer", format!("Decoded frame not found: {decode_id}")))?;
     Ok(Response::new(pixel_bytes))
 }
 
-async fn run_decode_with_timeout(path: PathBuf, frame_index: u32) -> Result<DecodedFrame, String> {
-    let decode_task = tokio::task::spawn_blocking(move || decode_frame_impl(&path, frame_index));
+async fn run_decode_with_timeout(
+    path: PathBuf,
+    frame_index: u32,
+    cache_paths: DecodeCachePaths,
+) -> DecodeResult<DecodedFrame> {
+    let decode_task =
+        tokio::task::spawn_blocking(move || decode_frame_impl_with_cache(&path, frame_index, &cache_paths));
 
     match tokio::time::timeout(Duration::from_secs(DECODE_TIMEOUT_SECS), decode_task).await {
         Ok(Ok(result)) => result,
-        Ok(Err(error)) => Err(format!(
-            "Native decode worker ended before producing a result: {error}"
+        Ok(Err(error)) => Err(DecodeError::new(
+            "decode",
+            format!("Native decode worker ended before producing a result: {error}"),
         )),
-        Err(_) => Err(format!(
-            "Native decode timed out after {DECODE_TIMEOUT_SECS}s while waiting on the bounded blocking pool."
+        Err(_) => Err(DecodeError::new(
+            "decode-timeout",
+            format!(
+                "Native decode timed out after {DECODE_TIMEOUT_SECS}s while waiting on the bounded blocking pool."
+            ),
         )),
     }
 }
 
-fn validate_decode_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<PathBuf, String> {
+fn resolve_cache_paths<R: Runtime>(app: &AppHandle<R>) -> DecodeResult<DecodeCachePaths> {
+    let app_data_dir = app.path().app_data_dir().map_err(|error| {
+        DecodeError::new(
+            "cache-write",
+            format!("Failed to resolve the desktop app data directory: {error}"),
+        )
+    })?;
+    let cache_paths = DecodeCachePaths::new(app_data_dir.join(DECODE_CACHE_DIR_NAME));
+    fs::create_dir_all(&cache_paths.dir).map_err(|error| {
+        DecodeError::new(
+            "cache-write",
+            format!(
+                "Failed to create decode cache directory {}: {error}",
+                cache_paths.dir.display()
+            ),
+        )
+    })?;
+    Ok(cache_paths)
+}
+
+fn validate_decode_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> DecodeResult<PathBuf> {
     let requested_path = PathBuf::from(path);
     if requested_path.as_os_str().is_empty() {
-        return Err("Decode path is empty.".into());
+        return Err(DecodeError::new("decode", "Decode path is empty."));
     }
     if !requested_path.is_absolute() {
-        return Err(format!("Decode path must be absolute: {path}"));
+        return Err(DecodeError::new(
+            "decode",
+            format!("Decode path must be absolute: {path}"),
+        ));
     }
 
-    let canonical_path = requested_path
-        .canonicalize()
-        .map_err(|e| format!("Failed to open DICOM file {path}: {e}"))?;
+    let canonical_path = requested_path.canonicalize().map_err(|error| {
+        DecodeError::new(
+            "decode",
+            format!("Failed to open DICOM file {path}: {error}"),
+        )
+    })?;
 
     if !app.fs_scope().is_allowed(&canonical_path) {
-        return Err(format!(
-            "Decode path is outside the allowed desktop file scope: {}",
-            canonical_path.display()
+        return Err(DecodeError::new(
+            "decode",
+            format!(
+                "Decode path is outside the allowed desktop file scope: {}",
+                canonical_path.display()
+            ),
         ));
     }
 
     Ok(canonical_path)
 }
 
-fn decode_frame_impl(path: &Path, frame_index: u32) -> Result<DecodedFrame, String> {
-    let object = open_file(path)
-        .map_err(|e| format!("Failed to open DICOM file {}: {e}", path.display()))?;
+fn decode_frame_impl_with_cache(
+    path: &Path,
+    frame_index: u32,
+    cache_paths: &DecodeCachePaths,
+) -> DecodeResult<DecodedFrame> {
+    let object = open_file(path).map_err(|error| {
+        DecodeError::new(
+            "decode",
+            format!("Failed to open DICOM file {}: {error}", path.display()),
+        )
+    })?;
 
-    let rows = required_u16(&object, tags::ROWS, "Rows")?;
-    let cols = required_u16(&object, tags::COLUMNS, "Columns")?;
-    let bits_allocated = required_u16(&object, tags::BITS_ALLOCATED, "Bits Allocated")?;
-    let pixel_representation = get_u16(&object, tags::PIXEL_REPRESENTATION).unwrap_or_default();
-    let samples_per_pixel = get_u16(&object, tags::SAMPLES_PER_PIXEL).unwrap_or(1);
-    let planar_configuration = get_u16(&object, tags::PLANAR_CONFIGURATION).unwrap_or(0);
+    let cache_key = match build_cache_key(path, &object, frame_index) {
+        Ok(key) => Some(key),
+        Err(error) => {
+            eprintln!("Skipping decode cache key generation: {error}");
+            None
+        }
+    };
+
+    if let Some(cache_key) = cache_key.as_deref() {
+        if let Some(cached_frame) = read_cached_frame(cache_paths, cache_key) {
+            return Ok(cached_frame);
+        }
+    }
+
+    let decoded_frame = decode_frame_from_object(path, &object, frame_index)?;
+
+    if let Some(cache_key) = cache_key.as_deref() {
+        if let Err(error) = write_cached_frame(cache_paths, cache_key, &decoded_frame) {
+            eprintln!("Skipping decode cache write for {}: {}", path.display(), error);
+        }
+    }
+
+    Ok(decoded_frame)
+}
+
+fn build_cache_key(
+    path: &Path,
+    object: &DefaultDicomObject,
+    frame_index: u32,
+) -> Result<String, String> {
+    let file_metadata =
+        fs::metadata(path).map_err(|error| format!("Failed to read file metadata: {error}"))?;
+    let modified = file_metadata
+        .modified()
+        .map_err(|error| format!("Failed to read file modification time: {error}"))?;
+    let modified_ms = modified
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("Invalid file modification time: {error}"))?
+        .as_millis()
+        .to_string();
+    let sop_instance_uid =
+        get_text(object, tags::SOP_INSTANCE_UID).unwrap_or_else(|| "missing-sop-instance-uid".into());
+    let transfer_syntax =
+        get_text(object, tags::TRANSFER_SYNTAX_UID).unwrap_or_else(|| "missing-transfer-syntax".into());
+
+    let mut hasher = Sha256::new();
+    hasher.update(path.as_os_str().as_encoded_bytes());
+    hasher.update(b"|");
+    hasher.update(sop_instance_uid.as_bytes());
+    hasher.update(b"|");
+    hasher.update(frame_index.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(transfer_syntax.as_bytes());
+    hasher.update(b"|");
+    hasher.update(modified_ms.as_bytes());
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn read_cached_frame(cache_paths: &DecodeCachePaths, cache_key: &str) -> Option<DecodedFrame> {
+    let entry_paths = cache_paths.entry_paths(cache_key);
+    if !entry_paths.pixel_bytes.exists() || !entry_paths.metadata.exists() {
+        return None;
+    }
+
+    let metadata_text = fs::read_to_string(&entry_paths.metadata).ok()?;
+    let metadata: DecodedFrameMetadata = serde_json::from_str(&metadata_text).ok()?;
+    let pixel_bytes = fs::read(&entry_paths.pixel_bytes).ok()?;
+    if pixel_bytes.len() != metadata.pixel_data_length {
+        return None;
+    }
+
+    if let Err(error) = touch_cache_manifest(cache_paths, cache_key, metadata.pixel_data_length) {
+        eprintln!("Failed to update decode cache manifest after hit: {error}");
+    }
+
+    Some(DecodedFrame {
+        metadata,
+        pixel_bytes,
+    })
+}
+
+fn write_cached_frame(
+    cache_paths: &DecodeCachePaths,
+    cache_key: &str,
+    decoded_frame: &DecodedFrame,
+) -> Result<(), String> {
+    fs::create_dir_all(&cache_paths.dir)
+        .map_err(|error| format!("Failed to create cache directory: {error}"))?;
+
+    let entry_paths = cache_paths.entry_paths(cache_key);
+    fs::write(&entry_paths.pixel_bytes, &decoded_frame.pixel_bytes)
+        .map_err(|error| format!("Failed to write cached pixels: {error}"))?;
+    let metadata_json = serde_json::to_vec_pretty(&decoded_frame.metadata)
+        .map_err(|error| format!("Failed to serialize cached metadata: {error}"))?;
+    fs::write(&entry_paths.metadata, metadata_json)
+        .map_err(|error| format!("Failed to write cached metadata: {error}"))?;
+
+    let mut manifest = load_cache_manifest(cache_paths)?;
+    upsert_manifest_entry(
+        &mut manifest,
+        cache_key,
+        decoded_frame.metadata.pixel_data_length,
+    );
+    enforce_cache_limits(
+        cache_paths,
+        &mut manifest,
+        MAX_DECODE_CACHE_ENTRIES,
+        MAX_DECODE_CACHE_BYTES,
+    )?;
+    save_cache_manifest(cache_paths, &manifest)
+}
+
+fn touch_cache_manifest(
+    cache_paths: &DecodeCachePaths,
+    cache_key: &str,
+    pixel_data_length: usize,
+) -> Result<(), String> {
+    let mut manifest = load_cache_manifest(cache_paths)?;
+    upsert_manifest_entry(&mut manifest, cache_key, pixel_data_length);
+    save_cache_manifest(cache_paths, &manifest)
+}
+
+fn load_cache_manifest(cache_paths: &DecodeCachePaths) -> Result<DecodeCacheManifest, String> {
+    if !cache_paths.manifest.exists() {
+        return Ok(DecodeCacheManifest::default());
+    }
+
+    let manifest_json = fs::read_to_string(&cache_paths.manifest)
+        .map_err(|error| format!("Failed to read cache manifest: {error}"))?;
+    let mut manifest: DecodeCacheManifest = serde_json::from_str(&manifest_json)
+        .map_err(|error| format!("Failed to parse cache manifest: {error}"))?;
+
+    manifest.entries.retain(|entry| {
+        let paths = cache_paths.entry_paths(&entry.key);
+        paths.pixel_bytes.exists() && paths.metadata.exists()
+    });
+
+    Ok(manifest)
+}
+
+fn save_cache_manifest(
+    cache_paths: &DecodeCachePaths,
+    manifest: &DecodeCacheManifest,
+) -> Result<(), String> {
+    let manifest_json = serde_json::to_vec_pretty(manifest)
+        .map_err(|error| format!("Failed to serialize cache manifest: {error}"))?;
+    fs::write(&cache_paths.manifest, manifest_json)
+        .map_err(|error| format!("Failed to write cache manifest: {error}"))
+}
+
+fn upsert_manifest_entry(
+    manifest: &mut DecodeCacheManifest,
+    cache_key: &str,
+    pixel_data_length: usize,
+) {
+    manifest.entries.retain(|entry| entry.key != cache_key);
+    manifest.entries.push(DecodeCacheManifestEntry {
+        key: cache_key.to_string(),
+        pixel_data_length,
+        last_accessed_ms: current_time_ms(),
+    });
+}
+
+fn enforce_cache_limits(
+    cache_paths: &DecodeCachePaths,
+    manifest: &mut DecodeCacheManifest,
+    max_entries: usize,
+    max_bytes: u64,
+) -> Result<(), String> {
+    manifest
+        .entries
+        .sort_by_key(|entry| (entry.last_accessed_ms, entry.key.clone()));
+
+    let mut total_bytes = manifest
+        .entries
+        .iter()
+        .map(|entry| entry.pixel_data_length as u64)
+        .sum::<u64>();
+
+    while manifest.entries.len() > max_entries || total_bytes > max_bytes {
+        let stale_entry = manifest.entries.remove(0);
+        total_bytes = total_bytes.saturating_sub(stale_entry.pixel_data_length as u64);
+        let stale_paths = cache_paths.entry_paths(&stale_entry.key);
+        remove_if_exists(&stale_paths.pixel_bytes)
+            .map_err(|error| format!("Failed to evict cached pixel payload: {error}"))?;
+        remove_if_exists(&stale_paths.metadata)
+            .map_err(|error| format!("Failed to evict cached metadata: {error}"))?;
+    }
+
+    Ok(())
+}
+
+fn remove_if_exists(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn current_time_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+}
+
+fn decode_frame_impl(path: &Path, frame_index: u32) -> DecodeResult<DecodedFrame> {
+    let object = open_file(path).map_err(|error| {
+        DecodeError::new(
+            "decode",
+            format!("Failed to open DICOM file {}: {error}", path.display()),
+        )
+    })?;
+    decode_frame_from_object(path, &object, frame_index)
+}
+
+fn decode_frame_from_object(
+    path: &Path,
+    object: &DefaultDicomObject,
+    frame_index: u32,
+) -> DecodeResult<DecodedFrame> {
+    let rows = required_u16(object, tags::ROWS, "Rows")?;
+    let cols = required_u16(object, tags::COLUMNS, "Columns")?;
+    let bits_allocated = required_u16(object, tags::BITS_ALLOCATED, "Bits Allocated")?;
+    let pixel_representation = get_u16(object, tags::PIXEL_REPRESENTATION).unwrap_or_default();
+    let samples_per_pixel = get_u16(object, tags::SAMPLES_PER_PIXEL).unwrap_or(1);
+    let planar_configuration = get_u16(object, tags::PLANAR_CONFIGURATION).unwrap_or(0);
     let photometric_interpretation =
-        get_text(&object, tags::PHOTOMETRIC_INTERPRETATION).unwrap_or_else(|| "MONOCHROME2".into());
-    let frame_count = get_u32(&object, tags::NUMBER_OF_FRAMES).unwrap_or(1);
+        get_text(object, tags::PHOTOMETRIC_INTERPRETATION).unwrap_or_else(|| "MONOCHROME2".into());
+    let frame_count = get_u32(object, tags::NUMBER_OF_FRAMES).unwrap_or(1);
 
     if frame_index >= frame_count {
-        return Err(format!(
-            "Requested frame {frame_index} but dataset only has {frame_count} frame(s)."
+        return Err(DecodeError::new(
+            "frame-extraction",
+            format!("Requested frame {frame_index} but dataset only has {frame_count} frame(s)."),
         ));
     }
 
-    let decoded = object
-        .decode_pixel_data_frame(frame_index)
-        .map_err(|e| format!("Failed to decode frame {frame_index}: {e}"))?;
+    let decoded = object.decode_pixel_data_frame(frame_index).map_err(|error| {
+        DecodeError::new(
+            "decode",
+            format!(
+                "Failed to decode frame {frame_index} from {}: {error}",
+                path.display()
+            ),
+        )
+    })?;
     let pixel_bytes = decoded_pixels_to_bytes(decoded);
 
     Ok(DecodedFrame {
@@ -223,10 +565,10 @@ fn decode_frame_impl(path: &Path, frame_index: u32) -> Result<DecodedFrame, Stri
             samples_per_pixel,
             planar_configuration,
             photometric_interpretation,
-            window_center: get_first_f64(&object, tags::WINDOW_CENTER),
-            window_width: get_first_f64(&object, tags::WINDOW_WIDTH),
-            rescale_slope: get_first_f64(&object, tags::RESCALE_SLOPE),
-            rescale_intercept: get_first_f64(&object, tags::RESCALE_INTERCEPT),
+            window_center: get_first_f64(object, tags::WINDOW_CENTER),
+            window_width: get_first_f64(object, tags::WINDOW_WIDTH),
+            rescale_slope: get_first_f64(object, tags::RESCALE_SLOPE),
+            rescale_intercept: get_first_f64(object, tags::RESCALE_INTERCEPT),
             pixel_data_length: pixel_bytes.len(),
         },
         pixel_bytes,
@@ -263,8 +605,13 @@ fn get_u32(object: &DefaultDicomObject, tag: Tag) -> Option<u32> {
         .and_then(|element| element.to_int::<u32>().ok())
 }
 
-fn required_u16(object: &DefaultDicomObject, tag: Tag, label: &str) -> Result<u16, String> {
-    get_u16(object, tag).ok_or_else(|| format!("Missing or invalid DICOM field: {label}"))
+fn required_u16(object: &DefaultDicomObject, tag: Tag, label: &str) -> DecodeResult<u16> {
+    get_u16(object, tag).ok_or_else(|| {
+        DecodeError::new(
+            "frame-extraction",
+            format!("Missing or invalid DICOM field: {label}"),
+        )
+    })
 }
 
 fn get_first_f64(object: &DefaultDicomObject, tag: Tag) -> Option<f64> {
@@ -285,6 +632,13 @@ mod tests {
             .join("..")
             .join("..")
             .join(relative)
+    }
+
+    fn test_cache_paths(label: &str) -> DecodeCachePaths {
+        let unique = format!("{label}-{}-{}", std::process::id(), current_time_ms());
+        let dir = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&dir).expect("test cache dir should be creatable");
+        DecodeCachePaths::new(dir)
     }
 
     #[test]
@@ -314,6 +668,96 @@ mod tests {
     }
 
     #[test]
+    fn decode_cache_reads_back_written_frames() {
+        let cache_paths = test_cache_paths("decode-cache-roundtrip");
+        let cache_key = "sample-frame";
+        let decoded = DecodedFrame {
+            metadata: DecodedFrameMetadata {
+                rows: 2,
+                cols: 2,
+                bits_allocated: 16,
+                pixel_representation: 0,
+                samples_per_pixel: 1,
+                planar_configuration: 0,
+                photometric_interpretation: "MONOCHROME2".into(),
+                window_center: Some(40.0),
+                window_width: Some(400.0),
+                rescale_slope: Some(1.0),
+                rescale_intercept: Some(-1024.0),
+                pixel_data_length: 8,
+            },
+            pixel_bytes: vec![1, 0, 2, 0, 3, 0, 4, 0],
+        };
+
+        write_cached_frame(&cache_paths, cache_key, &decoded).expect("cache write should succeed");
+        let cached = read_cached_frame(&cache_paths, cache_key).expect("cache hit should succeed");
+
+        assert_eq!(cached, decoded);
+        assert!(cache_paths.entry_paths(cache_key).pixel_bytes.exists());
+        assert!(cache_paths.entry_paths(cache_key).metadata.exists());
+        assert!(cache_paths.manifest.exists());
+
+        let _ = fs::remove_dir_all(&cache_paths.dir);
+    }
+
+    #[test]
+    fn decode_cache_evicts_oldest_entries_when_limits_are_exceeded() {
+        let cache_paths = test_cache_paths("decode-cache-eviction");
+        let mut manifest = DecodeCacheManifest {
+            entries: vec![
+                DecodeCacheManifestEntry {
+                    key: "oldest".into(),
+                    pixel_data_length: 4,
+                    last_accessed_ms: 1,
+                },
+                DecodeCacheManifestEntry {
+                    key: "newest".into(),
+                    pixel_data_length: 4,
+                    last_accessed_ms: 2,
+                },
+            ],
+        };
+
+        for entry in &manifest.entries {
+            let entry_paths = cache_paths.entry_paths(&entry.key);
+            fs::write(&entry_paths.pixel_bytes, [0, 1, 2, 3]).expect("pixel payload should be written");
+            fs::write(&entry_paths.metadata, "{}").expect("metadata payload should be written");
+        }
+
+        enforce_cache_limits(&cache_paths, &mut manifest, 1, 4).expect("eviction should succeed");
+
+        assert_eq!(manifest.entries.len(), 1);
+        assert_eq!(manifest.entries[0].key, "newest");
+        assert!(!cache_paths.entry_paths("oldest").pixel_bytes.exists());
+        assert!(cache_paths.entry_paths("newest").pixel_bytes.exists());
+
+        let _ = fs::remove_dir_all(&cache_paths.dir);
+    }
+
+    #[test]
+    fn decode_frame_impl_with_cache_uses_cached_pixels_after_first_decode() {
+        let fixture = fixture_path("test-data/mri-samples/MR2_J2KI.dcm");
+        let cache_paths = test_cache_paths("decode-cache-hit");
+
+        let first = decode_frame_impl_with_cache(&fixture, 0, &cache_paths)
+            .expect("first decode should populate cache");
+        let object = open_file(&fixture).expect("fixture should be readable");
+        let cache_key =
+            build_cache_key(&fixture, &object, 0).expect("cache key should be computed for fixture");
+        let entry_paths = cache_paths.entry_paths(&cache_key);
+        let cached_bytes = vec![7; first.metadata.pixel_data_length];
+        fs::write(&entry_paths.pixel_bytes, &cached_bytes).expect("cached payload should be rewritable");
+
+        let second = decode_frame_impl_with_cache(&fixture, 0, &cache_paths)
+            .expect("second decode should reuse cached payload");
+
+        assert_eq!(second.pixel_bytes, cached_bytes);
+        assert_eq!(second.metadata, first.metadata);
+
+        let _ = fs::remove_dir_all(&cache_paths.dir);
+    }
+
+    #[test]
     fn decode_frame_impl_decodes_real_jpeg2000_fixture() {
         let fixture = fixture_path("test-data/mri-samples/MR2_J2KI.dcm");
         let decoded = decode_frame_impl(&fixture, 0).expect("fixture should decode");
@@ -325,9 +769,6 @@ mod tests {
         assert_eq!(decoded.metadata.samples_per_pixel, 1);
         assert_eq!(decoded.metadata.photometric_interpretation, "MONOCHROME2");
         assert_eq!(decoded.metadata.pixel_data_length, 1024 * 1024 * 2);
-        assert_eq!(
-            decoded.pixel_bytes.len(),
-            decoded.metadata.pixel_data_length
-        );
+        assert_eq!(decoded.pixel_bytes.len(), decoded.metadata.pixel_data_length);
     }
 }

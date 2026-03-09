@@ -87,9 +87,11 @@ self.onmessage = async (event) => {
     if (payload.type !== 'decode-j2k') return;
 
     let decoder = null;
+    let stage = 'codec-init';
 
     try {
         const openjpeg = await initOpenJpegWorker();
+        stage = 'decode';
         decoder = new openjpeg.J2KDecoder();
 
         const encodedBuffer = decoder.getEncodedBuffer(payload.frameData.length);
@@ -106,6 +108,7 @@ self.onmessage = async (event) => {
             console.warn('JPEG 2000 worker decoded unexpected width:', frameInfo.width, payload.expectedCols);
         }
 
+        stage = 'pixel-conversion';
         const pixelData = copyDecodedPixels(
             decoded,
             frameInfo,
@@ -126,7 +129,7 @@ self.onmessage = async (event) => {
         self.postMessage({
             type: 'error',
             requestId: payload.requestId,
-            stage: 'decode',
+            stage,
             message: String(error?.message || error || 'Unknown JPEG 2000 worker error')
         });
     } finally {

@@ -130,13 +130,15 @@ test('decodeJ2KInWorker times out and terminates a hanging worker', async ({ pag
 
         try {
             let errorMessage = null;
+            let errorStage = null;
             try {
                 await window.DicomViewerApp.dicom.decodeJ2KInWorker(new Uint8Array([9, 8, 7]), 16, 0, 1, 1);
             } catch (error) {
                 errorMessage = String(error?.message || error);
+                errorStage = error?.stage || null;
             }
 
-            return { errorMessage, terminated };
+            return { errorMessage, errorStage, terminated };
         } finally {
             window.Worker = originalWorker;
             window.setTimeout = originalSetTimeout;
@@ -145,6 +147,7 @@ test('decodeJ2KInWorker times out and terminates a hanging worker', async ({ pag
 
     expect(result.errorMessage).toContain('JPEG 2000 decode timeout');
     expect(result.errorMessage).toContain('3 bytes');
+    expect(result.errorStage).toBe('decode-timeout');
     expect(result.terminated).toBe(true);
 });
 
@@ -173,13 +176,15 @@ test('decodeJ2KInWorker includes the worker URL when the worker fails to load', 
 
         try {
             let errorMessage = null;
+            let errorStage = null;
             try {
                 await window.DicomViewerApp.dicom.decodeJ2KInWorker(new Uint8Array([1]), 16, 0, 1, 1);
             } catch (error) {
                 errorMessage = String(error?.message || error);
+                errorStage = error?.stage || null;
             }
 
-            return { errorMessage, terminated };
+            return { errorMessage, errorStage, terminated };
         } finally {
             window.Worker = originalWorker;
         }
@@ -187,6 +192,7 @@ test('decodeJ2KInWorker includes the worker URL when the worker fails to load', 
 
     expect(result.errorMessage).toContain('Script error.');
     expect(result.errorMessage).toContain('/js/app/decode-worker.js');
+    expect(result.errorStage).toBe('codec-init');
     expect(result.terminated).toBe(true);
 });
 

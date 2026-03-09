@@ -23,6 +23,12 @@
         },
         {
           "path": "$APPDATA/reports/**"
+        },
+        {
+          "path": "$APPDATA/decode-cache"
+        },
+        {
+          "path": "$APPDATA/decode-cache/**"
         }
       ]
     }

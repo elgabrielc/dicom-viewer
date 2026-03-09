@@ -675,6 +675,59 @@ test.describe('Desktop library scanning', () => {
         expect(result.after).toEqual(result.before);
     });
 
+    test('renderDicom error overlay includes stage-level diagnostics', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const ctx = document.getElementById('imageCanvas').getContext('2d');
+            const drawnText = [];
+            const originalFillText = ctx.fillText.bind(ctx);
+            ctx.fillText = (...args) => {
+                drawnText.push(String(args[0]));
+                return originalFillText(...args);
+            };
+
+            try {
+                const info = await window.DicomViewerApp.rendering.renderDicom({
+                    elements: {},
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.4.90',
+                            x00080060: 'RF'
+                        };
+                        return values[tag] || '';
+                    },
+                    uint16() {
+                        return 0;
+                    }
+                });
+
+                return {
+                    info,
+                    drawnText
+                };
+            } finally {
+                ctx.fillText = originalFillText;
+            }
+        });
+
+        expect(result.info).toMatchObject({
+            error: true,
+            stage: 'frame-extraction'
+        });
+        expect(result.info.diagnosticLines).toEqual(expect.arrayContaining([
+            'Stage: frame-extraction',
+            'Transfer Syntax: JPEG 2000 Lossless',
+            'Modality: RF'
+        ]));
+        expect(result.drawnText).toEqual(expect.arrayContaining([
+            'Stage: frame-extraction',
+            'Transfer Syntax: JPEG 2000 Lossless',
+            'Modality: RF'
+        ]));
+    });
+
     test('decodeDicom returns a detached copy of uncompressed pixel data', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);

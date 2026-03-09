@@ -652,6 +652,8 @@ dependencies = [
  "dicom-pixeldata",
  "dicom-transfer-syntax-registry",
  "serde",
+ "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
