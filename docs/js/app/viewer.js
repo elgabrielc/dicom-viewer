@@ -20,7 +20,6 @@
     const { renderDicom } = app.rendering;
     const { readSliceBuffer, getSliceCacheKey } = app.sources;
     const {
-        drawMeasurements,
         resetViewForNewSeries,
         updateWLDisplay
     } = app.tools;
@@ -120,7 +119,6 @@
         }
 
         imageLoading.style.display = 'none';
-        drawMeasurements();
     }
 
     function updateSliceInfo() {
