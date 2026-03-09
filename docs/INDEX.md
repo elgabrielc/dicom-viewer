@@ -36,6 +36,7 @@ Master index of all project documentation, organized by audience and purpose.
 
 | Document | Location | Description |
 |----------|----------|-------------|
+| [Tauri Release Plan](./planning/PLAN-tauri-release.md) | docs/planning/ | Release plan for the signed/notarized macOS desktop artifact, clean-Mac QA, and publication workflow |
 | [3D Volume Rendering Plan](../3D_VOLUME_RENDERING_PLAN.md) | Root | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
 | [Tauri Desktop Plan](./planning/PLAN-tauri-desktop-app.md) | docs/planning/ | Restored historical plan for the Tauri desktop shell, with the original 6-PR breakdown and the commits/PRs that completed it |
 | [Project Sitemap](./planning/SITEMAP.md) | docs/planning/ | File structure map and active work tracking |
@@ -94,6 +95,7 @@ Research, decision logs, and feature planning.
 ```
 docs/planning/
 ├── PLAN-tauri-desktop-app.md                # Historical Tauri desktop implementation plan
+├── PLAN-tauri-release.md                    # Tauri macOS release plan
 ├── SITEMAP.md                              # Project structure map
 ├── RESEARCH-3d-volume-rendering.md         # 3D rendering research
 ├── RESEARCH-measurement-tool.md            # Measurement tool benchmarking
@@ -109,7 +111,8 @@ Architecture Decision Records (ADRs) for significant decisions and rationale.
 docs/decisions/
 ├── README.md                               # ADR template and conventions
 ├── 001-launch-command.md                   # Decision record for launch.command startup
-└── 002-persistent-local-library.md         # Decision record for persistent DICOM library
+├── 002-persistent-local-library.md         # Decision record for persistent DICOM library
+└── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
 ```
 
 ---
@@ -192,6 +195,9 @@ Project structure map showing workspace layout, file organization, and current w
 
 **PLAN-tauri-desktop-app.md**
 Historical implementation plan for the Tauri desktop shell. Restores the original 6-PR breakdown and maps it to the commits and PRs that shipped the desktop app.
+
+**PLAN-tauri-release.md**
+Release plan for shipping the Tauri desktop app as a signed, notarized macOS artifact. Covers release candidate freeze, Apple credentials, CI signing/notarization, clean-Mac QA, and publication.
 
 **RESEARCH-*.md**
 Research documents capturing benchmarking and analysis before feature implementation. Includes competitive analysis, technology comparisons, and design rationale.
