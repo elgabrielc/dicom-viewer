@@ -25,6 +25,7 @@ claude 0/                          # Workspace/inbox - drop files here for Claud
 | File | Description |
 |------|-------------|
 | `BUGS.md` | Bug tracking and known issues |
+| `CODE_REVIEWS.md` | PR review findings and resolution tracking |
 | `DEPLOY.md` | Deployment guide: local dev, GitHub Pages, CI/CD workflow |
 | `DEVELOPMENT_PHILOSOPHY.md` | Learning guide: why branches, CI/CD, preview environments, code review exist |
 | `TESTING.md` | Testing documentation and Playwright setup |

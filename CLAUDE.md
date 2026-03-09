@@ -241,12 +241,13 @@ After each test run, apply continuous improvement: analyze results, strengthen t
 ## Documentation Requirements
 
 - **Keep SITEMAP.md accurate.** Update `docs/planning/SITEMAP.md` whenever project structure changes (new files, moved files, renamed folders). It's the reference for understanding the project.
-- **Track bugs in BUGS.md.** Document in `docs/planning/BUGS.md` with full context:
+- **Track bugs in BUGS.md.** Document in `docs/BUGS.md` with full context:
   - How the bug was encountered (symptoms, reproduction steps)
   - Root cause analysis (why it happened)
   - Solution implemented (what was changed)
   - Why that solution was chosen (alternatives considered, tradeoffs)
   - Prevention control added (test, code guideline, or check to prevent recurrence)
+- **Track code review findings in CODE_REVIEWS.md.** Document findings from PR reviews in `docs/CODE_REVIEWS.md`, organized by PR with severity grouping (Critical/Important/Suggestions). Update finding status as issues are resolved. Promote unresolved findings to BUGS.md if they survive past merge.
 - **Update session log.** At the end of each session, append a summary to `docs/history/session-summaries.md` with date, session name, what was accomplished, and key decisions. This file is gitignored (private).
 - **Record major decisions as ADRs.** For new features, significant architecture choices, technology selections, or decisions likely to be revisited, write/update an ADR in `docs/decisions/`. Use ADR status updates as implementation progresses, and supersede with a new ADR when reversing a decision.
 
