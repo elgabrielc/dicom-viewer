@@ -62,6 +62,8 @@ Deep technical analysis of competing products and how their architectures compar
 |------|-------------|
 | `RESEARCH-philips-im15.md` | Philips Image Management 15: server-side rendering architecture, AWS HealthSuite cloud, AI integration, Vue PACS predecessor, KLAS positioning. Comparison to our client-side approach |
 | `RESEARCH-sectra.md` | Sectra IDS7/UniView: hybrid rendering (thick client 2D + server 3D), RapidConnect progressive JPEG 2000 streaming, DDP hanging protocols, Azure cloud, Amplifier AI marketplace. KLAS #1 for 13 years |
+| `RESEARCH-visage.md` | Visage 7 / Pro Medicus: pure SSR from GPU render servers (C++/Qt, Zuse Institute Berlin origins), patented adaptive streaming, single codebase (viewer+archive+AI), AWS cloud-native, per-study pricing, 100% customer retention |
+| `RESEARCH-ohif.md` | OHIF Viewer (open-source): Cornerstone3D rendering (vtk.js + WebGL), extension/mode architecture, DICOMweb, progressive HTJ2K loading, VoxelManager memory optimization. Most direct architectural comparison to our viewer |
 
 ### Research Companions
 
@@ -109,6 +111,7 @@ Architecture Decision Records (ADRs) for significant project decisions and ratio
 | `001-launch-command.md` | Decision record for macOS `launch.command` startup workflow |
 | `002-persistent-local-library.md` | Decision record for persistent DICOM library with DicomFolderSource, configurable folder, and apiBase pattern |
 | `003-tauri-desktop-shell-with-shared-web-core.md` | Decision record for the shared web core plus Tauri desktop shell direction |
+| `004-cloud-platform-rendering-architecture.md` | Cloud platform uses client-side rendering + cloud storage (not server-side rendering). Server compute reserved for progressive transcoding, AI, and 3D fallback |
 
 ---
 

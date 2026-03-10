@@ -55,6 +55,8 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [MyChart Reports](./planning/RESEARCH-mychart-reports_2026-02-02_2148.md) | Feature | Epic MyChart document upload and storage |
 | [Philips IM15](./planning/RESEARCH-philips-im15.md) | Competitive | Server-side rendering, AWS cloud, AI integration, market positioning |
 | [Sectra](./planning/RESEARCH-sectra.md) | Competitive | Hybrid rendering, RapidConnect streaming, DDP hanging protocols, Azure cloud. KLAS #1 |
+| [Visage 7](./planning/RESEARCH-visage.md) | Competitive | Pure SSR, patented adaptive streaming, single codebase, AWS cloud, per-study pricing |
+| [OHIF Viewer](./planning/RESEARCH-ohif.md) | Both | Open-source, Cornerstone3D/vtk.js, extension architecture, DICOMweb, HTJ2K progressive loading |
 
 ### For Decisions
 

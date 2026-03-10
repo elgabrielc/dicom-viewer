@@ -157,6 +157,7 @@ vtk.js is ~500KB, but for a medical imaging app where users load multi-GB DICOM 
 
 ### Phase 1: Core Volume Rendering
 - [ ] Load all slices into 3D texture/volume buffer
+- [ ] Enable `EXT_texture_norm16` for 16-bit GPU textures (halves GPU memory vs 32-bit float)
 - [ ] Basic ray-casting (direct volume rendering)
 - [ ] Transfer function (HU to RGBA mapping)
 - [ ] Mouse rotation/zoom controls
@@ -209,6 +210,16 @@ Quality: [Fast] [Normal] [High Quality]
 - 512 x 512 x 300 slices (Int16) = ~150MB
 - Need progress indicator while loading volume
 - May need to downsample very large volumes
+
+### GPU Memory Optimizations (from OHIF/Cornerstone3D benchmarking)
+
+These are proven patterns from the Cornerstone3D codebase. See [RESEARCH-ohif.md](docs/planning/RESEARCH-ohif.md) for full details.
+
+**16-bit GPU textures (critical)**: The `EXT_texture_norm16` WebGL extension enables 16-bit normalized integer textures instead of 32-bit float. Most medical images are 12-16 bit depth, so 32-bit float wastes half the GPU memory. Enabling this halves GPU memory usage for volume textures with no quality loss. vtk.js supports this via configuration. Must be enabled from the start -- retrofitting is harder.
+
+**VoxelManager pattern**: Instead of pre-allocating a full scalar data array for the volume (e.g., 150MB for 512x512x300), access data image-by-image and stream directly to GPU textures. Cornerstone3D 2.0 introduced this to halve CPU-side memory usage. The volume array is built lazily as slices load rather than allocated upfront.
+
+**Shared Volume Mappers**: When displaying the same volume in multiple viewports (e.g., axial + sagittal + coronal MPR), create the GPU texture once and share the mapper across all viewports. Without this, N viewports = N copies of the same volume in GPU memory. Cornerstone3D achieves this through vtk.js volume mapper sharing.
 
 ### GPU Requirements
 - WebGL 2.0 required (3D textures)
