@@ -229,15 +229,22 @@
             );
         }
 
-        if (decoded.samplesPerPixel !== 1) {
+        const isRgb = decoded.samplesPerPixel === 3 && decoded.photometricInterpretation === 'RGB';
+        if (decoded.samplesPerPixel !== 1 && !isRgb) {
             throw new Error(
-                `${sourceLabel} returned ${decoded.samplesPerPixel} sample(s) per pixel, but the current renderer only supports monochrome fallback data.`
+                `${sourceLabel} returned ${decoded.samplesPerPixel} sample(s) per pixel with photometric interpretation ${decoded.photometricInterpretation || 'unknown'}, but the current renderer only supports monochrome and RGB fallback data.`
+            );
+        }
+
+        if (isRgb && decoded.planarConfiguration !== 0 && decoded.planarConfiguration !== 1) {
+            throw new Error(
+                `${sourceLabel} returned RGB data with unsupported Planar Configuration ${decoded.planarConfiguration}.`
             );
         }
     }
 
     function finalizeDecodedImage(decoded, hasWindowLevel) {
-        if (isBlankSlice(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept)) {
+        if (decoded.samplesPerPixel === 1 && isBlankSlice(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept)) {
             console.log('Detected blank slice (all pixels same value)');
             return {
                 ...decoded,
@@ -246,7 +253,11 @@
         }
 
         let { windowCenter, windowWidth } = decoded;
-        if (!hasWindowLevel && (decoded.modality === 'MR' || decoded.modality === 'PT' || decoded.modality === 'NM')) {
+        if (
+            !hasWindowLevel &&
+            decoded.samplesPerPixel === 1 &&
+            (decoded.modality === 'MR' || decoded.modality === 'PT' || decoded.modality === 'NM')
+        ) {
             const autoWL = calculateAutoWindowLevel(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept);
             windowCenter = autoWL.windowCenter;
             windowWidth = autoWL.windowWidth;
@@ -357,7 +368,11 @@
         const bitsAllocated = dataSet.uint16('x00280100') || 16;  // (0028,0100) Bits Allocated
         const pixelRepresentation = dataSet.uint16('x00280103') || 0;  // (0028,0103) 0=unsigned, 1=signed
         const samplesPerPixel = dataSet.uint16('x00280002') || 1;
+        const planarConfiguration = samplesPerPixel > 1 ? (dataSet.uint16('x00280006') || 0) : 0;
         const photometricInterpretation = getString(dataSet, 'x00280004');
+        let decodedSamplesPerPixel = samplesPerPixel;
+        let decodedPlanarConfiguration = planarConfiguration;
+        let decodedPhotometricInterpretation = photometricInterpretation;
 
         // Get modality for appropriate defaults
         const modality = getString(dataSet, 'x00080060');  // (0008,0060) Modality
@@ -472,7 +487,13 @@
                     );
                 }
                 pixelData = result.pixels;
-                skipWindowLevel = result.isRgb; // Already 0-255 from JPEG decode
+                if (result.isRgb) {
+                    // Browser JPEG decode path currently returns a display-ready single channel.
+                    decodedSamplesPerPixel = 1;
+                    decodedPlanarConfiguration = 0;
+                    decodedPhotometricInterpretation = 'MONOCHROME2';
+                    skipWindowLevel = true;
+                }
             } else {
                 // Unsupported compression format
                 return buildDecodeError(
@@ -513,14 +534,15 @@
             }
         }
 
-        return finalizeDecodedImage({
+        const decoded = {
             pixelData,
             rows,
             cols,
             bitsAllocated,
             pixelRepresentation,
-            samplesPerPixel,
-            photometricInterpretation,
+            samplesPerPixel: decodedSamplesPerPixel,
+            planarConfiguration: decodedPlanarConfiguration,
+            photometricInterpretation: decodedPhotometricInterpretation,
             windowCenter,
             windowWidth,
             rescaleSlope,
@@ -530,7 +552,23 @@
             mrMetadata,
             pixelSpacing,
             skipWindowLevel
-        }, hasWindowLevel);
+        };
+        try {
+            validateRenderedPixelData(decoded, 'Decoded image');
+        } catch (error) {
+            return buildDecodeError(
+                'Decoded pixel data is not renderable',
+                getDecodeFailureMessage(error),
+                {
+                    stage: getDecodeFailureStage(error, 'pixel-conversion'),
+                    transferSyntax,
+                    modality,
+                    tsInfo: transferSyntaxInfo
+                }
+            );
+        }
+
+        return finalizeDecodedImage(decoded, hasWindowLevel);
     }
 
     async function decodeNative(dataSet, filePath, frameIndex = 0) {
@@ -549,6 +587,7 @@
         const bitsAllocated = Number(nativeDecoded.bitsAllocated);
         const pixelRepresentation = Number(nativeDecoded.pixelRepresentation);
         const samplesPerPixel = Number(nativeDecoded.samplesPerPixel || 1);
+        const planarConfiguration = Number(nativeDecoded.planarConfiguration || 0);
         const {
             windowCenter,
             windowWidth,
@@ -572,6 +611,7 @@
             bitsAllocated,
             pixelRepresentation,
             samplesPerPixel,
+            planarConfiguration,
             photometricInterpretation,
             windowCenter,
             windowWidth,
@@ -686,26 +726,44 @@
         const windowMax = windowCenter + windowWidth / 2;
         const windowDivisor = Math.max(windowMax - windowMin, 1);
 
-        // Apply rescale and window/level transform to each pixel
-        for (let i = 0; i < decoded.pixelData.length; i++) {
-            let grayscaleValue;
-            if (decoded.skipWindowLevel) {
-                // Already 0-255 (e.g., from JPEG baseline decode)
-                grayscaleValue = decoded.pixelData[i];
-            } else {
-                // Apply rescale slope/intercept
-                // CT: converts to Hounsfield Units; MR: arbitrary signal intensity
-                let pixelValue = decoded.pixelData[i] * decoded.rescaleSlope + decoded.rescaleIntercept;
-                // Clamp to window range and scale to 0-255
-                pixelValue = Math.max(windowMin, Math.min(windowMax, pixelValue));
-                grayscaleValue = Math.round(((pixelValue - windowMin) / windowDivisor) * 255);
+        if (decoded.samplesPerPixel === 3 && decoded.photometricInterpretation === 'RGB') {
+            const planeSize = decoded.rows * decoded.cols;
+            for (let i = 0; i < planeSize; i++) {
+                const pixelIndex = i * 4;
+                if (decoded.planarConfiguration === 1) {
+                    outputPixels[pixelIndex] = decoded.pixelData[i];
+                    outputPixels[pixelIndex + 1] = decoded.pixelData[i + planeSize];
+                    outputPixels[pixelIndex + 2] = decoded.pixelData[i + (planeSize * 2)];
+                } else {
+                    const interleavedIndex = i * 3;
+                    outputPixels[pixelIndex] = decoded.pixelData[interleavedIndex];
+                    outputPixels[pixelIndex + 1] = decoded.pixelData[interleavedIndex + 1];
+                    outputPixels[pixelIndex + 2] = decoded.pixelData[interleavedIndex + 2];
+                }
+                outputPixels[pixelIndex + 3] = 255;
             }
-            // Set RGBA values (grayscale = R=G=B, alpha=255)
-            const pixelIndex = i * 4;
-            outputPixels[pixelIndex] = grayscaleValue;      // R
-            outputPixels[pixelIndex + 1] = grayscaleValue;  // G
-            outputPixels[pixelIndex + 2] = grayscaleValue;  // B
-            outputPixels[pixelIndex + 3] = 255;             // A (opaque)
+        } else {
+            // Apply rescale and window/level transform to each pixel
+            for (let i = 0; i < decoded.pixelData.length; i++) {
+                let grayscaleValue;
+                if (decoded.skipWindowLevel) {
+                    // Already 0-255 (e.g., from JPEG baseline decode)
+                    grayscaleValue = decoded.pixelData[i];
+                } else {
+                    // Apply rescale slope/intercept
+                    // CT: converts to Hounsfield Units; MR: arbitrary signal intensity
+                    let pixelValue = decoded.pixelData[i] * decoded.rescaleSlope + decoded.rescaleIntercept;
+                    // Clamp to window range and scale to 0-255
+                    pixelValue = Math.max(windowMin, Math.min(windowMax, pixelValue));
+                    grayscaleValue = Math.round(((pixelValue - windowMin) / windowDivisor) * 255);
+                }
+                // Set RGBA values (grayscale = R=G=B, alpha=255)
+                const pixelIndex = i * 4;
+                outputPixels[pixelIndex] = grayscaleValue;      // R
+                outputPixels[pixelIndex + 1] = grayscaleValue;  // G
+                outputPixels[pixelIndex + 2] = grayscaleValue;  // B
+                outputPixels[pixelIndex + 3] = 255;             // A (opaque)
+            }
         }
 
         // Draw to canvas and keep the measurement overlay aligned with the new image size.

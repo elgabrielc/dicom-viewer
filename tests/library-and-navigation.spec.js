@@ -75,6 +75,18 @@ async function getSliceInfo(page) {
     return null;
 }
 
+async function waitForSliceCurrent(page, expectedCurrent, timeout = 10000) {
+    await page.waitForFunction(
+        ({ selector, expected }) => {
+            const text = document.querySelector(selector)?.textContent || '';
+            const match = text.match(/(\d+)\s*\/\s*(\d+)/);
+            return Boolean(match) && Number(match[1]) === expected;
+        },
+        { selector: SLICE_INFO_SELECTOR, expected: expectedCurrent },
+        { timeout }
+    );
+}
+
 async function isButtonActive(page, selector) {
     const button = page.locator(selector);
     const classList = await button.getAttribute('class');
@@ -506,7 +518,7 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
         const initialSlice = await getSliceInfo(page);
 
         await page.click(NEXT_SLICE_SELECTOR);
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const newSlice = await getSliceInfo(page);
         expect(newSlice.current).toBe(initialSlice.current + 1);
@@ -514,13 +526,14 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
 
     test('Previous slice button goes back by one slice', async ({ page }) => {
         // First, advance one slice so we can go back
+        const initialSlice = await getSliceInfo(page);
         await page.click(NEXT_SLICE_SELECTOR);
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const midSlice = await getSliceInfo(page);
 
         await page.click(PREV_SLICE_SELECTOR);
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current);
 
         const backSlice = await getSliceInfo(page);
         expect(backSlice.current).toBe(midSlice.current - 1);
@@ -536,7 +549,7 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
             slider.dispatchEvent(new Event('input'));
         }, targetSlice);
 
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, targetSlice);
 
         const newSlice = await getSliceInfo(page);
         expect(newSlice.current).toBe(targetSlice);
@@ -555,14 +568,14 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
         // Scroll down should advance to next slice
         await page.mouse.move(centerX, centerY);
         await page.mouse.wheel(0, 100);
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const afterScrollDown = await getSliceInfo(page);
         expect(afterScrollDown.current).toBe(initialSlice.current + 1);
 
         // Scroll up should go back
         await page.mouse.wheel(0, -100);
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current);
 
         const afterScrollUp = await getSliceInfo(page);
         expect(afterScrollUp.current).toBe(initialSlice.current);
@@ -577,7 +590,7 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
         const bounds = await getCanvasBounds(page);
         await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         await page.mouse.wheel(0, 100);
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const newSlice = await getSliceInfo(page);
         expect(newSlice.current).toBe(initialSlice.current + 1);
@@ -588,14 +601,14 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
 
         // Arrow down = next slice
         await page.keyboard.press('ArrowDown');
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const afterDown = await getSliceInfo(page);
         expect(afterDown.current).toBe(initialSlice.current + 1);
 
         // Arrow up = previous slice
         await page.keyboard.press('ArrowUp');
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current);
 
         const afterUp = await getSliceInfo(page);
         expect(afterUp.current).toBe(initialSlice.current);
@@ -762,7 +775,7 @@ test.describe('Test Suite 19: Metadata Panel', () => {
 
         // Navigate to next slice
         await page.keyboard.press('ArrowRight');
-        await page.waitForTimeout(300);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const newSlice = await getSliceInfo(page);
         expect(newSlice.current).toBe(initialSlice.current + 1);
@@ -1117,7 +1130,7 @@ test.describe('Test Suite 23: Viewer State - Full Navigation Workflow', () => {
         // Navigate a slice with arrow key (should always work)
         const initialSlice = await getSliceInfo(page);
         await page.keyboard.press('ArrowRight');
-        await page.waitForTimeout(200);
+        await waitForSliceCurrent(page, initialSlice.current + 1);
 
         const newSlice = await getSliceInfo(page);
         expect(newSlice.current).toBe(initialSlice.current + 1);
