@@ -928,7 +928,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
     });
 
-    test('decodeDicom plus renderPixels preserves uncompressed RGB secondary-capture pixels', async ({ page }) => {
+    test('decodeDicom plus renderPixels preserves uncompressed interleaved RGB secondary-capture pixels', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -994,6 +994,82 @@ test.describe('Desktop library scanning', () => {
             cols: 2,
             transferSyntax: '1.2.840.10008.1.2.1',
             modality: 'OT'
+        });
+        expect(result.rgba).toEqual([
+            255, 0, 0, 255,
+            0, 255, 0, 255
+        ]);
+    });
+
+    test('decodeDicom plus renderPixels preserves planar RGB pixels and keeps MR defaults intact', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const { state, rendering } = window.DicomViewerApp;
+            state.baseWindowLevel = { center: null, width: null };
+            state.pixelSpacing = null;
+
+            const byteArray = new Uint8Array([
+                255, 0,
+                0, 255,
+                0, 0
+            ]);
+            const dataSet = {
+                byteArray,
+                elements: {
+                    x7fe00010: {
+                        dataOffset: 0,
+                        length: byteArray.byteLength
+                    }
+                },
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'MR',
+                        x00280004: 'RGB'
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    const values = {
+                        x00280010: 1,
+                        x00280011: 2,
+                        x00280100: 8,
+                        x00280103: 0,
+                        x00280002: 3,
+                        x00280006: 1
+                    };
+                    return values[tag] || 0;
+                }
+            };
+
+            const decoded = await rendering.decodeDicom(dataSet, 0);
+            const info = rendering.renderPixels(decoded);
+            const canvas = document.getElementById('imageCanvas');
+            const rgba = Array.from(canvas.getContext('2d').getImageData(0, 0, 2, 1).data);
+
+            return {
+                decodedError: decoded.error || false,
+                samplesPerPixel: decoded.samplesPerPixel,
+                planarConfiguration: decoded.planarConfiguration,
+                photometricInterpretation: decoded.photometricInterpretation,
+                info,
+                rgba
+            };
+        });
+
+        expect(result.decodedError).toBe(false);
+        expect(result.samplesPerPixel).toBe(3);
+        expect(result.planarConfiguration).toBe(1);
+        expect(result.photometricInterpretation).toBe('RGB');
+        expect(result.info).toMatchObject({
+            rows: 1,
+            cols: 2,
+            wc: 512,
+            ww: 1024,
+            transferSyntax: '1.2.840.10008.1.2.1',
+            modality: 'MR'
         });
         expect(result.rgba).toEqual([
             255, 0, 0, 255,

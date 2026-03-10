@@ -253,7 +253,11 @@
         }
 
         let { windowCenter, windowWidth } = decoded;
-        if (!hasWindowLevel && (decoded.modality === 'MR' || decoded.modality === 'PT' || decoded.modality === 'NM')) {
+        if (
+            !hasWindowLevel &&
+            decoded.samplesPerPixel === 1 &&
+            (decoded.modality === 'MR' || decoded.modality === 'PT' || decoded.modality === 'NM')
+        ) {
             const autoWL = calculateAutoWindowLevel(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept);
             windowCenter = autoWL.windowCenter;
             windowWidth = autoWL.windowWidth;
@@ -484,7 +488,7 @@
                 }
                 pixelData = result.pixels;
                 if (result.isRgb) {
-                    // Browser JPEG decode gives us display-ready grayscale values.
+                    // Browser JPEG decode path currently returns a display-ready single channel.
                     decodedSamplesPerPixel = 1;
                     decodedPlanarConfiguration = 0;
                     decodedPhotometricInterpretation = 'MONOCHROME2';
@@ -725,11 +729,17 @@
         if (decoded.samplesPerPixel === 3 && decoded.photometricInterpretation === 'RGB') {
             const planeSize = decoded.rows * decoded.cols;
             for (let i = 0; i < planeSize; i++) {
-                const rgbIndex = decoded.planarConfiguration === 1 ? i : i * 3;
                 const pixelIndex = i * 4;
-                outputPixels[pixelIndex] = decoded.pixelData[rgbIndex];
-                outputPixels[pixelIndex + 1] = decoded.pixelData[decoded.planarConfiguration === 1 ? i + planeSize : rgbIndex + 1];
-                outputPixels[pixelIndex + 2] = decoded.pixelData[decoded.planarConfiguration === 1 ? i + (planeSize * 2) : rgbIndex + 2];
+                if (decoded.planarConfiguration === 1) {
+                    outputPixels[pixelIndex] = decoded.pixelData[i];
+                    outputPixels[pixelIndex + 1] = decoded.pixelData[i + planeSize];
+                    outputPixels[pixelIndex + 2] = decoded.pixelData[i + (planeSize * 2)];
+                } else {
+                    const interleavedIndex = i * 3;
+                    outputPixels[pixelIndex] = decoded.pixelData[interleavedIndex];
+                    outputPixels[pixelIndex + 1] = decoded.pixelData[interleavedIndex + 1];
+                    outputPixels[pixelIndex + 2] = decoded.pixelData[interleavedIndex + 2];
+                }
                 outputPixels[pixelIndex + 3] = 255;
             }
         } else {
