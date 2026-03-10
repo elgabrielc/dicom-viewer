@@ -7,7 +7,7 @@ usage() {
 Usage:
   agent-worktree-list.sh [--all]
 
-Lists active agent worktrees. By default this shows only codex/* and claude/* branches.
+Lists active agent worktrees. By default this shows only codex/* and cc/* branches.
 Use --all to include every linked worktree in the repository.
 EOF
 }
@@ -34,7 +34,7 @@ done
 
 is_agent_branch() {
   case "$1" in
-    codex/*|claude/*) return 0 ;;
+    codex/*|cc/*) return 0 ;;
     *) return 1 ;;
   esac
 }

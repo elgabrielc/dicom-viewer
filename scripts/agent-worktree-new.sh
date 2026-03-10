@@ -9,13 +9,18 @@ Usage:
 
 Creates a dedicated branch and worktree for one AI agent.
 
+Agent values:
+  codex   -> codex/<topic>
+  cc      -> cc/<topic>
+  claude  -> alias for cc/<topic>
+
 Defaults:
   base branch: local/WIP
   worktree root: $AI_WORKTREE_HOME/<repo-name> or ~/ai-worktrees/<repo-name>
 
 Examples:
   ./scripts/agent-worktree-new.sh codex visage-research
-  ./scripts/agent-worktree-new.sh --base main claude docs-audit
+  ./scripts/agent-worktree-new.sh --base main cc docs-audit
   ./scripts/agent-worktree-new.sh --dry-run codex ohif-deep-dive
 EOF
 }
@@ -71,6 +76,7 @@ fi
 AGENT="$1"
 TOPIC_RAW="$2"
 TOPIC_SLUG="$(slugify "$TOPIC_RAW")"
+BRANCH_PREFIX=""
 
 if [[ -z "$TOPIC_SLUG" ]]; then
   echo "Topic must contain at least one alphanumeric character." >&2
@@ -78,10 +84,14 @@ if [[ -z "$TOPIC_SLUG" ]]; then
 fi
 
 case "$AGENT" in
-  codex|claude)
+  codex)
+    BRANCH_PREFIX="codex"
+    ;;
+  cc|claude)
+    BRANCH_PREFIX="cc"
     ;;
   *)
-    echo "Agent must be 'codex' or 'claude'." >&2
+    echo "Agent must be 'codex', 'cc', or 'claude'." >&2
     exit 1
     ;;
 esac
@@ -90,8 +100,8 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 REPO_NAME="$(basename "$REPO_ROOT")"
 WORKTREE_HOME="${ROOT_OVERRIDE:-${AI_WORKTREE_HOME:-$HOME/ai-worktrees}}"
 WORKTREE_ROOT="${WORKTREE_HOME%/}/$REPO_NAME"
-BRANCH_NAME="$AGENT/$TOPIC_SLUG"
-WORKTREE_PATH="$WORKTREE_ROOT/$AGENT-$TOPIC_SLUG"
+BRANCH_NAME="$BRANCH_PREFIX/$TOPIC_SLUG"
+WORKTREE_PATH="$WORKTREE_ROOT/$BRANCH_PREFIX-$TOPIC_SLUG"
 CURRENT_BRANCH="$(git branch --show-current)"
 
 git rev-parse --verify "$BASE_BRANCH^{commit}" >/dev/null
@@ -114,6 +124,10 @@ echo "Repo root:      $REPO_ROOT"
 echo "Base branch:    $BASE_BRANCH"
 echo "Agent branch:   $BRANCH_NAME"
 echo "Worktree path:  $WORKTREE_PATH"
+
+if [[ "$AGENT" == "claude" ]]; then
+  echo "Namespace note: using cc/* because the bare 'claude' branch blocks claude/* in this repo."
+fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo

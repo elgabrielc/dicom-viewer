@@ -24,16 +24,22 @@ Do not put autonomous agent work directly on `main` or `local/WIP`.
 - `main` tracks `origin/main` and stays deployable
 - `local/WIP` is the local integration branch
 - `codex/<topic>` is a Codex agent branch
-- `claude/<topic>` is a Claude agent branch
+- `cc/<topic>` is a Claude agent branch in this repo
 
 Examples:
 
 - `codex/ohif-deep-dive`
 - `codex/desktop-release-audit`
-- `claude/visage-research`
-- `claude/docs-cleanup`
+- `cc/visage-research`
+- `cc/docs-cleanup`
 
 Each topic should describe one unit of work. If the scope changes, create a new branch.
+
+Why `cc/*` instead of `claude/*`:
+
+- this repository already has a bare branch named `claude`
+- Git cannot have both `claude` and `claude/<topic>` refs at the same time
+- the helper scripts therefore reserve `cc/*` for Claude sessions here
 
 ---
 
@@ -50,7 +56,7 @@ Default location:
 Directory naming:
 
 - `~/ai-worktrees/dicom-viewer/codex-ohif-deep-dive`
-- `~/ai-worktrees/dicom-viewer/claude-visage-research`
+- `~/ai-worktrees/dicom-viewer/cc-visage-research`
 
 Why outside the repo:
 
@@ -86,7 +92,7 @@ Create a worktree:
 
 ```bash
 ./scripts/agent-worktree-new.sh codex ohif-deep-dive
-./scripts/agent-worktree-new.sh claude visage-research
+./scripts/agent-worktree-new.sh cc visage-research
 ```
 
 List active agent worktrees:
@@ -100,7 +106,7 @@ Retire an integrated agent branch:
 
 ```bash
 ./scripts/agent-worktree-retire.sh codex/ohif-deep-dive
-./scripts/agent-worktree-retire.sh --delete-remote claude/visage-research
+./scripts/agent-worktree-retire.sh --delete-remote cc/visage-research
 ```
 
 The retire command refuses to proceed if:
@@ -121,7 +127,7 @@ git add -A
 git commit -m "wip: integration checkpoint"
 
 ./scripts/agent-worktree-new.sh codex ohif-deep-dive
-./scripts/agent-worktree-new.sh claude visage-research
+./scripts/agent-worktree-new.sh cc visage-research
 ```
 
 Integrate finished work:
@@ -136,7 +142,7 @@ Retire cleanly:
 
 ```bash
 ./scripts/agent-worktree-retire.sh codex/ohif-deep-dive
-./scripts/agent-worktree-retire.sh claude/visage-research
+./scripts/agent-worktree-retire.sh cc/visage-research
 ```
 
 ---

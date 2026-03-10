@@ -278,9 +278,11 @@ When multiple AI agents are working at the same time, keep them isolated:
 - `main` stays aligned with `origin/main`
 - `local/WIP` is the integration branch
 - each agent gets one branch and one linked worktree
-- agent branches should be named `codex/<topic>` or `claude/<topic>`
+- agent branches should be named `codex/<topic>` or `cc/<topic>`
 
 Do not run autonomous agent work directly on `local/WIP`. Use `local/WIP` to integrate finished commits from agent branches.
+
+This repository already has a bare `claude` branch, which blocks the `claude/*` namespace in Git. Use `cc/<topic>` for Claude sessions here.
 
 ### Worktree Location
 
@@ -306,7 +308,7 @@ Direct script usage works too:
 ```bash
 ./scripts/agent-worktree-new.sh codex ohif-deep-dive
 ./scripts/agent-worktree-list.sh --all
-./scripts/agent-worktree-retire.sh claude/visage-research
+./scripts/agent-worktree-retire.sh cc/visage-research
 ```
 
 See [docs/AGENT_WORKTREES.md](./docs/AGENT_WORKTREES.md) for the full workflow and safety rules.

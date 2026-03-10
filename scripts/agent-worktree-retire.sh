@@ -15,7 +15,7 @@ Defaults:
 
 Examples:
   ./scripts/agent-worktree-retire.sh codex/visage-research
-  ./scripts/agent-worktree-retire.sh --into main claude/docs-audit
+  ./scripts/agent-worktree-retire.sh --into main cc/docs-audit
   ./scripts/agent-worktree-retire.sh --dry-run codex/ohif-deep-dive
 EOF
 }
