@@ -72,6 +72,24 @@ The helper scripts below default to this layout. Override with `AI_WORKTREE_HOME
 
 ---
 
+## Preferred Session Start
+
+If you are starting a fresh human-driven session, prefer the launcher wrappers instead of
+opening the tool in the shared checkout first.
+
+Examples:
+
+```bash
+./scripts/ccw volume-rendering
+./scripts/codexw desktop-audit
+```
+
+Those wrappers create or reuse the correct worktree and then launch the tool from inside it.
+
+See [AGENT_LAUNCHERS.md](./AGENT_LAUNCHERS.md) for the exact behavior and shell setup.
+
+---
+
 ## Safe Workflow
 
 1. Commit any integration state you need on `local/WIP`.
