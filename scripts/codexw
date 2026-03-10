@@ -3,4 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/agent-session-launch.sh" --tool codex --agent codex "$@"
+SELF_PATH="$(cd "$SCRIPT_DIR" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+GLOBAL_CODEXW="$(command -v codexw || true)"
+
+if [[ -n "$GLOBAL_CODEXW" ]] && [[ "$GLOBAL_CODEXW" != "$SELF_PATH" ]]; then
+  exec "$GLOBAL_CODEXW" "$@"
+fi
+
+exec "$SCRIPT_DIR/agent-session-launch.sh" --tool "${CODEX_CMD:-codex}" --agent codex "$@"

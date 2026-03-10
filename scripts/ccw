@@ -3,4 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/agent-session-launch.sh" --tool claude --agent cc "$@"
+SELF_PATH="$(cd "$SCRIPT_DIR" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+GLOBAL_CCW="$(command -v ccw || true)"
+
+if [[ -n "$GLOBAL_CCW" ]] && [[ "$GLOBAL_CCW" != "$SELF_PATH" ]]; then
+  exec "$GLOBAL_CCW" "$@"
+fi
+
+exec "$SCRIPT_DIR/agent-session-launch.sh" --tool "${CLAUDE_CMD:-claude}" --agent cc "$@"

@@ -12,20 +12,45 @@ launch the tool inside that worktree.
 That avoids the failure mode where a session starts in the shared checkout and
 tries to relocate later.
 
-This repository includes two launcher wrappers:
+This repository includes two repo-local launcher wrappers:
 
 - [scripts/ccw](/Users/gabriel/claude%200/dicom-viewer/scripts/ccw) for Claude
 - [scripts/codexw](/Users/gabriel/claude%200/dicom-viewer/scripts/codexw) for Codex
 
-Both wrappers call the shared launcher at
+The preferred path is to install the global commands `ccw` and `codexw` in
+`~/.local/bin/`. The repo-local wrappers prefer those global commands when
+available, then fall back to the repo-local shared launcher at
 [scripts/agent-session-launch.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-session-launch.sh).
 
 The wrappers accept launcher flags before the topic, so this works as expected:
 
 ```bash
-./scripts/ccw --dry-run volume-rendering
-./scripts/codexw --no-launch desktop-audit
+ccw --dry-run volume-rendering
+codexw --no-launch desktop-audit
 ```
+
+---
+
+## Preferred Path
+
+From any git repo:
+
+```bash
+ccw volume-rendering
+codexw desktop-audit
+```
+
+Those global commands call the canonical launcher in:
+
+```text
+~/.local/bin/agent-session-launch
+```
+
+That launcher detects repo-specific tooling when available and falls back to
+plain `git worktree add` when it is not.
+
+The global path is the source of truth. The repo-local wrappers exist as a
+fallback for contributors who have not installed the global commands yet.
 
 ---
 
@@ -65,7 +90,7 @@ second copy.
 
 ---
 
-## Usage
+## Repo-Local Fallback
 
 Claude:
 
@@ -102,34 +127,22 @@ Prepare the worktree but do not launch the tool:
 
 ---
 
-## Installation
+## Global Installation
 
-The simplest setup is to add shell functions to `~/.zshrc` that call the repo
-scripts by absolute path.
+Install these files in `~/.local/bin/`:
 
-Example:
+- `agent-session-launch`
+- `ccw`
+- `codexw`
 
-```bash
-ccw() {
-  "/Users/gabriel/claude 0/dicom-viewer/scripts/ccw" "$@"
-}
+If `~/.local/bin` is already on `PATH`, no shell functions are needed.
 
-codexw() {
-  "/Users/gabriel/claude 0/dicom-viewer/scripts/codexw" "$@"
-}
-```
-
-Then reload your shell:
+Verify:
 
 ```bash
-source ~/.zshrc
-```
-
-After that:
-
-```bash
-ccw volume-rendering
-codexw desktop-audit
+command -v ccw
+command -v codexw
+command -v agent-session-launch
 ```
 
 ---
