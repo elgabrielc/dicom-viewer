@@ -9,6 +9,52 @@ Supports multiple modalities: CT, MRI, and other imaging types.
 - **Stack**: Flask (Python) backend, vanilla JavaScript frontend
 - **Primary Workflow**: Client-side DICOM processing via File System Access API (Chrome/Edge)
 
+## Parallel Session Rules
+
+This repository may have multiple AI sessions running in parallel. Follow these rules
+before editing anything:
+
+1. Do not do active autonomous work directly on `main` or `local/WIP`.
+2. Use one branch per agent and one worktree per branch.
+3. Keep agent worktrees outside the repository root under:
+
+   ```text
+   ~/ai-worktrees/dicom-viewer/
+   ```
+
+4. Codex branches use `codex/<topic>`.
+5. Claude branches use `cc/<topic>` in this repo.
+6. Do not use `claude/<topic>` here because a bare `claude` branch already exists and blocks that namespace.
+7. Do not use `git stash` as the normal handoff mechanism.
+8. Do not use `git add -A` in the shared main checkout.
+9. If the shared checkout is dirty and you cannot prove which files are yours, stop and report instead of committing.
+
+### Starting a New Parallel Session
+
+If the shared checkout is clean, create a dedicated external worktree first:
+
+```bash
+npm run worktree:new -- codex <topic>
+npm run worktree:new -- cc <topic>
+```
+
+Then continue only in the new worktree.
+
+### Shared Coordination Files
+
+These files should usually be updated only during the integration step:
+
+- `docs/INDEX.md`
+- `docs/planning/SITEMAP.md`
+
+Do not edit them from multiple active agent branches unless the task is explicitly to
+perform the integration pass.
+
+### Reference Docs
+
+- Workflow rules: `docs/AGENT_WORKTREES.md`
+- Full explanation: `docs/AGENT_WORKTREES_EXPLAINER.md`
+
 ## Workspace Structure
 
 ```
