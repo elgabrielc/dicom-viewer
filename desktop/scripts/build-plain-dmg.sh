@@ -7,6 +7,11 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
     exit 1
 fi
 
+if ! command -v node >/dev/null 2>&1; then
+    echo "Node.js is required to read Tauri metadata from src-tauri/tauri.conf.json." >&2
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESKTOP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
@@ -18,13 +23,23 @@ This path intentionally skips Finder AppleScript styling so it can run
 reliably in automation and other non-interactive environments.
 
 Usage:
-  ./scripts/build-plain-dmg.sh [--output /path/to/output.dmg]
+  ./scripts/build-plain-dmg.sh [--skip-build] [--output /path/to/output.dmg]
+
+Examples:
+  ./scripts/build-plain-dmg.sh
+  npm run build:plain-dmg -- --output /tmp/DICOM-Viewer.dmg
+  ./scripts/build-plain-dmg.sh --skip-build --output /tmp/DICOM-Viewer-signed.dmg
 EOF
 }
 
 OUTPUT_PATH=""
+SKIP_BUILD=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --skip-build)
+            SKIP_BUILD=1
+            shift
+            ;;
         -o|--output)
             OUTPUT_PATH="${2:-}"
             if [[ -z "$OUTPUT_PATH" ]]; then
@@ -60,8 +75,12 @@ fi
 
 mkdir -p "$DMG_DIR" "$(dirname "$OUTPUT_PATH")"
 
-echo "Building ${PRODUCT_NAME}.app..."
-npm run tauri build -- --bundles app
+if [[ "$SKIP_BUILD" -eq 0 ]]; then
+    echo "Building ${PRODUCT_NAME}.app..."
+    npm run tauri build -- --bundles app
+else
+    echo "Skipping app build and packaging the existing bundle..."
+fi
 
 if [[ ! -d "$APP_BUNDLE" ]]; then
     echo "Expected app bundle was not produced: $APP_BUNDLE" >&2
@@ -75,7 +94,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Avoid copying Finder metadata from previous manual DMG experiments.
-rm -f "src-tauri/target/release/bundle/macos/.DS_Store"
+find "src-tauri/target/release/bundle/macos" -name '.DS_Store' -delete
 
 echo "Preparing plain DMG staging directory..."
 ditto "$APP_BUNDLE" "${STAGING_DIR}/$(basename "$APP_BUNDLE")"
@@ -89,7 +108,6 @@ hdiutil create \
     -fs HFS+ \
     -format UDZO \
     -imagekey zlib-level=9 \
-    -ov \
     "$OUTPUT_PATH"
 
 echo "Plain DMG created: $OUTPUT_PATH"

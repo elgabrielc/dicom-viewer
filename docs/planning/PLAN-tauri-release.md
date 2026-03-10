@@ -4,7 +4,7 @@
 
 Ship the Tauri desktop app as a real macOS release artifact: signed, notarized, stapled, and downloadable as a plain DMG.
 
-**Status**: Planned
+**Status**: In Progress
 **As of**: March 9, 2026
 
 This plan starts after the Tauri desktop implementation work. The app already builds and runs on macOS, but the release/distribution work is still open.
@@ -161,18 +161,29 @@ That script:
 - stages `DICOM Viewer.app` plus an `Applications` symlink
 - packages a plain DMG with `hdiutil`
 - skips Finder AppleScript styling entirely
+- also supports `--skip-build`, so release automation can package an already-signed `.app`
 
 ### Required release work
 
 1. Add a release-oriented macOS workflow or extend the existing macOS build path.
-2. Build the desktop app from `desktop/`.
-3. Produce a plain DMG bundle:
+2. Build the desktop app from `desktop/`:
 
 ```bash
-npm run build:plain-dmg
+npm run tauri build -- --bundles app
 ```
 
-4. Sign the generated app bundle.
+3. Sign the app bundle before packaging:
+
+```bash
+desktop/src-tauri/target/release/bundle/macos/DICOM\ Viewer.app
+```
+
+4. Produce a plain DMG from the already-signed app bundle:
+
+```bash
+npm run build:plain-dmg -- --skip-build
+```
+
 5. Submit the signed artifact for notarization.
 6. Staple the notarization ticket to the shipped artifact.
 7. Publish the DMG and checksum as CI artifacts for the release job.
