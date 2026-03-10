@@ -27,6 +27,8 @@ Master index of all project documentation, organized by audience and purpose.
 | [API Reference](./API.md) | docs/ | REST API endpoints for test mode (Flask backend) |
 | [Configuration](./CONFIG.md) | docs/ | Environment variables, runtime settings, browser requirements |
 | [Testing Guide](./TESTING.md) | docs/ | Playwright test setup, helper functions, writing tests, visual verification |
+| [Parallel Agent Workflow](./AGENT_WORKTREES.md) | docs/ | Rules and helper commands for running multiple Codex and Claude sessions safely in parallel |
+| [Parallel Agent Explainer](./AGENT_WORKTREES_EXPLAINER.md) | docs/ | Beginner walkthrough of the multi-agent cleanup, the branch/worktree model, and why the current workflow exists |
 | [Deployment Guide](./DEPLOY.md) | docs/ | Local development, GitHub Pages, custom domains, troubleshooting |
 | [Contributing](../CONTRIBUTING.md) | Root | Code style, git workflow, pull request process, issue templates |
 | [Bug Tracking](./BUGS.md) | docs/ | Known issues, resolved bugs with root cause analysis, bug template |
@@ -78,6 +80,8 @@ Technical documentation for developers and operations.
 
 ```
 docs/
+├── AGENT_WORKTREES.md     # Parallel AI agent workflow rules and helper commands
+├── AGENT_WORKTREES_EXPLAINER.md  # Beginner explainer for the parallel workflow
 ├── INDEX.md               # This file - master documentation index
 ├── API.md                 # REST API reference
 ├── CONFIG.md              # Configuration reference
@@ -184,6 +188,12 @@ Deployment guide for local development (Flask, static server) and production (Gi
 
 **TESTING.md**
 Comprehensive testing documentation. Covers Playwright setup, test mode architecture, helper functions (with detailed explanations of `waitForViewerReady`, `getCanvasTransform`, `performDrag`), blank slice handling, visual verification with 9-region sampling, and test limitations.
+
+**AGENT_WORKTREES.md**
+Operational rules for running multiple AI coding sessions in parallel. Defines the `local/WIP` integration role, the `codex/*` and `cc/*` branch conventions, the external worktree layout, and the helper scripts for creating, listing, and retiring agent branches.
+
+**AGENT_WORKTREES_EXPLAINER.md**
+Beginner-friendly walkthrough of the cleanup that led to the current workflow. Explains what went wrong with shared dirty state, why commits beat stashes here, why worktrees must live outside the repo root, and how to reason about multi-agent Git safety.
 
 **BUGS.md**
 Bug tracking with full context. Each bug includes how it was encountered, root cause analysis, solution, why that solution was chosen, and prevention controls. Uses a standard template for consistency.

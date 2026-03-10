@@ -9,6 +9,9 @@
 This repository supports multiple AI agents working in parallel, but only if each
 agent gets its own branch and worktree.
 
+If you want the full story of what went wrong, what we changed, and why this workflow now
+looks the way it does, read [AGENT_WORKTREES_EXPLAINER.md](./AGENT_WORKTREES_EXPLAINER.md).
+
 The core rule is simple:
 
 - One agent
