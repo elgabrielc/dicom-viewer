@@ -4,7 +4,11 @@
   "description": "A web-based DICOM medical imaging viewer (CT, MRI, etc.) with client-side processing for privacy. Supports JPEG Lossless, JPEG 2000, and uncompressed formats via browser-based decoders. Built with vanilla JS frontend and Flask backend for static serving. See docs/CLAUDE.md for architecture details.",
   "main": "app.py",
   "scripts": {
-    "test": "npx playwright test"
+    "test": "npx playwright test",
+    "worktree:new": "./scripts/agent-worktree-new.sh",
+    "worktree:list": "./scripts/agent-worktree-list.sh",
+    "worktree:list:all": "./scripts/agent-worktree-list.sh --all",
+    "worktree:retire": "./scripts/agent-worktree-retire.sh"
   },
   "keywords": [
     "dicom",

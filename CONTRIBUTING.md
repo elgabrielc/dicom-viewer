@@ -15,9 +15,10 @@ Thank you for your interest in contributing to the DICOM Viewer project. This do
 1. [Getting Started](#getting-started)
 2. [Code Style Guidelines](#code-style-guidelines)
 3. [Git Workflow](#git-workflow)
-4. [Pull Request Process](#pull-request-process)
-5. [Reporting Issues](#reporting-issues)
-6. [Code of Conduct](#code-of-conduct)
+4. [Parallel Agent Workflow](#parallel-agent-workflow)
+5. [Pull Request Process](#pull-request-process)
+6. [Reporting Issues](#reporting-issues)
+7. [Code of Conduct](#code-of-conduct)
 
 ---
 
@@ -267,6 +268,48 @@ git diff --staged
 # Commit with message
 git commit -m "feat: Add zoom controls to toolbar"
 ```
+
+---
+
+## Parallel Agent Workflow
+
+When multiple AI agents are working at the same time, keep them isolated:
+
+- `main` stays aligned with `origin/main`
+- `local/WIP` is the integration branch
+- each agent gets one branch and one linked worktree
+- agent branches should be named `codex/<topic>` or `claude/<topic>`
+
+Do not run autonomous agent work directly on `local/WIP`. Use `local/WIP` to integrate finished commits from agent branches.
+
+### Worktree Location
+
+Keep agent worktrees outside the repository root. The standard location for this repo is:
+
+```text
+~/ai-worktrees/dicom-viewer/
+```
+
+This avoids nested worktree noise inside the main checkout and makes active sessions easier to see.
+
+### Helper Commands
+
+```bash
+npm run worktree:new -- codex ohif-deep-dive
+npm run worktree:list
+npm run worktree:list:all
+npm run worktree:retire -- codex/ohif-deep-dive
+```
+
+Direct script usage works too:
+
+```bash
+./scripts/agent-worktree-new.sh codex ohif-deep-dive
+./scripts/agent-worktree-list.sh --all
+./scripts/agent-worktree-retire.sh claude/visage-research
+```
+
+See [docs/AGENT_WORKTREES.md](./docs/AGENT_WORKTREES.md) for the full workflow and safety rules.
 
 ---
 
