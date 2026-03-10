@@ -95,6 +95,18 @@ async function getSliceInfo(page) {
   return null;
 }
 
+async function waitForSliceCurrent(page, expectedCurrent, timeout = 10000) {
+  await page.waitForFunction(
+    expected => {
+      const text = document.querySelector('#sliceInfo')?.textContent || '';
+      const match = text.match(/(\d+)\s*\/\s*(\d+)/);
+      return Boolean(match) && Number(match[1]) === expected;
+    },
+    expectedCurrent,
+    { timeout }
+  );
+}
+
 // Helper function to get canvas cursor style
 async function getCanvasCursor(page) {
   return await page.locator(CANVAS_SELECTOR).evaluate(el => {
@@ -1043,8 +1055,9 @@ test.describe('Test Suite 11: Slice Navigation & Persistence', () => {
     const adjustedWL = await getWLValues(page);
 
     // Navigate to next slice
+    const initialSlice = await getSliceInfo(page);
     await page.keyboard.press('ArrowRight');
-    await page.waitForTimeout(300);
+    await waitForSliceCurrent(page, initialSlice.current + 1);
 
     // W/L should be preserved
     const afterNavWL = await getWLValues(page);
@@ -1060,7 +1073,7 @@ test.describe('Test Suite 11: Slice Navigation & Persistence', () => {
 
     // Navigate forward
     await page.keyboard.press('ArrowRight');
-    await page.waitForTimeout(300);
+    await waitForSliceCurrent(page, initialSlice.current + 1);
 
     const newSlice = await getSliceInfo(page);
     expect(newSlice.current).toBe(initialSlice.current + 1);
@@ -1068,7 +1081,7 @@ test.describe('Test Suite 11: Slice Navigation & Persistence', () => {
 
     // Navigate back
     await page.keyboard.press('ArrowLeft');
-    await page.waitForTimeout(300);
+    await waitForSliceCurrent(page, initialSlice.current);
 
     const backSlice = await getSliceInfo(page);
     expect(backSlice.current).toBe(initialSlice.current);
@@ -1302,7 +1315,7 @@ test.describe('Test Suite 13: Series Switching', () => {
 
     // Navigate to a different slice (forward)
     await page.keyboard.press('ArrowRight');
-    await page.waitForTimeout(300);
+    await waitForSliceCurrent(page, initialSlice.current + 1);
 
     // Verify slice changed
     const newSlice = await getSliceInfo(page);
