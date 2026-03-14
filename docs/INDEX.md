@@ -57,7 +57,9 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [MyChart Reports](./planning/RESEARCH-mychart-reports_2026-02-02_2148.md) | Feature | Epic MyChart document upload and storage |
 | [Philips IM15](./planning/RESEARCH-philips-im15.md) | Competitive | Server-side rendering, AWS cloud, AI integration, market positioning |
 | [Sectra](./planning/RESEARCH-sectra.md) | Competitive | Hybrid rendering, RapidConnect streaming, DDP hanging protocols, Azure cloud. KLAS #1 |
-| [Visage (prompt only)](./planning/RESEARCH-visage-prompt.md) | Competitive | Research prompt captured for Visage / Pro Medicus. Main write-up is still pending |
+| [Visage 7 / Pro Medicus](./planning/RESEARCH-visage.md) | Competitive | Pure SSR from GPU servers, patented adaptive streaming, per-study pricing, 100% retention |
+| [OHIF Viewer](./planning/RESEARCH-ohif.md) | Both | Open-source, Cornerstone3D/vtk.js, extension architecture, DICOMweb, HTJ2K progressive loading |
+| [AWS HealthLake Imaging](./planning/RESEARCH-aws-healthlake-imaging.md) | Infrastructure | HTJ2K encoding, DICOMweb + OIDC, progressive loading via TLM Proxy, cloud storage for ADR 004 |
 
 ### For Decisions
 
@@ -123,6 +125,10 @@ docs/planning/
 ├── RESEARCH-ohif-reports_2026-02-02.md     # OHIF document handling
 ├── RESEARCH-mychart-reports_2026-02-02_2148.md  # MyChart document upload
 ├── RESEARCH-philips-im15.md                # Philips IM15 architecture (competitive)
+├── RESEARCH-sectra.md                      # Sectra IDS7 architecture (competitive)
+├── RESEARCH-visage.md                      # Visage 7 / Pro Medicus (competitive)
+├── RESEARCH-ohif.md                        # OHIF Viewer (open-source, competitive)
+├── RESEARCH-aws-healthlake-imaging.md      # AWS HealthLake Imaging (infrastructure)
 ├── RESEARCH-*-prompt.md                    # Research input prompts
 ├── RESEARCH-*-thinking.md                  # Research reasoning process
 ├── SECURITY-AUDIT.md                       # Application security audit (14 findings)

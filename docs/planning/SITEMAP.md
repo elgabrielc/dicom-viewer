@@ -64,7 +64,9 @@ Deep technical analysis of competing products and how their architectures compar
 |------|-------------|
 | `RESEARCH-philips-im15.md` | Philips Image Management 15: server-side rendering architecture, AWS HealthSuite cloud, AI integration, Vue PACS predecessor, KLAS positioning. Comparison to our client-side approach |
 | `RESEARCH-sectra.md` | Sectra IDS7/UniView: hybrid rendering (thick client 2D + server 3D), RapidConnect progressive JPEG 2000 streaming, DDP hanging protocols, Azure cloud, Amplifier AI marketplace. KLAS #1 for 13 years |
-| `RESEARCH-visage-prompt.md` | Visage / Pro Medicus research prompt only. Main output has not been written yet; this is a pending research input file, not a lost report |
+| `RESEARCH-visage.md` | Visage 7 / Pro Medicus: pure SSR from GPU render servers (C++/Qt, Zuse Institute Berlin origins), patented adaptive streaming, single codebase (viewer+archive+AI), AWS cloud-native, per-study pricing, 100% customer retention |
+| `RESEARCH-ohif.md` | OHIF Viewer (open-source): Cornerstone3D rendering (vtk.js + WebGL), extension/mode architecture, DICOMweb, progressive HTJ2K loading, VoxelManager memory optimization. Most direct architectural comparison to our viewer |
+| `RESEARCH-aws-healthlake-imaging.md` | AWS HealthLake Imaging: HTJ2K encoding (2-3x compression), DICOMweb API (WADO-RS/STOW-RS/QIDO-RS with OIDC), progressive loading via TLM Proxy, archive tier at $0.006/GB with subsecond retrieval. Potential infrastructure for our cloud platform (ADR 004) |
 
 ### Research Companions
 
