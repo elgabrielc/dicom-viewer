@@ -24,6 +24,8 @@ claude 0/                          # Workspace/inbox - drop files here for Claud
 
 | File | Description |
 |------|-------------|
+| `AGENT_WORKTREES.md` | Parallel AI agent workflow rules: one agent per branch and worktree, `local/WIP` as integration branch, and helper scripts for create/list/retire |
+| `AGENT_WORKTREES_EXPLAINER.md` | Detailed beginner walkthrough of the multi-agent cleanup, why the workflow changed, and how to avoid shared-checkout collisions |
 | `BUGS.md` | Bug tracking and known issues |
 | `CODE_REVIEWS.md` | PR review findings and resolution tracking |
 | `DEPLOY.md` | Deployment guide: local dev, GitHub Pages, CI/CD workflow |
