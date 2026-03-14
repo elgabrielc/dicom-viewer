@@ -652,19 +652,23 @@
         }
     }
 
+    const MONOCHROME_PHOTOMETRIC_INTERPRETATIONS = new Set(['MONOCHROME1', 'MONOCHROME2']);
+    const JPEG_BASELINE_GRAYSCALE_TOLERANCE = 2;
+
     /**
-     * Decode JPEG Baseline compressed pixel data using browser's native decoder
-     * Creates a Blob from the JPEG data and uses createImageBitmap to decode
+     * Decode JPEG Baseline compressed pixel data using browser's native decoder.
+     * The caller passes the current pixel data element so frame extraction stays aligned
+     * with the same encapsulated frame path used by other decoders.
      *
      * @param {Object} dataSet - dicomParser dataset
-     * @param {Object} pixelDataElement - Pixel data element (unused)
+     * @param {Object} pixelDataElement - Pixel data element for encapsulated frame extraction
      * @param {number} rows - Image height
      * @param {number} cols - Image width
-     * @returns {Promise<Object>} {pixels, isRgb}
+     * @returns {Promise<Object>} Display-ready pixel payload for renderPixels()
      */
     async function decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex = 0) {
         try {
-            const frames = getEncapsulatedFrameData(dataSet, dataSet.elements.x7fe00010, frameIndex);
+            const frames = getEncapsulatedFrameData(dataSet, pixelDataElement, frameIndex);
 
             const blob = new Blob([frames], { type: 'image/jpeg' });
             const bitmap = await createImageBitmap(blob);
@@ -676,12 +680,64 @@
             tempCtx.drawImage(bitmap, 0, 0);
 
             const imageData = tempCtx.getImageData(0, 0, cols, rows);
-            // Convert RGBA to grayscale values
-            const pixels = new Int16Array(rows * cols);
-            for (let i = 0; i < pixels.length; i++) {
-                pixels[i] = imageData.data[i * 4]; // Just use red channel
+            const pixelCount = rows * cols;
+            const photometricInterpretation = getString(dataSet, 'x00280004') || 'MONOCHROME2';
+            let isGrayscale = MONOCHROME_PHOTOMETRIC_INTERPRETATIONS.has(photometricInterpretation);
+
+            if (!isGrayscale) {
+                isGrayscale = true;
+                for (let i = 0; i < pixelCount; i++) {
+                    const rgbaIndex = i * 4;
+                    const red = imageData.data[rgbaIndex];
+                    const green = imageData.data[rgbaIndex + 1];
+                    const blue = imageData.data[rgbaIndex + 2];
+                    const channelRange = Math.max(red, green, blue) - Math.min(red, green, blue);
+                    if (channelRange > JPEG_BASELINE_GRAYSCALE_TOLERANCE) {
+                        isGrayscale = false;
+                        break;
+                    }
+                }
             }
-            return { pixels, isRgb: true };
+
+            if (isGrayscale) {
+                const pixelData = new Uint8Array(pixelCount);
+                for (let i = 0; i < pixelCount; i++) {
+                    const rgbaIndex = i * 4;
+                    pixelData[i] = Math.round((
+                        imageData.data[rgbaIndex] +
+                        imageData.data[rgbaIndex + 1] +
+                        imageData.data[rgbaIndex + 2]
+                    ) / 3);
+                }
+                return {
+                    pixelData,
+                    bitsAllocated: 8,
+                    bitsStored: 8,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation,
+                    skipWindowLevel: true
+                };
+            }
+
+            const pixelData = new Uint8Array(pixelCount * 3);
+            for (let i = 0; i < pixelCount; i++) {
+                const rgbaIndex = i * 4;
+                const rgbIndex = i * 3;
+                pixelData[rgbIndex] = imageData.data[rgbaIndex];
+                pixelData[rgbIndex + 1] = imageData.data[rgbaIndex + 1];
+                pixelData[rgbIndex + 2] = imageData.data[rgbaIndex + 2];
+            }
+
+            return {
+                pixelData,
+                bitsAllocated: 8,
+                bitsStored: 8,
+                samplesPerPixel: 3,
+                planarConfiguration: 0,
+                photometricInterpretation: 'RGB',
+                skipWindowLevel: true
+            };
         } catch (e) {
             console.error('JPEG Baseline decode error:', e);
             throw normalizeStagedError(e, 'decode');

@@ -1,9 +1,18 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
+const fs = require('fs');
+const path = require('path');
 const { test, expect } = require('@playwright/test');
 
-const HOME_URL = 'http://127.0.0.1:5001/?nolib';
-const AUTOLOAD_URL = 'http://127.0.0.1:5001/';
+const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
+const HOME_URL = `${TEST_BASE_URL}/?nolib`;
+const AUTOLOAD_URL = `${TEST_BASE_URL}/`;
+const JPEG_BASELINE_RGB_FIXTURE_PATH = path.join(
+    __dirname,
+    '..',
+    'test-fixtures',
+    'SC_RGB_JPEG_BASELINE_YBR422.dcm'
+);
 
 function normalizePath(input) {
     const text = String(input || '').replace(/\\/g, '/');
@@ -926,6 +935,257 @@ test.describe('Desktop library scanning', () => {
         expect(result.alphaChannel).toEqual([255, 255, 255, 255]);
         expect(result.baseWindowLevel).toEqual({ center: 1500, width: 3000 });
         expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
+    });
+
+    test('renderPixels inverts MONOCHROME1 grayscale after windowing', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const { state, rendering } = window.DicomViewerApp;
+            state.baseWindowLevel = { center: null, width: null };
+            state.pixelSpacing = null;
+
+            const info = rendering.renderPixels({
+                pixelData: new Uint16Array([0, 1000, 2000, 3000]),
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 16,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                photometricInterpretation: 'MONOCHROME1',
+                windowCenter: 1500,
+                windowWidth: 3000,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'CR',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: {
+                    repetitionTime: 0,
+                    echoTime: 0,
+                    flipAngle: 0,
+                    magneticFieldStrength: 0,
+                    protocolName: '',
+                    sequenceName: '',
+                    scanningSequence: '',
+                    mrAcquisitionType: ''
+                },
+                pixelSpacing: null,
+                isBlank: false,
+                skipWindowLevel: false
+            });
+
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            const imageData = Array.from(ctx.getImageData(0, 0, 2, 2).data);
+
+            return {
+                info,
+                firstChannel: imageData.filter((_, index) => index % 4 === 0),
+                alphaChannel: imageData.filter((_, index) => index % 4 === 3)
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            rows: 2,
+            cols: 2,
+            modality: 'CR'
+        });
+        expect(result.firstChannel).toEqual([255, 170, 85, 0]);
+        expect(result.alphaChannel).toEqual([255, 255, 255, 255]);
+    });
+
+    test('renderPixels normalizes RGB samples using Bits Stored instead of container size', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const { state, rendering } = window.DicomViewerApp;
+            state.baseWindowLevel = { center: null, width: null };
+            state.pixelSpacing = null;
+
+            const info = rendering.renderPixels({
+                pixelData: new Uint16Array([
+                    0, 4095, 2048,
+                    4095, 0, 1024
+                ]),
+                rows: 1,
+                cols: 2,
+                bitsAllocated: 16,
+                bitsStored: 12,
+                pixelRepresentation: 0,
+                samplesPerPixel: 3,
+                planarConfiguration: 0,
+                photometricInterpretation: 'RGB',
+                windowCenter: 0,
+                windowWidth: 1,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'OT',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: {
+                    repetitionTime: 0,
+                    echoTime: 0,
+                    flipAngle: 0,
+                    magneticFieldStrength: 0,
+                    protocolName: '',
+                    sequenceName: '',
+                    scanningSequence: '',
+                    mrAcquisitionType: ''
+                },
+                pixelSpacing: null,
+                isBlank: false,
+                skipWindowLevel: true
+            });
+
+            const rgba = Array.from(
+                document.getElementById('imageCanvas').getContext('2d').getImageData(0, 0, 2, 1).data
+            );
+
+            return {
+                info,
+                rgba
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            rows: 1,
+            cols: 2,
+            modality: 'OT'
+        });
+        expect(result.rgba).toEqual([
+            0, 255, 128, 255,
+            255, 0, 64, 255
+        ]);
+    });
+
+    test('decodeDicom treats JPEG Baseline MONOCHROME1 data as grayscale even with minor RGB roundtrip drift', async ({ page }) => {
+        const fixtureBytes = Array.from(fs.readFileSync(JPEG_BASELINE_RGB_FIXTURE_PATH));
+
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async (fixtureBytes) => {
+            const { rendering } = window.DicomViewerApp;
+            const parser = globalThis.dicomParser || window.dicomParser || dicomParser;
+            const dataSet = parser.parseDicom(Uint8Array.from(fixtureBytes));
+            const originalString = dataSet.string.bind(dataSet);
+            const originalUint16 = dataSet.uint16.bind(dataSet);
+            const originalCreateElement = document.createElement.bind(document);
+            const originalCreateImageBitmap = window.createImageBitmap;
+
+            dataSet.string = (tag) => {
+                if (tag === 'x00280004') {
+                    return 'MONOCHROME1';
+                }
+                return originalString(tag);
+            };
+            dataSet.uint16 = (tag) => {
+                if (tag === 'x00280010') return 1;
+                if (tag === 'x00280011') return 2;
+                return originalUint16(tag);
+            };
+
+            window.createImageBitmap = async () => ({ width: 2, height: 1 });
+            document.createElement = (tagName) => {
+                if (String(tagName).toLowerCase() !== 'canvas') {
+                    return originalCreateElement(tagName);
+                }
+                return {
+                    width: 0,
+                    height: 0,
+                    getContext() {
+                        return {
+                            drawImage() {},
+                            getImageData() {
+                                return {
+                                    data: new Uint8ClampedArray([
+                                        120, 121, 119, 255,
+                                        15, 16, 14, 255
+                                    ])
+                                };
+                            }
+                        };
+                    }
+                };
+            };
+
+            try {
+                const decoded = await rendering.decodeDicom(dataSet, 0);
+                return {
+                    error: decoded.error || false,
+                    bitsAllocated: decoded.bitsAllocated,
+                    bitsStored: decoded.bitsStored,
+                    samplesPerPixel: decoded.samplesPerPixel,
+                    photometricInterpretation: decoded.photometricInterpretation,
+                    skipWindowLevel: decoded.skipWindowLevel,
+                    pixels: Array.from(decoded.pixelData)
+                };
+            } finally {
+                window.createImageBitmap = originalCreateImageBitmap;
+                document.createElement = originalCreateElement;
+            }
+        }, fixtureBytes);
+
+        expect(result.error).toBe(false);
+        expect(result.bitsAllocated).toBe(8);
+        expect(result.bitsStored).toBe(8);
+        expect(result.samplesPerPixel).toBe(1);
+        expect(result.photometricInterpretation).toBe('MONOCHROME1');
+        expect(result.skipWindowLevel).toBe(true);
+        expect(result.pixels).toEqual([120, 15]);
+    });
+
+    test('decodeDicom plus renderPixels preserves JPEG Baseline color frames as RGB', async ({ page }) => {
+        const fixtureBytes = Array.from(fs.readFileSync(JPEG_BASELINE_RGB_FIXTURE_PATH));
+
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async (fixtureBytes) => {
+            const { state, rendering } = window.DicomViewerApp;
+            const parser = globalThis.dicomParser || window.dicomParser || dicomParser;
+            state.baseWindowLevel = { center: null, width: null };
+            state.pixelSpacing = null;
+
+            const dataSet = parser.parseDicom(Uint8Array.from(fixtureBytes));
+            const decoded = await rendering.decodeDicom(dataSet, 0);
+            const info = rendering.renderPixels(decoded);
+            const ctx = document.getElementById('imageCanvas').getContext('2d');
+            const redDominantPixel = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+            const greenDominantPixel = Array.from(ctx.getImageData(0, 21, 1, 1).data);
+
+            return {
+                decodedError: decoded.error || false,
+                bitsAllocated: decoded.bitsAllocated,
+                samplesPerPixel: decoded.samplesPerPixel,
+                planarConfiguration: decoded.planarConfiguration,
+                photometricInterpretation: decoded.photometricInterpretation,
+                skipWindowLevel: decoded.skipWindowLevel,
+                info,
+                redDominantPixel,
+                greenDominantPixel,
+            };
+        }, fixtureBytes);
+
+        expect(result.decodedError).toBe(false);
+        expect(result.bitsAllocated).toBe(8);
+        expect(result.samplesPerPixel).toBe(3);
+        expect(result.planarConfiguration).toBe(0);
+        expect(result.photometricInterpretation).toBe('RGB');
+        expect(result.skipWindowLevel).toBe(true);
+        expect(result.info).toMatchObject({
+            rows: 100,
+            cols: 100,
+            transferSyntax: '1.2.840.10008.1.2.4.50',
+            modality: 'OT'
+        });
+        expect(result.redDominantPixel[0]).toBeGreaterThan(result.redDominantPixel[1] + 40);
+        expect(result.redDominantPixel[0]).toBeGreaterThan(result.redDominantPixel[2] + 40);
+        expect(result.redDominantPixel[3]).toBe(255);
+        expect(result.greenDominantPixel[1]).toBeGreaterThan(result.greenDominantPixel[0] + 40);
+        expect(result.greenDominantPixel[1]).toBeGreaterThan(result.greenDominantPixel[2] + 40);
+        expect(result.greenDominantPixel[3]).toBe(255);
     });
 
     test('decodeDicom plus renderPixels preserves uncompressed interleaved RGB secondary-capture pixels', async ({ page }) => {
