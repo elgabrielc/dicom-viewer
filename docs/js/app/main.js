@@ -107,6 +107,34 @@
         }
     }
 
+    function pickTestModeStudySeries(studies) {
+        const candidates = [];
+
+        for (const [studyUid, study] of Object.entries(studies || {})) {
+            for (const [seriesUid, series] of Object.entries(study.series || {})) {
+                candidates.push({
+                    studyUid,
+                    seriesUid,
+                    sliceCount: series.slices?.length || 0,
+                    imageCount: Number(study.imageCount) || 0
+                });
+            }
+        }
+
+        if (!candidates.length) {
+            return null;
+        }
+
+        candidates.sort((a, b) => {
+            return b.sliceCount - a.sliceCount ||
+                b.imageCount - a.imageCount ||
+                a.studyUid.localeCompare(b.studyUid) ||
+                a.seriesUid.localeCompare(b.seriesUid);
+        });
+
+        return candidates[0];
+    }
+
     async function initializeTestMode() {
         console.log('Test mode enabled - loading test data from server');
 
@@ -124,12 +152,13 @@
             const studyIds = Object.keys(state.studies);
             if (studyIds.length === 0) return;
 
-            const firstStudy = state.studies[studyIds[0]];
-            const seriesIds = Object.keys(firstStudy.series);
-            if (seriesIds.length === 0) return;
+            const selection = pickTestModeStudySeries(state.studies);
+            if (!selection) return;
 
-            console.log('Auto-opening first series for testing');
-            openViewerWithSeries(studyIds[0], seriesIds[0]);
+            console.log(
+                `Auto-opening test series ${selection.seriesUid} from study ${selection.studyUid} (${selection.sliceCount} slices)`
+            );
+            openViewerWithSeries(selection.studyUid, selection.seriesUid);
 
             const maxSkip = 50;
             for (let i = 0; i < maxSkip && state.currentSeries; i++) {
