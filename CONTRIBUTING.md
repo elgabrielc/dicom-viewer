@@ -222,7 +222,7 @@ Write clear, descriptive commit messages that explain the change and its purpose
 
 <body - explain what and why, not how>
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 **Types:**
@@ -243,7 +243,7 @@ MRI images without embedded W/L values auto-calculate from pixel
 statistics. This provides a reasonable starting point for viewing
 without manual adjustment.
 
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
 ### Important Git Rules

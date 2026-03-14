@@ -99,7 +99,10 @@ See [AGENT_LAUNCHERS.md](./AGENT_LAUNCHERS.md) for the exact behavior and shell 
 5. Update shared index files once during integration, not inside every agent branch.
 6. Retire the agent branch only after its worktree is clean and integrated.
 
-Shared coordination files such as [docs/INDEX.md](/Users/gabriel/claude%200/dicom-viewer/docs/INDEX.md) and [docs/planning/SITEMAP.md](/Users/gabriel/claude%200/dicom-viewer/docs/planning/SITEMAP.md) should usually be touched only during the integration step. Let agent branches create or update content files first, then fold index updates in once.
+Shared coordination files such as [docs/INDEX.md](./INDEX.md) and
+[docs/planning/SITEMAP.md](./planning/SITEMAP.md) should usually be touched only
+during the integration step. Let agent branches create or update content files
+first, then fold index updates in once.
 
 If an agent needs to inherit local changes that are not on a branch yet, commit them first on `local/WIP`. Do not rely on stash as the handoff mechanism.
 
@@ -107,7 +110,9 @@ If an agent needs to inherit local changes that are not on a branch yet, commit 
 
 ## Helper Scripts
 
-These scripts live under [scripts/agent-worktree-new.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-new.sh), [scripts/agent-worktree-list.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-list.sh), and [scripts/agent-worktree-retire.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-retire.sh).
+These scripts live under [scripts/agent-worktree-new.sh](../scripts/agent-worktree-new.sh),
+[scripts/agent-worktree-list.sh](../scripts/agent-worktree-list.sh), and
+[scripts/agent-worktree-retire.sh](../scripts/agent-worktree-retire.sh).
 
 Create a worktree:
 
@@ -144,12 +149,15 @@ Start a parallel session:
 
 ```bash
 git switch local/WIP
-git add -A
+git status --short
+git add <explicit-path-1> <explicit-path-2>
 git commit -m "wip: integration checkpoint"
 
 ./scripts/agent-worktree-new.sh codex ohif-deep-dive
 ./scripts/agent-worktree-new.sh cc visage-research
 ```
+
+If `local/WIP` is already clean, skip the checkpoint commit.
 
 Integrate finished work:
 

@@ -14,13 +14,13 @@ tries to relocate later.
 
 This repository includes two repo-local launcher wrappers:
 
-- [scripts/ccw](/Users/gabriel/claude%200/dicom-viewer/scripts/ccw) for Claude
-- [scripts/codexw](/Users/gabriel/claude%200/dicom-viewer/scripts/codexw) for Codex
+- [scripts/ccw](../scripts/ccw) for Claude
+- [scripts/codexw](../scripts/codexw) for Codex
 
 The preferred path is to install the global commands `ccw` and `codexw` in
 `~/.local/bin/`. The repo-local wrappers prefer those global commands when
 available, then fall back to the repo-local shared launcher at
-[scripts/agent-session-launch.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-session-launch.sh).
+[scripts/agent-session-launch.sh](../scripts/agent-session-launch.sh).
 
 The wrappers accept launcher flags before the topic, so this works as expected:
 
@@ -129,7 +129,7 @@ Prepare the worktree but do not launch the tool:
 
 ## Global Installation
 
-Install these files in `~/.local/bin/`:
+After manual installation, these files should exist in `~/.local/bin/`:
 
 - `agent-session-launch`
 - `ccw`
@@ -151,10 +151,10 @@ command -v agent-session-launch
 
 - In this repo, Claude branches use `cc/*`, not `claude/*`.
 - The launcher prefers the repo helper
-  [scripts/agent-worktree-new.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-new.sh)
+  [scripts/agent-worktree-new.sh](../scripts/agent-worktree-new.sh)
   when available so repo-specific conventions stay authoritative.
 - If the helper is not available in some other repo, the shared launcher falls
   back to plain `git worktree add` with the same naming rules.
 
 For the broader workflow and branch lifecycle, see
-[docs/AGENT_WORKTREES.md](/Users/gabriel/claude%200/dicom-viewer/docs/AGENT_WORKTREES.md).
+[docs/AGENT_WORKTREES.md](./AGENT_WORKTREES.md).

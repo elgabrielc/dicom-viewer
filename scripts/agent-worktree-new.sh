@@ -15,7 +15,7 @@ Agent values:
   claude  -> alias for cc/<topic>
 
 Defaults:
-  base branch: local/WIP
+  base branch: local/WIP when present, else main, master, or the current branch
   worktree root: $AI_WORKTREE_HOME/<repo-name> or ~/ai-worktrees/<repo-name>
 
 Examples:
@@ -31,8 +31,20 @@ slugify() {
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//; s/-+/-/g'
 }
 
+default_base_branch() {
+  if git rev-parse --verify --quiet local/WIP^{commit} >/dev/null; then
+    printf '%s\n' "local/WIP"
+  elif git rev-parse --verify --quiet main^{commit} >/dev/null; then
+    printf '%s\n' "main"
+  elif git rev-parse --verify --quiet master^{commit} >/dev/null; then
+    printf '%s\n' "master"
+  else
+    git branch --show-current
+  fi
+}
+
 DRY_RUN=0
-BASE_BRANCH="local/WIP"
+BASE_BRANCH=""
 ROOT_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
@@ -103,6 +115,15 @@ WORKTREE_ROOT="${WORKTREE_HOME%/}/$REPO_NAME"
 BRANCH_NAME="$BRANCH_PREFIX/$TOPIC_SLUG"
 WORKTREE_PATH="$WORKTREE_ROOT/$BRANCH_PREFIX-$TOPIC_SLUG"
 CURRENT_BRANCH="$(git branch --show-current)"
+
+if [[ -z "$BASE_BRANCH" ]]; then
+  BASE_BRANCH="$(default_base_branch)"
+fi
+
+if [[ -z "$BASE_BRANCH" ]]; then
+  echo "Could not determine a default base branch. Re-run with --base <branch>." >&2
+  exit 1
+fi
 
 git rev-parse --verify "$BASE_BRANCH^{commit}" >/dev/null
 

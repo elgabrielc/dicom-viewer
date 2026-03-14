@@ -51,12 +51,35 @@ default_base_branch() {
 }
 
 find_attached_worktree_for_branch() {
-  local branch_ref="refs/heads/$1"
+  local target="$1"
+  local path=""
+  local branch=""
 
-  git worktree list --porcelain | awk -v branch_ref="$branch_ref" '
-    $1 == "worktree" { current_path = substr($0, 10) }
-    $1 == "branch" && $2 == branch_ref { print current_path; exit 0 }
-  '
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ -z "$line" ]]; then
+      if [[ "$branch" == "$target" ]]; then
+        printf '%s\n' "$path"
+        return 0
+      fi
+      path=""
+      branch=""
+      continue
+    fi
+
+    case "$line" in
+      worktree\ *)
+        path="${line#worktree }"
+        ;;
+      branch\ refs/heads/*)
+        branch="${line#branch refs/heads/}"
+        ;;
+      detached)
+        branch=""
+        ;;
+    esac
+  done < <(git worktree list --porcelain && printf '\n')
+
+  return 1
 }
 
 has_project_helper_script() {
@@ -237,7 +260,14 @@ else
   fi
 fi
 
-if [[ "$BRANCH_ALREADY_EXISTS" -eq 0 ]] && [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]] && [[ -n "$CURRENT_STATUS" ]] && [[ "$CURRENT_PATH" == "$REPO_ROOT" ]]; then
+IN_SHARED_CHECKOUT=0
+case "$CURRENT_PATH" in
+  "$REPO_ROOT"|"$REPO_ROOT"/*)
+    IN_SHARED_CHECKOUT=1
+    ;;
+esac
+
+if [[ "$BRANCH_ALREADY_EXISTS" -eq 0 ]] && [[ "$CURRENT_BRANCH" == "$BASE_BRANCH" ]] && [[ -n "$CURRENT_STATUS" ]] && [[ "$IN_SHARED_CHECKOUT" -eq 1 ]]; then
   echo "Refusing to create a new agent worktree from dirty $BASE_BRANCH." >&2
   echo "Capture or commit the shared checkout state first, then retry." >&2
   exit 1

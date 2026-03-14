@@ -40,7 +40,8 @@ Then continue only in the new external worktree.
 
 ## If You Are Already in the Main Checkout With Changes
 
-If you are in `/Users/gabriel/claude 0/dicom-viewer` and already have uncommitted changes:
+If you are in the shared main checkout at `<repo-root>` and already have
+uncommitted changes:
 
 1. Identify exactly which files belong to your session.
 2. Create a dedicated branch:

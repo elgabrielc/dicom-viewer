@@ -73,10 +73,10 @@ This is the key tool for parallel AI work.
 
 ### Shared Checkout
 
-The shared checkout is the main repository folder:
+The shared checkout is the main repository folder for this clone:
 
 ```text
-/Users/gabriel/claude 0/dicom-viewer
+<repo-root>
 ```
 
 This checkout is convenient for you as the human integrator, but it is a bad place to
@@ -277,9 +277,9 @@ This is the foundation of the new workflow.
 
 We added three scripts:
 
-- [scripts/agent-worktree-new.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-new.sh)
-- [scripts/agent-worktree-list.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-list.sh)
-- [scripts/agent-worktree-retire.sh](/Users/gabriel/claude%200/dicom-viewer/scripts/agent-worktree-retire.sh)
+- [scripts/agent-worktree-new.sh](../scripts/agent-worktree-new.sh)
+- [scripts/agent-worktree-list.sh](../scripts/agent-worktree-list.sh)
+- [scripts/agent-worktree-retire.sh](../scripts/agent-worktree-retire.sh)
 
 Why:
 

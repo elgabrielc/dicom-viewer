@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if [[ $# -eq 0 ]]; then
+  echo "codexw requires a topic or launcher flag. Try: codexw <topic> or codexw --help" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SELF_PATH="$(cd "$SCRIPT_DIR" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 GLOBAL_CODEXW="$(command -v codexw || true)"

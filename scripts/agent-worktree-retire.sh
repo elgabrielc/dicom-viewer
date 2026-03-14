@@ -97,6 +97,13 @@ fi
 BRANCH_NAME="$1"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 
+case "$BRANCH_NAME" in
+  main|master|local/WIP)
+    echo "Refusing to retire protected branch: $BRANCH_NAME" >&2
+    exit 1
+    ;;
+esac
+
 git rev-parse --verify "$BRANCH_NAME^{commit}" >/dev/null
 git rev-parse --verify "$INTO_BRANCH^{commit}" >/dev/null
 
