@@ -588,9 +588,12 @@
         const rows = Number(nativeDecoded.rows);
         const cols = Number(nativeDecoded.cols);
         const bitsAllocated = Number(nativeDecoded.bitsAllocated);
+        const storedBitTagValue = typeof dataSet?.uint16 === 'function'
+            ? dataSet.uint16('x00280101')
+            : bitsAllocated;
         const bitsStored = Math.min(
             bitsAllocated,
-            Number(nativeDecoded.bitsStored || dataSet.uint16('x00280101') || bitsAllocated)
+            Number(nativeDecoded.bitsStored || storedBitTagValue || bitsAllocated)
         );
         const pixelRepresentation = Number(nativeDecoded.pixelRepresentation);
         const samplesPerPixel = Number(nativeDecoded.samplesPerPixel || 1);
