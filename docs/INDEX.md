@@ -57,6 +57,7 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [Sectra](./planning/RESEARCH-sectra.md) | Competitive | Hybrid rendering, RapidConnect streaming, DDP hanging protocols, Azure cloud. KLAS #1 |
 | [Visage 7](./planning/RESEARCH-visage.md) | Competitive | Pure SSR, patented adaptive streaming, single codebase, AWS cloud, per-study pricing |
 | [OHIF Viewer](./planning/RESEARCH-ohif.md) | Both | Open-source, Cornerstone3D/vtk.js, extension architecture, DICOMweb, HTJ2K progressive loading |
+| [AWS HealthLake Imaging](./planning/RESEARCH-aws-healthlake-imaging.md) | Infrastructure | HTJ2K encoding, DICOMweb + OIDC, progressive loading via TLM Proxy, cloud storage for ADR 004 |
 
 ### For Decisions
 
@@ -66,6 +67,7 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [ADR 001: launch.command](./decisions/001-launch-command.md) | docs/decisions/ | Decision record for macOS double-click startup workflow |
 | [ADR 002: Persistent Local Library](./decisions/002-persistent-local-library.md) | docs/decisions/ | Decision record for persistent DICOM library with DicomFolderSource architecture |
 | [ADR 003: Tauri Desktop Shell](./decisions/003-tauri-desktop-shell-with-shared-web-core.md) | docs/decisions/ | Decision record for the shared web core plus Tauri desktop shell direction |
+| [ADR 004: Cloud Platform Rendering](./decisions/004-cloud-platform-rendering-architecture.md) | docs/decisions/ | Client-side rendering + cloud storage (not SSR). Server compute for transcoding, AI, 3D fallback |
 
 ---
 
@@ -119,6 +121,10 @@ docs/planning/
 ├── RESEARCH-ohif-reports_2026-02-02.md     # OHIF document handling
 ├── RESEARCH-mychart-reports_2026-02-02_2148.md  # MyChart document upload
 ├── RESEARCH-philips-im15.md                # Philips IM15 architecture (competitive)
+├── RESEARCH-sectra.md                      # Sectra IDS7 architecture (competitive)
+├── RESEARCH-visage.md                      # Visage 7 / Pro Medicus (competitive)
+├── RESEARCH-ohif.md                        # OHIF Viewer (open-source, competitive)
+├── RESEARCH-aws-healthlake-imaging.md      # AWS HealthLake Imaging (infrastructure)
 ├── RESEARCH-*-prompt.md                    # Research input prompts
 ├── RESEARCH-*-thinking.md                  # Research reasoning process
 ├── SECURITY-AUDIT.md                       # Application security audit (14 findings)
@@ -136,7 +142,8 @@ docs/decisions/
 ├── README.md                               # ADR template and conventions
 ├── 001-launch-command.md                   # Decision record for launch.command startup
 ├── 002-persistent-local-library.md         # Decision record for persistent DICOM library
-└── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
+├── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
+└── 004-cloud-platform-rendering-architecture.md     # Client-side rendering + cloud storage for cloud platform
 ```
 
 ---
