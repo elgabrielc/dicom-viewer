@@ -101,6 +101,7 @@ create_worktree() {
 DRY_RUN=0
 NO_LAUNCH=0
 TOOL_CMD=""
+TOOL_ARGS=()
 AGENT_OVERRIDE=""
 BASE_BRANCH=""
 ROOT_OVERRIDE=""
@@ -170,7 +171,9 @@ else
   shift 2
 fi
 
-TOOL_ARGS=("$@")
+if [[ $# -gt 0 ]]; then
+  TOOL_ARGS=("$@")
+fi
 
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   echo "This launcher must be run inside a git worktree." >&2
@@ -288,4 +291,7 @@ fi
 echo
 echo "Launching $TOOL_CMD in $WORKTREE_PATH"
 cd "$WORKTREE_PATH"
-exec "$TOOL_CMD" "${TOOL_ARGS[@]}"
+if [[ ${#TOOL_ARGS[@]} -gt 0 ]]; then
+  exec "$TOOL_CMD" "${TOOL_ARGS[@]}"
+fi
+exec "$TOOL_CMD"
