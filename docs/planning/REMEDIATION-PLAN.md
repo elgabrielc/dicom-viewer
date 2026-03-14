@@ -29,7 +29,7 @@ Several findings appear in both audits or are closely related:
 | Flask auth + CSRF | SEC-HIGH-1, SEC-MEDIUM-1 | -- | Related: both concern unauthenticated access to Flask APIs |
 | Report ID collision | SEC-LOW-7 | -- | IDOR on client-supplied report IDs |
 | localStorage PHI | SEC-MEDIUM-4 | -- | Disclosure concern, not a code bug |
-| `Math.random` UUID | SEC-LOW-4 | DBG-LOW-17 | Same finding in both audits |
+| `Math.random` UUID | SEC-LOW-4 | -- | Security-only finding; not duplicated in the debugger audit |
 
 ---
 
@@ -171,7 +171,7 @@ Recommended policy:
 default-src 'self' data: blob:;
 script-src 'self' 'wasm-unsafe-eval';
 style-src 'self' 'unsafe-inline';
-worker-src 'self' blob:;
+worker-src 'self' blob: 'wasm-unsafe-eval';
 img-src 'self' data: blob:;
 connect-src 'self';
 frame-src blob:;
@@ -280,25 +280,40 @@ const expectedPath = await path.join(await path.appDataDir(), 'reports', `${repo
 
 **Fix**: Consolidate into a single `checkDesktopRuntime()` function.
 
-### 4.8 `getAllFileHandles` recursion depth [DBG-LOW-5]
+### 4.8 Desktop `readSliceBuffer` runtime guard [DBG-MEDIUM-12]
+
+**Impact**: If `window.__TAURI__` is unavailable during integration testing or a slow desktop startup, the current `kind: 'path'` code path throws an unhelpful `Cannot read properties of undefined (reading 'fs')` error instead of a clear desktop-runtime message.
+
+**Fix**: Add a guard at the top of the `kind: 'path'` branch in `sources.js`:
+```javascript
+if (!window.__TAURI__?.fs?.readFile) {
+    throw new Error('Desktop file API is not available. Please reopen the app.');
+}
+```
+
+**Effort**: 3 lines. Trivial.
+
+**Priority rationale**: This is a robustness/UX fix for desktop initialization edge cases, not a correctness bug. Track it, but do not let it block the higher-priority rendering and reliability work.
+
+### 4.9 `getAllFileHandles` recursion depth [DBG-LOW-5]
 
 **Impact**: Deeply nested directories (15+ levels) could overflow the call stack. File System Access API does not follow symlinks, so no cycle risk.
 
 **Fix**: Convert to iterative with depth limit (match desktop path's `maxDepth = 20`).
 
-### 4.9 Series panel composite key [DBG-MEDIUM-7]
+### 4.10 Series panel composite key [DBG-MEDIUM-7]
 
 **Impact**: Non-conformant UIDs with colons would break panel state tracking. DICOM UIDs by spec contain only digits and dots.
 
 **Fix**: Use `Map<studyUid, Set<seriesUid>>` instead of colon-delimited keys.
 
-### 4.10 Measurements not cleared on folder drop [DBG-MEDIUM-6]
+### 4.11 Measurements not cleared on folder drop [DBG-MEDIUM-6]
 
 **Impact**: State hygiene. UID collision probability is negligible.
 
 **Fix**: Add `state.measurements.clear()` in `handleDroppedFolder`.
 
-### 4.11 Stale W/L display on blank slices [DBG-LOW-4]
+### 4.12 Stale W/L display on blank slices [DBG-LOW-4]
 
 **Impact**: Blank slice metadata panel shows W/L values from previous non-blank slice. Cosmetic.
 
@@ -315,6 +330,7 @@ const expectedPath = await path.join(await path.appDataDir(), 'reports', `${repo
 | DBG-MEDIUM-9 | Sample study batch loading | Small |
 | DBG-MEDIUM-15 | Double-lock fix | Trivial |
 | DBG-LOW-18 | Desktop runtime consolidation | Small |
+| DBG-MEDIUM-12 | Desktop `readSliceBuffer` runtime guard | Trivial |
 | DBG-LOW-5 | Recursive file handle depth limit | Small |
 | DBG-MEDIUM-7 | Series panel composite key | Small |
 | DBG-MEDIUM-6 | Measurements clear on folder drop | Trivial |
@@ -344,7 +360,7 @@ const expectedPath = await path.join(await path.appDataDir(), 'reports', `${repo
 
 **Action**: Add a code comment noting the limitation. If PALETTE COLOR support is needed, track it as a feature request.
 
-### Accept: `Math.random` UUID [SEC-LOW-4 / DBG-LOW-17]
+### Accept: `Math.random` UUID [SEC-LOW-4]
 
 **Assessment**: Both audits flag this. The risk is theoretical -- report IDs do not need to be cryptographically unpredictable in a single-user local app with no authentication. The server-side path already uses `uuid.uuid4()`.
 
@@ -406,9 +422,9 @@ const expectedPath = await path.join(await path.appDataDir(), 'reports', `${repo
 
 **Action**: No change.
 
-### Accept: Test mode blank-slice error loop [DBG-MEDIUM-10]
+### Accept: Test mode blank-slice error loop [DBG-MEDIUM-10 + DBG-LOW-17]
 
-**Assessment**: This only affects CI test startup with datasets that have decode errors on every slice. The real fix is having good test data, not adding complexity to the blank-slice loop.
+**Assessment**: This only affects CI test startup with datasets that have decode errors on every slice. The real fix is having good test data, not adding complexity to the blank-slice loop. The missing dedicated test for blank-slice auto-advance in error-heavy series (DBG-LOW-17) is part of the same issue and is accepted for the same reason.
 
 **Action**: No change.
 
@@ -429,6 +445,7 @@ These test gaps from the debugger audit are addressed as part of their associate
 | DBG-LOW-12: No MONOCHROME1 test | Tier 1.1 |
 | DBG-LOW-15: No loadSlice race test | Tier 2.1 |
 | DBG-LOW-16: No W/L cache miss test | Tier 2.2 |
+| DBG-LOW-17: No blank-slice auto-advance test for error slices | Accept with DBG-MEDIUM-10 |
 
 Remaining test gaps to address when convenient:
 
@@ -483,8 +500,8 @@ This does not need to happen now, but when the 3D volume rendering work begins (
 | 1 -- Image Correctness | DBG-M3, DBG-H1, DBG-M4, DBG-L12 | 4 | 1 PR, medium | This week |
 | 2 -- Viewer Reliability | DBG-H2, DBG-M5, DBG-M14, DBG-L11, DBG-M8, DBG-L6, DBG-L15 | 7 | 2 PRs, small | 2 weeks |
 | 3 -- Security Hardening | SEC-H1, SEC-H2, SEC-H3, SEC-M1, SEC-M2, SEC-M3, SEC-L1 | 7 | 3 PRs, medium | This month |
-| 4 -- Robustness | DBG-M1, M2, M6, M7, M9, M11, M13, M15, L5, L4, L18 | 11 | Ongoing | No deadline |
+| 4 -- Robustness | DBG-M1, M2, M6, M7, M9, M11, M12, M13, M15, L5, L4, L18 | 12 | Ongoing | No deadline |
 | 5 -- Accept As-Is | SEC-L2-L7, SEC-M4, DBG-L1-3, L8-10, L13-14, L17, L19-20, M10 | 18 | 0 | Documented |
-| **Total** | | **47** | | |
+| **Total** | | **48** | | |
 
 *4 findings were deduplicated across the two audits (JPEG color, path traversal, UUID, PermissionError/path overlap).*

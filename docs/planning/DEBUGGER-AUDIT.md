@@ -191,7 +191,7 @@ There is no `if (decoded.photometricInterpretation === 'MONOCHROME1')` check any
 rendering code. A chest X-ray will show lungs bright white and ribs dark — the radiological
 inverse.
 
-No test covers MONOCHROME1, which is why this has gone undetected (see also LOW-9).
+No test covers MONOCHROME1, which is why this has gone undetected (see also LOW-12).
 
 **Recommended fix**: After the grayscale value is computed, add:
 
@@ -971,7 +971,7 @@ UIDs). The server-side scan has no equivalent deduplication.
 | LOW-13 | Low | No test for multi-frame DICOM |
 | LOW-14 | Low | Desktop native decode path untested in CI |
 | LOW-15 | Low | No test for concurrent `loadSlice` race condition |
-| LOW-17 | Low | `generateUUID` uses `Math.random` — should use `crypto.randomUUID()` |
+| LOW-17 | Low | No test for blank-slice auto-advance in series with error slices |
 | MEDIUM-1 | Medium | Manual encapsulated frame fallback missing bounds check |
 | MEDIUM-2 | Medium | `getMetadataNumber` int16 tried before int32 (incorrect ordering) |
 

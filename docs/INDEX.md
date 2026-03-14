@@ -55,6 +55,7 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [MyChart Reports](./planning/RESEARCH-mychart-reports_2026-02-02_2148.md) | Feature | Epic MyChart document upload and storage |
 | [Philips IM15](./planning/RESEARCH-philips-im15.md) | Competitive | Server-side rendering, AWS cloud, AI integration, market positioning |
 | [Sectra](./planning/RESEARCH-sectra.md) | Competitive | Hybrid rendering, RapidConnect streaming, DDP hanging protocols, Azure cloud. KLAS #1 |
+| [Visage (prompt only)](./planning/RESEARCH-visage-prompt.md) | Competitive | Research prompt captured for Visage / Pro Medicus. Main write-up is still pending |
 
 ### For Decisions
 
@@ -64,6 +65,7 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [ADR 001: launch.command](./decisions/001-launch-command.md) | docs/decisions/ | Decision record for macOS double-click startup workflow |
 | [ADR 002: Persistent Local Library](./decisions/002-persistent-local-library.md) | docs/decisions/ | Decision record for persistent DICOM library with DicomFolderSource architecture |
 | [ADR 003: Tauri Desktop Shell](./decisions/003-tauri-desktop-shell-with-shared-web-core.md) | docs/decisions/ | Decision record for the shared web core plus Tauri desktop shell direction |
+| [ADR 004: Cloud Platform Rendering Architecture](./decisions/004-cloud-platform-rendering-architecture.md) | docs/decisions/ | Decision record for client-side vs server-side rendering in the future authenticated cloud platform |
 
 ---
 
@@ -134,7 +136,8 @@ docs/decisions/
 ├── README.md                               # ADR template and conventions
 ├── 001-launch-command.md                   # Decision record for launch.command startup
 ├── 002-persistent-local-library.md         # Decision record for persistent DICOM library
-└── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
+├── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
+└── 004-cloud-platform-rendering-architecture.md     # Decision record for cloud rendering architecture
 ```
 
 ---
