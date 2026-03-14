@@ -370,6 +370,7 @@
         const samplesPerPixel = dataSet.uint16('x00280002') || 1;
         const planarConfiguration = samplesPerPixel > 1 ? (dataSet.uint16('x00280006') || 0) : 0;
         const photometricInterpretation = getString(dataSet, 'x00280004');
+        let decodedBitsAllocated = bitsAllocated;
         let decodedSamplesPerPixel = samplesPerPixel;
         let decodedPlanarConfiguration = planarConfiguration;
         let decodedPhotometricInterpretation = photometricInterpretation;
@@ -486,14 +487,12 @@
                         }
                     );
                 }
-                pixelData = result.pixels;
-                if (result.isRgb) {
-                    // Browser JPEG decode path currently returns a display-ready single channel.
-                    decodedSamplesPerPixel = 1;
-                    decodedPlanarConfiguration = 0;
-                    decodedPhotometricInterpretation = 'MONOCHROME2';
-                    skipWindowLevel = true;
-                }
+                pixelData = result.pixelData;
+                decodedBitsAllocated = result.bitsAllocated ?? bitsAllocated;
+                decodedSamplesPerPixel = result.samplesPerPixel ?? samplesPerPixel;
+                decodedPlanarConfiguration = result.planarConfiguration ?? planarConfiguration;
+                decodedPhotometricInterpretation = result.photometricInterpretation ?? photometricInterpretation;
+                skipWindowLevel = result.skipWindowLevel ?? true;
             } else {
                 // Unsupported compression format
                 return buildDecodeError(
@@ -538,7 +537,7 @@
             pixelData,
             rows,
             cols,
-            bitsAllocated,
+            bitsAllocated: decodedBitsAllocated,
             pixelRepresentation,
             samplesPerPixel: decodedSamplesPerPixel,
             planarConfiguration: decodedPlanarConfiguration,
@@ -728,17 +727,18 @@
 
         if (decoded.samplesPerPixel === 3 && decoded.photometricInterpretation === 'RGB') {
             const planeSize = decoded.rows * decoded.cols;
+            const rgbScale = decoded.bitsAllocated > 8 ? 255 / ((2 ** decoded.bitsAllocated) - 1) : 1;
             for (let i = 0; i < planeSize; i++) {
                 const pixelIndex = i * 4;
                 if (decoded.planarConfiguration === 1) {
-                    outputPixels[pixelIndex] = decoded.pixelData[i];
-                    outputPixels[pixelIndex + 1] = decoded.pixelData[i + planeSize];
-                    outputPixels[pixelIndex + 2] = decoded.pixelData[i + (planeSize * 2)];
+                    outputPixels[pixelIndex] = Math.round(decoded.pixelData[i] * rgbScale);
+                    outputPixels[pixelIndex + 1] = Math.round(decoded.pixelData[i + planeSize] * rgbScale);
+                    outputPixels[pixelIndex + 2] = Math.round(decoded.pixelData[i + (planeSize * 2)] * rgbScale);
                 } else {
                     const interleavedIndex = i * 3;
-                    outputPixels[pixelIndex] = decoded.pixelData[interleavedIndex];
-                    outputPixels[pixelIndex + 1] = decoded.pixelData[interleavedIndex + 1];
-                    outputPixels[pixelIndex + 2] = decoded.pixelData[interleavedIndex + 2];
+                    outputPixels[pixelIndex] = Math.round(decoded.pixelData[interleavedIndex] * rgbScale);
+                    outputPixels[pixelIndex + 1] = Math.round(decoded.pixelData[interleavedIndex + 1] * rgbScale);
+                    outputPixels[pixelIndex + 2] = Math.round(decoded.pixelData[interleavedIndex + 2] * rgbScale);
                 }
                 outputPixels[pixelIndex + 3] = 255;
             }
@@ -756,6 +756,9 @@
                     // Clamp to window range and scale to 0-255
                     pixelValue = Math.max(windowMin, Math.min(windowMax, pixelValue));
                     grayscaleValue = Math.round(((pixelValue - windowMin) / windowDivisor) * 255);
+                }
+                if (decoded.photometricInterpretation === 'MONOCHROME1') {
+                    grayscaleValue = 255 - grayscaleValue;
                 }
                 // Set RGBA values (grayscale = R=G=B, alpha=255)
                 const pixelIndex = i * 4;
