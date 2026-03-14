@@ -652,12 +652,16 @@
         }
     }
 
+    const MONOCHROME_PHOTOMETRIC_INTERPRETATIONS = new Set(['MONOCHROME1', 'MONOCHROME2']);
+    const JPEG_BASELINE_GRAYSCALE_TOLERANCE = 2;
+
     /**
-     * Decode JPEG Baseline compressed pixel data using browser's native decoder
-     * Creates a Blob from the JPEG data and uses createImageBitmap to decode
+     * Decode JPEG Baseline compressed pixel data using browser's native decoder.
+     * The caller passes the current pixel data element so frame extraction stays aligned
+     * with the same encapsulated frame path used by other decoders.
      *
      * @param {Object} dataSet - dicomParser dataset
-     * @param {Object} pixelDataElement - Pixel data element (unused)
+     * @param {Object} pixelDataElement - Pixel data element for encapsulated frame extraction
      * @param {number} rows - Image height
      * @param {number} cols - Image width
      * @returns {Promise<Object>} Display-ready pixel payload for renderPixels()
@@ -677,30 +681,41 @@
 
             const imageData = tempCtx.getImageData(0, 0, cols, rows);
             const pixelCount = rows * cols;
-            let isGrayscale = true;
+            const photometricInterpretation = getString(dataSet, 'x00280004') || 'MONOCHROME2';
+            let isGrayscale = MONOCHROME_PHOTOMETRIC_INTERPRETATIONS.has(photometricInterpretation);
 
-            for (let i = 0; i < pixelCount; i++) {
-                const rgbaIndex = i * 4;
-                if (
-                    imageData.data[rgbaIndex] !== imageData.data[rgbaIndex + 1] ||
-                    imageData.data[rgbaIndex + 1] !== imageData.data[rgbaIndex + 2]
-                ) {
-                    isGrayscale = false;
-                    break;
+            if (!isGrayscale) {
+                isGrayscale = true;
+                for (let i = 0; i < pixelCount; i++) {
+                    const rgbaIndex = i * 4;
+                    const red = imageData.data[rgbaIndex];
+                    const green = imageData.data[rgbaIndex + 1];
+                    const blue = imageData.data[rgbaIndex + 2];
+                    const channelRange = Math.max(red, green, blue) - Math.min(red, green, blue);
+                    if (channelRange > JPEG_BASELINE_GRAYSCALE_TOLERANCE) {
+                        isGrayscale = false;
+                        break;
+                    }
                 }
             }
 
             if (isGrayscale) {
                 const pixelData = new Uint8Array(pixelCount);
                 for (let i = 0; i < pixelCount; i++) {
-                    pixelData[i] = imageData.data[i * 4];
+                    const rgbaIndex = i * 4;
+                    pixelData[i] = Math.round((
+                        imageData.data[rgbaIndex] +
+                        imageData.data[rgbaIndex + 1] +
+                        imageData.data[rgbaIndex + 2]
+                    ) / 3);
                 }
                 return {
                     pixelData,
                     bitsAllocated: 8,
+                    bitsStored: 8,
                     samplesPerPixel: 1,
                     planarConfiguration: 0,
-                    photometricInterpretation: getString(dataSet, 'x00280004') || 'MONOCHROME2',
+                    photometricInterpretation,
                     skipWindowLevel: true
                 };
             }
@@ -717,6 +732,7 @@
             return {
                 pixelData,
                 bitsAllocated: 8,
+                bitsStored: 8,
                 samplesPerPixel: 3,
                 planarConfiguration: 0,
                 photometricInterpretation: 'RGB',

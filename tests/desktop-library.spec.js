@@ -995,7 +995,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.alphaChannel).toEqual([255, 255, 255, 255]);
     });
 
-    test('renderPixels normalizes 16-bit RGB samples into the canvas 8-bit range', async ({ page }) => {
+    test('renderPixels normalizes RGB samples using Bits Stored instead of container size', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -1006,12 +1006,13 @@ test.describe('Desktop library scanning', () => {
 
             const info = rendering.renderPixels({
                 pixelData: new Uint16Array([
-                    0, 65535, 32768,
-                    65535, 0, 16384
+                    0, 4095, 2048,
+                    4095, 0, 1024
                 ]),
                 rows: 1,
                 cols: 2,
                 bitsAllocated: 16,
+                bitsStored: 12,
                 pixelRepresentation: 0,
                 samplesPerPixel: 3,
                 planarConfiguration: 0,
@@ -1056,6 +1057,83 @@ test.describe('Desktop library scanning', () => {
             0, 255, 128, 255,
             255, 0, 64, 255
         ]);
+    });
+
+    test('decodeDicom treats JPEG Baseline MONOCHROME1 data as grayscale even with minor RGB roundtrip drift', async ({ page }) => {
+        const fixtureBytes = Array.from(fs.readFileSync(JPEG_BASELINE_RGB_FIXTURE_PATH));
+
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async (fixtureBytes) => {
+            const { rendering } = window.DicomViewerApp;
+            const parser = globalThis.dicomParser || window.dicomParser || dicomParser;
+            const dataSet = parser.parseDicom(Uint8Array.from(fixtureBytes));
+            const originalString = dataSet.string.bind(dataSet);
+            const originalUint16 = dataSet.uint16.bind(dataSet);
+            const originalCreateElement = document.createElement.bind(document);
+            const originalCreateImageBitmap = window.createImageBitmap;
+
+            dataSet.string = (tag) => {
+                if (tag === 'x00280004') {
+                    return 'MONOCHROME1';
+                }
+                return originalString(tag);
+            };
+            dataSet.uint16 = (tag) => {
+                if (tag === 'x00280010') return 1;
+                if (tag === 'x00280011') return 2;
+                return originalUint16(tag);
+            };
+
+            window.createImageBitmap = async () => ({ width: 2, height: 1 });
+            document.createElement = (tagName) => {
+                if (String(tagName).toLowerCase() !== 'canvas') {
+                    return originalCreateElement(tagName);
+                }
+                return {
+                    width: 0,
+                    height: 0,
+                    getContext() {
+                        return {
+                            drawImage() {},
+                            getImageData() {
+                                return {
+                                    data: new Uint8ClampedArray([
+                                        120, 121, 119, 255,
+                                        15, 16, 14, 255
+                                    ])
+                                };
+                            }
+                        };
+                    }
+                };
+            };
+
+            try {
+                const decoded = await rendering.decodeDicom(dataSet, 0);
+                return {
+                    error: decoded.error || false,
+                    bitsAllocated: decoded.bitsAllocated,
+                    bitsStored: decoded.bitsStored,
+                    samplesPerPixel: decoded.samplesPerPixel,
+                    photometricInterpretation: decoded.photometricInterpretation,
+                    skipWindowLevel: decoded.skipWindowLevel,
+                    pixels: Array.from(decoded.pixelData)
+                };
+            } finally {
+                window.createImageBitmap = originalCreateImageBitmap;
+                document.createElement = originalCreateElement;
+            }
+        }, fixtureBytes);
+
+        expect(result.error).toBe(false);
+        expect(result.bitsAllocated).toBe(8);
+        expect(result.bitsStored).toBe(8);
+        expect(result.samplesPerPixel).toBe(1);
+        expect(result.photometricInterpretation).toBe('MONOCHROME1');
+        expect(result.skipWindowLevel).toBe(true);
+        expect(result.pixels).toEqual([120, 15]);
     });
 
     test('decodeDicom plus renderPixels preserves JPEG Baseline color frames as RGB', async ({ page }) => {

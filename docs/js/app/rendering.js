@@ -366,11 +366,13 @@
         const rows = dataSet.uint16('x00280010');              // (0028,0010) Rows
         const cols = dataSet.uint16('x00280011');              // (0028,0011) Columns
         const bitsAllocated = dataSet.uint16('x00280100') || 16;  // (0028,0100) Bits Allocated
+        const bitsStored = Math.min(bitsAllocated, dataSet.uint16('x00280101') || bitsAllocated); // (0028,0101)
         const pixelRepresentation = dataSet.uint16('x00280103') || 0;  // (0028,0103) 0=unsigned, 1=signed
         const samplesPerPixel = dataSet.uint16('x00280002') || 1;
         const planarConfiguration = samplesPerPixel > 1 ? (dataSet.uint16('x00280006') || 0) : 0;
         const photometricInterpretation = getString(dataSet, 'x00280004');
         let decodedBitsAllocated = bitsAllocated;
+        let decodedBitsStored = bitsStored;
         let decodedSamplesPerPixel = samplesPerPixel;
         let decodedPlanarConfiguration = planarConfiguration;
         let decodedPhotometricInterpretation = photometricInterpretation;
@@ -489,10 +491,11 @@
                 }
                 pixelData = result.pixelData;
                 decodedBitsAllocated = result.bitsAllocated ?? bitsAllocated;
+                decodedBitsStored = result.bitsStored ?? decodedBitsAllocated;
                 decodedSamplesPerPixel = result.samplesPerPixel ?? samplesPerPixel;
                 decodedPlanarConfiguration = result.planarConfiguration ?? planarConfiguration;
                 decodedPhotometricInterpretation = result.photometricInterpretation ?? photometricInterpretation;
-                skipWindowLevel = result.skipWindowLevel ?? true;
+                skipWindowLevel = result.skipWindowLevel ?? false;
             } else {
                 // Unsupported compression format
                 return buildDecodeError(
@@ -538,6 +541,7 @@
             rows,
             cols,
             bitsAllocated: decodedBitsAllocated,
+            bitsStored: decodedBitsStored,
             pixelRepresentation,
             samplesPerPixel: decodedSamplesPerPixel,
             planarConfiguration: decodedPlanarConfiguration,
@@ -584,6 +588,10 @@
         const rows = Number(nativeDecoded.rows);
         const cols = Number(nativeDecoded.cols);
         const bitsAllocated = Number(nativeDecoded.bitsAllocated);
+        const bitsStored = Math.min(
+            bitsAllocated,
+            Number(nativeDecoded.bitsStored || dataSet.uint16('x00280101') || bitsAllocated)
+        );
         const pixelRepresentation = Number(nativeDecoded.pixelRepresentation);
         const samplesPerPixel = Number(nativeDecoded.samplesPerPixel || 1);
         const planarConfiguration = Number(nativeDecoded.planarConfiguration || 0);
@@ -608,6 +616,7 @@
             rows,
             cols,
             bitsAllocated,
+            bitsStored,
             pixelRepresentation,
             samplesPerPixel,
             planarConfiguration,
@@ -727,7 +736,14 @@
 
         if (decoded.samplesPerPixel === 3 && decoded.photometricInterpretation === 'RGB') {
             const planeSize = decoded.rows * decoded.cols;
-            const rgbScale = decoded.bitsAllocated > 8 ? 255 / ((2 ** decoded.bitsAllocated) - 1) : 1;
+            const rgbBitDepth = Math.max(
+                1,
+                Math.min(
+                    Number(decoded.bitsStored || decoded.bitsAllocated || 8),
+                    Number(decoded.bitsAllocated || 8)
+                )
+            );
+            const rgbScale = rgbBitDepth > 8 ? 255 / ((2 ** rgbBitDepth) - 1) : 1;
             for (let i = 0; i < planeSize; i++) {
                 const pixelIndex = i * 4;
                 if (decoded.planarConfiguration === 1) {
