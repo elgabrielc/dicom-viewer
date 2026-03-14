@@ -36,12 +36,26 @@ Master index of all project documentation, organized by audience and purpose.
 
 | Document | Location | Description |
 |----------|----------|-------------|
-| [Tauri Release Plan](./planning/PLAN-tauri-release.md) | docs/planning/ | Release plan for the signed/notarized macOS desktop artifact, using the plain DMG path for reliable packaging, clean-Mac QA, and publication workflow |
-| [3D Volume Rendering Plan](../3D_VOLUME_RENDERING_PLAN.md) | Root | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
-| [Tauri Desktop Plan](./planning/PLAN-tauri-desktop-app.md) | docs/planning/ | Restored historical plan for the Tauri desktop shell, with the original 6-PR breakdown and the commits/PRs that completed it |
 | [Project Sitemap](./planning/SITEMAP.md) | docs/planning/ | File structure map and active work tracking |
-| [3D Research](./planning/RESEARCH-3d-volume-rendering.md) | docs/planning/ | Benchmarking study of 3D rendering approaches |
-| [Measurement Tool Research](./planning/RESEARCH-measurement-tool.md) | docs/planning/ | Benchmarking of measurement tools (Horos, Ambra, Sectra) |
+| [Remediation Plan](./planning/REMEDIATION-PLAN.md) | docs/planning/ | Prioritized remediation for security and debugging audit findings |
+| [Tauri Release Plan](./planning/PLAN-tauri-release.md) | docs/planning/ | Release plan for the signed/notarized macOS desktop artifact |
+| [3D Volume Rendering Plan](../3D_VOLUME_RENDERING_PLAN.md) | Root | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
+| [Tauri Desktop Plan](./planning/PLAN-tauri-desktop-app.md) | docs/planning/ | Historical plan for the Tauri desktop shell with PR mapping |
+
+### For Research
+
+Feature design research (how to build things) and competitive intelligence (how others built things). Full index with companion files in [SITEMAP.md](./planning/SITEMAP.md).
+
+| Document | Type | Description |
+|----------|------|-------------|
+| [3D Volume Rendering](./planning/RESEARCH-3d-volume-rendering.md) | Feature | Benchmarked Onshape, Fusion 360, 3D Slicer, Horos/OsiriX |
+| [Measurement Tool](./planning/RESEARCH-measurement-tool.md) | Feature | Benchmarked Horos, NilRead, Ambra, Sectra UniView |
+| [Ambra Reports](./planning/RESEARCH-ambra-reports_2026-02-02.md) | Feature | Ambra Health document/report handling |
+| [OHIF Reports](./planning/RESEARCH-ohif-reports_2026-02-02.md) | Feature | OHIF Viewer DICOM-wrapped document handling |
+| [MyChart Reports](./planning/RESEARCH-mychart-reports_2026-02-02_2148.md) | Feature | Epic MyChart document upload and storage |
+| [Philips IM15](./planning/RESEARCH-philips-im15.md) | Competitive | Server-side rendering, AWS cloud, AI integration, market positioning |
+| [Sectra](./planning/RESEARCH-sectra.md) | Competitive | Hybrid rendering, RapidConnect streaming, DDP hanging protocols, Azure cloud. KLAS #1 |
+| [Visage (prompt only)](./planning/RESEARCH-visage-prompt.md) | Competitive | Research prompt captured for Visage / Pro Medicus. Main write-up is still pending |
 
 ### For Decisions
 
@@ -51,6 +65,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [ADR 001: launch.command](./decisions/001-launch-command.md) | docs/decisions/ | Decision record for macOS double-click startup workflow |
 | [ADR 002: Persistent Local Library](./decisions/002-persistent-local-library.md) | docs/decisions/ | Decision record for persistent DICOM library with DicomFolderSource architecture |
 | [ADR 003: Tauri Desktop Shell](./decisions/003-tauri-desktop-shell-with-shared-web-core.md) | docs/decisions/ | Decision record for the shared web core plus Tauri desktop shell direction |
+| [ADR 004: Cloud Platform Rendering Architecture](./decisions/004-cloud-platform-rendering-architecture.md) | docs/decisions/ | Decision record for client-side vs server-side rendering in the future authenticated cloud platform |
 
 ---
 
@@ -90,17 +105,26 @@ docs/
 
 ### docs/planning/ Directory
 
-Research, decision logs, and feature planning.
+Plans, research (feature design + competitive intelligence), and reference materials. See [SITEMAP.md](./planning/SITEMAP.md) for full descriptions.
 
 ```
 docs/planning/
-├── PLAN-tauri-desktop-app.md                # Historical Tauri desktop implementation plan
-├── PLAN-tauri-release.md                    # Tauri macOS release plan
-├── SITEMAP.md                              # Project structure map
-├── RESEARCH-3d-volume-rendering.md         # 3D rendering research
+├── SITEMAP.md                              # Project structure map (full index)
+├── PLAN-notes.md                           # Notes feature plan
+├── PLAN-tauri-desktop-app.md               # Historical Tauri desktop plan
+├── PLAN-tauri-release.md                   # Tauri macOS release plan
+├── RESEARCH-3d-volume-rendering.md         # 3D rendering approaches
 ├── RESEARCH-measurement-tool.md            # Measurement tool benchmarking
-├── RESEARCH-measurement-tool-prompt.md     # Research methodology
-└── RESEARCH-measurement-tool-thinking.md   # Research analysis
+├── RESEARCH-ambra-reports_2026-02-02.md    # Ambra report handling
+├── RESEARCH-ohif-reports_2026-02-02.md     # OHIF document handling
+├── RESEARCH-mychart-reports_2026-02-02_2148.md  # MyChart document upload
+├── RESEARCH-philips-im15.md                # Philips IM15 architecture (competitive)
+├── RESEARCH-*-prompt.md                    # Research input prompts
+├── RESEARCH-*-thinking.md                  # Research reasoning process
+├── SECURITY-AUDIT.md                       # Application security audit (14 findings)
+├── DEBUGGER-AUDIT.md                       # Comprehensive debugging audit (37 findings)
+├── REMEDIATION-PLAN.md                     # Prioritized remediation plan
+└── reference-guides/                       # Vendor user guides and papers
 ```
 
 ### docs/decisions/ Directory
@@ -112,7 +136,8 @@ docs/decisions/
 ├── README.md                               # ADR template and conventions
 ├── 001-launch-command.md                   # Decision record for launch.command startup
 ├── 002-persistent-local-library.md         # Decision record for persistent DICOM library
-└── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
+├── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
+└── 004-cloud-platform-rendering-architecture.md     # Decision record for cloud rendering architecture
 ```
 
 ---
@@ -139,7 +164,7 @@ Start here to understand the project before contributing:
 1. **[CLAUDE.md](../CLAUDE.md)** - Architecture and existing features
 2. **[API.md](./API.md)** - Backend endpoints (if modifying server)
 3. **[TESTING.md](./TESTING.md)** - Test requirements for new features
-4. **Relevant RESEARCH-*.md** - Prior art and design decisions
+4. **Relevant [Research docs](#for-research)** - Prior art, competitor benchmarks, and design decisions
 5. **Relevant ADR-*.md** - Canonical accepted decisions and tradeoffs
 
 ### For Understanding 3D Plans
@@ -236,4 +261,4 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 
 ---
 
-*Last updated: 2026-03-09*
+*Last updated: 2026-03-10*
