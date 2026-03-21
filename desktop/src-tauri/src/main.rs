@@ -87,6 +87,7 @@ fn main() {
         .plugin(tauri_plugin_persisted_scope::init())
         .invoke_handler(tauri::generate_handler![
             decode::decode_frame,
+            decode::read_scan_header,
             decode::take_decoded_frame
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
