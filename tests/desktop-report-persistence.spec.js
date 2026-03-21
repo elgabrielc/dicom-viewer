@@ -33,6 +33,12 @@ async function installMockTauri(page, options = {}) {
             core: {
                 convertFileSrc(filePath) {
                     return `asset://local/${encodeURIComponent(filePath)}`;
+                },
+                async invoke(cmd, args) {
+                    if (cmd === 'apply_desktop_migration') {
+                        return window.__applyMockDesktopMigration(args.db, args.batch, options);
+                    }
+                    throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
             },
             fs: {
@@ -89,6 +95,56 @@ async function installMockTauri(page, options = {}) {
 }
 
 test.describe('Desktop report persistence', () => {
+    test('desktop NotesAPI.migrate imports legacy notes into sqlite without falling back', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.manual-migrate.study';
+        const seriesUid = '1.2.840.desktop.manual-migrate.series';
+
+        await installMockTauri(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const migrated = await page.evaluate(async ({ studyUid, seriesUid }) => {
+            const payload = {
+                version: 2,
+                comments: {
+                    [studyUid]: {
+                        description: 'Manual migrate study note',
+                        study: [
+                            { id: 'legacy-study-comment', text: 'Manual migrate study comment', time: 101 }
+                        ],
+                        series: {
+                            [seriesUid]: {
+                                description: 'Manual migrate series note',
+                                comments: [
+                                    { id: 'legacy-series-comment', text: 'Manual migrate series comment', time: 202 }
+                                ]
+                            }
+                        }
+                    }
+                }
+            };
+
+            const result = await window.NotesAPI.migrate(payload);
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+
+            return {
+                result,
+                notes,
+                sqlStore
+            };
+        }, { studyUid, seriesUid });
+
+        expect(migrated.result).toBe(true);
+        expect(migrated.notes.studies[studyUid].description).toBe('Manual migrate study note');
+        expect(migrated.notes.studies[studyUid].comments).toHaveLength(1);
+        expect(migrated.notes.studies[studyUid].series[seriesUid].description).toBe('Manual migrate series note');
+        expect(migrated.notes.studies[studyUid].series[seriesUid].comments).toHaveLength(1);
+        expect(migrated.sqlStore.study_notes).toHaveLength(1);
+        expect(migrated.sqlStore.series_notes).toHaveLength(1);
+        expect(migrated.sqlStore.comments).toHaveLength(2);
+    });
+
     test('desktop storage migrates legacy local notes and config into sqlite once', async ({ page }) => {
         const studyUid = '1.2.840.desktop.migration.study';
         const seriesUid = '1.2.840.desktop.migration.series';

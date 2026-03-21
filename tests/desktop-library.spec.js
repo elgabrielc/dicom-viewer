@@ -102,6 +102,14 @@ async function installMockDesktop(page, options = {}) {
         }
 
         window.__TAURI__ = {
+            core: {
+                async invoke(cmd, args) {
+                    if (cmd === 'apply_desktop_migration') {
+                        return window.__applyMockDesktopMigration(args.db, args.batch, options);
+                    }
+                    throw new Error(`Unhandled core invoke: ${cmd}`);
+                }
+            },
             dialog: {
                 async open() {
                     return null;

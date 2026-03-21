@@ -320,6 +320,64 @@
         };
     }
 
+    async function applyMigrationBatch(db, batch, options = {}) {
+        const connection = makeConnection(db, options);
+
+        for (const row of batch?.studyNotes || []) {
+            await connection.execute(
+                `INSERT INTO study_notes (study_uid, description, updated_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(study_uid) DO NOTHING`,
+                [row.studyUid, row.description, row.updatedAt]
+            );
+        }
+
+        for (const row of batch?.seriesNotes || []) {
+            await connection.execute(
+                `INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(study_uid, series_uid) DO NOTHING`,
+                [row.studyUid, row.seriesUid, row.description, row.updatedAt]
+            );
+        }
+
+        for (const row of batch?.comments || []) {
+            await connection.execute(
+                'INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
+                [row.studyUid, row.seriesUid, row.text, row.time]
+            );
+        }
+
+        for (const row of batch?.reports || []) {
+            await connection.execute(
+                `INSERT INTO reports (id, study_uid, name, type, size, file_path, added_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                     study_uid = excluded.study_uid,
+                     name = excluded.name,
+                     type = excluded.type,
+                     size = excluded.size,
+                     file_path = excluded.file_path,
+                     added_at = excluded.added_at,
+                     updated_at = excluded.updated_at`,
+                [row.id, row.studyUid, row.name, row.type, row.size, row.filePath, row.addedAt, row.updatedAt]
+            );
+        }
+
+        for (const row of batch?.appConfig || []) {
+            await connection.execute(
+                `INSERT INTO app_config (key, value, updated_at)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT(key) DO UPDATE SET
+                     value = excluded.value,
+                     updated_at = excluded.updated_at`,
+                [row.key, row.value, row.updatedAt]
+            );
+        }
+
+        return true;
+    }
+
     window.__createMockTauriSql = function createMockTauriSql(options = {}) {
         return {
             async load(db) {
@@ -327,6 +385,11 @@
                 return makeConnection(db, options);
             }
         };
+    };
+
+    window.__applyMockDesktopMigration = async function applyMockDesktopMigration(db, batch, options = {}) {
+        loadState(db, options);
+        return await applyMigrationBatch(db, batch, options);
     };
 
     window.__handleMockTauriSqlCommand = async function handleMockTauriSqlCommand(cmd, args, options = {}) {

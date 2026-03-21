@@ -203,6 +203,26 @@ const NotesAPI = (() => {
         return false;
     }
 
+    function createEmptyDesktopMigrationBatch() {
+        return {
+            studyNotes: [],
+            seriesNotes: [],
+            comments: [],
+            reports: [],
+            appConfig: []
+        };
+    }
+
+    function hasDesktopMigrationRows(batch) {
+        return !!(
+            batch.studyNotes.length
+            || batch.seriesNotes.length
+            || batch.comments.length
+            || batch.reports.length
+            || batch.appConfig.length
+        );
+    }
+
     async function waitForDesktopRuntime() {
         const ready = window.__DICOM_VIEWER_TAURI_READY__;
         if (ready && typeof ready.then === 'function') {
@@ -311,7 +331,7 @@ const NotesAPI = (() => {
         });
     }
 
-    async function insertMigratedCurrentStore(db, store, fsApi) {
+    async function appendCurrentStoreToDesktopMigration(batch, store, fsApi) {
         if (!store?.studies || typeof store.studies !== 'object') return;
         const now = Date.now();
 
@@ -320,42 +340,45 @@ const NotesAPI = (() => {
 
             const description = (stored?.description || '').trim();
             if (description) {
-                await db.execute(
-                    `INSERT INTO study_notes (study_uid, description, updated_at)
-                     VALUES (?, ?, ?)
-                     ON CONFLICT(study_uid) DO NOTHING`,
-                    [studyUid, description, now]
-                );
+                batch.studyNotes.push({
+                    studyUid,
+                    description,
+                    updatedAt: now
+                });
             }
 
             for (const comment of stored?.comments || []) {
                 const text = (comment?.text || '').trim();
                 if (!text) continue;
-                await db.execute(
-                    'INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                    [studyUid, '', text, parseInteger(comment?.time, now)]
-                );
+                batch.comments.push({
+                    studyUid,
+                    seriesUid: '',
+                    text,
+                    time: parseInteger(comment?.time, now)
+                });
             }
 
             if (stored?.series && typeof stored.series === 'object') {
                 for (const [seriesUid, seriesEntry] of Object.entries(stored.series)) {
                     const seriesDescription = (seriesEntry?.description || '').trim();
                     if (seriesDescription) {
-                        await db.execute(
-                            `INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
-                             VALUES (?, ?, ?, ?)
-                             ON CONFLICT(study_uid, series_uid) DO NOTHING`,
-                            [studyUid, seriesUid, seriesDescription, now]
-                        );
+                        batch.seriesNotes.push({
+                            studyUid,
+                            seriesUid,
+                            description: seriesDescription,
+                            updatedAt: now
+                        });
                     }
 
                     for (const comment of seriesEntry?.comments || []) {
                         const text = (comment?.text || '').trim();
                         if (!text) continue;
-                        await db.execute(
-                            'INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                            [studyUid, seriesUid, text, parseInteger(comment?.time, now)]
-                        );
+                        batch.comments.push({
+                            studyUid,
+                            seriesUid,
+                            text,
+                            time: parseInteger(comment?.time, now)
+                        });
                     }
                 }
             }
@@ -372,26 +395,21 @@ const NotesAPI = (() => {
                 }
                 if (!fileExists) continue;
 
-                await db.execute(
-                    `INSERT OR REPLACE INTO reports
-                     (id, study_uid, name, type, size, file_path, added_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        normalizeReportId(report.id),
-                        studyUid,
-                        report.name || 'report',
-                        report.type || 'pdf',
-                        parseInteger(report.size, 0),
-                        report.filePath,
-                        parseInteger(report.addedAt, now),
-                        parseInteger(report.updatedAt, now)
-                    ]
-                );
+                batch.reports.push({
+                    id: normalizeReportId(report.id),
+                    studyUid,
+                    name: report.name || 'report',
+                    type: report.type || 'pdf',
+                    size: parseInteger(report.size, 0),
+                    filePath: report.filePath,
+                    addedAt: parseInteger(report.addedAt, now),
+                    updatedAt: parseInteger(report.updatedAt, now)
+                });
             }
         }
     }
 
-    async function insertMigratedLegacyStore(db, payload) {
+    function appendLegacyStoreToDesktopMigration(batch, payload) {
         const commentsBlob = payload?.comments;
         if (!commentsBlob || typeof commentsBlob !== 'object') return;
         const now = Date.now();
@@ -401,21 +419,22 @@ const NotesAPI = (() => {
 
             const description = (stored.description || '').trim();
             if (description) {
-                await db.execute(
-                    `INSERT INTO study_notes (study_uid, description, updated_at)
-                     VALUES (?, ?, ?)
-                     ON CONFLICT(study_uid) DO NOTHING`,
-                    [studyUid, description, now]
-                );
+                batch.studyNotes.push({
+                    studyUid,
+                    description,
+                    updatedAt: now
+                });
             }
 
             for (const comment of stored.study || []) {
                 const text = (comment?.text || '').trim();
                 if (!text) continue;
-                await db.execute(
-                    'INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                    [studyUid, '', text, parseInteger(comment?.time, now)]
-                );
+                batch.comments.push({
+                    studyUid,
+                    seriesUid: '',
+                    text,
+                    time: parseInteger(comment?.time, now)
+                });
             }
 
             const seriesBlob = stored.series || {};
@@ -429,25 +448,37 @@ const NotesAPI = (() => {
                         : (seriesData?.comments || []);
 
                     if (seriesDescription) {
-                        await db.execute(
-                            `INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
-                             VALUES (?, ?, ?, ?)
-                             ON CONFLICT(study_uid, series_uid) DO NOTHING`,
-                            [studyUid, seriesUid, seriesDescription, now]
-                        );
+                        batch.seriesNotes.push({
+                            studyUid,
+                            seriesUid,
+                            description: seriesDescription,
+                            updatedAt: now
+                        });
                     }
 
                     for (const comment of seriesComments) {
                         const text = (comment?.text || '').trim();
                         if (!text) continue;
-                        await db.execute(
-                            'INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                            [studyUid, seriesUid, text, parseInteger(comment?.time, now)]
-                        );
+                        batch.comments.push({
+                            studyUid,
+                            seriesUid,
+                            text,
+                            time: parseInteger(comment?.time, now)
+                        });
                     }
                 }
             }
         }
+    }
+
+    function appendDesktopLibraryConfigToMigration(batch, config) {
+        const normalized = normalizeDesktopLibraryConfig(config);
+        if (!normalized.folder && !normalized.lastScan) return;
+        batch.appConfig.push({
+            key: DESKTOP_LIBRARY_CONFIG_KEY,
+            value: JSON.stringify(normalized),
+            updatedAt: Date.now()
+        });
     }
 
     async function migrateLegacyReportBlobs(payload) {
@@ -472,6 +503,23 @@ const NotesAPI = (() => {
         }
     }
 
+    async function applyDesktopMigrationBatch(batch) {
+        if (!hasDesktopMigrationRows(batch)) return true;
+
+        const runtime = await waitForDesktopRuntime();
+        const invoke = runtime?.core?.invoke;
+        if (typeof invoke !== 'function') {
+            throw new Error('Desktop migration runtime is not ready. Quit and reopen the app if this persists.');
+        }
+
+        // tauri-plugin-sql does not expose a pinned transaction object to JS, so
+        // migration upserts run through a native command that owns one SQLite tx.
+        return await invoke('apply_desktop_migration', {
+            db: DESKTOP_DB_URL,
+            batch
+        });
+    }
+
     async function migrateDesktopLocalStorage() {
         const migrated = await getDesktopAppConfigValue(DESKTOP_LOCALSTORAGE_MIGRATION_KEY);
         if (migrated === '1') return false;
@@ -491,26 +539,15 @@ const NotesAPI = (() => {
             return false;
         }
 
-        const db = await getDesktopDb();
         const { fs } = getDesktopTauriApis();
-
-        try {
-            await db.execute('BEGIN');
-            await insertMigratedCurrentStore(db, currentStore, fs);
-            await insertMigratedLegacyStore(db, legacyPayload);
-            if (hasLibraryConfig) {
-                await setDesktopAppConfigValue(
-                    DESKTOP_LIBRARY_CONFIG_KEY,
-                    JSON.stringify(libraryConfig)
-                );
-            }
-            await db.execute('COMMIT');
-        } catch (error) {
-            try {
-                await db.execute('ROLLBACK');
-            } catch {}
-            throw error;
+        const batch = createEmptyDesktopMigrationBatch();
+        await appendCurrentStoreToDesktopMigration(batch, currentStore, fs);
+        appendLegacyStoreToDesktopMigration(batch, legacyPayload);
+        if (hasLibraryConfig) {
+            appendDesktopLibraryConfigToMigration(batch, libraryConfig);
         }
+
+        await applyDesktopMigrationBatch(batch);
 
         if (hasLegacyStore) {
             await migrateLegacyReportBlobs(legacyPayload);
@@ -994,6 +1031,15 @@ const NotesAPI = (() => {
             }
         },
 
+        async migrate(payload) {
+            await initializeDesktopPersistence();
+            const batch = createEmptyDesktopMigrationBatch();
+            appendLegacyStoreToDesktopMigration(batch, payload);
+            if (!hasDesktopMigrationRows(batch)) return false;
+            await applyDesktopMigrationBatch(batch);
+            return true;
+        },
+
         getReportFileUrl(reportId) {
             const { core } = getDesktopTauriApis();
             if (!core?.convertFileSrc) return '';
@@ -1273,7 +1319,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.migrate(payload),
-            () => LocalBackend.migrate(payload)
+            () => LocalBackend.migrate(payload),
+            () => DesktopSqliteBackend.migrate(payload)
         );
     }
 

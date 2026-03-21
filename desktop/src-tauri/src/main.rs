@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod decode;
+mod persistence;
 
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
@@ -102,6 +103,7 @@ fn main() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            persistence::apply_desktop_migration,
             decode::decode_frame,
             decode::read_scan_header,
             decode::take_decoded_frame
