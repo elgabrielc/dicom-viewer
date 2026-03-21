@@ -34,9 +34,32 @@
         progressFill.style.animation = 'none';
     }
 
+    // Resolve the map key for a series within a study. Uses bare UID unless a
+    // collision is detected (same UID, different description) -- common with
+    // X-ray stitching modalities. Only then does it switch to composite keys,
+    // so conformant datasets keep their original bare-UID keys and existing
+    // notes/measurements are preserved.
+    function resolveSeriesKey(studyMap, bareUid, desc) {
+        const existing = studyMap[bareUid];
+        if (existing) {
+            if (existing.seriesDescription === desc) return bareUid;
+            // Collision: re-key the existing series to a composite key
+            const oldKey = `${bareUid}|${existing.seriesDescription || ''}`;
+            studyMap[oldKey] = existing;
+            existing.seriesInstanceUid = oldKey;
+            delete studyMap[bareUid];
+            return `${bareUid}|${desc}`;
+        }
+        // Check if a collision was already detected for this UID
+        const compositeKey = `${bareUid}|${desc}`;
+        if (studyMap[compositeKey]) return compositeKey;
+        const hasCollision = Object.keys(studyMap).some(k => k.startsWith(`${bareUid}|`));
+        return hasCollision ? compositeKey : bareUid;
+    }
+
     function addSliceToStudies(studies, meta, source) {
         const studyUid = meta.studyInstanceUid;
-        const seriesUid = meta.seriesInstanceUid || 'default';
+        const bareUid = meta.seriesInstanceUid || 'default';
 
         if (!studies[studyUid]) {
             studies[studyUid] = {
@@ -48,6 +71,9 @@
                 reports: []
             };
         }
+        const seriesUid = resolveSeriesKey(
+            studies[studyUid].series, bareUid, meta.seriesDescription || ''
+        );
         if (!studies[studyUid].series[seriesUid]) {
             studies[studyUid].series[seriesUid] = {
                 seriesInstanceUid: seriesUid,
@@ -293,7 +319,7 @@
                 return source.blob.arrayBuffer();
             case 'api': {
                 const resp = await fetch(
-                    `${source.apiBase}/dicom/${source.studyId}/${source.seriesId}/${source.sliceIndex}`
+                    `${source.apiBase}/dicom/${encodeURIComponent(source.studyId)}/${encodeURIComponent(source.seriesId)}/${source.sliceIndex}`
                 );
                 if (!resp.ok) throw new Error(`Failed to ${purpose} slice: ${resp.status}`);
                 return resp.arrayBuffer();
