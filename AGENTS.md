@@ -90,6 +90,19 @@ perform the integration pass.
 
 ---
 
+## Research Documentation Rules
+
+For benchmark, planning, and competitive research:
+
+1. Commit durable summaries, plans, and ADR updates.
+2. Do not commit `RESEARCH-*-prompt.md` or `RESEARCH-*-thinking.md` by default.
+3. Stage only the curated research summary unless the user explicitly asks to keep
+   the research process artifacts.
+4. If research changes project direction, update the related plan or ADR in the
+   same PR when practical.
+
+---
+
 ## Reference Docs
 
 For the compact workflow:
@@ -99,3 +112,4 @@ For the compact workflow:
 For the full beginner explanation of why this workflow exists:
 
 - `docs/AGENT_WORKTREES_EXPLAINER.md`
+- `docs/RESEARCH_POLICY.md`

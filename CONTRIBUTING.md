@@ -269,6 +269,19 @@ git diff --staged
 git commit -m "feat: Add zoom controls to toolbar"
 ```
 
+### Research Documentation
+
+Treat benchmark and planning research as curated documentation, not as a dump of
+every intermediate artifact.
+
+- PR durable research summaries that support roadmap, architecture, or feature decisions
+- PR plans and ADRs when the direction is becoming canonical
+- Do not commit prompt/thinking companion files by default
+- If traceability matters, put a short method and sources section in the main
+  research document instead of keeping separate AI process files
+
+See [docs/RESEARCH_POLICY.md](./docs/RESEARCH_POLICY.md) for the repo policy.
+
 ---
 
 ## Parallel Agent Workflow

@@ -50,10 +50,22 @@ These files should usually be updated only during the integration step:
 Do not edit them from multiple active agent branches unless the task is explicitly to
 perform the integration pass.
 
+### Research Documentation Rules
+
+For benchmark, planning, and competitive research:
+
+1. Commit the durable summary, not the full research exhaust.
+2. Do not commit `RESEARCH-*-prompt.md` or `RESEARCH-*-thinking.md` by default.
+3. If the research changes architecture or roadmap direction, update the related
+   plan or ADR when practical.
+4. If uncertain whether a research artifact is durable enough for the repo, ask
+   before committing it.
+
 ### Reference Docs
 
 - Workflow rules: `docs/AGENT_WORKTREES.md`
 - Full explanation: `docs/AGENT_WORKTREES_EXPLAINER.md`
+- Research docs policy: `docs/RESEARCH_POLICY.md`
 
 ## Workspace Structure
 

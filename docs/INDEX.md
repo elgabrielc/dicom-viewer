@@ -29,6 +29,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [Testing Guide](./TESTING.md) | docs/ | Playwright test setup, helper functions, writing tests, visual verification |
 | [Parallel Agent Workflow](./AGENT_WORKTREES.md) | docs/ | Rules and helper commands for running multiple Codex and Claude sessions safely in parallel |
 | [Parallel Agent Explainer](./AGENT_WORKTREES_EXPLAINER.md) | docs/ | Beginner walkthrough of the multi-agent cleanup, the branch/worktree model, and why the current workflow exists |
+| [Research Documentation Policy](./RESEARCH_POLICY.md) | docs/ | Policy for what benchmark and planning research belongs in git, what should stay local, and when research docs should be PRs |
 | [Deployment Guide](./DEPLOY.md) | docs/ | Local development, GitHub Pages, custom domains, troubleshooting |
 | [Contributing](../CONTRIBUTING.md) | Root | Code style, git workflow, pull request process, issue templates |
 | [Bug Tracking](./BUGS.md) | docs/ | Known issues, resolved bugs with root cause analysis, bug template |
@@ -99,6 +100,7 @@ Technical documentation for developers and operations.
 docs/
 ├── AGENT_WORKTREES.md     # Parallel AI agent workflow rules and helper commands
 ├── AGENT_WORKTREES_EXPLAINER.md  # Beginner explainer for the parallel workflow
+├── RESEARCH_POLICY.md     # Policy for benchmark/planning research docs and PRs
 ├── INDEX.md               # This file - master documentation index
 ├── API.md                 # REST API reference
 ├── CONFIG.md              # Configuration reference
@@ -216,6 +218,11 @@ Configuration reference. Covers `DICOM_TEST_DATA` environment variable, Flask se
 
 **DEPLOY.md**
 Deployment guide for local development (Flask, static server) and production (GitHub Pages). Includes custom domain setup, environment differences, and troubleshooting.
+
+**RESEARCH_POLICY.md**
+Policy for benchmark and planning documentation. Explains what research should be
+merged, what should remain local or external, and how AI agents should curate
+research before opening a docs PR.
 
 **TESTING.md**
 Comprehensive testing documentation. Covers Playwright setup, test mode architecture, helper functions (with detailed explanations of `waitForViewerReady`, `getCanvasTransform`, `performDrag`), blank slice handling, visual verification with 9-region sampling, and test limitations.
