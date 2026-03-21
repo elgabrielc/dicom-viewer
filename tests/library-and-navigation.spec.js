@@ -4,6 +4,10 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const {
+    createSyntheticDicomFolder,
+    removeSyntheticDicomFolder
+} = require('./dicom-fixture-helper');
 
 /**
  * Playwright tests for DICOM Viewer - Library View and Navigation
@@ -1352,6 +1356,55 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
             'http://127.0.0.1:5001/api/library/dicom/nonexistent-study-id/nonexistent-series-id/0'
         );
         expect(response.status()).toBe(404);
+    });
+
+    test('library API preserves deterministic collision keys and serves slash-bearing composite series IDs', async ({ page }) => {
+        const fixture = createSyntheticDicomFolder([
+            { description: '' },
+            { description: 'AP/Upper' }
+        ]);
+
+        const configResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
+        const previousConfig = await configResponse.json();
+
+        try {
+            expect(previousConfig.overridden).toBe(false);
+
+            const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                data: { folder: fixture.folder }
+            });
+            expect(saveResponse.status()).toBe(200);
+
+            const savePayload = await saveResponse.json();
+            expect(savePayload.available).toBe(true);
+            expect(savePayload.studies).toHaveLength(1);
+
+            const study = savePayload.studies[0];
+            const seriesIds = study.series.map((series) => series.seriesInstanceUid).sort();
+            expect(seriesIds).toEqual([
+                `${fixture.seriesUid}|`,
+                `${fixture.seriesUid}|AP/Upper`
+            ]);
+
+            const slashSeries = study.series.find((series) => series.seriesDescription === 'AP/Upper');
+            expect(slashSeries).toBeDefined();
+
+            const dicomResponse = await page.request.get(
+                `http://127.0.0.1:5001/api/library/dicom/${encodeURIComponent(study.studyInstanceUid)}/${encodeURIComponent(slashSeries.seriesInstanceUid)}/0`
+            );
+            expect(dicomResponse.status()).toBe(200);
+            expect(dicomResponse.headers()['content-type']).toContain('dicom');
+
+            const body = await dicomResponse.body();
+            expect(body.length).toBeGreaterThan(132);
+        } finally {
+            if (previousConfig.folderResolved || previousConfig.folder) {
+                await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                    data: { folder: previousConfig.folderResolved || previousConfig.folder }
+                });
+            }
+            removeSyntheticDicomFolder(fixture.folder);
+        }
     });
 
     test('GET / serves the main application HTML', async ({ page }) => {

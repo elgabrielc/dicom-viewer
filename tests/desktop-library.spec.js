@@ -3,6 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const {
+    createSyntheticDicomFolder,
+    removeSyntheticDicomFolder
+} = require('./dicom-fixture-helper');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
@@ -402,6 +406,68 @@ test.describe('Desktop library scanning', () => {
             seriesCount: 1,
             sliceCount: 1
         });
+    });
+
+    test('processFilesFromSources splits colliding series UIDs, including empty and pipe-bearing descriptions', async ({ page }) => {
+        const fixture = createSyntheticDicomFolder([
+            { description: '' },
+            { description: 'AP Upper' },
+            { description: 'AP|Upper' }
+        ]);
+
+        try {
+            const filePayloads = fixture.entries.map((entry) => ({
+                name: path.basename(entry.path),
+                bytes: Array.from(fs.readFileSync(entry.path))
+            }));
+
+            await installMockDesktop(page);
+            await page.goto(HOME_URL);
+
+            const summary = await page.evaluate(async ({ filePayloads }) => {
+                const files = filePayloads.map((entry) => ({
+                    name: entry.name,
+                    source: {
+                        kind: 'blob',
+                        blob: new Blob([Uint8Array.from(entry.bytes)])
+                    }
+                }));
+
+                const studies = await window.DicomViewerApp.sources.processFilesFromSources(files);
+                const study = Object.values(studies)[0];
+                const seriesEntries = Object.values(study.series).map((series) => ({
+                    uid: series.seriesInstanceUid,
+                    description: series.seriesDescription || '',
+                    sliceCount: series.slices.length
+                })).sort((a, b) => a.uid.localeCompare(b.uid));
+
+                return {
+                    studyCount: Object.keys(studies).length,
+                    seriesEntries
+                };
+            }, { filePayloads });
+
+            expect(summary.studyCount).toBe(1);
+            expect(summary.seriesEntries).toEqual([
+                {
+                    uid: `${fixture.seriesUid}|`,
+                    description: '',
+                    sliceCount: 1
+                },
+                {
+                    uid: `${fixture.seriesUid}|AP Upper`,
+                    description: 'AP Upper',
+                    sliceCount: 1
+                },
+                {
+                    uid: `${fixture.seriesUid}|AP|Upper`,
+                    description: 'AP|Upper',
+                    sliceCount: 1
+                }
+            ]);
+        } finally {
+            removeSyntheticDicomFolder(fixture.folder);
+        }
     });
 
     test('renderDicom selects the requested frame from an uncompressed multi-frame dataset', async ({ page }) => {

@@ -352,6 +352,25 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         expect(seriesEntry.description).toBe('FLAIR sequence');
     });
 
+    test('series UIDs containing slashes are accepted by the description route', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const seriesUid = `${uniqueSeriesUid()}/AP Upper`;
+
+        const response = await request.put(
+            `${BASE_URL}/api/notes/${studyUid}/series/${encodeURIComponent(seriesUid)}/description`,
+            { data: { description: 'slash-safe route test' } }
+        );
+        expect(response.status()).toBe(200);
+
+        const body = await response.json();
+        expect(body.seriesUid).toBe(seriesUid);
+
+        const getBody = await (
+            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
+        ).json();
+        expect(getBody.studies[studyUid].series[seriesUid].description).toBe('slash-safe route test');
+    });
+
     test('two series under one study are stored independently', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const seriesA = uniqueSeriesUid();

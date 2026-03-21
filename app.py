@@ -393,6 +393,31 @@ def _read_single_dicom(file_path):
         return None
 
 
+def _resolve_series_key(series_map, bare_uid, desc):
+    """Resolve the map key for a series, splitting on collision.
+
+    Uses the bare UID unless the same UID already maps to a different
+    description (e.g. X-ray stitching). Only then switches to composite
+    uid|description keys, so conformant datasets keep their original keys.
+    """
+    existing = series_map.get(bare_uid)
+    if existing is not None:
+        if existing['series_description'] == desc:
+            return bare_uid
+        # Collision: re-key the existing series
+        old_key = f"{bare_uid}|{existing['series_description'] or ''}"
+        series_map[old_key] = existing
+        existing['series_id'] = old_key
+        del series_map[bare_uid]
+        return f"{bare_uid}|{desc or ''}"
+
+    composite_key = f"{bare_uid}|{desc or ''}"
+    if composite_key in series_map:
+        return composite_key
+    has_collision = any(k.startswith(f"{bare_uid}|") for k in series_map)
+    return composite_key if has_collision else bare_uid
+
+
 def scan_dicom_folder(folder_path):
     """Scan a folder for DICOM files and organize by study/series."""
     studies = {}
@@ -413,7 +438,8 @@ def scan_dicom_folder(folder_path):
                 continue
 
             study_id = meta['study_instance_uid']
-            series_id = meta['series_instance_uid']
+            bare_uid = meta['series_instance_uid']
+            series_desc = meta['series_description'] or ''
 
             # Initialize study
             if study_id not in studies:
@@ -428,18 +454,24 @@ def scan_dicom_folder(folder_path):
                     'image_count': 0
                 }
 
+            # Resolve series key -- only use composite uid|description when a
+            # collision is detected (same UID, different description). Common
+            # with X-ray stitching modalities. Conformant datasets keep bare UIDs.
+            series_map = studies[study_id]['series']
+            series_id = _resolve_series_key(series_map, bare_uid, series_desc)
+
             # Initialize series
-            if series_id not in studies[study_id]['series']:
-                studies[study_id]['series'][series_id] = {
+            if series_id not in series_map:
+                series_map[series_id] = {
                     'series_id': series_id,
-                    'series_description': meta['series_description'],
+                    'series_description': series_desc,
                     'series_number': meta['series_number'],
                     'modality': meta['modality'],
                     'slices': []
                 }
 
             # Add slice
-            studies[study_id]['series'][series_id]['slices'].append({
+            series_map[series_id]['slices'].append({
                 'file_path': meta['file_path'],
                 'instance_number': meta['instance_number'],
                 'slice_location': meta['slice_location'],
@@ -569,13 +601,13 @@ class DicomFolderSource:
                 'imageCount': study['image_count'],
                 'series': [
                     {
-                        'seriesInstanceUid': series_id,
+                        'seriesInstanceUid': series['series_id'],
                         'seriesDescription': series['series_description'],
                         'seriesNumber': series['series_number'],
                         'modality': series['modality'],
                         'sliceCount': len(series['slices'])
                     }
-                    for series_id, series in study['series'].items()
+                    for series in study['series'].values()
                 ]
             }
             for study_id, study in studies.items()
@@ -636,7 +668,7 @@ def get_test_studies():
     return jsonify(test_source.format_studies())
 
 
-@app.route('/api/test-data/dicom/<study_id>/<series_id>/<int:slice_num>')
+@app.route('/api/test-data/dicom/<study_id>/<path:series_id>/<int:slice_num>')
 def get_test_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a test data slice."""
     file_path = test_source.get_safe_slice_path(study_id, series_id, slice_num)
@@ -783,7 +815,7 @@ def get_library_studies():
     return jsonify(payload)
 
 
-@app.route('/api/library/dicom/<study_id>/<series_id>/<int:slice_num>')
+@app.route('/api/library/dicom/<study_id>/<path:series_id>/<int:slice_num>')
 def get_library_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a local library slice."""
     file_path = library_source.get_safe_slice_path(study_id, series_id, slice_num)
@@ -967,7 +999,7 @@ def save_study_description(study_uid):
     return jsonify({'studyUid': study_uid, 'description': description, 'updatedAt': now})
 
 
-@app.route('/api/notes/<study_uid>/series/<series_uid>/description', methods=['PUT'])
+@app.route('/api/notes/<study_uid>/series/<path:series_uid>/description', methods=['PUT'])
 def save_series_description(study_uid, series_uid):
     data = request.get_json(silent=True) or {}
     description = (data.get('description') or '').strip()
