@@ -141,6 +141,43 @@
             });
         }
 
+        async function rename(fromPath, toPath, options) {
+            return invoke('plugin:fs|rename', {
+                fromPath,
+                toPath,
+                options
+            });
+        }
+
+        function createSqlConnection(db) {
+            return {
+                async execute(query, values = []) {
+                    const result = await invoke('plugin:sql|execute', {
+                        db,
+                        query,
+                        values
+                    });
+                    if (Array.isArray(result)) {
+                        return {
+                            rowsAffected: result[0],
+                            lastInsertId: result[1]
+                        };
+                    }
+                    return result;
+                },
+                async select(query, values = []) {
+                    return invoke('plugin:sql|select', {
+                        db,
+                        query,
+                        values
+                    });
+                },
+                async close() {
+                    return invoke('plugin:sql|close', { db });
+                }
+            };
+        }
+
         window.__TAURI__ = {
             core: {
                 convertFileSrc(filePath, protocol) {
@@ -175,6 +212,7 @@
                 async remove(path, options) {
                     return invoke('plugin:fs|remove', { path, options });
                 },
+                rename,
                 stat,
                 writeFile
             },
@@ -189,6 +227,12 @@
                 },
                 async normalize(path) {
                     return invoke('plugin:path|normalize', { path });
+                }
+            },
+            sql: {
+                async load(db) {
+                    await invoke('plugin:sql|load', { db });
+                    return createSqlConnection(db);
                 }
             },
             webview: {

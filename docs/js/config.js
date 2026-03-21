@@ -75,8 +75,9 @@ const CONFIG = {
     get features() {
         const mode = this.deploymentMode;
         return {
-            // Notes persistence (localStorage)
-            // Enabled everywhere; localStorage on demo/preview, server on personal/cloud
+            // Notes persistence
+            // Enabled everywhere; browser localStorage on demo/preview,
+            // native SQLite on desktop, server on personal/cloud
             notesPersistence: true,
 
             // Server-side notes API available (Flask backend)

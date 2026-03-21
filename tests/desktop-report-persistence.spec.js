@@ -1,10 +1,13 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
+const path = require('path');
 const { test, expect } = require('@playwright/test');
 
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
+const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 
 async function installMockTauri(page, options = {}) {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((options) => {
         const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
         const failRemoveAll = !!options.failRemoveAll;
@@ -45,6 +48,14 @@ async function installMockTauri(page, options = {}) {
                     }
                     localStorage.removeItem(`${FILE_STORAGE_PREFIX}${filePath}`);
                 },
+                async rename(fromPath, toPath) {
+                    const raw = localStorage.getItem(`${FILE_STORAGE_PREFIX}${fromPath}`);
+                    if (raw === null) {
+                        throw new Error(`Mock rename missing source ${fromPath}`);
+                    }
+                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${toPath}`, raw);
+                    localStorage.removeItem(`${FILE_STORAGE_PREFIX}${fromPath}`);
+                },
                 async writeFile(filePath, bytes) {
                     localStorage.setItem(
                         `${FILE_STORAGE_PREFIX}${filePath}`,
@@ -63,6 +74,7 @@ async function installMockTauri(page, options = {}) {
                     return joinPaths(path);
                 }
             },
+            sql: window.__createMockTauriSql(options),
             webview: {
                 getCurrentWebview() {
                     return {
@@ -77,6 +89,116 @@ async function installMockTauri(page, options = {}) {
 }
 
 test.describe('Desktop report persistence', () => {
+    test('desktop storage migrates legacy local notes and config into sqlite once', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.migration.study';
+        const seriesUid = '1.2.840.desktop.migration.series';
+        const reportId = 'desktop-migrated-report';
+        const reportPath = `/mock/appdata/reports/${studyUid}/${reportId}.pdf`;
+        const libraryConfig = {
+            folder: '/Users/gabriel/Desktop/radiology all discs',
+            lastScan: '2026-03-21T18:00:00.000Z'
+        };
+
+        await installMockTauri(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const migrated = await page.evaluate(async ({ studyUid, seriesUid, reportId, reportPath, libraryConfig }) => {
+            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+            const legacyStore = {
+                studies: {
+                    [studyUid]: {
+                        description: 'Migrated study note',
+                        comments: [
+                            { id: 'legacy-study-comment', text: 'Migrated study comment', time: 101 }
+                        ],
+                        series: {
+                            [seriesUid]: {
+                                description: 'Migrated series note',
+                                comments: [
+                                    { id: 'legacy-series-comment', text: 'Migrated series comment', time: 202 }
+                                ]
+                            }
+                        },
+                        reports: [
+                            {
+                                id: reportId,
+                                name: 'Migrated report.pdf',
+                                type: 'pdf',
+                                size: bytes.length,
+                                filePath: reportPath,
+                                addedAt: 303,
+                                updatedAt: 404
+                            }
+                        ]
+                    }
+                }
+            };
+
+            localStorage.setItem('dicom-viewer-notes-v3', JSON.stringify(legacyStore));
+            localStorage.setItem('dicom-viewer-library-config', JSON.stringify(libraryConfig));
+            localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
+
+            await window.NotesAPI.initializeDesktopStorage();
+
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const config = await window.NotesAPI.loadDesktopLibraryConfig();
+            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+
+            return {
+                notes,
+                config,
+                reportUrl: window.NotesAPI.getReportFileUrl(reportId),
+                sqlStore
+            };
+        }, { studyUid, seriesUid, reportId, reportPath, libraryConfig });
+
+        expect(migrated.notes.studies[studyUid].description).toBe('Migrated study note');
+        expect(migrated.notes.studies[studyUid].comments).toHaveLength(1);
+        expect(migrated.notes.studies[studyUid].comments[0].text).toBe('Migrated study comment');
+        expect(migrated.notes.studies[studyUid].series[seriesUid].description).toBe('Migrated series note');
+        expect(migrated.notes.studies[studyUid].series[seriesUid].comments).toHaveLength(1);
+        expect(migrated.notes.studies[studyUid].series[seriesUid].comments[0].text).toBe('Migrated series comment');
+        expect(migrated.notes.studies[studyUid].reports).toHaveLength(1);
+        expect(migrated.notes.studies[studyUid].reports[0].filePath).toBe(reportPath);
+        expect(migrated.config).toEqual(libraryConfig);
+        expect(migrated.reportUrl).toBe(`asset://local/${encodeURIComponent(reportPath)}`);
+        expect(migrated.sqlStore.study_notes).toHaveLength(1);
+        expect(migrated.sqlStore.series_notes).toHaveLength(1);
+        expect(migrated.sqlStore.comments).toHaveLength(2);
+        expect(migrated.sqlStore.reports).toHaveLength(1);
+        expect(migrated.sqlStore.app_config).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ key: 'desktop_library_config' }),
+                expect.objectContaining({ key: 'localstorage_migrated', value: '1' })
+            ])
+        );
+
+        await page.reload();
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const persisted = await page.evaluate(async ({ studyUid, seriesUid }) => {
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const config = await window.NotesAPI.loadDesktopLibraryConfig();
+            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+            return {
+                notes,
+                config,
+                sqlStore
+            };
+        }, { studyUid, seriesUid });
+
+        expect(persisted.notes.studies[studyUid].description).toBe('Migrated study note');
+        expect(persisted.notes.studies[studyUid].comments).toHaveLength(1);
+        expect(persisted.notes.studies[studyUid].series[seriesUid].comments).toHaveLength(1);
+        expect(persisted.notes.studies[studyUid].reports).toHaveLength(1);
+        expect(persisted.config).toEqual(libraryConfig);
+        expect(persisted.sqlStore.study_notes).toHaveLength(1);
+        expect(persisted.sqlStore.series_notes).toHaveLength(1);
+        expect(persisted.sqlStore.comments).toHaveLength(2);
+        expect(persisted.sqlStore.reports).toHaveLength(1);
+    });
+
     test('desktop backend persists report files and metadata across reloads', async ({ page }) => {
         const studyUid = '1.2.840.desktop.test.study';
         const reportId = 'desktop-report-001';
@@ -109,7 +231,7 @@ test.describe('Desktop report persistence', () => {
                     ? await window.__TAURI__.fs.exists(stored.filePath)
                     : false,
                 reportUrl: window.NotesAPI.getReportFileUrl(reportId),
-                store: JSON.parse(localStorage.getItem('dicom-viewer-notes-v3') || '{}')
+                sqlStore: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}')
             };
         }, { studyUid, reportId });
 
@@ -125,10 +247,11 @@ test.describe('Desktop report persistence', () => {
             type: 'pdf'
         });
         expect(created.stored.filePath).toContain('/mock/appdata/reports/');
-        expect(created.stored.filePath).toContain('desktop-report-001_report_final.pdf');
+        expect(created.stored.filePath).toContain('desktop-report-001.pdf');
         expect(created.fileExists).toBe(true);
         expect(created.reportUrl).toBe(`asset://local/${encodeURIComponent(created.stored.filePath)}`);
-        expect(created.store.studies[studyUid].reports).toHaveLength(1);
+        expect(created.sqlStore.reports).toHaveLength(1);
+        expect(created.sqlStore.reports[0].study_uid).toBe(studyUid);
 
         await page.reload();
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -167,7 +290,7 @@ test.describe('Desktop report persistence', () => {
         expect(persisted.reportUrlAfterDelete).toBe('');
     });
 
-    test('desktop backend preserves metadata when report file deletion fails', async ({ page }) => {
+    test('desktop backend removes metadata even when report file deletion fails', async ({ page }) => {
         const studyUid = '1.2.840.desktop.test.study';
         const reportId = 'desktop-report-delete-failure';
 
@@ -203,8 +326,8 @@ test.describe('Desktop report persistence', () => {
         }, { studyUid, reportId });
 
         expect(result.saved).not.toBeNull();
-        expect(result.deleted).toBe(false);
-        expect(result.stored).not.toBeNull();
-        expect(result.fileExists).toBe(true);
+        expect(result.deleted).toBe(true);
+        expect(result.stored).toBeNull();
+        expect(result.fileExists).toBe(false);
     });
 });

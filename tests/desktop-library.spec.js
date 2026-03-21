@@ -17,6 +17,7 @@ const JPEG_BASELINE_RGB_FIXTURE_PATH = path.join(
     'test-fixtures',
     'SC_RGB_JPEG_BASELINE_YBR422.dcm'
 );
+const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 
 function normalizePath(input) {
     const text = String(input || '').replace(/\\/g, '/');
@@ -43,6 +44,7 @@ function joinPaths(...parts) {
 }
 
 async function installMockDesktop(page, options = {}) {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((options) => {
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
@@ -135,6 +137,15 @@ async function installMockDesktop(page, options = {}) {
                         throw new Error(`Stat not found: ${normalized}`);
                     }
                     return stats[normalized];
+                },
+                async rename(fromPath, toPath) {
+                    const normalizedFrom = normalizePath(fromPath);
+                    const normalizedTo = normalizePath(toPath);
+                    if (!Object.prototype.hasOwnProperty.call(fileBytes, normalizedFrom)) {
+                        throw new Error(`Rename source not found: ${normalizedFrom}`);
+                    }
+                    fileBytes[normalizedTo] = fileBytes[normalizedFrom];
+                    delete fileBytes[normalizedFrom];
                 }
             },
             path: {
@@ -145,6 +156,7 @@ async function installMockDesktop(page, options = {}) {
                     return normalizePath(path);
                 }
             },
+            sql: window.__createMockTauriSql(options),
             webview: {
                 getCurrentWebview() {
                     return {
@@ -1777,16 +1789,16 @@ test.describe('Desktop library scanning', () => {
         await expect(page.locator('#libraryView')).toBeVisible();
         const config = await page.evaluate(async () => {
             const app = window.DicomViewerApp;
-            app.desktopLibrary.saveConfig({
+            await app.desktopLibrary.saveConfig({
                 folder: '/empty',
                 lastScan: '2026-03-07T12:00:00.000Z'
             });
             await app.library.loadLibraryConfig();
             const files = await app.desktopLibrary.scanFolder('/empty');
             const studies = await app.sources.processFilesFromSources(files);
-            app.library.applyDesktopLibraryScan('/empty', studies);
+            await app.library.applyDesktopLibraryScan('/empty', studies);
             await app.library.displayStudies();
-            return JSON.parse(localStorage.getItem('dicom-viewer-library-config') || '{}');
+            return await window.NotesAPI.loadDesktopLibraryConfig();
         });
 
         await expect(page.locator('#emptyState')).toContainText('No DICOM files found in /empty.');

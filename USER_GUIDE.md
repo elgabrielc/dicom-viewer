@@ -254,7 +254,7 @@ Notes are saved automatically. This means:
 - Notes are linked to DICOM studies by their unique identifiers (StudyInstanceUID)
 - When you reload the same DICOM files, your notes will reappear
 
-**Important**: Your notes are stored in this browser on this device. If you switch to a different browser or computer, your notes will not be available there. Clearing your browser data will also remove your stored notes.
+**Important**: Where notes live depends on how you run the viewer. In the desktop app, notes, report metadata, and library settings are stored in the app's native data folder and survive browser-cache clears or webview-origin changes. In browser-only mode, notes remain tied to the current browser profile unless you are using a server-backed deployment.
 
 ---
 

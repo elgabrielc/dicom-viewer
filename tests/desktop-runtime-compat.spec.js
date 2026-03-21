@@ -5,8 +5,10 @@ const fs = require('fs');
 const path = require('path');
 
 const HOME_URL = 'http://127.0.0.1:5001/';
+const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 
 async function installMockTauriInternals(page) {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript(() => {
         const listeners = new Map();
         const callbacks = new Map();
@@ -53,6 +55,7 @@ async function installMockTauriInternals(page) {
                     case 'plugin:fs|exists':
                         return false;
                     case 'plugin:fs|mkdir':
+                    case 'plugin:fs|rename':
                     case 'plugin:fs|remove':
                         return null;
                     case 'plugin:fs|read_dir':
@@ -88,6 +91,11 @@ async function installMockTauriInternals(page) {
                         return args.paths.map(normalizePath).join('/').replace(/\/+/g, '/');
                     case 'plugin:path|normalize':
                         return normalizePath(args.path);
+                    case 'plugin:sql|load':
+                    case 'plugin:sql|select':
+                    case 'plugin:sql|execute':
+                    case 'plugin:sql|close':
+                        return window.__handleMockTauriSqlCommand(cmd, args);
                     default:
                         throw new Error(`Unhandled command: ${cmd}`);
                 }
@@ -145,6 +153,7 @@ test('deployment mode detects packaged Tauri origins before globals are ready', 
 });
 
 test('tauri runtime shim installs when internals arrive after the script loads', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.goto('http://127.0.0.1:5001/?nolib');
 
     await page.evaluate(() => {
@@ -194,6 +203,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
                         case 'plugin:fs|exists':
                             return false;
                         case 'plugin:fs|mkdir':
+                        case 'plugin:fs|rename':
                         case 'plugin:fs|remove':
                             return null;
                         case 'plugin:fs|read_dir':
@@ -229,6 +239,11 @@ test('tauri runtime shim installs when internals arrive after the script loads',
                             return args.paths.map(normalizePath).join('/').replace(/\/+/g, '/');
                         case 'plugin:path|normalize':
                             return normalizePath(args.path);
+                        case 'plugin:sql|load':
+                        case 'plugin:sql|select':
+                        case 'plugin:sql|execute':
+                        case 'plugin:sql|close':
+                            return window.__handleMockTauriSqlCommand(cmd, args);
                         default:
                             throw new Error(`Unhandled command: ${cmd}`);
                     }
