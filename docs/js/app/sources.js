@@ -151,14 +151,18 @@
         }
     }
 
+    function joinPathSegments(parent, child) {
+        const separator = parent.includes('\\') ? '\\' : '/';
+        return parent.endsWith(separator) ? `${parent}${child}` : `${parent}${separator}${child}`;
+    }
+
     async function joinPath(parent, child) {
         const pathApi = window.__TAURI__?.path;
         if (pathApi?.join) {
             return pathApi.join(parent, child);
         }
 
-        const separator = parent.includes('\\') ? '\\' : '/';
-        return parent.endsWith(separator) ? `${parent}${child}` : `${parent}${separator}${child}`;
+        return joinPathSegments(parent, child);
     }
 
     async function normalizePath(path) {
@@ -174,8 +178,9 @@
     }
 
     function joinScanPath(parent, child) {
-        const separator = parent.includes('\\') ? '\\' : '/';
-        return parent.endsWith(separator) ? `${parent}${child}` : `${parent}${separator}${child}`;
+        // Desktop scan roots are normalized once up front, and readDir() only yields basenames.
+        // Reusing the shared string join avoids hot-loop path IPC without introducing a second fallback shape.
+        return joinPathSegments(parent, child);
     }
 
     function normalizeBinaryResponse(bytes) {
@@ -217,10 +222,18 @@
         try {
             return await parseDicomMetadataDetailed(buffer);
         } finally {
-            if (shouldTimeParse) {
-                stats.parseMs += performance.now() - parseStartedAt;
-            }
+            addDesktopScanTiming(stats, 'parseMs', shouldTimeParse ? performance.now() - parseStartedAt : 0);
         }
+    }
+
+    function addDesktopScanTiming(stats, key, deltaMs) {
+        if (typeof stats[key] !== 'number' || !Number.isFinite(deltaMs)) return;
+        stats[key] += deltaMs;
+    }
+
+    function incrementDesktopScanCounter(stats, key, delta = 1) {
+        if (typeof stats[key] !== 'number') return;
+        stats[key] += delta;
     }
 
     function getDesktopScanParseErrorMessage(error) {
@@ -231,55 +244,52 @@
         return String(error);
     }
 
+    // These string matches come from the bundled dicomParser implementation:
+    // - parseDicomDataSetExplicit(...) => "buffer overrun"
+    // - readFixedString(...) => "attempt to read past end of buffer"
+    // - parseDicom(...) => "missing required meta header attribute 0002,0010"
+    // If dicomParser changes these messages, update this heuristic and its scan fallback tests together.
+    const DESKTOP_SCAN_TRUNCATION_ERROR_PATTERNS = [
+        'buffer overrun',
+        'attempt to read past end of buffer',
+        'missing required meta header attribute 0002,0010'
+    ];
+
     function shouldRetryDesktopScanWithFullRead(parseResult, headerBytes) {
         if (parseResult?.meta) return false;
         if (!headerBytes || headerBytes.byteLength < DESKTOP_SCAN_HEADER_BYTES) return false;
 
         const message = getDesktopScanParseErrorMessage(parseResult?.error).toLowerCase();
-        return (
-            message.includes('buffer overrun') ||
-            message.includes('attempt to read past end of buffer') ||
-            message.includes('missing required meta header attribute 0002,0010')
-        );
+        return DESKTOP_SCAN_TRUNCATION_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
     }
 
     async function readDesktopScanMetadata(source, stats) {
         const shouldTimeReads = typeof stats.readFileMs === 'number';
         const headerReadStartedAt = shouldTimeReads ? performance.now() : 0;
         const headerBytes = await readDesktopScanHeader(source.path, DESKTOP_SCAN_HEADER_BYTES);
-        if (shouldTimeReads) {
-            stats.readFileMs += performance.now() - headerReadStartedAt;
-        }
+        const headerReadDeltaMs = shouldTimeReads ? performance.now() - headerReadStartedAt : 0;
+        addDesktopScanTiming(stats, 'readFileMs', headerReadDeltaMs);
+        addDesktopScanTiming(stats, 'headerReadMs', headerReadDeltaMs);
 
         if (headerBytes) {
-            if (typeof stats.headerReadCount === 'number') {
-                stats.headerReadCount++;
-            }
+            incrementDesktopScanCounter(stats, 'headerReadCount');
             const headerResult = await parseDesktopScanBuffer(headerBytes, stats);
             if (headerResult.meta) {
-                if (typeof stats.headerHitCount === 'number') {
-                    stats.headerHitCount++;
-                }
+                incrementDesktopScanCounter(stats, 'headerHitCount');
                 return headerResult.meta;
             }
 
             if (headerBytes.byteLength < DESKTOP_SCAN_HEADER_BYTES) {
-                if (typeof stats.headerShortCount === 'number') {
-                    stats.headerShortCount++;
-                }
+                incrementDesktopScanCounter(stats, 'headerShortCount');
                 return headerResult.meta;
             }
 
             if (!shouldRetryDesktopScanWithFullRead(headerResult, headerBytes)) {
-                if (typeof stats.headerRejectedCount === 'number') {
-                    stats.headerRejectedCount++;
-                }
+                incrementDesktopScanCounter(stats, 'headerRejectedCount');
                 return headerResult.meta;
             }
 
-            if (typeof stats.headerFallbackCount === 'number') {
-                stats.headerFallbackCount++;
-            }
+            incrementDesktopScanCounter(stats, 'headerFallbackCount');
         }
 
         let buffer;
@@ -287,9 +297,9 @@
         try {
             buffer = await readSliceBuffer({ source }, 'scan');
         } finally {
-            if (shouldTimeReads) {
-                stats.readFileMs += performance.now() - fullReadStartedAt;
-            }
+            const fullReadDeltaMs = shouldTimeReads ? performance.now() - fullReadStartedAt : 0;
+            addDesktopScanTiming(stats, 'readFileMs', fullReadDeltaMs);
+            addDesktopScanTiming(stats, 'fullReadMs', fullReadDeltaMs);
         }
 
         const fullResult = await parseDesktopScanBuffer(buffer, stats);
@@ -661,6 +671,8 @@
             Object.assign(stats, {
                 readDirMs: 0,
                 readFileMs: 0,
+                headerReadMs: 0,
+                fullReadMs: 0,
                 parseMs: 0,
                 finalizeMs: 0,
                 headerReadCount: 0,

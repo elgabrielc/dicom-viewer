@@ -106,6 +106,8 @@
                     totalMs: Math.round(performance.now() - startedAt),
                     readDirMs: Math.round(lastProgress.readDirMs || 0),
                     readFileMs: Math.round(lastProgress.readFileMs || 0),
+                    headerReadMs: Math.round(lastProgress.headerReadMs || 0),
+                    fullReadMs: Math.round(lastProgress.fullReadMs || 0),
                     parseMs: Math.round(lastProgress.parseMs || 0),
                     finalizeMs: Math.round(lastProgress.finalizeMs || 0),
                     headerReadCount: lastProgress.headerReadCount || 0,

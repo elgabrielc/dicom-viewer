@@ -1857,6 +1857,8 @@ test.describe('Desktop library scanning', () => {
         });
         expect(result.progress.readDirMs).toBeGreaterThan(0);
         expect(result.progress.readFileMs).toBeGreaterThan(0);
+        expect(result.progress.headerReadMs).toBeGreaterThanOrEqual(0);
+        expect(result.progress.fullReadMs).toBeGreaterThan(0);
         expect(result.progress.parseMs).toBeGreaterThan(0);
         expect(result.progress.finalizeMs).toBeGreaterThanOrEqual(0);
         expect(result.mkdirCalls).toEqual([
@@ -1871,6 +1873,8 @@ test.describe('Desktop library scanning', () => {
             valid: 1,
             readDirMs: Math.round(result.progress.readDirMs),
             readFileMs: Math.round(result.progress.readFileMs),
+            headerReadMs: Math.round(result.progress.headerReadMs || 0),
+            fullReadMs: Math.round(result.progress.fullReadMs || 0),
             parseMs: Math.round(result.progress.parseMs),
             finalizeMs: Math.round(result.progress.finalizeMs)
         });
@@ -1928,6 +1932,8 @@ test.describe('Desktop library scanning', () => {
         });
         expect(result.progress.readDirMs).toBeUndefined();
         expect(result.progress.readFileMs).toBeUndefined();
+        expect(result.progress.headerReadMs).toBeUndefined();
+        expect(result.progress.fullReadMs).toBeUndefined();
         expect(result.progress.parseMs).toBeUndefined();
         expect(result.progress.finalizeMs).toBeUndefined();
         expect(result.writes).toHaveLength(0);

@@ -215,13 +215,20 @@ pub async fn decode_frame<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn read_scan_header<R: Runtime>(
+pub async fn read_scan_header<R: Runtime>(
     app: AppHandle<R>,
     path: String,
     max_bytes: usize,
 ) -> DecodeResult<Response> {
     let scoped_path = validate_scoped_path(&app, &path, "scan-header", "Scan header path")?;
-    let bytes = read_scan_header_impl(&scoped_path, max_bytes)?;
+    let bytes = tokio::task::spawn_blocking(move || read_scan_header_impl(&scoped_path, max_bytes))
+        .await
+        .map_err(|error| {
+            DecodeError::new(
+                "scan-header",
+                format!("Native scan header worker ended before producing a result: {error}"),
+            )
+        })??;
     Ok(Response::new(bytes))
 }
 

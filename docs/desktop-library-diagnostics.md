@@ -28,7 +28,7 @@ Use either of these methods.
 
 Add `?scanTiming=1` to the desktop app URL.
 
-For a one-off Tauri dev run, the simplest path is to temporarily change `build.devUrl` in [tauri.conf.json](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-scan-timing/desktop/src-tauri/tauri.conf.json) from:
+For a one-off Tauri dev run, the simplest path is to temporarily change `build.devUrl` in [`desktop/src-tauri/tauri.conf.json`](../desktop/src-tauri/tauri.conf.json) from:
 
 ```json
 "devUrl": "http://127.0.0.1:1420"
@@ -110,6 +110,8 @@ Typical report shape:
   "totalMs": 99361,
   "readDirMs": 17792,
   "readFileMs": 183524,
+  "headerReadMs": 24163,
+  "fullReadMs": 159361,
   "parseMs": 5406,
   "finalizeMs": 6,
   "headerReadCount": 75653,
@@ -127,6 +129,8 @@ Field meanings:
 - `totalMs`: wall-clock scan time seen by the user
 - `readDirMs`: cumulative time spent in directory listing calls
 - `readFileMs`: cumulative time spent reading header chunks and any fallback full-file reads
+- `headerReadMs`: cumulative time spent in native header-prefix reads
+- `fullReadMs`: cumulative time spent in fallback full-file reads
 - `parseMs`: cumulative metadata parse time
 - `finalizeMs`: time spent sorting and finalizing the studies map after scanning
 - `headerReadCount`: files that used the native header-read command
@@ -144,7 +148,9 @@ Two important interpretation rules:
 - `totalMs` is wall-clock latency. That is the number to optimize for user experience.
 - `readFileMs` and `parseMs` are cumulative across concurrent work, so they can exceed `totalMs`.
 
-If `readFileMs` dominates, focus on file I/O shape and fallback behavior.
+If `fullReadMs` dominates, focus on fallback behavior and whether the header-read heuristic is too conservative.
+
+If `headerReadMs` dominates while `fullReadMs` stays low, the scan is already mostly header-only and the next bottleneck is directory walk or path overhead.
 
 If `headerFallbackCount` spikes after a scan-path change, the header-read heuristic is too aggressive or the retry rule is too broad.
 
@@ -152,6 +158,6 @@ If `readDirMs` becomes large relative to `totalMs`, inspect directory walk behav
 
 ## Related Files
 
-- [desktop-library.js](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-scan-timing/docs/js/app/desktop-library.js)
-- [sources.js](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-scan-timing/docs/js/app/sources.js)
-- [decode.rs](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-scan-timing/desktop/src-tauri/src/decode.rs)
+- [`docs/js/app/desktop-library.js`](./js/app/desktop-library.js)
+- [`docs/js/app/sources.js`](./js/app/sources.js)
+- [`desktop/src-tauri/src/decode.rs`](../desktop/src-tauri/src/decode.rs)
