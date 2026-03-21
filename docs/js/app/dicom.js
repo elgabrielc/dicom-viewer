@@ -95,7 +95,7 @@
      * @param {File|Blob|ArrayBuffer|Uint8Array} input - Source bytes or file-like object
      * @returns {Promise<Object|null>} Metadata object or null if not valid DICOM
      */
-    async function parseDicomMetadata(input) {
+    async function parseDicomMetadataDetailed(input) {
         try {
             const byteArray = await toDicomByteArray(input);
             const dataSet = dicomParser.parseDicom(byteArray, { untilTag: 'x7fe00010' });
@@ -105,25 +105,35 @@
             const pixelDataElement = dataSet.elements?.x7fe00010;
             const numberOfFrames = getNumberOfFrames(dataSet);
             return {
-                patientName: getString(dataSet, 'x00100010'),
-                studyDate: getString(dataSet, 'x00080020'),
-                studyDescription: getString(dataSet, 'x00081030'),
-                studyInstanceUid: getString(dataSet, 'x0020000d'),
-                seriesDescription: getString(dataSet, 'x0008103e'),
-                seriesInstanceUid: getString(dataSet, 'x0020000e'),
-                seriesNumber: getString(dataSet, 'x00200011'),
-                modality: getString(dataSet, 'x00080060'),
-                sopInstanceUid: getString(dataSet, 'x00080018'),
-                instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0),
-                sliceLocation: getMetadataNumber(dataSet, 'x00201041', 0),
-                transferSyntax: transferSyntax,
-                sopClassUid: getString(dataSet, 'x00080016'),
-                rows,
-                cols,
-                numberOfFrames,
-                hasPixelData: !!pixelDataElement && rows > 0 && cols > 0
+                meta: {
+                    patientName: getString(dataSet, 'x00100010'),
+                    studyDate: getString(dataSet, 'x00080020'),
+                    studyDescription: getString(dataSet, 'x00081030'),
+                    studyInstanceUid: getString(dataSet, 'x0020000d'),
+                    seriesDescription: getString(dataSet, 'x0008103e'),
+                    seriesInstanceUid: getString(dataSet, 'x0020000e'),
+                    seriesNumber: getString(dataSet, 'x00200011'),
+                    modality: getString(dataSet, 'x00080060'),
+                    sopInstanceUid: getString(dataSet, 'x00080018'),
+                    instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0),
+                    sliceLocation: getMetadataNumber(dataSet, 'x00201041', 0),
+                    transferSyntax: transferSyntax,
+                    sopClassUid: getString(dataSet, 'x00080016'),
+                    rows,
+                    cols,
+                    numberOfFrames,
+                    hasPixelData: !!pixelDataElement && rows > 0 && cols > 0
+                },
+                error: null
             };
-        } catch { return null; }
+        } catch (error) {
+            return { meta: null, error };
+        }
+    }
+
+    async function parseDicomMetadata(input) {
+        const { meta } = await parseDicomMetadataDetailed(input);
+        return meta;
     }
 
     function isRenderableImageMetadata(meta) {
@@ -747,6 +757,7 @@
 
     app.dicom = {
         parseDicomMetadata,
+        parseDicomMetadataDetailed,
         toDicomByteArray,
         getMetadataNumber,
         getNumberOfFrames,

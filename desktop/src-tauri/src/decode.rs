@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
+    io::Read,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -25,6 +26,7 @@ const DECODE_CACHE_MANIFEST_NAME: &str = "manifest.json";
 const MAX_DECODE_CACHE_ENTRIES: usize = 1000;
 const MAX_DECODE_CACHE_BYTES: u64 = 500 * 1024 * 1024;
 const MAX_DECODE_CACHE_EVICTIONS_PER_WRITE: usize = 20;
+const MAX_SCAN_HEADER_BYTES: usize = 256 * 1024;
 
 type DecodeResult<T> = Result<T, DecodeError>;
 
@@ -205,11 +207,22 @@ pub async fn decode_frame<R: Runtime>(
     frame_index: u32,
     store: State<'_, DecodeStore>,
 ) -> DecodeResult<DecodeFrameMetadata> {
-    let scoped_path = validate_decode_path(&app, &path)?;
+    let scoped_path = validate_scoped_path(&app, &path, "decode", "Decode path")?;
     let cache_paths = resolve_cache_paths(&app)?;
     let decode_result = run_decode_with_timeout(scoped_path, frame_index, cache_paths).await?;
     let decode_id = store.insert(decode_result.pixel_bytes);
     Ok(decode_result.metadata.into_response(decode_id))
+}
+
+#[tauri::command]
+pub fn read_scan_header<R: Runtime>(
+    app: AppHandle<R>,
+    path: String,
+    max_bytes: usize,
+) -> DecodeResult<Response> {
+    let scoped_path = validate_scoped_path(&app, &path, "scan-header", "Scan header path")?;
+    let bytes = read_scan_header_impl(&scoped_path, max_bytes)?;
+    Ok(Response::new(bytes))
 }
 
 #[tauri::command]
@@ -266,36 +279,65 @@ fn resolve_cache_paths<R: Runtime>(app: &AppHandle<R>) -> DecodeResult<DecodeCac
     Ok(cache_paths)
 }
 
-fn validate_decode_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> DecodeResult<PathBuf> {
+fn validate_scoped_path<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+    stage: &str,
+    path_label: &str,
+) -> DecodeResult<PathBuf> {
     let requested_path = PathBuf::from(path);
     if requested_path.as_os_str().is_empty() {
-        return Err(DecodeError::new("decode", "Decode path is empty."));
+        return Err(DecodeError::new(stage, format!("{path_label} is empty.")));
     }
     if !requested_path.is_absolute() {
         return Err(DecodeError::new(
-            "decode",
-            format!("Decode path must be absolute: {path}"),
+            stage,
+            format!("{path_label} must be absolute: {path}"),
         ));
     }
 
     let canonical_path = requested_path.canonicalize().map_err(|error| {
         DecodeError::new(
-            "decode",
-            format!("Failed to open DICOM file {path}: {error}"),
+            stage,
+            format!("Failed to access scoped file {path}: {error}"),
         )
     })?;
 
     if !app.fs_scope().is_allowed(&canonical_path) {
         return Err(DecodeError::new(
-            "decode",
+            stage,
             format!(
-                "Decode path is outside the allowed desktop file scope: {}",
+                "{path_label} is outside the allowed desktop file scope: {}",
                 canonical_path.display()
             ),
         ));
     }
 
     Ok(canonical_path)
+}
+
+fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>> {
+    let capped_max_bytes = max_bytes.min(MAX_SCAN_HEADER_BYTES);
+    if capped_max_bytes == 0 {
+        return Ok(Vec::new());
+    }
+
+    let file = fs::File::open(path).map_err(|error| {
+        DecodeError::new(
+            "scan-header",
+            format!("Failed to open DICOM file {}: {error}", path.display()),
+        )
+    })?;
+    let mut bytes = Vec::with_capacity(capped_max_bytes);
+    file.take(capped_max_bytes as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| {
+            DecodeError::new(
+                "scan-header",
+                format!("Failed to read scan header from {}: {error}", path.display()),
+            )
+        })?;
+    Ok(bytes)
 }
 
 fn decode_frame_impl_with_cache(
@@ -980,5 +1022,33 @@ mod tests {
         assert_eq!(decoded.metadata.photometric_interpretation, "MONOCHROME2");
         assert_eq!(decoded.metadata.pixel_data_length, 1024 * 1024 * 2);
         assert_eq!(decoded.pixel_bytes.len(), decoded.metadata.pixel_data_length);
+    }
+
+    #[test]
+    fn read_scan_header_impl_returns_only_the_requested_prefix() {
+        let unique = format!("scan-header-{}-{}", std::process::id(), current_time_ms());
+        let path = std::env::temp_dir().join(unique);
+        fs::write(&path, [1, 2, 3, 4, 5, 6]).expect("scan header fixture should be written");
+
+        let bytes = read_scan_header_impl(&path, 4).expect("partial header read should succeed");
+
+        assert_eq!(bytes, vec![1, 2, 3, 4]);
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_scan_header_impl_caps_reads_to_the_maximum_header_size() {
+        let unique = format!("scan-header-cap-{}-{}", std::process::id(), current_time_ms());
+        let path = std::env::temp_dir().join(unique);
+        let bytes = vec![9; MAX_SCAN_HEADER_BYTES + 128];
+        fs::write(&path, &bytes).expect("scan header cap fixture should be written");
+
+        let read = read_scan_header_impl(&path, MAX_SCAN_HEADER_BYTES + 64)
+            .expect("capped header read should succeed");
+
+        assert_eq!(read.len(), MAX_SCAN_HEADER_BYTES);
+
+        let _ = fs::remove_file(&path);
     }
 }

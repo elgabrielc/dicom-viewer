@@ -1794,6 +1794,330 @@ test.describe('Desktop library scanning', () => {
         expect(config.lastScan).toBeNull();
     });
 
+    test('desktop loadStudies writes a timing report with final scan metrics', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            },
+            readDirDelayMs: 15
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            const mkdirCalls = [];
+            const writes = [];
+            localStorage.setItem('dicom-viewer-debug-scan-timing', '1');
+            window.__TAURI__.path.appDataDir = async () => '/appdata';
+            window.__TAURI__.fs.readFile = async () => {
+                await new Promise(resolve => setTimeout(resolve, 5));
+                return Uint8Array.from(dicomBytes);
+            };
+            window.__TAURI__.fs.mkdir = async (path, options) => {
+                mkdirCalls.push({ path, options });
+            };
+            window.__TAURI__.fs.writeFile = async (path, data) => {
+                writes.push({
+                    path,
+                    text: new TextDecoder().decode(data)
+                });
+            };
+
+            const progress = [];
+            const studies = await window.DicomViewerApp.desktopLibrary.loadStudies('/library', {
+                onProgress: (stats) => progress.push(stats)
+            });
+
+            return {
+                studyCount: Object.keys(studies).length,
+                progress: progress.at(-1),
+                mkdirCalls,
+                writes
+            };
+        });
+
+        expect(result.studyCount).toBeGreaterThan(0);
+        expect(result.progress).toMatchObject({
+            discovered: 1,
+            processed: 1,
+            valid: 1,
+            complete: true
+        });
+        expect(result.progress.readDirMs).toBeGreaterThan(0);
+        expect(result.progress.readFileMs).toBeGreaterThan(0);
+        expect(result.progress.parseMs).toBeGreaterThan(0);
+        expect(result.progress.finalizeMs).toBeGreaterThanOrEqual(0);
+        expect(result.mkdirCalls).toEqual([
+            { path: '/appdata/reports', options: { recursive: true } }
+        ]);
+        expect(result.writes).toHaveLength(1);
+        expect(result.writes[0].path).toBe('/appdata/reports/scan-timing.json');
+
+        const report = JSON.parse(result.writes[0].text);
+        expect(report).toMatchObject({
+            discovered: 1,
+            valid: 1,
+            readDirMs: Math.round(result.progress.readDirMs),
+            readFileMs: Math.round(result.progress.readFileMs),
+            parseMs: Math.round(result.progress.parseMs),
+            finalizeMs: Math.round(result.progress.finalizeMs)
+        });
+        expect(report.totalMs).toBeGreaterThan(0);
+    });
+
+    test('desktop loadStudies does not write a timing report by default', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            const writes = [];
+            window.__TAURI__.path.appDataDir = async () => '/appdata';
+            window.__TAURI__.fs.readFile = async () => Uint8Array.from(dicomBytes);
+            window.__TAURI__.fs.mkdir = async () => {};
+            window.__TAURI__.fs.writeFile = async (path, data) => {
+                writes.push({ path, size: data.length });
+            };
+
+            const progress = [];
+            const studies = await window.DicomViewerApp.desktopLibrary.loadStudies('/library', {
+                onProgress: (stats) => progress.push(stats)
+            });
+
+            return {
+                studyCount: Object.keys(studies).length,
+                progress: progress.at(-1),
+                writes
+            };
+        });
+
+        expect(result.studyCount).toBeGreaterThan(0);
+        expect(result.progress).toMatchObject({
+            discovered: 1,
+            processed: 1,
+            valid: 1,
+            complete: true
+        });
+        expect(result.progress.readDirMs).toBeUndefined();
+        expect(result.progress.readFileMs).toBeUndefined();
+        expect(result.progress.parseMs).toBeUndefined();
+        expect(result.progress.finalizeMs).toBeUndefined();
+        expect(result.writes).toHaveLength(0);
+    });
+
+    test('desktop loadStudies ignores timing report write failures', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            localStorage.setItem('dicom-viewer-debug-scan-timing', '1');
+            window.__TAURI__.path.appDataDir = async () => '/appdata';
+            window.__TAURI__.fs.readFile = async () => Uint8Array.from(dicomBytes);
+            window.__TAURI__.fs.mkdir = async () => {};
+            window.__TAURI__.fs.writeFile = async () => {
+                throw new Error('disk full');
+            };
+
+            const studies = await window.DicomViewerApp.desktopLibrary.loadStudies('/library');
+            return {
+                studyCount: Object.keys(studies).length
+            };
+        });
+
+        expect(result.studyCount).toBeGreaterThan(0);
+    });
+
+    test('desktop path scan uses native header reads when the header chunk is sufficient', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            let headerReads = 0;
+            let fullReads = 0;
+            window.__TAURI__.core = {
+                async invoke(command, args) {
+                    if (command !== 'read_scan_header') {
+                        throw new Error(`Unexpected command: ${command}`);
+                    }
+                    headerReads++;
+                    return dicomBytes;
+                }
+            };
+            window.__TAURI__.fs.readFile = async () => {
+                fullReads++;
+                return Uint8Array.from(dicomBytes);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            return {
+                studyCount: Object.keys(studies).length,
+                headerReads,
+                fullReads
+            };
+        });
+
+        expect(result.studyCount).toBeGreaterThan(0);
+        expect(result.headerReads).toBe(1);
+        expect(result.fullReads).toBe(0);
+    });
+
+    test('desktop path scan falls back to a full read when the header chunk is insufficient', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+            const truncatedHeader = new Uint8Array(256 * 1024);
+            truncatedHeader.set(dicomBytes.slice(0, Math.min(1024, dicomBytes.length)));
+
+            let headerReads = 0;
+            let fullReads = 0;
+            window.__TAURI__.core = {
+                async invoke(command, args) {
+                    if (command !== 'read_scan_header') {
+                        throw new Error(`Unexpected command: ${command}`);
+                    }
+                    headerReads++;
+                    return truncatedHeader;
+                }
+            };
+            window.__TAURI__.fs.readFile = async () => {
+                fullReads++;
+                return Uint8Array.from(dicomBytes);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            return {
+                studyCount: Object.keys(studies).length,
+                headerReads,
+                fullReads
+            };
+        });
+
+        expect(result.studyCount).toBeGreaterThan(0);
+        expect(result.headerReads).toBe(1);
+        expect(result.fullReads).toBe(1);
+    });
+
+    test('desktop path scan skips a full read for obvious non-DICOM header misses', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'not-dicom.bin', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            let headerReads = 0;
+            let fullReads = 0;
+            window.__TAURI__.core = {
+                async invoke(command, args) {
+                    if (command !== 'read_scan_header') {
+                        throw new Error(`Unexpected command: ${command}`);
+                    }
+                    headerReads++;
+                    return new Uint8Array(256 * 1024);
+                }
+            };
+            window.__TAURI__.fs.readFile = async () => {
+                fullReads++;
+                return new Uint8Array(512 * 1024);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            return {
+                studyCount: Object.keys(studies).length,
+                headerReads,
+                fullReads
+            };
+        });
+
+        expect(result.studyCount).toBe(0);
+        expect(result.headerReads).toBe(1);
+        expect(result.fullReads).toBe(0);
+    });
+
     test('collectPathSources caps recursion depth and skips symlink paths', async ({ page }) => {
         const dirs = {
             '/root': [

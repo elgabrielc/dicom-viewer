@@ -1,13 +1,14 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
-    const { parseDicomMetadata, isRenderableImageMetadata } = app.dicom;
+    const { parseDicomMetadata, parseDicomMetadataDetailed, isRenderableImageMetadata } = app.dicom;
     const DESKTOP_MAX_SCAN_DEPTH = 20;
     const DEFAULT_SCAN_CONCURRENCY = 100;
     const DESKTOP_PATH_SCAN_CONCURRENCY = 4;
     const DESKTOP_PATH_BATCH_SIZE = 32;
     const DESKTOP_PATH_READ_ATTEMPTS = 3;
     const DESKTOP_PATH_READ_RETRY_DELAY_MS = 50;
+    const DESKTOP_SCAN_HEADER_BYTES = 256 * 1024;
     const SCAN_PROGRESS_UPDATE_INTERVAL = 200;
 
     function updateScanProgress(processed, total, valid) {
@@ -172,6 +173,129 @@
         return path;
     }
 
+    function joinScanPath(parent, child) {
+        const separator = parent.includes('\\') ? '\\' : '/';
+        return parent.endsWith(separator) ? `${parent}${child}` : `${parent}${separator}${child}`;
+    }
+
+    function normalizeBinaryResponse(bytes) {
+        if (bytes instanceof Uint8Array) {
+            return bytes;
+        }
+        if (bytes instanceof ArrayBuffer) {
+            return new Uint8Array(bytes);
+        }
+        if (bytes?.buffer instanceof ArrayBuffer && typeof bytes.byteLength === 'number') {
+            return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
+        }
+        if (Array.isArray(bytes)) {
+            return Uint8Array.from(bytes);
+        }
+        if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
+            return normalizeBinaryResponse(bytes.data);
+        }
+        return null;
+    }
+
+    async function readDesktopScanHeader(path, maxBytes = DESKTOP_SCAN_HEADER_BYTES) {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke !== 'function') {
+            return null;
+        }
+
+        try {
+            const bytes = await invoke('read_scan_header', { path, maxBytes });
+            return normalizeBinaryResponse(bytes);
+        } catch {
+            return null;
+        }
+    }
+
+    async function parseDesktopScanBuffer(buffer, stats) {
+        const shouldTimeParse = typeof stats.parseMs === 'number';
+        const parseStartedAt = shouldTimeParse ? performance.now() : 0;
+        try {
+            return await parseDicomMetadataDetailed(buffer);
+        } finally {
+            if (shouldTimeParse) {
+                stats.parseMs += performance.now() - parseStartedAt;
+            }
+        }
+    }
+
+    function getDesktopScanParseErrorMessage(error) {
+        if (!error) return '';
+        if (typeof error === 'string') return error;
+        if (typeof error.message === 'string' && error.message) return error.message;
+        if (typeof error.exception === 'string' && error.exception) return error.exception;
+        return String(error);
+    }
+
+    function shouldRetryDesktopScanWithFullRead(parseResult, headerBytes) {
+        if (parseResult?.meta) return false;
+        if (!headerBytes || headerBytes.byteLength < DESKTOP_SCAN_HEADER_BYTES) return false;
+
+        const message = getDesktopScanParseErrorMessage(parseResult?.error).toLowerCase();
+        return (
+            message.includes('buffer overrun') ||
+            message.includes('attempt to read past end of buffer') ||
+            message.includes('missing required meta header attribute 0002,0010')
+        );
+    }
+
+    async function readDesktopScanMetadata(source, stats) {
+        const shouldTimeReads = typeof stats.readFileMs === 'number';
+        const headerReadStartedAt = shouldTimeReads ? performance.now() : 0;
+        const headerBytes = await readDesktopScanHeader(source.path, DESKTOP_SCAN_HEADER_BYTES);
+        if (shouldTimeReads) {
+            stats.readFileMs += performance.now() - headerReadStartedAt;
+        }
+
+        if (headerBytes) {
+            if (typeof stats.headerReadCount === 'number') {
+                stats.headerReadCount++;
+            }
+            const headerResult = await parseDesktopScanBuffer(headerBytes, stats);
+            if (headerResult.meta) {
+                if (typeof stats.headerHitCount === 'number') {
+                    stats.headerHitCount++;
+                }
+                return headerResult.meta;
+            }
+
+            if (headerBytes.byteLength < DESKTOP_SCAN_HEADER_BYTES) {
+                if (typeof stats.headerShortCount === 'number') {
+                    stats.headerShortCount++;
+                }
+                return headerResult.meta;
+            }
+
+            if (!shouldRetryDesktopScanWithFullRead(headerResult, headerBytes)) {
+                if (typeof stats.headerRejectedCount === 'number') {
+                    stats.headerRejectedCount++;
+                }
+                return headerResult.meta;
+            }
+
+            if (typeof stats.headerFallbackCount === 'number') {
+                stats.headerFallbackCount++;
+            }
+        }
+
+        let buffer;
+        const fullReadStartedAt = shouldTimeReads ? performance.now() : 0;
+        try {
+            buffer = await readSliceBuffer({ source }, 'scan');
+        } finally {
+            if (shouldTimeReads) {
+                stats.readFileMs += performance.now() - fullReadStartedAt;
+            }
+        }
+
+        const fullResult = await parseDesktopScanBuffer(buffer, stats);
+        return fullResult.meta;
+    }
+
     function getPathName(path) {
         return path.split(/[\\/]/).pop() || path;
     }
@@ -227,13 +351,7 @@
         if (!shouldEmit) return;
 
         try {
-            onProgress({
-                discovered: stats.discovered,
-                processed: stats.processed,
-                valid: stats.valid,
-                currentPath,
-                complete
-            });
+            onProgress({ ...stats, currentPath, complete });
         } catch (error) {
             console.warn('Desktop path scan progress callback failed:', error);
         }
@@ -292,8 +410,8 @@
             const batch = files.slice(i, i + DESKTOP_PATH_SCAN_CONCURRENCY);
             await Promise.all(batch.map(async ({ name, source }) => {
                 try {
-                    const buffer = await readSliceBuffer({ source }, 'scan');
-                    const meta = await parseDicomMetadata(buffer);
+                    const meta = await readDesktopScanMetadata(source, stats);
+
                     if (!isRenderableImageMetadata(meta)) return;
                     stats.valid++;
                     addSliceToStudies(studies, meta, source);
@@ -528,17 +646,39 @@
 
         const {
             maxDepth = DESKTOP_MAX_SCAN_DEPTH,
-            onProgress = null
+            onProgress = null,
+            captureTiming = false
         } = options;
 
         const studies = {};
         const pendingFiles = [];
-        const stats = { discovered: 0, processed: 0, valid: 0 };
+        const stats = {
+            discovered: 0,
+            processed: 0,
+            valid: 0
+        };
+        if (captureTiming) {
+            Object.assign(stats, {
+                readDirMs: 0,
+                readFileMs: 0,
+                parseMs: 0,
+                finalizeMs: 0,
+                headerReadCount: 0,
+                headerHitCount: 0,
+                headerShortCount: 0,
+                headerFallbackCount: 0,
+                headerRejectedCount: 0
+            });
+        }
         const visited = new Set();
-        const stack = (Array.isArray(paths) ? paths : [paths])
-            .filter(Boolean)
-            .map(path => ({ path, depth: 0 }))
-            .reverse();
+        const stack = [];
+        for (const path of (Array.isArray(paths) ? paths : [paths]).filter(Boolean)) {
+            stack.push({
+                path: await normalizePath(path),
+                depth: 0
+            });
+        }
+        stack.reverse();
 
         async function flushPendingFiles(force = false) {
             while (pendingFiles.length >= DESKTOP_PATH_BATCH_SIZE || (force && pendingFiles.length > 0)) {
@@ -552,32 +692,39 @@
 
         while (stack.length) {
             const current = stack.pop();
-            const normalizedPath = await normalizePath(current.path);
+            const currentPath = current.path;
 
-            if (visited.has(normalizedPath)) {
-                console.warn('Skipping already-visited desktop scan path:', normalizedPath);
+            if (visited.has(currentPath)) {
+                console.warn('Skipping already-visited desktop scan path:', currentPath);
                 continue;
             }
-            visited.add(normalizedPath);
+            visited.add(currentPath);
 
             let entries;
+            const readDirStartedAt = captureTiming ? performance.now() : 0;
             try {
-                entries = await fs.readDir(normalizedPath);
+                entries = await fs.readDir(currentPath);
             } catch (readError) {
-                const fileEntries = await resolveDesktopPathSource(fs, normalizedPath, readError);
+                if (captureTiming) {
+                    stats.readDirMs += performance.now() - readDirStartedAt;
+                }
+                const fileEntries = await resolveDesktopPathSource(fs, currentPath, readError);
                 for (const fileEntry of fileEntries) {
                     pendingFiles.push(fileEntry);
                     stats.discovered++;
-                    safeEmitDesktopPathProgress(onProgress, stats, { currentPath: fileEntry.source?.path || normalizedPath });
+                    safeEmitDesktopPathProgress(onProgress, stats, { currentPath: fileEntry.source?.path || currentPath });
                     if (pendingFiles.length >= DESKTOP_PATH_BATCH_SIZE) {
                         await flushPendingFiles();
                     }
                 }
                 continue;
             }
+            if (captureTiming) {
+                stats.readDirMs += performance.now() - readDirStartedAt;
+            }
 
             for (const entry of entries) {
-                const entryPath = await joinPath(normalizedPath, entry.name);
+                const entryPath = joinScanPath(currentPath, entry.name);
                 if (entry.isSymlink) {
                     console.warn('Skipping symlink during desktop scan:', entryPath);
                     continue;
@@ -613,8 +760,13 @@
         }
 
         await flushPendingFiles(true);
+        const finalizeStartedAt = captureTiming ? performance.now() : 0;
+        const finalizedStudies = finalizeStudies(studies);
+        if (captureTiming) {
+            stats.finalizeMs += performance.now() - finalizeStartedAt;
+        }
         safeEmitDesktopPathProgress(onProgress, stats, { force: true, complete: true });
-        return finalizeStudies(studies);
+        return finalizedStudies;
     }
 
     async function loadDroppedPaths(paths) {

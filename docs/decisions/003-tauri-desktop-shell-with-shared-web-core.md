@@ -84,6 +84,10 @@ The shared core should not depend directly on:
 
 Rust commands should be added only where Tauri plugins or frontend code are insufficient. The default should be to keep viewer logic in the shared web core, not move application logic into Rust prematurely.
 
+Operational note:
+
+- Desktop library scan timing is intentionally debug-only. The optimized header-first scan path is always on, but timing/report writing must be explicitly enabled. See [Desktop Library Diagnostics](../desktop-library-diagnostics.md) for the current toggle and report workflow.
+
 #### Cloud adapter
 
 - Authenticated study listing and slice retrieval
@@ -111,6 +115,7 @@ The initial Tauri v2 validation spike passed the required bootstrap and 2D imagi
 - Relative sample loading worked inside Tauri via `fetch('sample/manifest.json')`
 - A JPEG 2000 dataset rendered successfully in the desktop shell, confirming the OpenJPEG WASM decode path works in WKWebView
 - A follow-up render using a changed window/level override also succeeded, confirming the shared 2D render path survives desktop execution
+- A later desktop scan optimization pass replaced full-file metadata reads with native header reads plus selective fallback, cutting one real macOS library scan from `192744 ms` to `99361 ms` while leaving timing/reporting behind a debug toggle
 
 Implementation note:
 
