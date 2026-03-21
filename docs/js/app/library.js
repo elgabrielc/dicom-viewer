@@ -22,7 +22,7 @@
 
     const openPanels = {
         studyPanels: new Set(),
-        seriesPanels: new Set(),
+        seriesPanels: new Map(),
         seriesDropdowns: new Set()
     };
 
@@ -36,6 +36,24 @@
             callback();
         }, 500);
         descriptionSaveTimers.set(key, handle);
+    }
+
+    function rememberOpenSeriesPanel(studyUid, seriesUid) {
+        let seriesUids = openPanels.seriesPanels.get(studyUid);
+        if (!seriesUids) {
+            seriesUids = new Set();
+            openPanels.seriesPanels.set(studyUid, seriesUids);
+        }
+        seriesUids.add(seriesUid);
+    }
+
+    function forgetOpenSeriesPanel(studyUid, seriesUid) {
+        const seriesUids = openPanels.seriesPanels.get(studyUid);
+        if (!seriesUids) return;
+        seriesUids.delete(seriesUid);
+        if (!seriesUids.size) {
+            openPanels.seriesPanels.delete(studyUid);
+        }
     }
 
     function setLibraryFolderStatus(message, tone = '') {
@@ -468,16 +486,15 @@
                 e.stopPropagation();
                 const studyUid = btn.dataset.studyUid;
                 const seriesUid = btn.dataset.seriesUid;
-                const key = `${studyUid}:${seriesUid}`;
                 const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
                 const isOpen = panel.style.display !== 'none';
                 panel.style.display = isOpen ? 'none' : 'block';
                 if (isOpen) {
-                    openPanels.seriesPanels.delete(key);
+                    forgetOpenSeriesPanel(studyUid, seriesUid);
                     const count = state.studies[studyUid]?.series[seriesUid]?.comments?.length || 0;
                     btn.textContent = count > 0 ? `${count} comment${count > 1 ? 's' : ''}` : 'Add comment';
                 } else {
-                    openPanels.seriesPanels.add(key);
+                    rememberOpenSeriesPanel(studyUid, seriesUid);
                     btn.textContent = 'Hide comments';
                 }
             };
@@ -562,19 +579,20 @@
             const btn = studiesBody.querySelector(`.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`);
             if (btn) btn.textContent = 'Hide comments';
         });
-        openPanels.seriesPanels.forEach(key => {
-            const [studyUid, seriesUid] = key.split(':');
-            const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
-            if (panel) panel.style.display = 'block';
-            const btn = studiesBody.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
-            if (btn) btn.textContent = 'Hide comments';
-            const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);
-            if (dropdown) dropdown.style.display = 'table-row';
-            const icon = studiesBody.querySelector(`.study-row[data-uid="${CSS.escape(studyUid)}"] .expand-icon`);
-            if (icon) {
-                icon.textContent = '\u25BC';
-                icon.classList.add('expanded');
-            }
+        openPanels.seriesPanels.forEach((seriesUids, studyUid) => {
+            seriesUids.forEach(seriesUid => {
+                const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+                if (panel) panel.style.display = 'block';
+                const btn = studiesBody.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+                if (btn) btn.textContent = 'Hide comments';
+                const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);
+                if (dropdown) dropdown.style.display = 'table-row';
+                const icon = studiesBody.querySelector(`.study-row[data-uid="${CSS.escape(studyUid)}"] .expand-icon`);
+                if (icon) {
+                    icon.textContent = '\u25BC';
+                    icon.classList.add('expanded');
+                }
+            });
         });
         openPanels.seriesDropdowns.forEach(studyUid => {
             const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);

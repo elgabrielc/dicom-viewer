@@ -405,14 +405,13 @@ def _resolve_series_key(series_map, bare_uid, desc):
         if existing['series_description'] == desc:
             return bare_uid
         # Collision: re-key the existing series
-        old_key = f"{bare_uid}|{existing['series_description']}" if existing['series_description'] else bare_uid
-        if old_key != bare_uid:
-            series_map[old_key] = existing
-            existing['series_id'] = old_key
-            del series_map[bare_uid]
-        return f"{bare_uid}|{desc}" if desc else bare_uid
+        old_key = f"{bare_uid}|{existing['series_description'] or ''}"
+        series_map[old_key] = existing
+        existing['series_id'] = old_key
+        del series_map[bare_uid]
+        return f"{bare_uid}|{desc or ''}"
 
-    composite_key = f"{bare_uid}|{desc}" if desc else bare_uid
+    composite_key = f"{bare_uid}|{desc or ''}"
     if composite_key in series_map:
         return composite_key
     has_collision = any(k.startswith(f"{bare_uid}|") for k in series_map)
@@ -669,7 +668,7 @@ def get_test_studies():
     return jsonify(test_source.format_studies())
 
 
-@app.route('/api/test-data/dicom/<study_id>/<series_id>/<int:slice_num>')
+@app.route('/api/test-data/dicom/<study_id>/<path:series_id>/<int:slice_num>')
 def get_test_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a test data slice."""
     file_path = test_source.get_safe_slice_path(study_id, series_id, slice_num)
@@ -816,7 +815,7 @@ def get_library_studies():
     return jsonify(payload)
 
 
-@app.route('/api/library/dicom/<study_id>/<series_id>/<int:slice_num>')
+@app.route('/api/library/dicom/<study_id>/<path:series_id>/<int:slice_num>')
 def get_library_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a local library slice."""
     file_path = library_source.get_safe_slice_path(study_id, series_id, slice_num)
@@ -1000,7 +999,7 @@ def save_study_description(study_uid):
     return jsonify({'studyUid': study_uid, 'description': description, 'updatedAt': now})
 
 
-@app.route('/api/notes/<study_uid>/series/<series_uid>/description', methods=['PUT'])
+@app.route('/api/notes/<study_uid>/series/<path:series_uid>/description', methods=['PUT'])
 def save_series_description(study_uid, series_uid):
     data = request.get_json(silent=True) or {}
     description = (data.get('description') or '').strip()
