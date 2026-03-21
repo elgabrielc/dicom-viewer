@@ -58,6 +58,28 @@ python app.py
 
 Open `http://localhost:5001` in Chrome or Edge.
 
+### Option 3: Tauri desktop shell (desktop development)
+
+```bash
+cd dicom-viewer/desktop
+npm install
+npx tauri dev
+```
+
+This runs the desktop shell against the current `docs/` source and is the fastest way to verify desktop-only behavior while iterating.
+
+### Option 4: Build the packaged desktop app
+
+```bash
+cd dicom-viewer/desktop
+npm install
+npx tauri build
+```
+
+The packaged app is written under `desktop/src-tauri/target/release/bundle/`.
+
+Important: the built `.app` is a snapshot of the code at build time. Editing files in the repository does not update an existing bundle. After code changes, use `npx tauri dev` for development or run `npx tauri build` again to refresh the packaged app.
+
 ## Usage
 
 1. **Load DICOM files**: Drag and drop a folder onto the drop zone, or click "CT Scan" / "MRI Scan" for samples
