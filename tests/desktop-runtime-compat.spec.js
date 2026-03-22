@@ -98,6 +98,8 @@ async function installMockTauriInternals(page) {
                         return window.__handleMockTauriSqlCommand(cmd, args);
                     case 'apply_desktop_migration':
                         return window.__applyMockDesktopMigration(args.db, args.batch);
+                    case 'load_legacy_desktop_browser_stores':
+                        return [];
                     default:
                         throw new Error(`Unhandled command: ${cmd}`);
                 }
@@ -248,6 +250,8 @@ test('tauri runtime shim installs when internals arrive after the script loads',
                             return window.__handleMockTauriSqlCommand(cmd, args);
                         case 'apply_desktop_migration':
                             return window.__applyMockDesktopMigration(args.db, args.batch);
+                        case 'load_legacy_desktop_browser_stores':
+                            return [];
                         default:
                             throw new Error(`Unhandled command: ${cmd}`);
                     }

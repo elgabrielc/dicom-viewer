@@ -14,7 +14,10 @@ const NotesAPI = (() => {
     const DESKTOP_DB_URL = 'sqlite:viewer.db';
     const DESKTOP_LIBRARY_CONFIG_KEY = 'desktop_library_config';
     const DESKTOP_LOCALSTORAGE_MIGRATION_KEY = 'localstorage_migrated';
+    const DESKTOP_LEGACY_BROWSER_STORE_MIGRATION_KEY = 'legacy_desktop_browser_store_migrated';
     const DESKTOP_LIBRARY_CONFIG_STORAGE_KEY = 'dicom-viewer-library-config';
+    const DESKTOP_SCAN_CACHE_VERSION = 1;
+    const DESKTOP_SCAN_CACHE_CHUNK_SIZE = 256;
     const LEGACY_STORAGE_KEY = 'dicom-viewer-comments';
     const LEGACY_REPORTS_DB = 'dicom-viewer-reports';
     const LEGACY_REPORTS_STORE = 'reports';
@@ -284,6 +287,86 @@ const NotesAPI = (() => {
         return normalized;
     }
 
+    async function loadDesktopScanCache(rootPaths, scannerVersion = DESKTOP_SCAN_CACHE_VERSION) {
+        const roots = Array.from(new Set(
+            (Array.isArray(rootPaths) ? rootPaths : [rootPaths]).filter(
+                (rootPath) => typeof rootPath === 'string' && rootPath
+            )
+        ));
+        if (!roots.length) return [];
+
+        await initializeDesktopPersistence();
+        const db = await getDesktopDb();
+        const placeholders = roots.map(() => '?').join(', ');
+        return await db.select(
+            `SELECT path, size, modified_ms, renderable, meta_json
+             FROM desktop_scan_cache
+             WHERE root_path IN (${placeholders}) AND scanner_version = ?`,
+            [...roots, scannerVersion]
+        );
+    }
+
+    async function saveDesktopScanCacheEntries(entries, scannerVersion = DESKTOP_SCAN_CACHE_VERSION) {
+        const rows = (Array.isArray(entries) ? entries : []).filter((entry) => {
+            return !!(
+                entry
+                && typeof entry.path === 'string'
+                && entry.path
+                && typeof entry.rootPath === 'string'
+                && entry.rootPath
+            );
+        });
+        if (!rows.length) return 0;
+
+        await initializeDesktopPersistence();
+        const db = await getDesktopDb();
+        let totalRowsAffected = 0;
+
+        for (let index = 0; index < rows.length; index += DESKTOP_SCAN_CACHE_CHUNK_SIZE) {
+            const chunk = rows.slice(index, index + DESKTOP_SCAN_CACHE_CHUNK_SIZE);
+            const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+            const values = [];
+
+            for (const row of chunk) {
+                values.push(
+                    row.path,
+                    row.rootPath,
+                    parseInteger(row.size, 0),
+                    row.modifiedMs ?? null,
+                    scannerVersion,
+                    row.renderable ? 1 : 0,
+                    typeof row.metaJson === 'string' ? row.metaJson : null,
+                    Date.now()
+                );
+            }
+
+            const result = await db.execute(
+                `INSERT INTO desktop_scan_cache (
+                    path,
+                    root_path,
+                    size,
+                    modified_ms,
+                    scanner_version,
+                    renderable,
+                    meta_json,
+                    updated_at
+                ) VALUES ${placeholders}
+                 ON CONFLICT(path) DO UPDATE SET
+                    root_path = excluded.root_path,
+                    size = excluded.size,
+                    modified_ms = excluded.modified_ms,
+                    scanner_version = excluded.scanner_version,
+                    renderable = excluded.renderable,
+                    meta_json = excluded.meta_json,
+                    updated_at = excluded.updated_at`,
+                values
+            );
+            totalRowsAffected += Number(result?.rowsAffected) || chunk.length;
+        }
+
+        return totalRowsAffected;
+    }
+
     function getReportExtension(reportType, file) {
         const explicitType = typeof reportType === 'string' ? reportType.trim().toLowerCase() : '';
         if (REPORT_FILE_EXTENSIONS[explicitType]) {
@@ -520,6 +603,17 @@ const NotesAPI = (() => {
         });
     }
 
+    async function loadLegacyDesktopBrowserStores() {
+        const runtime = await waitForDesktopRuntime();
+        const invoke = runtime?.core?.invoke;
+        if (typeof invoke !== 'function') {
+            throw new Error('Desktop migration runtime is not ready. Quit and reopen the app if this persists.');
+        }
+
+        const stores = await invoke('load_legacy_desktop_browser_stores');
+        return Array.isArray(stores) ? stores : [];
+    }
+
     async function migrateDesktopLocalStorage() {
         const migrated = await getDesktopAppConfigValue(DESKTOP_LOCALSTORAGE_MIGRATION_KEY);
         if (migrated === '1') return false;
@@ -557,12 +651,45 @@ const NotesAPI = (() => {
         return true;
     }
 
+    async function migrateLegacyDesktopBrowserStores() {
+        const migrated = await getDesktopAppConfigValue(DESKTOP_LEGACY_BROWSER_STORE_MIGRATION_KEY);
+        if (migrated === '1') return false;
+
+        const stores = await loadLegacyDesktopBrowserStores();
+        if (!stores.length) {
+            await setDesktopAppConfigValue(DESKTOP_LEGACY_BROWSER_STORE_MIGRATION_KEY, '1');
+            return false;
+        }
+
+        const { fs } = getDesktopTauriApis();
+        const batch = createEmptyDesktopMigrationBatch();
+        for (const store of stores) {
+            const notesStore = safeJsonParse(store?.notesJson, createEmptyStore());
+            const libraryConfig = normalizeDesktopLibraryConfig(
+                safeJsonParse(store?.libraryConfigJson, {})
+            );
+
+            await appendCurrentStoreToDesktopMigration(batch, notesStore, fs);
+            if (libraryConfig.folder || libraryConfig.lastScan) {
+                appendDesktopLibraryConfigToMigration(batch, libraryConfig);
+            }
+        }
+
+        if (hasDesktopMigrationRows(batch)) {
+            await applyDesktopMigrationBatch(batch);
+        }
+
+        await setDesktopAppConfigValue(DESKTOP_LEGACY_BROWSER_STORE_MIGRATION_KEY, '1');
+        return hasDesktopMigrationRows(batch);
+    }
+
     async function initializeDesktopPersistence() {
         if (getBackend() !== 'desktop') return false;
         if (!desktopMigrationPromise) {
             desktopMigrationPromise = (async () => {
                 await getDesktopDb();
                 await migrateDesktopLocalStorage();
+                await migrateLegacyDesktopBrowserStores();
                 return true;
             })().catch((error) => {
                 desktopMigrationPromise = null;
@@ -1354,7 +1481,9 @@ const NotesAPI = (() => {
         getReportFileUrl,
         initializeDesktopStorage,
         loadDesktopLibraryConfig,
-        saveDesktopLibraryConfig
+        saveDesktopLibraryConfig,
+        loadDesktopScanCache,
+        saveDesktopScanCacheEntries
     };
 })();
 

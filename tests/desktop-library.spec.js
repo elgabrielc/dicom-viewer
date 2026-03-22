@@ -46,6 +46,24 @@ function joinPaths(...parts) {
 async function installMockDesktop(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((options) => {
+        const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
+
+        function toByteArray(value) {
+            if (Array.isArray(value)) {
+                return value.map((item) => Number(item) || 0);
+            }
+            if (value && typeof value === 'object') {
+                if (typeof value.length === 'number') {
+                    return Array.from(value, (item) => Number(item) || 0);
+                }
+                return Object.keys(value)
+                    .filter((key) => /^\d+$/.test(key))
+                    .sort((a, b) => Number(a) - Number(b))
+                    .map((key) => Number(value[key]) || 0);
+            }
+            return [];
+        }
+
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
             if (!text) return '';
@@ -96,6 +114,13 @@ async function installMockDesktop(page, options = {}) {
             fileBytes[normalizePath(path)] = value;
         }
 
+        for (const [path, value] of Object.entries(options.storedFiles || {})) {
+            localStorage.setItem(
+                `${FILE_STORAGE_PREFIX}${normalizePath(path)}`,
+                JSON.stringify(toByteArray(value))
+            );
+        }
+
         const readFileFailures = {};
         for (const [path, value] of Object.entries(options.readFileFailures || {})) {
             readFileFailures[normalizePath(path)] = Number(value || 0);
@@ -106,6 +131,12 @@ async function installMockDesktop(page, options = {}) {
                 async invoke(cmd, args) {
                     if (cmd === 'apply_desktop_migration') {
                         return window.__applyMockDesktopMigration(args.db, args.batch, options);
+                    }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return options.legacyDesktopStores || [];
+                    }
+                    if (cmd === 'read_scan_manifest') {
+                        return options.nativeScanManifest || null;
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
@@ -136,8 +167,24 @@ async function installMockDesktop(page, options = {}) {
                         readFileFailures[normalized] = remainingFailures - 1;
                         throw new Error(`Transient read failure: ${normalized}`);
                     }
-                    const bytes = fileBytes[normalized] || [0];
+                    const persisted = localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`);
+                    const bytes = fileBytes[normalized]
+                        || (persisted ? JSON.parse(persisted) : null)
+                        || [0];
                     return Uint8Array.from(bytes);
+                },
+                async writeFile(path, bytes) {
+                    const normalized = normalizePath(path);
+                    localStorage.setItem(
+                        `${FILE_STORAGE_PREFIX}${normalized}`,
+                        JSON.stringify(Array.from(bytes))
+                    );
+                },
+                async mkdir() {
+                    return undefined;
+                },
+                async remove(path) {
+                    localStorage.removeItem(`${FILE_STORAGE_PREFIX}${normalizePath(path)}`);
                 },
                 async stat(path) {
                     const normalized = normalizePath(path);
@@ -157,6 +204,9 @@ async function installMockDesktop(page, options = {}) {
                 }
             },
             path: {
+                async appDataDir() {
+                    return normalizePath(options.appDataDir || '/appdata');
+                },
                 async join(...parts) {
                     return joinPaths(...parts);
                 },
@@ -179,6 +229,199 @@ async function installMockDesktop(page, options = {}) {
 }
 
 test.describe('Desktop library scanning', () => {
+    test('desktop path scan prefers the native manifest when available', async ({ page }) => {
+        await installMockDesktop(page, {
+            nativeScanManifest: [
+                {
+                    path: '/library/image.dcm',
+                    name: 'image.dcm',
+                    rootPath: '/library',
+                    size: 4,
+                    modifiedMs: 1234
+                }
+            ]
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            let readFileCount = 0;
+            window.__TAURI__.fs.readFile = async () => {
+                readFileCount += 1;
+                return Uint8Array.from(dicomBytes);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            return {
+                studyCount: Object.keys(studies).length,
+                readFileCount
+            };
+        });
+
+        expect(result.studyCount).toBeGreaterThan(0);
+        expect(result.readFileCount).toBe(1);
+    });
+
+    test('desktop path scan reuses cached manifest metadata on repeat scans', async ({ page }) => {
+        await installMockDesktop(page, {
+            nativeScanManifest: [
+                {
+                    path: '/library/image.dcm',
+                    name: 'image.dcm',
+                    rootPath: '/library',
+                    size: 4,
+                    modifiedMs: 1234
+                }
+            ]
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            let readFileCount = 0;
+            window.__TAURI__.fs.readFile = async () => {
+                readFileCount += 1;
+                return Uint8Array.from(dicomBytes);
+            };
+
+            const firstStudies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            const readsAfterFirstScan = readFileCount;
+
+            window.__TAURI__.fs.readFile = async () => {
+                readFileCount += 1;
+                throw new Error('cache miss unexpectedly tried to read the file again');
+            };
+
+            const secondStudies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            return {
+                firstStudyCount: Object.keys(firstStudies).length,
+                secondStudyCount: Object.keys(secondStudies).length,
+                readsAfterFirstScan,
+                readsAfterSecondScan: readFileCount
+            };
+        });
+
+        expect(result.firstStudyCount).toBeGreaterThan(0);
+        expect(result.secondStudyCount).toBe(result.firstStudyCount);
+        expect(result.readsAfterFirstScan).toBe(1);
+        expect(result.readsAfterSecondScan).toBe(1);
+    });
+
+    test('desktop path scan uses DICOMDIR records to skip indexed image header reads', async ({ page }) => {
+        await installMockDesktop(page, {
+            nativeScanManifest: [
+                {
+                    path: '/library/DICOMDIR',
+                    name: 'DICOMDIR',
+                    rootPath: '/library',
+                    size: 128,
+                    modifiedMs: 111
+                },
+                {
+                    path: '/library/images/IMG00001.dcm',
+                    name: 'IMG00001.dcm',
+                    rootPath: '/library',
+                    size: 512,
+                    modifiedMs: 222
+                },
+                {
+                    path: '/library/images/IMG00002.dcm',
+                    name: 'IMG00002.dcm',
+                    rootPath: '/library',
+                    size: 512,
+                    modifiedMs: 333
+                }
+            ]
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const readsByPath = {};
+            window.DicomViewerApp.dicom.parseDicomDirectoryDetailed = async () => ({
+                entries: [
+                    {
+                        source: { kind: 'path', path: '/library/images/IMG00001.dcm' },
+                        meta: {
+                            patientName: 'Patient^Example',
+                            studyDate: '20260322',
+                            studyDescription: 'Indexed Study',
+                            studyInstanceUid: 'study-1',
+                            seriesDescription: 'Series A',
+                            seriesInstanceUid: 'series-1',
+                            seriesNumber: '1',
+                            modality: 'DX',
+                            sopInstanceUid: 'sop-1',
+                            instanceNumber: 1,
+                            sliceLocation: 0
+                        }
+                    },
+                    {
+                        source: { kind: 'path', path: '/library/images/IMG00002.dcm' },
+                        meta: {
+                            patientName: 'Patient^Example',
+                            studyDate: '20260322',
+                            studyDescription: 'Indexed Study',
+                            studyInstanceUid: 'study-1',
+                            seriesDescription: 'Series A',
+                            seriesInstanceUid: 'series-1',
+                            seriesNumber: '1',
+                            modality: 'DX',
+                            sopInstanceUid: 'sop-2',
+                            instanceNumber: 2,
+                            sliceLocation: 0
+                        }
+                    }
+                ],
+                indexedPaths: [
+                    '/library/images/IMG00001.dcm',
+                    '/library/images/IMG00002.dcm'
+                ],
+                error: null
+            });
+
+            window.__TAURI__.fs.readFile = async (path) => {
+                readsByPath[path] = (readsByPath[path] || 0) + 1;
+                return Uint8Array.from([0, 1, 2, 3]);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            const study = studies['study-1'];
+            return {
+                studyCount: Object.keys(studies).length,
+                imageCount: study?.imageCount || 0,
+                readKeys: Object.keys(readsByPath).sort(),
+                readsByPath
+            };
+        });
+
+        expect(result.studyCount).toBe(1);
+        expect(result.imageCount).toBe(2);
+        expect(result.readKeys).toEqual(['/library/DICOMDIR']);
+        expect(result.readsByPath['/library/DICOMDIR']).toBe(1);
+    });
+
     test('desktop path study scan starts processing before the full tree is materialized', async ({ page }) => {
         const rootEntries = [];
         const nestedEntries = [];
@@ -199,6 +442,7 @@ test.describe('Desktop library scanning', () => {
         rootEntries.push({ name: 'nested', isDirectory: true, isFile: false, isSymlink: false });
 
         await installMockDesktop(page, {
+            readDirDelayMs: 250,
             dirs: {
                 '/library': rootEntries,
                 '/library/nested': nestedEntries
@@ -228,7 +472,7 @@ test.describe('Desktop library scanning', () => {
         });
 
         expect(summary.studyCount).toBe(0);
-        expect(summary.progress.some((entry) => entry.discovered === 128 && entry.processed === 128)).toBe(true);
+        expect(summary.progress.some((entry) => entry.discovered < 130 && entry.processed > 0)).toBe(true);
         expect(summary.progress.at(-1)).toMatchObject({
             discovered: 130,
             processed: 130,
@@ -400,10 +644,10 @@ test.describe('Desktop library scanning', () => {
         const summary = await page.evaluate(async () => {
             const studiesResponse = await fetch('/api/test-data/studies');
             const studiesPayload = await studiesResponse.json();
-            const study = studiesPayload[0];
-            const series = study.series[0];
+            const fixtureStudy = studiesPayload[0];
+            const series = fixtureStudy.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${fixtureStudy.studyInstanceUid}/${series.seriesInstanceUid}/0`
             );
             const blob = await dicomResponse.blob();
 
@@ -1786,6 +2030,117 @@ test.describe('Desktop library scanning', () => {
         await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
     });
 
+    test('desktop auto-load shows a cached library snapshot while refresh is in flight', async ({ page }) => {
+        const cachedStudies = {
+            '1.2.840.cached.study': {
+                patientName: 'Cached Patient',
+                studyDate: '20260320',
+                studyDescription: 'Cached Study',
+                studyInstanceUid: '1.2.840.cached.study',
+                modality: 'CT',
+                seriesCount: 1,
+                imageCount: 1,
+                comments: [],
+                reports: [],
+                series: {
+                    '1.2.840.cached.series': {
+                        seriesInstanceUid: '1.2.840.cached.series',
+                        seriesDescription: 'Cached Series',
+                        seriesNumber: 1,
+                        modality: 'CT',
+                        comments: [],
+                        slices: [
+                            {
+                                instanceNumber: 1,
+                                sliceLocation: 0,
+                                source: { kind: 'path', path: '/slow-library/image.dcm' }
+                            }
+                        ]
+                    }
+                }
+            }
+        };
+        const snapshotBytes = new TextEncoder().encode(JSON.stringify({
+            version: 1,
+            folder: '/slow-library',
+            savedAt: '2026-03-22T00:00:00.000Z',
+            studies: cachedStudies
+        }));
+
+        await installMockDesktop(page, {
+            initialConfig: {
+                folder: '/slow-library',
+                lastScan: '2026-03-07T12:00:00.000Z'
+            },
+            dirs: {
+                '/slow-library': []
+            },
+            readDirDelayMs: 3000,
+            storedFiles: {
+                '/appdata/desktop-library-cache.json': snapshotBytes
+            }
+        });
+
+        await page.goto(AUTOLOAD_URL);
+        await expect(page.locator('#libraryFolderConfig')).toBeVisible();
+        await expect(page.locator('#libraryFolderInput')).toHaveValue('/slow-library');
+        await expect(page.locator('#studiesBody')).toContainText('Cached Patient');
+    });
+
+    test('desktop library cache round-trips through app data', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studies = {
+                '1.2.840.cached.study': {
+                    patientName: 'Roundtrip Patient',
+                    studyDate: '20260322',
+                    studyDescription: 'Roundtrip Study',
+                    studyInstanceUid: '1.2.840.cached.study',
+                    modality: 'MR',
+                    seriesCount: 1,
+                    imageCount: 1,
+                    comments: [],
+                    reports: [],
+                    series: {
+                        '1.2.840.cached.series': {
+                            seriesInstanceUid: '1.2.840.cached.series',
+                            seriesDescription: 'Roundtrip Series',
+                            seriesNumber: 1,
+                            modality: 'MR',
+                            comments: [],
+                            slices: [
+                                {
+                                    instanceNumber: 1,
+                                    sliceLocation: 0,
+                                    source: { kind: 'path', path: '/library/image.dcm' }
+                                }
+                            ]
+                        }
+                    }
+                }
+            };
+
+            await window.DicomViewerApp.desktopLibrary.saveCachedStudies('/library', studies);
+            const raw = localStorage.getItem('mock-desktop-fs:/appdata/desktop-library-cache.json');
+            return {
+                loaded: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/library'),
+                mismatch: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/other-library'),
+                rawText: raw ? new TextDecoder().decode(Uint8Array.from(JSON.parse(raw))) : ''
+            };
+        });
+
+        expect(result.loaded).toEqual(expect.objectContaining({
+            '1.2.840.cached.study': expect.objectContaining({
+                patientName: 'Roundtrip Patient'
+            })
+        }));
+        expect(result.mismatch).toBeNull();
+        expect(result.rawText).toContain('"folder":"/library"');
+    });
+
     test('desktop auto-load does not mark empty folders as a successful scan', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
@@ -1884,8 +2239,11 @@ test.describe('Desktop library scanning', () => {
         expect(result.mkdirCalls).toEqual([
             { path: '/appdata/reports', options: { recursive: true } }
         ]);
-        expect(result.writes).toHaveLength(1);
-        expect(result.writes[0].path).toBe('/appdata/reports/scan-timing.json');
+        expect(result.writes).toHaveLength(2);
+        expect(result.writes.map((entry) => entry.path)).toEqual([
+            '/appdata/reports/scan-timing.json',
+            '/appdata/desktop-library-cache.json'
+        ]);
 
         const report = JSON.parse(result.writes[0].text);
         expect(report).toMatchObject({
@@ -1956,7 +2314,8 @@ test.describe('Desktop library scanning', () => {
         expect(result.progress.fullReadMs).toBeUndefined();
         expect(result.progress.parseMs).toBeUndefined();
         expect(result.progress.finalizeMs).toBeUndefined();
-        expect(result.writes).toHaveLength(0);
+        expect(result.writes).toHaveLength(1);
+        expect(result.writes[0].path).toBe('/appdata/desktop-library-cache.json');
     });
 
     test('desktop loadStudies ignores timing report write failures', async ({ page }) => {
@@ -2049,7 +2408,66 @@ test.describe('Desktop library scanning', () => {
         expect(result.fullReads).toBe(0);
     });
 
-    test('desktop path scan falls back to a full read when the header chunk is insufficient', async ({ page }) => {
+    test('desktop path scan falls back for DICM-preamble header misses', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+            const dicmHeader = new Uint8Array(256 * 1024);
+            dicmHeader[128] = 0x44;
+            dicmHeader[129] = 0x49;
+            dicmHeader[130] = 0x43;
+            dicmHeader[131] = 0x4d;
+
+            let headerReads = 0;
+            let fullReads = 0;
+            window.__TAURI__.core = {
+                async invoke(command, args) {
+                    if (command !== 'read_scan_header') {
+                        throw new Error(`Unexpected command: ${command}`);
+                    }
+                    headerReads++;
+                    return dicmHeader;
+                }
+            };
+            window.__TAURI__.fs.readFile = async () => {
+                fullReads++;
+                return Uint8Array.from(dicomBytes);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            const firstStudy = Object.values(studies)[0];
+            return {
+                studyCount: Object.keys(studies).length,
+                imageCount: firstStudy?.imageCount || 0,
+                headerReads,
+                fullReads
+            };
+        });
+
+        expect(result.studyCount).toBe(1);
+        expect(result.imageCount).toBe(1);
+        expect(result.headerReads).toBe(2);
+        expect(result.fullReads).toBe(1);
+    });
+
+    test('desktop path scan falls back to a full read after exhausting staged header reads', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
                 '/library': [
@@ -2098,7 +2516,7 @@ test.describe('Desktop library scanning', () => {
         });
 
         expect(result.studyCount).toBeGreaterThan(0);
-        expect(result.headerReads).toBe(1);
+        expect(result.headerReads).toBe(2);
         expect(result.fullReads).toBe(1);
     });
 
@@ -2142,6 +2560,103 @@ test.describe('Desktop library scanning', () => {
         expect(result.studyCount).toBe(0);
         expect(result.headerReads).toBe(1);
         expect(result.fullReads).toBe(0);
+    });
+
+    test('desktop path scan skips obvious junk extensions before any header read', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'notes.txt', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            let headerReads = 0;
+            let fullReads = 0;
+
+            window.__TAURI__.core.invoke = async (command) => {
+                if (command === 'read_scan_header') {
+                    headerReads++;
+                    return new Uint8Array(256);
+                }
+                throw new Error(`Unexpected command: ${command}`);
+            };
+            window.__TAURI__.fs.readFile = async () => {
+                fullReads++;
+                return new Uint8Array(256);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            return {
+                studyCount: Object.keys(studies).length,
+                headerReads,
+                fullReads
+            };
+        });
+
+        expect(result.studyCount).toBe(0);
+        expect(result.headerReads).toBe(0);
+        expect(result.fullReads).toBe(0);
+    });
+
+    test('desktop path scan skips known viewer payload directories', async ({ page }) => {
+        await installMockDesktop(page, {
+            dirs: {
+                '/library': [
+                    { name: 'viewer.app', isDirectory: true, isFile: false, isSymlink: false },
+                    { name: 'Libraries', isDirectory: true, isFile: false, isSymlink: false },
+                    { name: 'Reviewer', isDirectory: true, isFile: false, isSymlink: false },
+                    { name: 'Catapult', isDirectory: true, isFile: false, isSymlink: false },
+                    { name: 'ddv', isDirectory: true, isFile: false, isSymlink: false },
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
+                ]
+            },
+            fileBytes: {
+                '/library/image.dcm': [1, 2, 3, 4]
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            let headerReads = 0;
+
+            window.__TAURI__.core.invoke = async (command) => {
+                if (command === 'read_scan_header') {
+                    headerReads++;
+                    return new Uint8Array(256);
+                }
+                throw new Error(`Unexpected command: ${command}`);
+            };
+
+            const progress = [];
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library'], {
+                onProgress: (stats) => {
+                    progress.push({
+                        discovered: stats.discovered,
+                        processed: stats.processed
+                    });
+                }
+            });
+
+            return {
+                studyCount: Object.keys(studies).length,
+                headerReads,
+                finalProgress: progress.at(-1)
+            };
+        });
+
+        expect(result.studyCount).toBe(0);
+        expect(result.headerReads).toBe(1);
+        expect(result.finalProgress).toEqual({
+            discovered: 1,
+            processed: 1
+        });
     });
 
     test('collectPathSources caps recursion depth and skips symlink paths', async ({ page }) => {

@@ -23,6 +23,7 @@
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
     const {
         applyDesktopLibraryScan,
+        applyDesktopLibrarySnapshot,
         displayStudies,
         handleSortClick,
         loadLibraryConfig,
@@ -218,6 +219,14 @@
             return await ready;
         }
 
+        const deadline = performance.now() + 5000;
+        while (performance.now() < deadline) {
+            if (window.__TAURI__) {
+                return window.__TAURI__;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
         return window.__TAURI__ || null;
     }
 
@@ -229,16 +238,25 @@
                 return;
             }
 
-            setLibraryFolderMessage('Loading saved library folder...', 'info');
-            await displayStudies();
-
             const runtime = await waitForDesktopRuntime();
             if (!runtime?.fs || !runtime?.path) {
                 throw new Error('Desktop runtime is not ready yet.');
             }
 
+            const cachedStudies = await app.desktopLibrary.loadCachedStudies(state.libraryFolder);
+            if (cachedStudies && Object.keys(cachedStudies).length > 0) {
+                await applyDesktopLibrarySnapshot(state.libraryFolder, cachedStudies);
+                setLibraryFolderMessage('Showing cached library while refreshing...', 'info');
+            } else {
+                setLibraryFolderMessage('Loading saved library folder...', 'info');
+            }
+            await displayStudies();
+
+            const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
+                ? 'Refreshing saved library folder...'
+                : 'Loading saved library folder...';
             const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
-                onProgress: stats => updateDesktopScanMessage(stats, 'Loading saved library folder...')
+                onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
             });
             await applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {

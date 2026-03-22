@@ -1,6 +1,19 @@
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use sqlx::{Connection, Row, SqliteConnection};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_sql::{DbInstances, DbPool};
+
+const CURRENT_STORE_KEY: &str = "dicom-viewer-notes-v3";
+const LIBRARY_CONFIG_KEY: &str = "dicom-viewer-library-config";
+const LEGACY_WEBKIT_PROFILES: &[&str] = &[
+    "health.divergent.dicomviewer",
+    "dicom-viewer-desktop",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +91,128 @@ pub struct AppConfigRow {
     pub key: String,
     pub value: String,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LegacyDesktopBrowserStore {
+    pub source_path: String,
+    pub notes_json: Option<String>,
+    pub library_config_json: Option<String>,
+}
+
+fn decode_webkit_localstorage_blob(bytes: &[u8]) -> Option<String> {
+    if bytes.is_empty() {
+        return None;
+    }
+
+    if bytes.len() % 2 == 0 {
+        let utf16 = bytes
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect::<Vec<_>>();
+        let utf16 = match utf16.first() {
+            Some(0xfeff) => &utf16[1..],
+            _ => utf16.as_slice(),
+        };
+        if let Ok(decoded) = String::from_utf16(utf16) {
+            if !decoded.is_empty() {
+                return Some(decoded);
+            }
+        }
+    }
+
+    String::from_utf8(bytes.to_vec())
+        .ok()
+        .filter(|decoded| !decoded.is_empty())
+}
+
+fn collect_localstorage_dbs(root: &Path, found: &mut BTreeSet<PathBuf>) {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_localstorage_dbs(&path, found);
+            continue;
+        }
+
+        if path.file_name().and_then(|name| name.to_str()) == Some("localstorage.sqlite3") {
+            found.insert(path);
+        }
+    }
+}
+
+fn legacy_webkit_roots(app: &AppHandle) -> Vec<PathBuf> {
+    let home_dir = match app.path().home_dir() {
+        Ok(path) => path,
+        Err(_) => return Vec::new(),
+    };
+
+    let webkit_root = home_dir.join("Library").join("WebKit");
+    LEGACY_WEBKIT_PROFILES
+        .iter()
+        .map(|profile| webkit_root.join(profile))
+        .filter(|path| path.exists())
+        .collect()
+}
+
+async fn read_legacy_browser_store_from_db(path: &Path) -> Option<LegacyDesktopBrowserStore> {
+    let connect_options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(false)
+        .read_only(true);
+
+    let mut connection = match SqliteConnection::connect_with(&connect_options).await {
+        Ok(connection) => connection,
+        Err(_) => return None,
+    };
+
+    let rows = match sqlx::query("SELECT key, value FROM ItemTable WHERE key IN (?, ?)")
+        .bind(CURRENT_STORE_KEY)
+        .bind(LIBRARY_CONFIG_KEY)
+        .fetch_all(&mut connection)
+        .await
+    {
+        Ok(rows) => rows,
+        Err(_) => return None,
+    };
+
+    let mut notes_json = None;
+    let mut library_config_json = None;
+    for row in rows {
+        let key = match row.try_get::<String, _>("key") {
+            Ok(key) => key,
+            Err(_) => continue,
+        };
+        let value = match row.try_get::<Vec<u8>, _>("value") {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let decoded = match decode_webkit_localstorage_blob(&value) {
+            Some(decoded) => decoded,
+            None => continue,
+        };
+
+        match key.as_str() {
+            CURRENT_STORE_KEY => notes_json = Some(decoded),
+            LIBRARY_CONFIG_KEY => library_config_json = Some(decoded),
+            _ => {}
+        }
+    }
+
+    if notes_json.is_none() && library_config_json.is_none() {
+        return None;
+    }
+
+    Some(LegacyDesktopBrowserStore {
+        source_path: path.to_string_lossy().into_owned(),
+        notes_json,
+        library_config_json,
+    })
 }
 
 #[tauri::command]
@@ -227,4 +362,49 @@ pub async fn apply_desktop_migration(
     })?;
 
     Ok(true)
+}
+
+#[tauri::command]
+pub async fn load_legacy_desktop_browser_stores(
+    app: AppHandle,
+) -> Result<Vec<LegacyDesktopBrowserStore>, PersistenceError> {
+    let mut db_paths = BTreeSet::new();
+    for root in legacy_webkit_roots(&app) {
+        collect_localstorage_dbs(&root, &mut db_paths);
+    }
+
+    let mut stores = Vec::new();
+    for db_path in db_paths {
+        if let Some(store) = read_legacy_browser_store_from_db(&db_path).await {
+            stores.push(store);
+        }
+    }
+
+    Ok(stores)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_webkit_localstorage_blob;
+
+    #[test]
+    fn decodes_utf16le_webkit_localstorage_values() {
+        let bytes = "hello world"
+            .encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            decode_webkit_localstorage_blob(&bytes).as_deref(),
+            Some("hello world")
+        );
+    }
+
+    #[test]
+    fn decodes_utf8_fallback_values() {
+        assert_eq!(
+            decode_webkit_localstorage_blob(br#"{"folder":"/tmp"}"#).as_deref(),
+            Some(r#"{"folder":"/tmp"}"#)
+        );
+    }
 }

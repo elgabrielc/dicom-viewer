@@ -2,6 +2,7 @@
 
 mod decode;
 mod persistence;
+mod scan;
 
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
@@ -78,12 +79,20 @@ fn emit_menu_event<R: Runtime>(app: &AppHandle<R>, event_name: &str) {
 }
 
 fn desktop_db_migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        description: "initial_schema",
-        sql: include_str!("../migrations/001_initial_schema.sql"),
-        kind: MigrationKind::Up,
-    }]
+    vec![
+        Migration {
+            version: 1,
+            description: "initial_schema",
+            sql: include_str!("../migrations/001_initial_schema.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "scan_cache_compat",
+            sql: include_str!("../migrations/002_scan_cache.sql"),
+            kind: MigrationKind::Up,
+        },
+    ]
 }
 
 fn main() {
@@ -104,8 +113,10 @@ fn main() {
         )
         .invoke_handler(tauri::generate_handler![
             persistence::apply_desktop_migration,
+            persistence::load_legacy_desktop_browser_stores,
             decode::decode_frame,
             decode::read_scan_header,
+            scan::read_scan_manifest,
             decode::take_decoded_frame
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {

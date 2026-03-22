@@ -8,7 +8,7 @@
         drop: 'tauri://drag-drop',
         leave: 'tauri://drag-leave'
     };
-    const MAX_ATTEMPTS = 200;
+    const MAX_ATTEMPTS = 1200;
     const RETRY_DELAY_MS = 25;
 
     function getInternals() {

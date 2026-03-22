@@ -38,6 +38,9 @@ async function installMockTauri(page, options = {}) {
                     if (cmd === 'apply_desktop_migration') {
                         return window.__applyMockDesktopMigration(args.db, args.batch, options);
                     }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return options.legacyDesktopStores || [];
+                    }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
             },
@@ -253,6 +256,87 @@ test.describe('Desktop report persistence', () => {
         expect(persisted.sqlStore.series_notes).toHaveLength(1);
         expect(persisted.sqlStore.comments).toHaveLength(2);
         expect(persisted.sqlStore.reports).toHaveLength(1);
+    });
+
+    test('desktop storage repairs migration from legacy packaged browser stores', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.packaged-legacy.study';
+        const reportId = 'desktop-packaged-legacy-report';
+        const reportPath = `/mock/appdata/reports/${studyUid}/${reportId}.pdf`;
+        const libraryConfig = {
+            folder: '/Users/gabriel/Desktop/radiology all discs',
+            lastScan: '2026-03-20T14:51:37.855Z'
+        };
+
+        await installMockTauri(page, {
+            initialState: {
+                'sqlite:viewer.db': {
+                    study_notes: [],
+                    series_notes: [],
+                    comments: [],
+                    reports: [],
+                    app_config: [
+                        { key: 'desktop_library_config', value: JSON.stringify(libraryConfig), updated_at: 1 },
+                        { key: 'localstorage_migrated', value: '1', updated_at: 1 }
+                    ],
+                    meta: { lastCommentId: 0 }
+                }
+            },
+            legacyDesktopStores: [
+                {
+                    sourcePath: '/Users/gabriel/Library/WebKit/health.divergent.dicomviewer/.../localstorage.sqlite3',
+                    notesJson: JSON.stringify({
+                        studies: {
+                            [studyUid]: {
+                                description: '',
+                                comments: [],
+                                series: {},
+                                reports: [
+                                    {
+                                        id: reportId,
+                                        name: 'Migrated report.pdf',
+                                        type: 'pdf',
+                                        size: 123,
+                                        filePath: reportPath,
+                                        addedAt: 303,
+                                        updatedAt: 404
+                                    }
+                                ]
+                            }
+                        }
+                    }),
+                    libraryConfigJson: JSON.stringify(libraryConfig)
+                }
+            ]
+        });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const repaired = await page.evaluate(async ({ studyUid, reportId, reportPath }) => {
+            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+            localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
+
+            await window.NotesAPI.initializeDesktopStorage();
+
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+
+            return {
+                notes,
+                reportUrl: window.NotesAPI.getReportFileUrl(reportId),
+                sqlStore
+            };
+        }, { studyUid, reportId, reportPath });
+
+        expect(repaired.notes.studies[studyUid].reports).toHaveLength(1);
+        expect(repaired.notes.studies[studyUid].reports[0].filePath).toBe(reportPath);
+        expect(repaired.reportUrl).toBe(`asset://local/${encodeURIComponent(reportPath)}`);
+        expect(repaired.sqlStore.reports).toHaveLength(1);
+        expect(repaired.sqlStore.app_config).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ key: 'localstorage_migrated', value: '1' }),
+                expect.objectContaining({ key: 'legacy_desktop_browser_store_migrated', value: '1' })
+            ])
+        );
     });
 
     test('desktop backend persists report files and metadata across reloads', async ({ page }) => {

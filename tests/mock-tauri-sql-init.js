@@ -16,6 +16,7 @@
             comments: [],
             reports: [],
             app_config: [],
+            desktop_scan_cache: [],
             meta: {
                 lastCommentId: 0
             }
@@ -30,12 +31,29 @@
         const storageKey = createStorageKey(db);
         const raw = localStorage.getItem(storageKey);
         if (raw) {
-            return safeParse(raw, createEmptyDbState());
+            return hydrateState(safeParse(raw, createEmptyDbState()));
         }
         const initial = options?.initialState?.[db];
-        const state = initial ? clone(initial) : createEmptyDbState();
+        const state = hydrateState(initial ? clone(initial) : createEmptyDbState());
         persistState(db, state);
         return state;
+    }
+
+    function hydrateState(state) {
+        const normalized = state && typeof state === 'object' ? state : createEmptyDbState();
+        if (!Array.isArray(normalized.study_notes)) normalized.study_notes = [];
+        if (!Array.isArray(normalized.series_notes)) normalized.series_notes = [];
+        if (!Array.isArray(normalized.comments)) normalized.comments = [];
+        if (!Array.isArray(normalized.reports)) normalized.reports = [];
+        if (!Array.isArray(normalized.app_config)) normalized.app_config = [];
+        if (!Array.isArray(normalized.desktop_scan_cache)) normalized.desktop_scan_cache = [];
+        if (!normalized.meta || typeof normalized.meta !== 'object') {
+            normalized.meta = { lastCommentId: 0 };
+        }
+        if (!Number.isFinite(Number(normalized.meta.lastCommentId))) {
+            normalized.meta.lastCommentId = 0;
+        }
+        return normalized;
     }
 
     function persistState(db, state) {
@@ -237,6 +255,45 @@
                     return { rowsAffected: 1, lastInsertId: null };
                 }
 
+                if (normalized.startsWith('insert into desktop_scan_cache')) {
+                    const stride = 8;
+                    for (let index = 0; index < values.length; index += stride) {
+                        const [
+                            path,
+                            rootPath,
+                            size,
+                            modifiedMs,
+                            scannerVersion,
+                            renderable,
+                            metaJson,
+                            updatedAt
+                        ] = values.slice(index, index + stride);
+                        const existing = state.desktop_scan_cache.find((row) => row.path === path);
+                        if (existing) {
+                            existing.root_path = rootPath;
+                            existing.size = size;
+                            existing.modified_ms = modifiedMs;
+                            existing.scanner_version = scannerVersion;
+                            existing.renderable = renderable;
+                            existing.meta_json = metaJson;
+                            existing.updated_at = updatedAt;
+                        } else {
+                            state.desktop_scan_cache.push({
+                                path,
+                                root_path: rootPath,
+                                size,
+                                modified_ms: modifiedMs,
+                                scanner_version: scannerVersion,
+                                renderable,
+                                meta_json: metaJson,
+                                updated_at: updatedAt
+                            });
+                        }
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: values.length / stride, lastInsertId: null };
+                }
+
                 throw new Error(`Unhandled mock SQL execute: ${query}`);
             },
 
@@ -309,6 +366,20 @@
                         (entry) => String(entry.id) === String(id) && entry.study_uid === studyUid
                     );
                     return row ? [{ file_path: row.file_path }] : [];
+                }
+
+                if (normalized.startsWith('select path, size, modified_ms, renderable, meta_json from desktop_scan_cache where root_path in')) {
+                    const scannerVersion = Number(values[values.length - 1]);
+                    const roots = new Set(values.slice(0, -1));
+                    return state.desktop_scan_cache
+                        .filter((row) => roots.has(row.root_path) && Number(row.scanner_version) === scannerVersion)
+                        .map((row) => ({
+                            path: row.path,
+                            size: row.size,
+                            modified_ms: row.modified_ms,
+                            renderable: row.renderable,
+                            meta_json: row.meta_json
+                        }));
                 }
 
                 throw new Error(`Unhandled mock SQL select: ${query}`);
