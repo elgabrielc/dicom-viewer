@@ -2030,6 +2030,25 @@ test.describe('Desktop library scanning', () => {
         await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
     });
 
+    test('desktop library config falls back to the mirrored local config when native storage is unavailable', async ({ page }) => {
+        await installMockDesktop(page, {
+            initialConfig: {
+                folder: '/slow-library',
+                lastScan: '2026-03-07T12:00:00.000Z'
+            },
+            dirs: {
+                '/slow-library': []
+            },
+            readDirDelayMs: 500,
+            sqlLoadError: 'mock desktop sqlite unavailable'
+        });
+
+        await page.goto(AUTOLOAD_URL);
+        await expect(page.locator('#libraryFolderConfig')).toBeVisible();
+        await expect(page.locator('#libraryFolderInput')).toHaveValue('/slow-library');
+        await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
+    });
+
     test('desktop auto-load shows a cached library snapshot while refresh is in flight', async ({ page }) => {
         const cachedStudies = {
             '1.2.840.cached.study': {

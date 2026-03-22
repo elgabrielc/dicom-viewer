@@ -1,6 +1,29 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const notesApi = window.NotesAPI;
+    const LEGACY_LIBRARY_CONFIG_KEY = 'dicom-viewer-library-config';
+
+    function normalizeDesktopConfig(config) {
+        return {
+            folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
+            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null
+        };
+    }
+
+    function loadLegacyDesktopConfig() {
+        try {
+            const raw = localStorage.getItem(LEGACY_LIBRARY_CONFIG_KEY);
+            return normalizeDesktopConfig(raw ? JSON.parse(raw) : null);
+        } catch {
+            return normalizeDesktopConfig(null);
+        }
+    }
+
+    function saveLegacyDesktopConfig(config) {
+        try {
+            localStorage.setItem(LEGACY_LIBRARY_CONFIG_KEY, JSON.stringify(normalizeDesktopConfig(config)));
+        } catch {}
+    }
 
     const DesktopLibrary = {
         SCAN_TIMING_KEY: 'dicom-viewer-debug-scan-timing',
@@ -16,12 +39,28 @@
         },
 
         async getConfig() {
+            let nativeConfig = null;
             try {
-                return await notesApi.loadDesktopLibraryConfig();
+                nativeConfig = normalizeDesktopConfig(await notesApi.loadDesktopLibraryConfig());
+                if (nativeConfig.folder || nativeConfig.lastScan) {
+                    saveLegacyDesktopConfig(nativeConfig);
+                    return nativeConfig;
+                }
             } catch (e) {
                 console.warn('DesktopLibrary: failed to load config:', e);
-                return { folder: null, lastScan: null };
             }
+
+            const legacyConfig = loadLegacyDesktopConfig();
+            if (legacyConfig.folder || legacyConfig.lastScan) {
+                try {
+                    await notesApi.saveDesktopLibraryConfig(legacyConfig);
+                } catch (error) {
+                    console.warn('DesktopLibrary: failed to repair native config from local fallback:', error);
+                }
+                return legacyConfig;
+            }
+
+            return nativeConfig || { folder: null, lastScan: null };
         },
 
         isScanTimingEnabled() {
@@ -41,7 +80,14 @@
         },
 
         async saveConfig(config) {
-            return await notesApi.saveDesktopLibraryConfig(config);
+            const normalized = normalizeDesktopConfig(config);
+            saveLegacyDesktopConfig(normalized);
+            try {
+                return normalizeDesktopConfig(await notesApi.saveDesktopLibraryConfig(normalized));
+            } catch (error) {
+                console.warn('DesktopLibrary: failed to save native config, keeping local fallback:', error);
+                return normalized;
+            }
         },
 
         async setFolder(path) {

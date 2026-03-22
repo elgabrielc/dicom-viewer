@@ -17,11 +17,12 @@
     }
 
     function installCompatFromInternals(internals) {
-        if (window.__TAURI__ || !internals?.invoke) {
+        if (!internals?.invoke) {
             return window.__TAURI__ || null;
         }
 
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = window.__TAURI_EVENT_PLUGIN_INTERNALS__ || {};
+        const tauri = window.__TAURI__ || {};
 
         function invoke(cmd, args, options) {
             return internals.invoke(cmd, args, options);
@@ -178,74 +179,109 @@
             };
         }
 
-        window.__TAURI__ = {
-            core: {
-                convertFileSrc(filePath, protocol) {
-                    return internals.convertFileSrc(filePath, protocol);
-                },
-                invoke(command, args, options) {
-                    return invoke(command, args, options);
-                }
-            },
-            dialog: {
-                async open(options = {}) {
-                    if (typeof options === 'object') {
-                        Object.freeze(options);
-                    }
-                    return invoke('plugin:dialog|open', { options });
-                }
-            },
-            event: {
-                listen
-            },
-            fs: {
-                async exists(path, options) {
-                    return invoke('plugin:fs|exists', { path, options });
-                },
-                async mkdir(path, options) {
-                    return invoke('plugin:fs|mkdir', { path, options });
-                },
-                async readDir(path, options) {
-                    return invoke('plugin:fs|read_dir', { path, options });
-                },
-                readFile,
-                async remove(path, options) {
-                    return invoke('plugin:fs|remove', { path, options });
-                },
-                rename,
-                stat,
-                writeFile
-            },
-            path: {
-                async appDataDir() {
-                    return invoke('plugin:path|resolve_directory', {
-                        directory: APP_DATA_DIRECTORY
-                    });
-                },
-                async join(...paths) {
-                    return invoke('plugin:path|join', { paths });
-                },
-                async normalize(path) {
-                    return invoke('plugin:path|normalize', { path });
-                }
-            },
-            sql: {
-                async load(db) {
-                    await invoke('plugin:sql|load', { db });
-                    return createSqlConnection(db);
-                }
-            },
-            webview: {
-                getCurrentWebview: createCurrentWebview
-            }
-        };
+        tauri.core = tauri.core || {};
+        if (typeof tauri.core.convertFileSrc !== 'function') {
+            tauri.core.convertFileSrc = function convertFileSrc(filePath, protocol) {
+                return internals.convertFileSrc(filePath, protocol);
+            };
+        }
+        if (typeof tauri.core.invoke !== 'function') {
+            tauri.core.invoke = function coreInvoke(command, args, options) {
+                return invoke(command, args, options);
+            };
+        }
 
-        return window.__TAURI__;
+        tauri.dialog = tauri.dialog || {};
+        if (typeof tauri.dialog.open !== 'function') {
+            tauri.dialog.open = async function open(options = {}) {
+                if (typeof options === 'object') {
+                    Object.freeze(options);
+                }
+                return invoke('plugin:dialog|open', { options });
+            };
+        }
+
+        tauri.event = tauri.event || {};
+        if (typeof tauri.event.listen !== 'function') {
+            tauri.event.listen = listen;
+        }
+
+        tauri.fs = tauri.fs || {};
+        if (typeof tauri.fs.exists !== 'function') {
+            tauri.fs.exists = async function exists(path, options) {
+                return invoke('plugin:fs|exists', { path, options });
+            };
+        }
+        if (typeof tauri.fs.mkdir !== 'function') {
+            tauri.fs.mkdir = async function mkdir(path, options) {
+                return invoke('plugin:fs|mkdir', { path, options });
+            };
+        }
+        if (typeof tauri.fs.readDir !== 'function') {
+            tauri.fs.readDir = async function readDir(path, options) {
+                return invoke('plugin:fs|read_dir', { path, options });
+            };
+        }
+        if (typeof tauri.fs.readFile !== 'function') {
+            tauri.fs.readFile = readFile;
+        }
+        if (typeof tauri.fs.remove !== 'function') {
+            tauri.fs.remove = async function remove(path, options) {
+                return invoke('plugin:fs|remove', { path, options });
+            };
+        }
+        if (typeof tauri.fs.rename !== 'function') {
+            tauri.fs.rename = rename;
+        }
+        if (typeof tauri.fs.stat !== 'function') {
+            tauri.fs.stat = stat;
+        }
+        if (typeof tauri.fs.writeFile !== 'function') {
+            tauri.fs.writeFile = writeFile;
+        }
+
+        tauri.path = tauri.path || {};
+        if (typeof tauri.path.appDataDir !== 'function') {
+            tauri.path.appDataDir = async function appDataDir() {
+                return invoke('plugin:path|resolve_directory', {
+                    directory: APP_DATA_DIRECTORY
+                });
+            };
+        }
+        if (typeof tauri.path.join !== 'function') {
+            tauri.path.join = async function join(...paths) {
+                return invoke('plugin:path|join', { paths });
+            };
+        }
+        if (typeof tauri.path.normalize !== 'function') {
+            tauri.path.normalize = async function normalize(path) {
+                return invoke('plugin:path|normalize', { path });
+            };
+        }
+
+        tauri.sql = tauri.sql || {};
+        if (typeof tauri.sql.load !== 'function') {
+            tauri.sql.load = async function load(db) {
+                await invoke('plugin:sql|load', { db });
+                return createSqlConnection(db);
+            };
+        }
+
+        tauri.webview = tauri.webview || {};
+        if (typeof tauri.webview.getCurrentWebview !== 'function') {
+            tauri.webview.getCurrentWebview = createCurrentWebview;
+        }
+
+        window.__TAURI__ = tauri;
+        return tauri;
     }
 
     function resolveDesktopRuntime() {
-        if (window.__TAURI__) return window.__TAURI__;
-        return installCompatFromInternals(getInternals());
+        const internals = getInternals();
+        if (internals?.invoke) {
+            return installCompatFromInternals(internals);
+        }
+        return window.__TAURI__ || null;
     }
 
     window.__DICOM_VIEWER_TAURI_READY__ = window.__DICOM_VIEWER_TAURI_READY__ || new Promise(resolve => {

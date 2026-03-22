@@ -452,6 +452,9 @@
     window.__createMockTauriSql = function createMockTauriSql(options = {}) {
         return {
             async load(db) {
+                if (options.sqlLoadError) {
+                    throw new Error(options.sqlLoadError);
+                }
                 loadState(db, options);
                 return makeConnection(db, options);
             }
