@@ -212,17 +212,24 @@
     }
 
     async function waitForDesktopRuntime() {
-        if (window.__TAURI__) return window.__TAURI__;
+        const runtime = window.__TAURI__;
+        if (runtime?.fs?.readFile && runtime?.path?.appDataDir && runtime?.path?.join) {
+            return runtime;
+        }
 
-        const ready = window.__DICOM_VIEWER_TAURI_READY__;
+        const ready = window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || window.__DICOM_VIEWER_TAURI_READY__;
         if (ready && typeof ready.then === 'function') {
-            return await ready;
+            const resolved = await ready;
+            if (resolved?.fs?.readFile && resolved?.path?.appDataDir && resolved?.path?.join) {
+                return resolved;
+            }
         }
 
         const deadline = performance.now() + 5000;
         while (performance.now() < deadline) {
-            if (window.__TAURI__) {
-                return window.__TAURI__;
+            const current = window.__TAURI__;
+            if (current?.fs?.readFile && current?.path?.appDataDir && current?.path?.join) {
+                return current;
             }
             await new Promise((resolve) => setTimeout(resolve, 50));
         }

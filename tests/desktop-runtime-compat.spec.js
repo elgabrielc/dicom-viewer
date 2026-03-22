@@ -389,6 +389,132 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
     expect(result.hasSqlApi).toBe(true);
 });
 
+test('desktop runtime ready promise waits for a partial global Tauri object to finish initializing', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        window.__TAURI__ = {
+            core: {
+                invoke() {
+                    return Promise.resolve('native-invoke');
+                }
+            }
+        };
+
+        setTimeout(() => {
+            window.__TAURI__.dialog = {
+                async open() {
+                    return null;
+                }
+            };
+            window.__TAURI__.fs = {
+                async readDir() {
+                    return [];
+                }
+            };
+            window.__TAURI__.path = {
+                async appDataDir() {
+                    return '/mock/appdata';
+                }
+            };
+            window.__TAURI__.sql = window.__createMockTauriSql();
+            window.__TAURI__.webview = {
+                getCurrentWebview() {
+                    return {
+                        onDragDropEvent() {
+                            return Promise.resolve(() => {});
+                        }
+                    };
+                }
+            };
+        }, 150);
+    });
+
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate(async () => {
+        const settledEarly = await Promise.race([
+            window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 25))
+        ]);
+        const runtime = await window.__DICOM_VIEWER_TAURI_READY__;
+        return {
+            settledEarly,
+            hasDialogApi: typeof runtime?.dialog?.open === 'function',
+            hasFsApi: typeof runtime?.fs?.readDir === 'function',
+            hasPathApi: typeof runtime?.path?.appDataDir === 'function',
+            hasSqlApi: typeof runtime?.sql?.load === 'function'
+        };
+    });
+
+    expect(result.settledEarly).toBe(false);
+    expect(result.hasDialogApi).toBe(true);
+    expect(result.hasFsApi).toBe(true);
+    expect(result.hasPathApi).toBe(true);
+    expect(result.hasSqlApi).toBe(true);
+});
+
+test('desktop storage ready promise resolves before the full desktop shell is available', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        window.__TAURI__ = {
+            core: {
+                invoke() {
+                    return Promise.resolve('native-invoke');
+                }
+            },
+            fs: {
+                async exists() {
+                    return false;
+                },
+                async remove() {
+                    return null;
+                },
+                async rename() {
+                    return null;
+                },
+                async writeFile() {
+                    return null;
+                }
+            },
+            path: {
+                async appDataDir() {
+                    return '/mock/appdata';
+                },
+                async join(...parts) {
+                    return parts.join('/');
+                }
+            },
+            sql: window.__createMockTauriSql()
+        };
+    });
+
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate(async () => {
+        const storageRuntime = await window.__DICOM_VIEWER_TAURI_STORAGE_READY__;
+        const fullSettledEarly = await Promise.race([
+            window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 25))
+        ]);
+
+        return {
+            hasStorageReadyPromise: typeof window.__DICOM_VIEWER_TAURI_STORAGE_READY__?.then === 'function',
+            hasCoreInvoke: typeof storageRuntime?.core?.invoke === 'function',
+            hasFsWriteFile: typeof storageRuntime?.fs?.writeFile === 'function',
+            hasPathJoin: typeof storageRuntime?.path?.join === 'function',
+            hasSqlApi: typeof storageRuntime?.sql?.load === 'function',
+            fullSettledEarly
+        };
+    });
+
+    expect(result.hasStorageReadyPromise).toBe(true);
+    expect(result.hasCoreInvoke).toBe(true);
+    expect(result.hasFsWriteFile).toBe(true);
+    expect(result.hasPathJoin).toBe(true);
+    expect(result.hasSqlApi).toBe(true);
+    expect(result.fullSettledEarly).toBe(false);
+});
+
 test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', async ({ page }) => {
     await page.goto('http://127.0.0.1:5001/?nolib');
 

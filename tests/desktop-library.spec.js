@@ -147,6 +147,13 @@ async function installMockDesktop(page, options = {}) {
                 }
             },
             fs: {
+                async exists(path) {
+                    const normalized = normalizePath(path);
+                    return (
+                        Object.prototype.hasOwnProperty.call(fileBytes, normalized)
+                        || localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null
+                    );
+                },
                 async readDir(path) {
                     if (readDirDelayMs > 0) {
                         await new Promise((resolve) => setTimeout(resolve, readDirDelayMs));

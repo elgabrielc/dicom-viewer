@@ -11,6 +11,32 @@
     const MAX_ATTEMPTS = 1200;
     const RETRY_DELAY_MS = 25;
 
+    function hasReadyDesktopStorageApis(runtime) {
+        return !!(
+            runtime
+            && typeof runtime.core?.invoke === 'function'
+            && typeof runtime.fs?.exists === 'function'
+            && typeof runtime.fs?.remove === 'function'
+            && typeof runtime.fs?.rename === 'function'
+            && typeof runtime.fs?.writeFile === 'function'
+            && typeof runtime.path?.appDataDir === 'function'
+            && typeof runtime.path?.join === 'function'
+            && typeof runtime.sql?.load === 'function'
+        );
+    }
+
+    function hasReadyDesktopApis(runtime) {
+        return !!(
+            runtime
+            && typeof runtime.core?.invoke === 'function'
+            && typeof runtime.dialog?.open === 'function'
+            && typeof runtime.fs?.readDir === 'function'
+            && typeof runtime.path?.appDataDir === 'function'
+            && typeof runtime.sql?.load === 'function'
+            && typeof runtime.webview?.getCurrentWebview === 'function'
+        );
+    }
+
     function getInternals() {
         const internals = window.__TAURI_INTERNALS__;
         return internals?.invoke ? internals : null;
@@ -276,39 +302,46 @@
         return tauri;
     }
 
-    function resolveDesktopRuntime() {
+    function resolveDesktopRuntime(validator = hasReadyDesktopApis) {
         const internals = getInternals();
         if (internals?.invoke) {
-            return installCompatFromInternals(internals);
+            const runtime = installCompatFromInternals(internals);
+            return validator(runtime) ? runtime : null;
         }
-        return window.__TAURI__ || null;
+        return validator(window.__TAURI__) ? window.__TAURI__ : null;
     }
 
-    window.__DICOM_VIEWER_TAURI_READY__ = window.__DICOM_VIEWER_TAURI_READY__ || new Promise(resolve => {
-        let attempts = 0;
+    function createReadyPromise(validator) {
+        return new Promise(resolve => {
+            let attempts = 0;
 
-        function finish(runtime) {
-            resolve(runtime || null);
-        }
-
-        function tick() {
-            const runtime = resolveDesktopRuntime();
-            if (runtime) {
-                finish(runtime);
-                return;
+            function finish(runtime) {
+                resolve(runtime || null);
             }
 
-            if (attempts >= MAX_ATTEMPTS) {
-                finish(null);
-                return;
+            function tick() {
+                const runtime = resolveDesktopRuntime(validator);
+                if (runtime) {
+                    finish(runtime);
+                    return;
+                }
+
+                if (attempts >= MAX_ATTEMPTS) {
+                    finish(null);
+                    return;
+                }
+
+                attempts += 1;
+                setTimeout(tick, RETRY_DELAY_MS);
             }
 
-            attempts += 1;
-            setTimeout(tick, RETRY_DELAY_MS);
-        }
+            tick();
+        });
+    }
 
-        tick();
-    });
+    window.__DICOM_VIEWER_TAURI_STORAGE_READY__ = window.__DICOM_VIEWER_TAURI_STORAGE_READY__
+        || createReadyPromise(hasReadyDesktopStorageApis);
 
-    resolveDesktopRuntime();
+    window.__DICOM_VIEWER_TAURI_READY__ = window.__DICOM_VIEWER_TAURI_READY__ || createReadyPromise(hasReadyDesktopApis);
+    resolveDesktopRuntime(hasReadyDesktopStorageApis) || resolveDesktopRuntime();
 })();

@@ -227,7 +227,7 @@ const NotesAPI = (() => {
     }
 
     async function waitForDesktopRuntime() {
-        const ready = window.__DICOM_VIEWER_TAURI_READY__;
+        const ready = window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || window.__DICOM_VIEWER_TAURI_READY__;
         if (ready && typeof ready.then === 'function') {
             await ready;
         }
