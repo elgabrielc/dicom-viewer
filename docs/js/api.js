@@ -18,6 +18,7 @@ const NotesAPI = (() => {
     const DESKTOP_LIBRARY_CONFIG_STORAGE_KEY = 'dicom-viewer-library-config';
     const DESKTOP_SCAN_CACHE_VERSION = 1;
     const DESKTOP_SCAN_CACHE_CHUNK_SIZE = 256;
+    const DESKTOP_INIT_RETRY_MS = 5000;
     const LEGACY_STORAGE_KEY = 'dicom-viewer-comments';
     const LEGACY_REPORTS_DB = 'dicom-viewer-reports';
     const LEGACY_REPORTS_STORE = 'reports';
@@ -32,7 +33,11 @@ const NotesAPI = (() => {
     let lastCommentTimestamp = 0;
     let commentCounter = 0;
     let desktopDbPromise = null;
+    let desktopDbFailure = null;
+    let desktopDbRetryAt = 0;
     let desktopMigrationPromise = null;
+    let desktopMigrationFailure = null;
+    let desktopMigrationRetryAt = 0;
     const desktopReportPathCache = new Map();
 
     function createEmptyStore() {
@@ -191,6 +196,19 @@ const NotesAPI = (() => {
         }
     }
 
+    function sortLegacyDesktopStores(stores) {
+        return (Array.isArray(stores) ? stores.slice() : []).sort((left, right) => {
+            const leftModified = Number.isFinite(Number(left?.modifiedMs))
+                ? Number(left.modifiedMs)
+                : (Number.isFinite(Number(left?.modified_ms)) ? Number(left.modified_ms) : -1);
+            const rightModified = Number.isFinite(Number(right?.modifiedMs))
+                ? Number(right.modifiedMs)
+                : (Number.isFinite(Number(right?.modified_ms)) ? Number(right.modified_ms) : -1);
+            return leftModified - rightModified
+                || String(left?.sourcePath || '').localeCompare(String(right?.sourcePath || ''));
+        });
+    }
+
     function hasStudyNotes(entry) {
         if (!entry || typeof entry !== 'object') return false;
         if ((entry.description || '').trim()) return true;
@@ -240,13 +258,25 @@ const NotesAPI = (() => {
         if (!sql?.load) {
             throw new Error('Desktop SQL runtime is not ready. Quit and reopen the app if this persists.');
         }
+        if (desktopDbFailure && Date.now() < desktopDbRetryAt) {
+            throw desktopDbFailure;
+        }
         if (!desktopDbPromise) {
             desktopDbPromise = sql.load(DESKTOP_DB_URL).catch((error) => {
                 desktopDbPromise = null;
+                desktopDbFailure = error;
+                desktopDbRetryAt = Date.now() + DESKTOP_INIT_RETRY_MS;
                 throw error;
             });
         }
-        return desktopDbPromise;
+        try {
+            const db = await desktopDbPromise;
+            desktopDbFailure = null;
+            desktopDbRetryAt = 0;
+            return db;
+        } catch (error) {
+            throw error;
+        }
     }
 
     async function getDesktopAppConfigValue(key) {
@@ -564,11 +594,12 @@ const NotesAPI = (() => {
         });
     }
 
-    async function migrateLegacyReportBlobs(payload) {
+    async function migrateLegacyReportBlobs(payload, db) {
         const commentsBlob = payload?.comments;
-        if (!commentsBlob || typeof commentsBlob !== 'object') return;
+        if (!commentsBlob || typeof commentsBlob !== 'object') return 0;
 
         const legacyDb = await openLegacyReportsDb();
+        let failures = 0;
         try {
             for (const [studyUid, stored] of Object.entries(commentsBlob)) {
                 const reports = stored?.reports || [];
@@ -576,14 +607,23 @@ const NotesAPI = (() => {
                     if (!report?.id) continue;
                     const blob = await getLegacyReportBlob(legacyDb, report.id);
                     if (!blob) continue;
-                    const filename = report.name || 'report';
-                    const file = new File([blob], filename, { type: blob.type || '' });
-                    await storeDesktopReport(studyUid, file, report, { skipInit: true });
+                    try {
+                        const filename = report.name || 'report';
+                        const file = new File([blob], filename, { type: blob.type || '' });
+                        await storeDesktopReportWithDb(db, studyUid, file, report);
+                    } catch (error) {
+                        failures += 1;
+                        console.warn(
+                            `DesktopSqliteBackend: failed to migrate legacy report blob ${report.id} for ${studyUid}:`,
+                            error
+                        );
+                    }
                 }
             }
         } finally {
             if (legacyDb) legacyDb.close();
         }
+        return failures;
     }
 
     async function applyDesktopMigrationBatch(batch) {
@@ -611,7 +651,7 @@ const NotesAPI = (() => {
         }
 
         const stores = await invoke('load_legacy_desktop_browser_stores');
-        return Array.isArray(stores) ? stores : [];
+        return sortLegacyDesktopStores(stores);
     }
 
     async function migrateDesktopLocalStorage() {
@@ -644,7 +684,14 @@ const NotesAPI = (() => {
         await applyDesktopMigrationBatch(batch);
 
         if (hasLegacyStore) {
-            await migrateLegacyReportBlobs(legacyPayload);
+            const db = await getDesktopDb();
+            const blobFailures = await migrateLegacyReportBlobs(legacyPayload, db);
+            if (blobFailures > 0) {
+                console.warn(
+                    `DesktopSqliteBackend: deferred completion of legacy localStorage migration after ${blobFailures} legacy report blob failure(s).`
+                );
+                return true;
+            }
         }
 
         await setDesktopAppConfigValue(DESKTOP_LOCALSTORAGE_MIGRATION_KEY, '1');
@@ -685,27 +732,29 @@ const NotesAPI = (() => {
 
     async function initializeDesktopPersistence() {
         if (getBackend() !== 'desktop') return false;
+        if (desktopMigrationFailure && Date.now() < desktopMigrationRetryAt) {
+            throw desktopMigrationFailure;
+        }
         if (!desktopMigrationPromise) {
             desktopMigrationPromise = (async () => {
                 await getDesktopDb();
                 await migrateDesktopLocalStorage();
                 await migrateLegacyDesktopBrowserStores();
+                desktopMigrationFailure = null;
+                desktopMigrationRetryAt = 0;
                 return true;
             })().catch((error) => {
                 desktopMigrationPromise = null;
+                desktopMigrationFailure = error;
+                desktopMigrationRetryAt = Date.now() + DESKTOP_INIT_RETRY_MS;
                 throw error;
             });
         }
         return desktopMigrationPromise;
     }
 
-    async function storeDesktopReport(studyUid, file, report = {}, options = {}) {
+    async function storeDesktopReportWithDb(db, studyUid, file, report = {}) {
         if (!studyUid || !file || !report?.id) return null;
-
-        if (!options.skipInit) {
-            await initializeDesktopPersistence();
-        }
-        const db = await getDesktopDb();
         const { fs, path } = getDesktopTauriApis();
         if (!fs || !path || typeof fs.writeFile !== 'function' || typeof fs.rename !== 'function') {
             throw new Error('Desktop filesystem runtime is not ready.');
@@ -822,6 +871,13 @@ const NotesAPI = (() => {
             addedAt,
             updatedAt
         };
+    }
+
+    async function storeDesktopReport(studyUid, file, report = {}) {
+        if (!studyUid || !file || !report?.id) return null;
+        await initializeDesktopPersistence();
+        const db = await getDesktopDb();
+        return await storeDesktopReportWithDb(db, studyUid, file, report);
     }
 
     // ---- LocalBackend ----

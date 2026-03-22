@@ -4,12 +4,14 @@ use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
+    time::UNIX_EPOCH,
 };
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_sql::{DbInstances, DbPool};
 
 const CURRENT_STORE_KEY: &str = "dicom-viewer-notes-v3";
 const LIBRARY_CONFIG_KEY: &str = "dicom-viewer-library-config";
+const LEGACY_WEBKIT_SCAN_MAX_DEPTH: usize = 12;
 const LEGACY_WEBKIT_PROFILES: &[&str] = &[
     "health.divergent.dicomviewer",
     "dicom-viewer-desktop",
@@ -97,6 +99,7 @@ pub struct AppConfigRow {
 #[serde(rename_all = "camelCase")]
 pub struct LegacyDesktopBrowserStore {
     pub source_path: String,
+    pub modified_ms: Option<i64>,
     pub notes_json: Option<String>,
     pub library_config_json: Option<String>,
 }
@@ -127,7 +130,19 @@ fn decode_webkit_localstorage_blob(bytes: &[u8]) -> Option<String> {
         .filter(|decoded| !decoded.is_empty())
 }
 
-fn collect_localstorage_dbs(root: &Path, found: &mut BTreeSet<PathBuf>) {
+fn modified_ms(path: &Path) -> Option<i64> {
+    fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+}
+
+fn collect_localstorage_dbs(root: &Path, depth: usize, found: &mut BTreeSet<PathBuf>) {
+    if depth > LEGACY_WEBKIT_SCAN_MAX_DEPTH {
+        return;
+    }
+
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(_) => return,
@@ -135,15 +150,42 @@ fn collect_localstorage_dbs(root: &Path, found: &mut BTreeSet<PathBuf>) {
 
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir() {
-            collect_localstorage_dbs(&path, found);
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.file_type().is_symlink() {
             continue;
         }
 
-        if path.file_name().and_then(|name| name.to_str()) == Some("localstorage.sqlite3") {
+        if metadata.is_dir() {
+            if depth < LEGACY_WEBKIT_SCAN_MAX_DEPTH {
+                collect_localstorage_dbs(&path, depth + 1, found);
+            }
+            continue;
+        }
+
+        if metadata.is_file()
+            && path.file_name().and_then(|name| name.to_str()) == Some("localstorage.sqlite3")
+        {
             found.insert(path);
         }
     }
+}
+
+fn sort_localstorage_db_paths(db_paths: BTreeSet<PathBuf>) -> Vec<PathBuf> {
+    let mut ordered = db_paths
+        .into_iter()
+        .map(|path| (modified_ms(&path), path))
+        .collect::<Vec<_>>();
+
+    // Oldest-to-newest preserves deterministic ordering while letting the most
+    // recently written store win when JS upserts later rows over earlier ones.
+    ordered.sort_by(|(modified_a, path_a), (modified_b, path_b)| {
+        modified_a.cmp(modified_b).then_with(|| path_a.cmp(path_b))
+    });
+
+    ordered.into_iter().map(|(_, path)| path).collect()
 }
 
 fn legacy_webkit_roots(app: &AppHandle) -> Vec<PathBuf> {
@@ -210,6 +252,7 @@ async fn read_legacy_browser_store_from_db(path: &Path) -> Option<LegacyDesktopB
 
     Some(LegacyDesktopBrowserStore {
         source_path: path.to_string_lossy().into_owned(),
+        modified_ms: modified_ms(path),
         notes_json,
         library_config_json,
     })
@@ -370,11 +413,18 @@ pub async fn load_legacy_desktop_browser_stores(
 ) -> Result<Vec<LegacyDesktopBrowserStore>, PersistenceError> {
     let mut db_paths = BTreeSet::new();
     for root in legacy_webkit_roots(&app) {
-        collect_localstorage_dbs(&root, &mut db_paths);
+        let metadata = match fs::symlink_metadata(&root) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            continue;
+        }
+        collect_localstorage_dbs(&root, 0, &mut db_paths);
     }
 
     let mut stores = Vec::new();
-    for db_path in db_paths {
+    for db_path in sort_localstorage_db_paths(db_paths) {
         if let Some(store) = read_legacy_browser_store_from_db(&db_path).await {
             stores.push(store);
         }
@@ -385,7 +435,24 @@ pub async fn load_legacy_desktop_browser_stores(
 
 #[cfg(test)]
 mod tests {
-    use super::decode_webkit_localstorage_blob;
+    use super::{
+        collect_localstorage_dbs, decode_webkit_localstorage_blob, modified_ms,
+        sort_localstorage_db_paths, LEGACY_WEBKIT_SCAN_MAX_DEPTH,
+    };
+    use std::{collections::BTreeSet, fs, path::PathBuf, time::{Duration, SystemTime, UNIX_EPOCH}};
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "dicom-viewer-persistence-{label}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time should be valid")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("temp dir should be creatable");
+        dir
+    }
 
     #[test]
     fn decodes_utf16le_webkit_localstorage_values() {
@@ -406,5 +473,61 @@ mod tests {
             decode_webkit_localstorage_blob(br#"{"folder":"/tmp"}"#).as_deref(),
             Some(r#"{"folder":"/tmp"}"#)
         );
+    }
+
+    #[test]
+    fn collect_localstorage_dbs_respects_depth_cap() {
+        let root = temp_dir("depth-cap");
+        let mut current = root.clone();
+        for index in 0..=LEGACY_WEBKIT_SCAN_MAX_DEPTH {
+            current = current.join(format!("level-{index}"));
+            fs::create_dir_all(&current).expect("nested dirs should be creatable");
+        }
+        let too_deep = current.join("localstorage.sqlite3");
+        fs::write(&too_deep, b"noop").expect("sqlite file should be writable");
+
+        let mut found = BTreeSet::new();
+        collect_localstorage_dbs(&root, 0, &mut found);
+
+        assert!(found.is_empty());
+
+        fs::remove_dir_all(root).expect("temp dir should be removable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn collect_localstorage_dbs_skips_symlink_loops() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("symlink-loop");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("nested dir should be creatable");
+        let sqlite = nested.join("localstorage.sqlite3");
+        fs::write(&sqlite, b"noop").expect("sqlite file should be writable");
+        symlink(&root, nested.join("loop")).expect("symlink should be creatable");
+
+        let mut found = BTreeSet::new();
+        collect_localstorage_dbs(&root, 0, &mut found);
+
+        assert_eq!(found.into_iter().collect::<Vec<_>>(), vec![sqlite]);
+
+        fs::remove_dir_all(root).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn sort_localstorage_db_paths_prefers_newer_entries_last() {
+        let root = temp_dir("sort");
+        let older = root.join("a.sqlite3");
+        let newer = root.join("b.sqlite3");
+        fs::write(&older, b"older").expect("older file should be writable");
+        std::thread::sleep(Duration::from_millis(5));
+        fs::write(&newer, b"newer").expect("newer file should be writable");
+
+        let ordered = sort_localstorage_db_paths(BTreeSet::from([newer.clone(), older.clone()]));
+
+        assert_eq!(ordered, vec![older.clone(), newer.clone()]);
+        assert!(modified_ms(&newer).unwrap_or_default() >= modified_ms(&older).unwrap_or_default());
+
+        fs::remove_dir_all(root).expect("temp dir should be removable");
     }
 }

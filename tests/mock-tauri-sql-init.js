@@ -18,7 +18,8 @@
             app_config: [],
             desktop_scan_cache: [],
             meta: {
-                lastCommentId: 0
+                lastCommentId: 0,
+                loadCalls: 0
             }
         };
     }
@@ -48,10 +49,13 @@
         if (!Array.isArray(normalized.app_config)) normalized.app_config = [];
         if (!Array.isArray(normalized.desktop_scan_cache)) normalized.desktop_scan_cache = [];
         if (!normalized.meta || typeof normalized.meta !== 'object') {
-            normalized.meta = { lastCommentId: 0 };
+            normalized.meta = { lastCommentId: 0, loadCalls: 0 };
         }
         if (!Number.isFinite(Number(normalized.meta.lastCommentId))) {
             normalized.meta.lastCommentId = 0;
+        }
+        if (!Number.isFinite(Number(normalized.meta.loadCalls))) {
+            normalized.meta.loadCalls = 0;
         }
         return normalized;
     }
@@ -452,10 +456,15 @@
     window.__createMockTauriSql = function createMockTauriSql(options = {}) {
         return {
             async load(db) {
+                const loadKey = `mock-tauri-sql-load-calls:${db}`;
+                const previousCalls = Number(localStorage.getItem(loadKey) || '0');
+                localStorage.setItem(loadKey, String(previousCalls + 1));
                 if (options.sqlLoadError) {
                     throw new Error(options.sqlLoadError);
                 }
-                loadState(db, options);
+                const state = loadState(db, options);
+                state.meta.loadCalls += 1;
+                persistState(db, state);
                 return makeConnection(db, options);
             }
         };
