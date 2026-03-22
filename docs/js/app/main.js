@@ -23,6 +23,7 @@
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
     const {
         applyDesktopLibraryScan,
+        applyDesktopLibrarySnapshot,
         displayStudies,
         handleSortClick,
         loadLibraryConfig,
@@ -211,11 +212,26 @@
     }
 
     async function waitForDesktopRuntime() {
-        if (window.__TAURI__) return window.__TAURI__;
+        const runtime = window.__TAURI__;
+        if (runtime?.fs?.readFile && runtime?.path?.appDataDir && runtime?.path?.join) {
+            return runtime;
+        }
 
-        const ready = window.__DICOM_VIEWER_TAURI_READY__;
+        const ready = window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || window.__DICOM_VIEWER_TAURI_READY__;
         if (ready && typeof ready.then === 'function') {
-            return await ready;
+            const resolved = await ready;
+            if (resolved?.fs?.readFile && resolved?.path?.appDataDir && resolved?.path?.join) {
+                return resolved;
+            }
+        }
+
+        const deadline = performance.now() + 5000;
+        while (performance.now() < deadline) {
+            const current = window.__TAURI__;
+            if (current?.fs?.readFile && current?.path?.appDataDir && current?.path?.join) {
+                return current;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
         }
 
         return window.__TAURI__ || null;
@@ -229,16 +245,25 @@
                 return;
             }
 
-            setLibraryFolderMessage('Loading saved library folder...', 'info');
-            await displayStudies();
-
             const runtime = await waitForDesktopRuntime();
             if (!runtime?.fs || !runtime?.path) {
                 throw new Error('Desktop runtime is not ready yet.');
             }
 
+            const cachedStudies = await app.desktopLibrary.loadCachedStudies(state.libraryFolder);
+            if (cachedStudies && Object.keys(cachedStudies).length > 0) {
+                await applyDesktopLibrarySnapshot(state.libraryFolder, cachedStudies);
+                setLibraryFolderMessage('Showing cached library while refreshing...', 'info');
+            } else {
+                setLibraryFolderMessage('Loading saved library folder...', 'info');
+            }
+            await displayStudies();
+
+            const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
+                ? 'Refreshing saved library folder...'
+                : 'Loading saved library folder...';
             const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
-                onProgress: stats => updateDesktopScanMessage(stats, 'Loading saved library folder...')
+                onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
             });
             await applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {

@@ -98,6 +98,8 @@ async function installMockTauriInternals(page) {
                         return window.__handleMockTauriSqlCommand(cmd, args);
                     case 'apply_desktop_migration':
                         return window.__applyMockDesktopMigration(args.db, args.batch);
+                    case 'load_legacy_desktop_browser_stores':
+                        return [];
                     default:
                         throw new Error(`Unhandled command: ${cmd}`);
                 }
@@ -248,6 +250,8 @@ test('tauri runtime shim installs when internals arrive after the script loads',
                             return window.__handleMockTauriSqlCommand(cmd, args);
                         case 'apply_desktop_migration':
                             return window.__applyMockDesktopMigration(args.db, args.batch);
+                        case 'load_legacy_desktop_browser_stores':
+                            return [];
                         default:
                             throw new Error(`Unhandled command: ${cmd}`);
                     }
@@ -278,6 +282,237 @@ test('tauri runtime shim installs when internals arrive after the script loads',
     expect(result.hasCoreInvoke).toBe(true);
     expect(result.hasDialogApi).toBe(true);
     expect(result.hasFsApi).toBe(true);
+});
+
+test('desktop runtime shim augments a partial global Tauri object', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        window.__TAURI__ = {
+            core: {
+                invoke() {
+                    return Promise.resolve('native-invoke');
+                }
+            }
+        };
+
+        window.__TAURI_INTERNALS__ = {
+            metadata: {
+                currentWindow: { label: 'main' },
+                currentWebview: { label: 'main', windowLabel: 'main' }
+            },
+            convertFileSrc(filePath, protocol = 'asset') {
+                return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+            },
+            transformCallback(callback) {
+                return callback;
+            },
+            unregisterCallback() {},
+            async invoke(cmd, args) {
+                switch (cmd) {
+                    case 'plugin:dialog|open':
+                        return null;
+                    case 'plugin:event|listen':
+                    case 'plugin:event|unlisten':
+                        return null;
+                    case 'plugin:fs|exists':
+                        return false;
+                    case 'plugin:fs|mkdir':
+                    case 'plugin:fs|rename':
+                    case 'plugin:fs|remove':
+                        return null;
+                    case 'plugin:fs|read_dir':
+                        return [];
+                    case 'plugin:fs|read_file':
+                        return new Uint8Array([0]);
+                    case 'plugin:fs|stat':
+                        return {
+                            isFile: false,
+                            isDirectory: true,
+                            isSymlink: false,
+                            size: 0,
+                            mtime: null,
+                            atime: null,
+                            birthtime: null,
+                            readonly: false,
+                            fileAttributes: null,
+                            dev: null,
+                            ino: null,
+                            mode: null,
+                            nlink: null,
+                            uid: null,
+                            gid: null,
+                            rdev: null,
+                            blksize: null,
+                            blocks: null
+                        };
+                    case 'plugin:fs|write_file':
+                        return null;
+                    case 'plugin:path|resolve_directory':
+                        return '/mock/appdata';
+                    case 'plugin:path|join':
+                        return args.paths.join('/');
+                    case 'plugin:path|normalize':
+                        return args.path;
+                    case 'plugin:sql|load':
+                    case 'plugin:sql|select':
+                    case 'plugin:sql|execute':
+                    case 'plugin:sql|close':
+                        return window.__handleMockTauriSqlCommand(cmd, args);
+                    case 'apply_desktop_migration':
+                        return window.__applyMockDesktopMigration(args.db, args.batch);
+                    case 'load_legacy_desktop_browser_stores':
+                        return [];
+                    default:
+                        throw new Error(`Unhandled command: ${cmd}`);
+                }
+            }
+        };
+    });
+
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate(async () => {
+        const runtime = await window.__DICOM_VIEWER_TAURI_READY__;
+        return {
+            preservedCoreInvoke: await runtime.core.invoke('ignored'),
+            hasDialogApi: typeof runtime?.dialog?.open === 'function',
+            hasFsApi: typeof runtime?.fs?.readDir === 'function',
+            hasPathApi: typeof runtime?.path?.appDataDir === 'function',
+            hasSqlApi: typeof runtime?.sql?.load === 'function'
+        };
+    });
+
+    expect(result.preservedCoreInvoke).toBe('native-invoke');
+    expect(result.hasDialogApi).toBe(true);
+    expect(result.hasFsApi).toBe(true);
+    expect(result.hasPathApi).toBe(true);
+    expect(result.hasSqlApi).toBe(true);
+});
+
+test('desktop runtime ready promise waits for a partial global Tauri object to finish initializing', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        window.__TAURI__ = {
+            core: {
+                invoke() {
+                    return Promise.resolve('native-invoke');
+                }
+            }
+        };
+
+        setTimeout(() => {
+            window.__TAURI__.dialog = {
+                async open() {
+                    return null;
+                }
+            };
+            window.__TAURI__.fs = {
+                async readDir() {
+                    return [];
+                }
+            };
+            window.__TAURI__.path = {
+                async appDataDir() {
+                    return '/mock/appdata';
+                }
+            };
+            window.__TAURI__.sql = window.__createMockTauriSql();
+            window.__TAURI__.webview = {
+                getCurrentWebview() {
+                    return {
+                        onDragDropEvent() {
+                            return Promise.resolve(() => {});
+                        }
+                    };
+                }
+            };
+        }, 150);
+    });
+
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate(async () => {
+        const settledEarly = await Promise.race([
+            window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 25))
+        ]);
+        const runtime = await window.__DICOM_VIEWER_TAURI_READY__;
+        return {
+            settledEarly,
+            hasDialogApi: typeof runtime?.dialog?.open === 'function',
+            hasFsApi: typeof runtime?.fs?.readDir === 'function',
+            hasPathApi: typeof runtime?.path?.appDataDir === 'function',
+            hasSqlApi: typeof runtime?.sql?.load === 'function'
+        };
+    });
+
+    expect(result.settledEarly).toBe(false);
+    expect(result.hasDialogApi).toBe(true);
+    expect(result.hasFsApi).toBe(true);
+    expect(result.hasPathApi).toBe(true);
+    expect(result.hasSqlApi).toBe(true);
+});
+
+test('desktop storage ready promise resolves before the full desktop shell is available', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        window.__TAURI__ = {
+            core: {
+                invoke() {
+                    return Promise.resolve('native-invoke');
+                }
+            },
+            fs: {
+                async exists() {
+                    return false;
+                },
+                async remove() {
+                    return null;
+                },
+                async rename() {
+                    return null;
+                },
+                async writeFile() {
+                    return null;
+                }
+            },
+            path: {
+                async appDataDir() {
+                    return '/mock/appdata';
+                },
+                async join(...parts) {
+                    return parts.join('/');
+                }
+            },
+            sql: window.__createMockTauriSql()
+        };
+    });
+
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate(async () => {
+        const storageRuntime = await window.__DICOM_VIEWER_TAURI_STORAGE_READY__;
+        const fullSettledEarly = await Promise.race([
+            window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
+            new Promise((resolve) => setTimeout(() => resolve(false), 25))
+        ]);
+
+        return {
+            hasStorageReadyPromise: typeof window.__DICOM_VIEWER_TAURI_STORAGE_READY__?.then === 'function',
+            hasCoreInvoke: typeof storageRuntime?.core?.invoke === 'function',
+            hasFsWriteFile: typeof storageRuntime?.fs?.writeFile === 'function',
+            hasPathJoin: typeof storageRuntime?.path?.join === 'function',
+            hasSqlApi: typeof storageRuntime?.sql?.load === 'function',
+            fullSettledEarly
+        };
+    });
+
+    expect(result.hasStorageReadyPromise).toBe(true);
+    expect(result.hasCoreInvoke).toBe(true);
+    expect(result.hasFsWriteFile).toBe(true);
+    expect(result.hasPathJoin).toBe(true);
+    expect(result.hasSqlApi).toBe(true);
+    expect(result.fullSettledEarly).toBe(false);
 });
 
 test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', async ({ page }) => {

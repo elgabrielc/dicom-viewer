@@ -136,6 +136,146 @@
         return meta;
     }
 
+    function getPathDirectory(path) {
+        const normalized = String(path || '').replace(/\\/g, '/');
+        const lastSeparatorIndex = normalized.lastIndexOf('/');
+        return lastSeparatorIndex > 0 ? normalized.slice(0, lastSeparatorIndex) : '';
+    }
+
+    function resolveDicomDirReferencedPath(dicomDirPath, referencedFileId) {
+        const basePath = getPathDirectory(dicomDirPath);
+        const segments = String(referencedFileId || '')
+            .split(/[\\/]+/)
+            .map((segment) => segment.trim())
+            .filter(Boolean);
+
+        if (!basePath || !segments.length) {
+            return '';
+        }
+
+        return segments.reduce((path, segment) => {
+            return path ? `${path}/${segment}` : segment;
+        }, basePath);
+    }
+
+    async function parseDicomDirectoryDetailed(input, dicomDirPath = '') {
+        try {
+            const byteArray = await toDicomByteArray(input);
+            const dataSet = dicomParser.parseDicom(byteArray);
+            const directoryRecordSequence = dataSet.elements?.x00041220;
+            const recordItems = Array.isArray(directoryRecordSequence?.items)
+                ? directoryRecordSequence.items
+                : [];
+
+            if (!recordItems.length) {
+                return {
+                    entries: [],
+                    indexedPaths: [],
+                    error: new Error('DICOMDIR did not contain a directory record sequence.')
+                };
+            }
+
+            const entries = [];
+            const indexedPaths = [];
+            let currentPatient = null;
+            let currentStudy = null;
+            let currentSeries = null;
+
+            for (const item of recordItems) {
+                const itemDataSet = item?.dataSet;
+                if (!itemDataSet) {
+                    continue;
+                }
+
+                const recordType = getString(itemDataSet, 'x00041430').trim().toUpperCase();
+                switch (recordType) {
+                    case 'PATIENT':
+                        currentPatient = {
+                            patientName: getString(itemDataSet, 'x00100010')
+                        };
+                        currentStudy = null;
+                        currentSeries = null;
+                        break;
+                    case 'STUDY':
+                        currentStudy = {
+                            patientName: currentPatient?.patientName || getString(itemDataSet, 'x00100010'),
+                            studyDate: getString(itemDataSet, 'x00080020'),
+                            studyDescription: getString(itemDataSet, 'x00081030'),
+                            studyInstanceUid: getString(itemDataSet, 'x0020000d'),
+                            modality: ''
+                        };
+                        currentSeries = null;
+                        break;
+                    case 'SERIES':
+                        currentSeries = {
+                            seriesDescription: getString(itemDataSet, 'x0008103e'),
+                            seriesInstanceUid: getString(itemDataSet, 'x0020000e'),
+                            seriesNumber: getString(itemDataSet, 'x00200011'),
+                            modality: getString(itemDataSet, 'x00080060')
+                        };
+                        if (currentStudy && !currentStudy.modality && currentSeries.modality) {
+                            currentStudy.modality = currentSeries.modality;
+                        }
+                        break;
+                    case 'IMAGE': {
+                        const referencedPath = resolveDicomDirReferencedPath(
+                            dicomDirPath,
+                            getString(itemDataSet, 'x00041500')
+                        );
+                        if (
+                            !currentStudy?.studyInstanceUid
+                            || !currentSeries?.seriesInstanceUid
+                            || !referencedPath
+                        ) {
+                            break;
+                        }
+
+                        indexedPaths.push(referencedPath);
+                        entries.push({
+                            source: {
+                                kind: 'path',
+                                path: referencedPath
+                            },
+                            meta: {
+                                patientName: currentStudy.patientName,
+                                studyDate: currentStudy.studyDate,
+                                studyDescription: currentStudy.studyDescription,
+                                studyInstanceUid: currentStudy.studyInstanceUid,
+                                seriesDescription: currentSeries.seriesDescription,
+                                seriesInstanceUid: currentSeries.seriesInstanceUid,
+                                seriesNumber: currentSeries.seriesNumber,
+                                modality: currentSeries.modality || currentStudy.modality,
+                                sopInstanceUid: getString(itemDataSet, 'x00041511') || getString(itemDataSet, 'x00080018'),
+                                instanceNumber: getMetadataNumber(itemDataSet, 'x00200013', 0),
+                                sliceLocation: getMetadataNumber(itemDataSet, 'x00201041', 0)
+                            }
+                        });
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+
+            return {
+                entries,
+                indexedPaths,
+                error: null
+            };
+        } catch (error) {
+            return {
+                entries: [],
+                indexedPaths: [],
+                error
+            };
+        }
+    }
+
+    async function parseDicomDirectory(input, dicomDirPath = '') {
+        const { entries, indexedPaths } = await parseDicomDirectoryDetailed(input, dicomDirPath);
+        return { entries, indexedPaths };
+    }
+
     function isRenderableImageMetadata(meta) {
         return !!(
             meta?.studyInstanceUid &&
@@ -758,6 +898,8 @@
     app.dicom = {
         parseDicomMetadata,
         parseDicomMetadataDetailed,
+        parseDicomDirectory,
+        parseDicomDirectoryDetailed,
         toDicomByteArray,
         getMetadataNumber,
         getNumberOfFrames,

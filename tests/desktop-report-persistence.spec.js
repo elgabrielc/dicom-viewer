@@ -11,6 +11,7 @@ async function installMockTauri(page, options = {}) {
     await page.addInitScript((options) => {
         const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
         const failRemoveAll = !!options.failRemoveAll;
+        const failWritePatterns = Array.isArray(options.failWritePatterns) ? options.failWritePatterns : [];
 
         function joinPaths(...parts) {
             const cleaned = parts
@@ -38,6 +39,9 @@ async function installMockTauri(page, options = {}) {
                     if (cmd === 'apply_desktop_migration') {
                         return window.__applyMockDesktopMigration(args.db, args.batch, options);
                     }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return options.legacyDesktopStores || [];
+                    }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
             },
@@ -63,6 +67,9 @@ async function installMockTauri(page, options = {}) {
                     localStorage.removeItem(`${FILE_STORAGE_PREFIX}${fromPath}`);
                 },
                 async writeFile(filePath, bytes) {
+                    if (failWritePatterns.some((pattern) => String(filePath).includes(String(pattern)))) {
+                        throw new Error(`Mock write failure for ${filePath}`);
+                    }
                     localStorage.setItem(
                         `${FILE_STORAGE_PREFIX}${filePath}`,
                         JSON.stringify(Array.from(bytes))
@@ -253,6 +260,228 @@ test.describe('Desktop report persistence', () => {
         expect(persisted.sqlStore.series_notes).toHaveLength(1);
         expect(persisted.sqlStore.comments).toHaveLength(2);
         expect(persisted.sqlStore.reports).toHaveLength(1);
+    });
+
+    test('desktop storage repairs migration from legacy packaged browser stores', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.packaged-legacy.study';
+        const reportId = 'desktop-packaged-legacy-report';
+        const reportPath = `/mock/appdata/reports/${studyUid}/${reportId}.pdf`;
+        const libraryConfig = {
+            folder: '/Users/gabriel/Desktop/radiology all discs',
+            lastScan: '2026-03-20T14:51:37.855Z'
+        };
+
+        await installMockTauri(page, {
+            initialState: {
+                'sqlite:viewer.db': {
+                    study_notes: [],
+                    series_notes: [],
+                    comments: [],
+                    reports: [],
+                    app_config: [
+                        { key: 'desktop_library_config', value: JSON.stringify(libraryConfig), updated_at: 1 },
+                        { key: 'localstorage_migrated', value: '1', updated_at: 1 }
+                    ],
+                    meta: { lastCommentId: 0 }
+                }
+            },
+            legacyDesktopStores: [
+                {
+                    sourcePath: '/Users/gabriel/Library/WebKit/health.divergent.dicomviewer/.../localstorage.sqlite3',
+                    notesJson: JSON.stringify({
+                        studies: {
+                            [studyUid]: {
+                                description: '',
+                                comments: [],
+                                series: {},
+                                reports: [
+                                    {
+                                        id: reportId,
+                                        name: 'Migrated report.pdf',
+                                        type: 'pdf',
+                                        size: 123,
+                                        filePath: reportPath,
+                                        addedAt: 303,
+                                        updatedAt: 404
+                                    }
+                                ]
+                            }
+                        }
+                    }),
+                    libraryConfigJson: JSON.stringify(libraryConfig)
+                }
+            ]
+        });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const repaired = await page.evaluate(async ({ studyUid, reportId, reportPath }) => {
+            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+            localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
+
+            await window.NotesAPI.initializeDesktopStorage();
+
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+
+            return {
+                notes,
+                reportUrl: window.NotesAPI.getReportFileUrl(reportId),
+                sqlStore
+            };
+        }, { studyUid, reportId, reportPath });
+
+        expect(repaired.notes.studies[studyUid].reports).toHaveLength(1);
+        expect(repaired.notes.studies[studyUid].reports[0].filePath).toBe(reportPath);
+        expect(repaired.reportUrl).toBe(`asset://local/${encodeURIComponent(reportPath)}`);
+        expect(repaired.sqlStore.reports).toHaveLength(1);
+        expect(repaired.sqlStore.app_config).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ key: 'localstorage_migrated', value: '1' }),
+                expect.objectContaining({ key: 'legacy_desktop_browser_store_migrated', value: '1' })
+            ])
+        );
+    });
+
+    test('desktop legacy blob migration continues after an individual report import fails', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.legacy-blob-failure.study';
+        const failedReportId = 'desktop-legacy-report-fail';
+        const goodReportId = 'desktop-legacy-report-good';
+
+        await installMockTauri(page, {
+            failWritePatterns: [failedReportId]
+        });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async ({ studyUid, failedReportId, goodReportId }) => {
+            const failedBytes = new TextEncoder().encode('%PDF-1.4\nfailed');
+            const goodBytes = new TextEncoder().encode('%PDF-1.4\ngood');
+
+            localStorage.setItem('dicom-viewer-comments', JSON.stringify({
+                version: 2,
+                comments: {
+                    [studyUid]: {
+                        reports: [
+                            { id: failedReportId, name: 'failed.pdf', type: 'pdf', size: failedBytes.length },
+                            { id: goodReportId, name: 'good.pdf', type: 'pdf', size: goodBytes.length }
+                        ]
+                    }
+                }
+            }));
+
+            const request = indexedDB.open('dicom-viewer-reports', 1);
+            await new Promise((resolve, reject) => {
+                request.onupgradeneeded = () => {
+                    request.result.createObjectStore('reports', { keyPath: 'id' });
+                };
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => resolve();
+            });
+            const db = request.result;
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction('reports', 'readwrite');
+                const store = tx.objectStore('reports');
+                store.put({ id: failedReportId, blob: new Blob([failedBytes], { type: 'application/pdf' }) });
+                store.put({ id: goodReportId, blob: new Blob([goodBytes], { type: 'application/pdf' }) });
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+                tx.onabort = () => reject(tx.error);
+            });
+            db.close();
+
+            await window.NotesAPI.initializeDesktopStorage();
+
+            const notes = await window.NotesAPI.loadNotes([studyUid]);
+            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+            return {
+                notes,
+                sqlStore
+            };
+        }, { studyUid, failedReportId, goodReportId });
+
+        expect(result.notes.studies[studyUid].reports.map((entry) => entry.id)).toEqual([goodReportId]);
+        expect(result.sqlStore.reports.map((entry) => entry.id)).toEqual([goodReportId]);
+        expect(result.sqlStore.app_config).not.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ key: 'localstorage_migrated', value: '1' })
+            ])
+        );
+    });
+
+    test('desktop legacy packaged store migration prefers the newest browser profile data', async ({ page }) => {
+        const olderConfig = {
+            folder: '/Users/gabriel/Desktop/older-library',
+            lastScan: '2026-03-20T14:51:37.855Z'
+        };
+        const newerConfig = {
+            folder: '/Users/gabriel/Desktop/radiology all discs',
+            lastScan: '2026-03-22T10:00:00.000Z'
+        };
+
+        await installMockTauri(page, {
+            legacyDesktopStores: [
+                {
+                    sourcePath: '/Users/gabriel/Library/WebKit/zzz/localstorage.sqlite3',
+                    modifiedMs: 10,
+                    notesJson: JSON.stringify({ studies: {} }),
+                    libraryConfigJson: JSON.stringify(olderConfig)
+                },
+                {
+                    sourcePath: '/Users/gabriel/Library/WebKit/aaa/localstorage.sqlite3',
+                    modifiedMs: 20,
+                    notesJson: JSON.stringify({ studies: {} }),
+                    libraryConfigJson: JSON.stringify(newerConfig)
+                }
+            ]
+        });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const migratedConfig = await page.evaluate(async () => {
+            await window.NotesAPI.initializeDesktopStorage();
+            return await window.NotesAPI.loadDesktopLibraryConfig();
+        });
+
+        expect(migratedConfig).toEqual(newerConfig);
+    });
+
+    test('desktop sqlite init backs off repeated failures before retrying', async ({ page }) => {
+        await installMockTauri(page, {
+            sqlLoadError: 'mock desktop sqlite unavailable'
+        });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const loadCalls = await page.evaluate(async () => {
+            const key = 'mock-tauri-sql-load-calls:sqlite:viewer.db';
+            const initial = Number(localStorage.getItem(key) || '0');
+            const realNow = Date.now;
+            let now = realNow();
+            Date.now = () => now;
+
+            try {
+                for (let index = 0; index < 3; index += 1) {
+                    try {
+                        await window.NotesAPI.initializeDesktopStorage();
+                    } catch {}
+                }
+                const withinBackoff = Number(localStorage.getItem(key) || '0') - initial;
+
+                now += 6000;
+                try {
+                    await window.NotesAPI.initializeDesktopStorage();
+                } catch {}
+                const afterRetry = Number(localStorage.getItem(key) || '0') - initial;
+
+                return { withinBackoff, afterRetry };
+            } finally {
+                Date.now = realNow;
+            }
+        });
+
+        expect(loadCalls.withinBackoff).toBe(1);
+        expect(loadCalls.afterRetry).toBe(2);
     });
 
     test('desktop backend persists report files and metadata across reloads', async ({ page }) => {

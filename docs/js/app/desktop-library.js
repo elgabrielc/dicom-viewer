@@ -1,9 +1,34 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const notesApi = window.NotesAPI;
+    const LEGACY_LIBRARY_CONFIG_KEY = 'dicom-viewer-library-config';
+
+    function normalizeDesktopConfig(config) {
+        return {
+            folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
+            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null
+        };
+    }
+
+    function loadLegacyDesktopConfig() {
+        try {
+            const raw = localStorage.getItem(LEGACY_LIBRARY_CONFIG_KEY);
+            return normalizeDesktopConfig(raw ? JSON.parse(raw) : null);
+        } catch {
+            return normalizeDesktopConfig(null);
+        }
+    }
+
+    function saveLegacyDesktopConfig(config) {
+        try {
+            localStorage.setItem(LEGACY_LIBRARY_CONFIG_KEY, JSON.stringify(normalizeDesktopConfig(config)));
+        } catch {}
+    }
 
     const DesktopLibrary = {
         SCAN_TIMING_KEY: 'dicom-viewer-debug-scan-timing',
+        SNAPSHOT_VERSION: 1,
+        SNAPSHOT_FILENAME: 'desktop-library-cache.json',
 
         getRuntime() {
             const tauri = window.__TAURI__;
@@ -14,12 +39,28 @@
         },
 
         async getConfig() {
+            let nativeConfig = null;
             try {
-                return await notesApi.loadDesktopLibraryConfig();
+                nativeConfig = normalizeDesktopConfig(await notesApi.loadDesktopLibraryConfig());
+                if (nativeConfig.folder || nativeConfig.lastScan) {
+                    saveLegacyDesktopConfig(nativeConfig);
+                    return nativeConfig;
+                }
             } catch (e) {
                 console.warn('DesktopLibrary: failed to load config:', e);
-                return { folder: null, lastScan: null };
             }
+
+            const legacyConfig = loadLegacyDesktopConfig();
+            if (legacyConfig.folder || legacyConfig.lastScan) {
+                try {
+                    await notesApi.saveDesktopLibraryConfig(legacyConfig);
+                } catch (error) {
+                    console.warn('DesktopLibrary: failed to repair native config from local fallback:', error);
+                }
+                return legacyConfig;
+            }
+
+            return nativeConfig || { folder: null, lastScan: null };
         },
 
         isScanTimingEnabled() {
@@ -39,7 +80,14 @@
         },
 
         async saveConfig(config) {
-            return await notesApi.saveDesktopLibraryConfig(config);
+            const normalized = normalizeDesktopConfig(config);
+            saveLegacyDesktopConfig(normalized);
+            try {
+                return normalizeDesktopConfig(await notesApi.saveDesktopLibraryConfig(normalized));
+            } catch (error) {
+                console.warn('DesktopLibrary: failed to save native config, keeping local fallback:', error);
+                return normalized;
+            }
         },
 
         async setFolder(path) {
@@ -58,6 +106,62 @@
         scanFolder(folderPath) {
             this.getRuntime();
             return app.sources.collectPathSources(folderPath);
+        },
+
+        async getSnapshotPath() {
+            const tauri = this.getRuntime();
+            const appDataPath = await tauri.path.appDataDir();
+            return await tauri.path.join(appDataPath, this.SNAPSHOT_FILENAME);
+        },
+
+        async loadCachedStudies(folderPath) {
+            if (!folderPath) {
+                return null;
+            }
+
+            const tauri = this.getRuntime();
+            const snapshotPath = await this.getSnapshotPath();
+            let bytes;
+            try {
+                bytes = await tauri.fs.readFile(snapshotPath);
+            } catch {
+                return null;
+            }
+
+            try {
+                const text = new TextDecoder().decode(bytes);
+                const payload = JSON.parse(text);
+                if (payload?.version !== this.SNAPSHOT_VERSION) {
+                    return null;
+                }
+                if (payload?.folder !== folderPath) {
+                    return null;
+                }
+                if (!payload?.studies || typeof payload.studies !== 'object') {
+                    return null;
+                }
+                return payload.studies;
+            } catch (error) {
+                console.warn('DesktopLibrary: failed to read cached library snapshot:', error);
+                return null;
+            }
+        },
+
+        async saveCachedStudies(folderPath, studies) {
+            if (!folderPath) {
+                return;
+            }
+
+            const tauri = this.getRuntime();
+            const snapshotPath = await this.getSnapshotPath();
+            const payload = {
+                version: this.SNAPSHOT_VERSION,
+                folder: folderPath,
+                savedAt: new Date().toISOString(),
+                studies: studies || {}
+            };
+            const bytes = new TextEncoder().encode(`${JSON.stringify(payload)}\n`);
+            await tauri.fs.writeFile(snapshotPath, bytes);
         },
 
         async writeScanTimingReport(report) {
@@ -114,6 +218,12 @@
                 } catch (error) {
                     console.warn('DesktopLibrary: failed to write scan timing report:', error);
                 }
+            }
+
+            try {
+                await this.saveCachedStudies(folderPath, studies);
+            } catch (error) {
+                console.warn('DesktopLibrary: failed to save cached library snapshot:', error);
             }
 
             return studies;

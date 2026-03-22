@@ -82,7 +82,7 @@
         libraryFolderMessage.style.display = 'block';
     }
 
-    async function applyDesktopLibraryScan(folder, studies) {
+    function applyDesktopLibraryStudies(folder, studies) {
         state.libraryFolder = folder;
         state.libraryFolderResolved = folder;
         state.libraryFolderSource = 'local';
@@ -93,7 +93,10 @@
             folderResolved: folder,
             source: 'local'
         });
+    }
 
+    async function applyDesktopLibraryScan(folder, studies) {
+        applyDesktopLibraryStudies(folder, studies);
         if (Object.keys(studies).length > 0) {
             await app.desktopLibrary.markScanComplete(folder);
             setLibraryFolderMessage('');
@@ -103,6 +106,11 @@
         await app.desktopLibrary.markScanFailed(folder);
         setLibraryFolderMessage(`No DICOM files found in ${folder}.`, 'warning');
         return false;
+    }
+
+    async function applyDesktopLibrarySnapshot(folder, studies) {
+        applyDesktopLibraryStudies(folder, studies);
+        return Object.keys(studies).length > 0;
     }
 
     function applyLibraryConfigPayload(payload, options = {}) {
@@ -670,6 +678,7 @@
 
     app.library = {
         applyDesktopLibraryScan,
+        applyDesktopLibrarySnapshot,
         applyLibraryConfigPayload,
         displayStudies,
         handleSortClick,
