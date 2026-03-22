@@ -240,9 +240,9 @@
             const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
                 onProgress: stats => updateDesktopScanMessage(stats, 'Loading saved library folder...')
             });
-            applyDesktopLibraryScan(state.libraryFolder, studies);
+            await applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {
-            app.desktopLibrary.markScanFailed(state.libraryFolder);
+            await app.desktopLibrary.markScanFailed(state.libraryFolder);
             state.libraryAvailable = !!state.libraryFolder;
             setLibraryFolderMessage(e.message || 'Failed to auto-load desktop library.', 'error');
             console.warn('Failed to auto-load desktop library:', e);

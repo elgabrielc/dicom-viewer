@@ -1,16 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod decode;
+mod persistence;
 
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
     AppHandle, Emitter, Manager, Runtime,
 };
+use tauri_plugin_sql::{Migration, MigrationKind};
 
 const MENU_OPEN_FOLDER: &str = "open-folder";
 const MENU_OPEN_HELP: &str = "open-help";
 const EVENT_OPEN_FOLDER: &str = "desktop://open-folder";
 const EVENT_OPEN_HELP: &str = "desktop://open-help";
+const DESKTOP_DB_URL: &str = "sqlite:viewer.db";
 
 fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
     let package_info = manager.package_info();
@@ -74,6 +77,15 @@ fn emit_menu_event<R: Runtime>(app: &AppHandle<R>, event_name: &str) {
     }
 }
 
+fn desktop_db_migrations() -> Vec<Migration> {
+    vec![Migration {
+        version: 1,
+        description: "initial_schema",
+        sql: include_str!("../migrations/001_initial_schema.sql"),
+        kind: MigrationKind::Up,
+    }]
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(decode::DecodeStore::default())
@@ -85,7 +97,13 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
+        .plugin(
+            tauri_plugin_sql::Builder::default()
+                .add_migrations(DESKTOP_DB_URL, desktop_db_migrations())
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
+            persistence::apply_desktop_migration,
             decode::decode_frame,
             decode::read_scan_header,
             decode::take_decoded_frame

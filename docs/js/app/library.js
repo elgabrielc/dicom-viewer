@@ -82,7 +82,7 @@
         libraryFolderMessage.style.display = 'block';
     }
 
-    function applyDesktopLibraryScan(folder, studies) {
+    async function applyDesktopLibraryScan(folder, studies) {
         state.libraryFolder = folder;
         state.libraryFolderResolved = folder;
         state.libraryFolderSource = 'local';
@@ -95,12 +95,12 @@
         });
 
         if (Object.keys(studies).length > 0) {
-            app.desktopLibrary.markScanComplete(folder);
+            await app.desktopLibrary.markScanComplete(folder);
             setLibraryFolderMessage('');
             return true;
         }
 
-        app.desktopLibrary.markScanFailed(folder);
+        await app.desktopLibrary.markScanFailed(folder);
         setLibraryFolderMessage(`No DICOM files found in ${folder}.`, 'warning');
         return false;
     }
@@ -147,7 +147,7 @@
         if (config?.deploymentMode === 'desktop') {
             libraryFolderInput.readOnly = true;
             saveLibraryFolderBtn.textContent = 'Choose...';
-            const payload = app.desktopLibrary.getConfig();
+            const payload = await app.desktopLibrary.getConfig();
             applyLibraryConfigPayload({
                 folder: payload.folder || '',
                 folderResolved: payload.folder || '',
@@ -187,7 +187,7 @@
                 const studies = await app.desktopLibrary.loadStudies(folder, {
                     onProgress: stats => updateDesktopScanMessage(stats)
                 });
-                if (applyDesktopLibraryScan(folder, studies)) {
+                if (await applyDesktopLibraryScan(folder, studies)) {
                     setLibraryFolderMessage('Library folder updated.', 'success');
                 }
                 await displayStudies();
@@ -245,7 +245,7 @@
         refreshLibraryBtn.textContent = 'Refreshing...';
         try {
             if (config?.deploymentMode === 'desktop') {
-                const payload = app.desktopLibrary.getConfig();
+                const payload = await app.desktopLibrary.getConfig();
                 if (!payload.folder) {
                     throw new Error('Choose a library folder first.');
                 }
@@ -253,7 +253,7 @@
                 const studies = await app.desktopLibrary.loadStudies(payload.folder, {
                     onProgress: stats => updateDesktopScanMessage(stats)
                 });
-                applyDesktopLibraryScan(payload.folder, studies);
+                await applyDesktopLibraryScan(payload.folder, studies);
                 await displayStudies();
                 return;
             }
@@ -270,7 +270,7 @@
             await displayStudies();
         } catch (e) {
             if (config?.deploymentMode === 'desktop') {
-                app.desktopLibrary.markScanFailed(state.libraryFolder);
+                await app.desktopLibrary.markScanFailed(state.libraryFolder);
                 state.libraryAvailable = !!state.libraryFolder;
                 setLibraryFolderMessage(e.message || 'Failed to refresh library.', 'error');
                 await displayStudies();
