@@ -37,8 +37,10 @@ Copyright (c) 2026 Divergent Health Technologies
 """
 
 import json
+import logging
 import os
 import re
+import secrets
 import shutil
 import sqlite3
 import tempfile
@@ -60,6 +62,14 @@ from pydicom.errors import InvalidDicomError
 
 app = Flask(__name__, static_folder='docs', static_url_path='')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
+
+# Per-process session token for browser-session authentication.
+# Generated once at startup; the frontend fetches it via GET /api/session.
+# This prevents browser CSRF and casual unauthenticated access to PHI routes.
+# Threat model: a local hostile process that can GET /api/session can obtain
+# the token. That's acceptable -- the goal is browser-level hardening, not
+# OS-level process isolation.
+SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Test data folder for automated testing (bypasses File System Access API)
 TEST_DATA_FOLDER = os.environ.get(
@@ -108,6 +118,24 @@ LIBRARY_CONFIG_LOCK = threading.Lock()
 # SECURITY MIDDLEWARE
 # =============================================================================
 
+# Routes that carry PHI and require session-token authentication.
+# /api/test-data/* is intentionally excluded (anonymized sample data).
+_PHI_ROUTE_PREFIXES = ('/api/notes', '/api/library/')
+
+
+def _is_test_mode_request():
+    """Check whether the request originates from a ?test session.
+
+    Playwright tests hit the server without a browser page context, so they
+    send requests with neither Origin nor Referer. The ?test query parameter
+    on the page load signals test mode. For direct API requests (Playwright's
+    request fixture), we check for the X-Test-Mode header instead.
+    """
+    if request.args.get('test') is not None:
+        return True
+    return request.headers.get('X-Test-Mode') == '1'
+
+
 @app.before_request
 def _csrf_origin_check():
     """Block cross-origin state-modifying requests (CSRF protection).
@@ -117,10 +145,10 @@ def _csrf_origin_check():
     forms or fetch requests to the local server while a user is browsing.
     Multipart uploads are the primary concern since they bypass CORS preflight.
 
-    Requests with neither Origin nor Referer are allowed through. Direct API
-    clients (curl, Playwright tests) don't send these headers and are not a
-    CSRF concern -- the threat model is browser-based cross-origin attacks,
-    where modern browsers always include Origin on state-modifying requests.
+    Requests with neither Origin nor Referer are rejected by default for
+    mutating methods. The only exception is test-mode requests (identified
+    by ?test query param or X-Test-Mode header) to support Playwright tests
+    which use bare API calls without browser context.
     """
     if request.method in ('POST', 'PUT', 'DELETE'):
         origin = request.headers.get('Origin')
@@ -136,6 +164,40 @@ def _csrf_origin_check():
             server_host = request.host  # includes port
             if origin_host != server_host:
                 return jsonify({'error': 'Cross-origin request blocked'}), 403
+        else:
+            # No Origin/Referer present -- reject unless in test mode.
+            # Modern browsers always send Origin on state-modifying requests,
+            # so a missing header means curl/script/test, not a real browser.
+            if not _is_test_mode_request():
+                return jsonify({'error': 'Missing Origin header'}), 403
+
+
+@app.before_request
+def _session_token_check():
+    """Require session token on all PHI-bearing routes.
+
+    The token is generated per server process and served via GET /api/session.
+    The frontend fetches it at boot and includes it as X-Session-Token on all
+    subsequent requests. This prevents browser CSRF and casual unauthenticated
+    access without requiring user credentials (Stage 0 hardening).
+
+    Test-mode requests (X-Test-Mode: 1) bypass the check so Playwright tests
+    can exercise the API without fetching the token first.
+    """
+    path = request.path
+
+    # Only check PHI routes
+    needs_token = any(path.startswith(prefix) for prefix in _PHI_ROUTE_PREFIXES)
+    if not needs_token:
+        return
+
+    # Bypass for test mode (Playwright)
+    if _is_test_mode_request():
+        return
+
+    token = request.headers.get('X-Session-Token')
+    if not token or not secrets.compare_digest(token, SESSION_TOKEN):
+        return jsonify({'error': 'Unauthorized'}), 401
 
 
 @app.after_request
@@ -660,6 +722,17 @@ library_source = DicomFolderSource(_active_library_config['folder_resolved'])
 def index():
     """Serve the main application."""
     return app.send_static_file('index.html')
+
+
+@app.route('/api/session')
+def get_session():
+    """Return the per-process session token.
+
+    The frontend fetches this once at boot and includes it as
+    X-Session-Token on all subsequent API requests to PHI routes.
+    Bound to loopback by default, so only local processes can obtain it.
+    """
+    return jsonify({'token': SESSION_TOKEN})
 
 
 @app.route('/api/test-data/studies')
@@ -1358,6 +1431,14 @@ if __name__ == '__main__':
     host = '0.0.0.0' if os.environ.get('FLASK_HOST') == '0.0.0.0' else '127.0.0.1'
     explicit_port = os.environ.get('FLASK_PORT')
     preferred = int(explicit_port) if explicit_port else 5001
+
+    if host == '0.0.0.0':
+        logging.warning(
+            "SECURITY: Binding to 0.0.0.0 exposes the server on all network "
+            "interfaces. PHI routes require a session token, but /api/session "
+            "will be reachable from the network. Set FLASK_HOST=127.0.0.1 "
+            "(the default) for local-only access."
+        )
 
     if explicit_port:
         # Explicit override: fail hard if unavailable.

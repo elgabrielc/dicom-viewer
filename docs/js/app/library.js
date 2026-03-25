@@ -167,7 +167,7 @@
         libraryFolderInput.readOnly = false;
         saveLibraryFolderBtn.textContent = 'Save';
 
-        const response = await fetch('/api/library/config');
+        const response = await notesApi.authenticatedFetch('/api/library/config');
         if (!response.ok) throw new Error(`Failed to load library config: ${response.status}`);
         const payload = await response.json().catch(() => {
             throw new Error('Library config response was not valid JSON');
@@ -208,7 +208,7 @@
                 return;
             }
 
-            const response = await fetch('/api/library/config', {
+            const response = await notesApi.authenticatedFetch('/api/library/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ folder })
@@ -266,7 +266,7 @@
                 return;
             }
 
-            const response = await fetch('/api/library/refresh', { method: 'POST' });
+            const response = await notesApi.authenticatedFetch('/api/library/refresh', { method: 'POST' });
             const payload = await response.json();
             if (!response.ok) {
                 throw new Error(payload.error || `Failed to refresh library: ${response.status}`);

@@ -40,6 +40,12 @@ const NotesAPI = (() => {
     let desktopMigrationRetryAt = 0;
     const desktopReportPathCache = new Map();
 
+    // Session token for server authentication (fetched once at boot).
+    // The server generates a per-process token; the frontend includes it
+    // as X-Session-Token on all PHI-bearing API requests.
+    let sessionToken = null;
+    let sessionTokenPromise = null;
+
     function createEmptyStore() {
         return { studies: {} };
     }
@@ -1231,6 +1237,40 @@ const NotesAPI = (() => {
         }
     };
 
+    async function fetchSessionToken() {
+        try {
+            const res = await fetch('/api/session');
+            if (!res.ok) {
+                console.warn('NotesAPI: failed to fetch session token:', res.status);
+                return null;
+            }
+            const data = await res.json();
+            sessionToken = data.token || null;
+            return sessionToken;
+        } catch (err) {
+            console.warn('NotesAPI: session token fetch failed:', err);
+            return null;
+        }
+    }
+
+    function ensureSessionToken() {
+        if (sessionToken) return Promise.resolve(sessionToken);
+        if (!sessionTokenPromise) {
+            sessionTokenPromise = fetchSessionToken().finally(() => {
+                sessionTokenPromise = null;
+            });
+        }
+        return sessionTokenPromise;
+    }
+
+    function authHeaders(extra = {}) {
+        const headers = { ...extra };
+        if (sessionToken) {
+            headers['X-Session-Token'] = sessionToken;
+        }
+        return headers;
+    }
+
     function disableServer() {
         serverAvailable = false;
         serverDisabledAt = Date.now();
@@ -1247,10 +1287,18 @@ const NotesAPI = (() => {
         return false;
     }
 
-    async function requestJson(url, options = {}) {
+    async function requestJson(url, options = {}, retried = false) {
         if (!checkServerAvailable()) return null;
+        await ensureSessionToken();
         try {
+            options.headers = authHeaders(options.headers || {});
             const res = await fetch(url, options);
+            if (res.status === 401 && !retried) {
+                // Token may have expired (server restarted). Re-fetch and retry once.
+                sessionToken = null;
+                await fetchSessionToken();
+                return requestJson(url, options, true);
+            }
             if (!res.ok) {
                 console.warn('NotesAPI request failed:', res.status, url);
                 return null;
@@ -1263,10 +1311,17 @@ const NotesAPI = (() => {
         }
     }
 
-    async function requestOk(url, options = {}) {
+    async function requestOk(url, options = {}, retried = false) {
         if (!checkServerAvailable()) return false;
+        await ensureSessionToken();
         try {
+            options.headers = authHeaders(options.headers || {});
             const res = await fetch(url, options);
+            if (res.status === 401 && !retried) {
+                sessionToken = null;
+                await fetchSessionToken();
+                return requestOk(url, options, true);
+            }
             if (!res.ok) {
                 console.warn('NotesAPI request failed:', res.status, url);
                 return false;
@@ -1339,6 +1394,7 @@ const NotesAPI = (() => {
         async uploadReport(studyUid, file, meta = {}) {
             if (!studyUid || !file) return null;
             if (!checkServerAvailable()) return null;
+            await ensureSessionToken();
 
             const form = new FormData();
             const filename = meta.name || file.name || 'report';
@@ -1350,21 +1406,33 @@ const NotesAPI = (() => {
             if (meta.addedAt !== undefined && meta.addedAt !== null) form.append('addedAt', meta.addedAt);
             if (meta.updatedAt !== undefined && meta.updatedAt !== null) form.append('updatedAt', meta.updatedAt);
 
-            try {
-                const res = await fetch(`${baseUrl}/${encodeId(studyUid)}/reports`, {
-                    method: 'POST',
-                    body: form
-                });
-                if (!res.ok) {
-                    console.warn('NotesAPI report upload failed:', res.status);
+            const headers = authHeaders();
+
+            async function doUpload(retried) {
+                try {
+                    const res = await fetch(`${baseUrl}/${encodeId(studyUid)}/reports`, {
+                        method: 'POST',
+                        headers,
+                        body: form
+                    });
+                    if (res.status === 401 && !retried) {
+                        sessionToken = null;
+                        await fetchSessionToken();
+                        headers['X-Session-Token'] = sessionToken || '';
+                        return doUpload(true);
+                    }
+                    if (!res.ok) {
+                        console.warn('NotesAPI report upload failed:', res.status);
+                        return null;
+                    }
+                    return await res.json();
+                } catch (err) {
+                    console.warn('NotesAPI unavailable:', err);
+                    disableServer();
                     return null;
                 }
-                return await res.json();
-            } catch (err) {
-                console.warn('NotesAPI unavailable:', err);
-                disableServer();
-                return null;
             }
+            return doUpload(false);
         },
 
         async deleteReport(studyUid, reportId) {
@@ -1523,6 +1591,30 @@ const NotesAPI = (() => {
         return await initializeDesktopPersistence();
     }
 
+    /**
+     * Fetch wrapper that injects the session token header.
+     * Other modules (library.js, sources.js) use this for PHI-bearing
+     * API requests that go through plain fetch rather than NotesAPI.
+     * Automatically retries once on 401 (server restart = new token).
+     */
+    async function authenticatedFetch(url, options = {}, retried = false) {
+        await ensureSessionToken();
+        const headers = options.headers instanceof Headers
+            ? options.headers
+            : new Headers(options.headers || {});
+        if (sessionToken) {
+            headers.set('X-Session-Token', sessionToken);
+        }
+        const mergedOptions = { ...options, headers };
+        const res = await fetch(url, mergedOptions);
+        if (res.status === 401 && !retried) {
+            sessionToken = null;
+            await fetchSessionToken();
+            return authenticatedFetch(url, options, true);
+        }
+        return res;
+    }
+
     return {
         isEnabled,
         loadNotes,
@@ -1539,7 +1631,8 @@ const NotesAPI = (() => {
         loadDesktopLibraryConfig,
         saveDesktopLibraryConfig,
         loadDesktopScanCache,
-        saveDesktopScanCacheEntries
+        saveDesktopScanCacheEntries,
+        authenticatedFetch
     };
 })();
 
