@@ -32,6 +32,7 @@ from server.routes.study_notes import study_notes_bp
 from server.routes.comments import comments_bp
 from server.routes.reports import reports_bp
 from server.routes.auth import auth_bp
+from server.routes.sync import sync_bp
 
 # Project root is the parent of this package directory. The original app.py
 # lived at the project root, so Flask's root_path was the project root.
@@ -72,6 +73,7 @@ def create_app():
     app.register_blueprint(comments_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(sync_bp)
 
     # Core routes (too small for their own blueprint)
     @app.route('/')

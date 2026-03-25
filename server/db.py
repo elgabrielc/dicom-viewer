@@ -288,6 +288,63 @@ def init_db():
         _add_column(db, 'reports', 'device_id', 'TEXT')
         _add_column(db, 'reports', 'sync_version', 'INTEGER DEFAULT 0')
 
+        # -- Server-side sync tables --
+
+        # Version tracking per record (monotonic counter for cursor watermarks)
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_server_versions (
+                table_name TEXT NOT NULL,
+                record_key TEXT NOT NULL,
+                sync_version INTEGER NOT NULL DEFAULT 1,
+                device_id TEXT,
+                updated_at INTEGER NOT NULL,
+                PRIMARY KEY (table_name, record_key)
+            )
+            """
+        )
+
+        # Processed operations for idempotent dedup
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_processed_ops (
+                operation_uuid TEXT PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_key TEXT NOT NULL,
+                sync_version INTEGER NOT NULL,
+                processed_at INTEGER NOT NULL
+            )
+            """
+        )
+
+        # Opaque cursor tracking (token -> position mapping)
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_cursors (
+                cursor_token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                device_id TEXT NOT NULL,
+                position INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL
+            )
+            """
+        )
+
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sync_cursors_expires
+            ON sync_cursors(expires_at)
+            """
+        )
+
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sync_processed_ops_table_key
+            ON sync_processed_ops(table_name, record_key)
+            """
+        )
+
         # -- Backfill existing comments with UUIDs --
         db.execute(
             """
