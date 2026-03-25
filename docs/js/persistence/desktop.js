@@ -79,9 +79,34 @@ const _NotesDesktop = (() => {
         return null;
     }
 
+    /**
+     * Enqueue a change to the sync outbox if cloud sync is enabled.
+     * No-op when the feature flag is off or the outbox module isn't loaded.
+     */
+    function enqueueIfSyncEnabled(tableName, recordKey, operation, baseSyncVersion) {
+        if (!window.CONFIG?.features?.cloudSync) return;
+        if (!window._SyncOutbox?.enqueueChange) return;
+        try {
+            window._SyncOutbox.enqueueChange(tableName, recordKey, operation, baseSyncVersion);
+        } catch (e) {
+            console.warn('DesktopBackend: outbox enqueue failed:', e);
+        }
+    }
+
     // ---- DesktopBackend ----
     const DesktopBackend = {
         ...LocalBackend,
+
+        async saveStudyDescription(studyUid, description) {
+            if (!studyUid) return null;
+            const store = loadStore();
+            const studyEntry = ensureStudy(store, studyUid);
+            const currentSyncVersion = studyEntry.sync_version || 0;
+            studyEntry.description = description || '';
+            saveStore(store);
+            enqueueIfSyncEnabled('study_notes', studyUid, 'update', currentSyncVersion);
+            return clone(studyEntry);
+        },
 
         async addComment(studyUid, payload = {}) {
             if (!studyUid) return null;
@@ -104,6 +129,7 @@ const _NotesDesktop = (() => {
             };
             target.comments.push(comment);
             saveStore(store);
+            enqueueIfSyncEnabled('comments', recordUuid, 'insert', 0);
             return clone(comment);
         },
 
@@ -141,6 +167,8 @@ const _NotesDesktop = (() => {
             found.comment.updated_at = now;
             found.comment.device_id = getDeviceId();
             saveStore(store);
+            const recordUuid = found.comment.record_uuid || found.comment.id;
+            enqueueIfSyncEnabled('comments', recordUuid, 'update', found.comment.sync_version || 0);
             return clone(found.comment);
         },
 
@@ -178,12 +206,15 @@ const _NotesDesktop = (() => {
             if (found) {
                 // Soft delete: mark with deleted_at and remove from visible list
                 const now = Date.now();
+                const recordUuid = found.comment.record_uuid || found.comment.id;
+                const currentSyncVersion = found.comment.sync_version || 0;
                 found.comment.deleted_at = now;
                 found.comment.updated_at = now;
                 found.comment.device_id = getDeviceId();
                 // Remove from the array so it's not visible in the UI
                 const idx = found.array.indexOf(found.comment);
                 if (idx !== -1) found.array.splice(idx, 1);
+                enqueueIfSyncEnabled('comments', recordUuid, 'delete', currentSyncVersion);
             }
 
             saveStore(store);
@@ -232,6 +263,7 @@ const _NotesDesktop = (() => {
                 delete saved.deletedAt;
                 studyEntry.reports.push(saved);
                 saveStore(store);
+                enqueueIfSyncEnabled('reports', saved.id, 'insert', 0);
                 return clone(saved);
             } catch (e) {
                 console.warn('DesktopBackend: failed to upload report:', e);
@@ -253,9 +285,11 @@ const _NotesDesktop = (() => {
 
             // Soft delete: tombstone with deletedAt, keep file on disk.
             // Physical file removal deferred to purge policy (Stage 5).
+            const currentSyncVersion = report.sync_version || 0;
             report.deletedAt = Date.now();
             report.updatedAt = report.deletedAt;
             saveStore(store);
+            enqueueIfSyncEnabled('reports', reportId, 'delete', currentSyncVersion);
             return true;
         },
 
