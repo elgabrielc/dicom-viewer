@@ -45,17 +45,25 @@ const _NotesDesktop = (() => {
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 await fs.writeFile(filePath, bytes);
 
+                // Compute SHA-256 content hash for sync dedup/integrity
+                const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const contentHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
                 const store = loadStore();
                 const studyEntry = ensureStudy(store, studyUid);
                 const saved = {
                     ...report,
                     filePath,
+                    contentHash,
                     storedAt: new Date().toISOString()
                 };
                 delete saved.blob;
 
+                // Upsert: clear deleted_at on resurrection
                 const target = normalizeReportId(saved.id);
                 studyEntry.reports = studyEntry.reports.filter((entry) => normalizeReportId(entry?.id) !== target);
+                delete saved.deletedAt;
                 studyEntry.reports.push(saved);
                 saveStore(store);
                 return clone(saved);
@@ -77,21 +85,10 @@ const _NotesDesktop = (() => {
             const report = studyEntry.reports.find((entry) => normalizeReportId(entry?.id) === target) || null;
             if (!report) return true;
 
-            if (report.filePath) {
-                const { fs } = getDesktopTauriApis();
-                if (!fs) return false;
-
-                try {
-                    if (await fs.exists(report.filePath)) {
-                        await fs.remove(report.filePath);
-                    }
-                } catch (e) {
-                    console.warn('DesktopBackend: failed to delete report file:', e);
-                    return false;
-                }
-            }
-
-            studyEntry.reports = studyEntry.reports.filter((entry) => normalizeReportId(entry?.id) !== target);
+            // Soft delete: tombstone with deletedAt, keep file on disk.
+            // Physical file removal deferred to purge policy (Stage 5).
+            report.deletedAt = Date.now();
+            report.updatedAt = report.deletedAt;
             saveStore(store);
             return true;
         },
@@ -101,7 +98,10 @@ const _NotesDesktop = (() => {
             if (!core?.convertFileSrc) return '';
 
             const match = findReportMetadata(loadStore(), reportId);
-            const filePath = match?.report?.filePath;
+            const report = match?.report;
+            // Skip soft-deleted reports
+            if (!report || report.deletedAt) return '';
+            const filePath = report.filePath;
             if (!filePath) return '';
             return core.convertFileSrc(filePath);
         }

@@ -79,11 +79,13 @@
     }
 
     function renderReports(reports, studyUid) {
-        if (!reports || reports.length === 0) {
+        // Filter out soft-deleted reports before rendering
+        const activeReports = (reports || []).filter(report => !report.deletedAt);
+        if (activeReports.length === 0) {
             return '<p class="report-empty">No reports attached</p>';
         }
 
-        return reports.map(report => {
+        return activeReports.map(report => {
             const icon = report.type === 'pdf' ? '&#128196;' : '&#128247;';
             return `
                 <div class="report-item" data-report-id="${escapeHtml(report.id)}">
@@ -108,7 +110,7 @@
 
         const btn = document.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
         if (btn) {
-            const count = state.studies[studyUid].reports?.length || 0;
+            const count = (state.studies[studyUid].reports || []).filter(r => !r.deletedAt).length;
             btn.textContent = count > 0 ? `${count} report${count > 1 ? 's' : ''}` : 'Add report';
         }
     }

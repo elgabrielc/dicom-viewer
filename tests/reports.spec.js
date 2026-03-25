@@ -270,7 +270,7 @@ test.describe('Test Suite 32: GET /api/notes/reports/<id>/file - Download Report
 });
 
 // ---------------------------------------------------------------------------
-// Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>
+// Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id> (soft delete)
 // ---------------------------------------------------------------------------
 
 test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () => {
@@ -326,7 +326,7 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
         expect(body.studies).not.toHaveProperty(studyUid);
     });
 
-    test('file is no longer downloadable after deletion', async ({ request }) => {
+    test('file endpoint returns 404 after soft delete (tombstoned)', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const { id: reportId } = await (await uploadReport(request, studyUid)).json();
 
@@ -334,10 +334,10 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
         const before = await request.get(`${BASE_URL}/api/notes/reports/${reportId}/file`);
         expect(before.status()).toBe(200);
 
-        // Delete
+        // Soft delete
         await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
 
-        // File should now return 404
+        // File endpoint should return 404 (record is tombstoned)
         const after = await request.get(`${BASE_URL}/api/notes/reports/${reportId}/file`);
         expect(after.status()).toBe(404);
     });
@@ -370,6 +370,124 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
 
         expect(foundA).toBeDefined();
         expect(foundB).toBeUndefined();
+    });
+
+    test('soft-deleted report can be resurrected by re-uploading with same ID', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const reportId = 'resurrect-test-id-01';
+
+        // Upload, delete, re-upload
+        await uploadReport(request, studyUid, { reportId, filename: 'v1.pdf' });
+        await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
+
+        // Confirm it is gone from queries
+        const afterDelete = await (
+            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
+        ).json();
+        expect(afterDelete.studies[studyUid]?.reports?.find(r => r.id === reportId)).toBeUndefined();
+
+        // Re-upload (resurrection)
+        const reUpload = await uploadReport(request, studyUid, { reportId, filename: 'v2.pdf', name: 'Resurrected' });
+        expect(reUpload.status()).toBe(200);
+
+        // Should now appear again in queries
+        const afterResurrect = await (
+            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
+        ).json();
+        const found = afterResurrect.studies[studyUid]?.reports?.find(r => r.id === reportId);
+        expect(found).toBeDefined();
+        expect(found.name).toBe('Resurrected');
+    });
+
+    test('double soft-delete returns 404 on second attempt', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const { id: reportId } = await (await uploadReport(request, studyUid)).json();
+
+        const first = await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
+        expect(first.status()).toBe(200);
+
+        const second = await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
+        expect(second.status()).toBe(404);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Test Suite 34: Content hash and soft-delete file retention
+// ---------------------------------------------------------------------------
+
+test.describe('Test Suite 34: Content Hash and Soft-Delete File Retention', () => {
+    test('upload response includes contentHash as a 64-char hex string', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const response = await uploadReport(request, studyUid, { filename: 'hash-test.pdf' });
+        expect(response.status()).toBe(200);
+
+        const body = await response.json();
+        expect(typeof body.contentHash).toBe('string');
+        expect(body.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    test('same file content produces the same content hash', async ({ request }) => {
+        const content = Buffer.from('%PDF-1.4\nidentical content\n%%EOF\n');
+        const studyA = uniqueStudyUid();
+        const studyB = uniqueStudyUid();
+
+        const bodyA = await (await uploadReport(request, studyA, {
+            filename: 'a.pdf', fileContent: content
+        })).json();
+
+        const bodyB = await (await uploadReport(request, studyB, {
+            filename: 'b.pdf', fileContent: content
+        })).json();
+
+        expect(bodyA.contentHash).toBe(bodyB.contentHash);
+    });
+
+    test('different file content produces different content hashes', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+
+        const bodyA = await (await uploadReport(request, studyUid, {
+            reportId: 'hash-diff-test-aaa1',
+            filename: 'a.pdf',
+            fileContent: Buffer.from('%PDF-1.4\ncontent A\n%%EOF\n'),
+        })).json();
+
+        const bodyB = await (await uploadReport(request, studyUid, {
+            reportId: 'hash-diff-test-bbb2',
+            filename: 'b.pdf',
+            fileContent: Buffer.from('%PDF-1.4\ncontent B\n%%EOF\n'),
+        })).json();
+
+        expect(bodyA.contentHash).not.toBe(bodyB.contentHash);
+    });
+
+    test('physical report file is retained on disk after soft delete', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const pdfContent = minimalPdfBuffer();
+        const { id: reportId } = await (await uploadReport(request, studyUid, {
+            filename: 'retained.pdf', fileContent: pdfContent
+        })).json();
+
+        // Soft delete
+        const deleteResponse = await request.delete(
+            `${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`
+        );
+        expect(deleteResponse.status()).toBe(200);
+
+        // The file endpoint returns 404 because the record is tombstoned,
+        // but the physical file remains on disk. Re-uploading with the same ID
+        // proves the file wasn't purged -- the upsert succeeds and the file
+        // becomes downloadable again.
+        const reUpload = await uploadReport(request, studyUid, {
+            reportId,
+            filename: 'retained.pdf',
+            fileContent: pdfContent,
+        });
+        expect(reUpload.status()).toBe(200);
+
+        const download = await request.get(`${BASE_URL}/api/notes/reports/${reportId}/file`);
+        expect(download.status()).toBe(200);
+        const downloaded = await download.body();
+        expect(downloaded).toEqual(pdfContent);
     });
 });
 

@@ -4,6 +4,7 @@ Report upload/download/delete endpoints and localStorage migration.
 Copyright (c) 2026 Divergent Health Technologies
 """
 
+import hashlib
 import os
 import shutil
 import tempfile
@@ -21,6 +22,14 @@ from server.db import (
 )
 
 reports_bp = Blueprint('reports', __name__)
+
+
+def _get_device_id(db):
+    """Read the device_id from sync_state, or return None if not yet seeded."""
+    row = db.execute(
+        "SELECT value FROM sync_state WHERE key = 'device_id'"
+    ).fetchone()
+    return row['value'] if row else None
 
 
 def _build_notes_payload(study_uids, db):
@@ -55,6 +64,7 @@ def _build_notes_payload(study_uids, db):
         FROM reports
         WHERE study_uid IN ({placeholders})
         AND file_path IS NOT NULL
+        AND deleted_at IS NULL
         ORDER BY added_at ASC, id ASC
         """,
         study_uids
@@ -175,14 +185,19 @@ def upload_report(study_uid):
     try:
         os.close(tmp_fd)
         file.save(tmp_path)
+
+        # Compute SHA-256 content hash from the saved bytes
+        with open(tmp_path, 'rb') as fh:
+            file_bytes = fh.read()
+        content_hash = hashlib.sha256(file_bytes).hexdigest()
+
         size = parse_int(request.form.get('size'))
         if size is None:
-            try:
-                size = os.path.getsize(tmp_path)
-            except OSError:
-                size = 0
+            size = len(file_bytes)
 
         db = get_db()
+        device_id = _get_device_id(db)
+
         existing = db.execute(
             "SELECT file_path, added_at FROM reports WHERE id = ?",
             (report_id,)
@@ -191,10 +206,13 @@ def upload_report(study_uid):
         if existing and existing['added_at'] and not request.form.get('addedAt'):
             added_at = existing['added_at']
 
+        # Upsert clears deleted_at (resurrection) and populates sync columns
         db.execute(
             """
-            INSERT INTO reports (id, study_uid, name, type, size, file_path, added_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO reports (id, study_uid, name, type, size, file_path,
+                                 added_at, updated_at, content_hash, device_id,
+                                 sync_version, deleted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
             ON CONFLICT(id) DO UPDATE SET
                 study_uid=excluded.study_uid,
                 name=excluded.name,
@@ -202,9 +220,14 @@ def upload_report(study_uid):
                 size=excluded.size,
                 file_path=excluded.file_path,
                 added_at=excluded.added_at,
-                updated_at=excluded.updated_at
+                updated_at=excluded.updated_at,
+                content_hash=excluded.content_hash,
+                device_id=excluded.device_id,
+                sync_version=0,
+                deleted_at=NULL
             """,
-            (report_id, study_uid, name, report_type, size, report_path, added_at, updated_at)
+            (report_id, study_uid, name, report_type, size, report_path,
+             added_at, updated_at, content_hash, device_id)
         )
         db.commit()
 
@@ -231,7 +254,8 @@ def upload_report(study_uid):
         'type': report_type,
         'size': size,
         'addedAt': added_at,
-        'updatedAt': updated_at
+        'updatedAt': updated_at,
+        'contentHash': content_hash
     })
 
 
@@ -239,7 +263,7 @@ def upload_report(study_uid):
 def get_report_file(report_id):
     db = get_db()
     row = db.execute(
-        "SELECT file_path, type FROM reports WHERE id = ?",
+        "SELECT file_path, type FROM reports WHERE id = ? AND deleted_at IS NULL",
         (report_id,)
     ).fetchone()
 
@@ -259,28 +283,22 @@ def get_report_file(report_id):
 def delete_report(study_uid, report_id):
     db = get_db()
     row = db.execute(
-        "SELECT file_path FROM reports WHERE id = ? AND study_uid = ?",
+        "SELECT file_path FROM reports WHERE id = ? AND study_uid = ? AND deleted_at IS NULL",
         (report_id, study_uid)
     ).fetchone()
 
     if not row:
         return jsonify({'error': 'Report not found'}), 404
 
-    # Delete DB record first, then remove file.
-    # If file removal fails, the orphan file is acceptable;
-    # the reverse (dangling DB reference) is worse.
-    file_path = row['file_path']
+    # Soft delete: tombstone the record with deleted_at timestamp.
+    # Physical file is retained on disk until purge (Stage 5).
+    now = int(time.time() * 1000)
+    device_id = _get_device_id(db)
     db.execute(
-        "DELETE FROM reports WHERE id = ? AND study_uid = ?",
-        (report_id, study_uid)
+        "UPDATE reports SET deleted_at = ?, updated_at = ?, device_id = ? WHERE id = ? AND study_uid = ?",
+        (now, now, device_id, report_id, study_uid)
     )
     db.commit()
-
-    if file_path and os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
 
     return jsonify({'deleted': True, 'id': report_id})
 
