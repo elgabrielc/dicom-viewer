@@ -19,7 +19,7 @@
         loadSampleCtBtn,
         loadSampleMriBtn
     } = app.dom;
-    const { closeReportViewer } = app.notesReports;
+    const { closeReportViewer } = app.reportsUi;
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
     const {
         applyDesktopLibraryScan,
