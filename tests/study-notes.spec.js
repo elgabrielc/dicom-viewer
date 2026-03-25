@@ -62,28 +62,48 @@ test.describe('Test Suite 26: PUT /api/notes/<study_uid>/description', () => {
         expect(body.studies[studyUid].description).toBe('second description');
     });
 
-    test('saving empty string deletes the description and study disappears from batch results', async ({ request }) => {
+    test('saving empty string clears the description and study disappears from batch results', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
         // Write a description first
         await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
-            data: { description: 'will be deleted' },
+            data: { description: 'will be cleared' },
         });
 
-        // Now overwrite with empty string
-        const deleteResponse = await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
+        // Now overwrite with empty string (row persists with empty description)
+        const clearResponse = await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
             data: { description: '' },
         });
-        expect(deleteResponse.status()).toBe(200);
+        expect(clearResponse.status()).toBe(200);
 
-        const deleteBody = await deleteResponse.json();
-        expect(deleteBody.description).toBe('');
+        const clearBody = await clearResponse.json();
+        expect(clearBody.description).toBe('');
 
         // The study should no longer appear in batch results (has_notes = False now)
         const batchBody = await (
             await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
         ).json();
         expect(batchBody.studies).not.toHaveProperty(studyUid);
+    });
+
+    test('clearing then re-setting description resurrects the row', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+
+        // Write, clear, then re-set
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
+            data: { description: 'original' },
+        });
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
+            data: { description: '' },
+        });
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
+            data: { description: 'resurrected' },
+        });
+
+        const body = await (
+            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
+        ).json();
+        expect(body.studies[studyUid].description).toBe('resurrected');
     });
 
     test('saving whitespace-only description behaves like empty (gets stripped)', async ({ request }) => {
@@ -95,7 +115,7 @@ test.describe('Test Suite 26: PUT /api/notes/<study_uid>/description', () => {
         expect(response.status()).toBe(200);
 
         const body = await response.json();
-        // Server strips leading/trailing whitespace; result is empty which deletes the record
+        // Server strips leading/trailing whitespace; result is empty which clears the description
         expect(body.description).toBe('');
     });
 
@@ -180,14 +200,14 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         expect(body.studies[studyUid].series[seriesB].description).toBe('series B');
     });
 
-    test('saving empty series description deletes the series record', async ({ request }) => {
+    test('saving empty series description clears it (row persists with empty description)', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const seriesUid = uniqueSeriesUid();
 
         // Write description
         await request.put(
             `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'to be deleted' } }
+            { data: { description: 'to be cleared' } }
         );
 
         // Clear it
@@ -211,6 +231,33 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
             }
         }
         // Reaching here without throwing is success
+    });
+
+    test('clearing then re-setting series description resurrects the row', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const seriesUid = uniqueSeriesUid();
+
+        // Write, clear, then re-set
+        await request.put(
+            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
+            { data: { description: 'original series' } }
+        );
+        await request.put(
+            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
+            { data: { description: '' } }
+        );
+        await request.put(
+            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
+            { data: { description: 'resurrected series' } }
+        );
+
+        const body = await (
+            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
+        ).json();
+
+        const seriesEntry = body.studies[studyUid]?.series?.[seriesUid];
+        expect(seriesEntry).toBeDefined();
+        expect(seriesEntry.description).toBe('resurrected series');
     });
 
     test('same series key with different study UIDs stores separate rows', async ({ request }) => {

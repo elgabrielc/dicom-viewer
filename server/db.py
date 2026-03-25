@@ -246,6 +246,10 @@ def init_db():
         _add_column(db, 'study_notes', 'device_id', 'TEXT')
         _add_column(db, 'study_notes', 'sync_version', 'INTEGER DEFAULT 0')
 
+        _add_column(db, 'series_notes', 'deleted_at', 'INTEGER')
+        _add_column(db, 'series_notes', 'device_id', 'TEXT')
+        _add_column(db, 'series_notes', 'sync_version', 'INTEGER DEFAULT 0')
+
         _add_column(db, 'reports', 'content_hash', 'TEXT')
         _add_column(db, 'reports', 'deleted_at', 'INTEGER')
         _add_column(db, 'reports', 'device_id', 'TEXT')
