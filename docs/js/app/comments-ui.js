@@ -1,4 +1,5 @@
 // Comments UI - comment CRUD, rendering, event handlers
+// Uses record_uuid as the canonical comment identifier for sync compatibility.
 // Copyright (c) 2026 Divergent Health Technologies
 
 (() => {
@@ -8,8 +9,17 @@
     const { escapeHtml } = app.utils;
     const { formatTimestamp, generateLocalCommentId } = app.notesUi;
 
+    /**
+     * Get the canonical identifier for a comment.
+     * Prefers record_uuid (sync-era), falls back to id (legacy).
+     */
+    function commentIdentifier(comment) {
+        return comment.record_uuid || comment.id;
+    }
+
     function normalizeCommentId(value) {
         if (value === null || value === undefined) return null;
+        // UUIDs are strings; legacy ids are numeric
         const asNumber = Number(value);
         if (!Number.isNaN(asNumber)) return asNumber;
         return String(value);
@@ -18,23 +28,30 @@
     function findCommentIndex(comments, commentId) {
         const target = normalizeCommentId(commentId);
         if (target === null) return -1;
-        return comments.findIndex(comment => normalizeCommentId(comment.id) === target);
+        // Match against both record_uuid and id for backward compat
+        return comments.findIndex(comment => {
+            if (comment.record_uuid && normalizeCommentId(comment.record_uuid) === target) return true;
+            return normalizeCommentId(comment.id) === target;
+        });
     }
 
     function renderComments(comments, studyUid, seriesUid = null) {
         if (!comments || comments.length === 0) return '';
-        return comments.map(comment => `
-            <div class="comment-item" data-comment-id="${escapeHtml(comment.id)}">
+        return comments.map(comment => {
+            const cid = commentIdentifier(comment);
+            return `
+            <div class="comment-item" data-comment-id="${escapeHtml(cid)}">
                 <div class="comment-header">
                     <span class="comment-time">${formatTimestamp(comment.time)}</span>
                     <span class="comment-actions">
-                        <button class="comment-btn edit-comment" data-study-uid="${escapeHtml(studyUid)}" ${seriesUid ? `data-series-uid="${escapeHtml(seriesUid)}"` : ''} data-comment-id="${escapeHtml(comment.id)}">Edit</button>
-                        <button class="comment-btn delete-comment" data-study-uid="${escapeHtml(studyUid)}" ${seriesUid ? `data-series-uid="${escapeHtml(seriesUid)}"` : ''} data-comment-id="${escapeHtml(comment.id)}">Delete</button>
+                        <button class="comment-btn edit-comment" data-study-uid="${escapeHtml(studyUid)}" ${seriesUid ? `data-series-uid="${escapeHtml(seriesUid)}"` : ''} data-comment-id="${escapeHtml(cid)}">Edit</button>
+                        <button class="comment-btn delete-comment" data-study-uid="${escapeHtml(studyUid)}" ${seriesUid ? `data-series-uid="${escapeHtml(seriesUid)}"` : ''} data-comment-id="${escapeHtml(cid)}">Delete</button>
                     </span>
                 </div>
                 <div class="comment-text">${escapeHtml(comment.text)}</div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     function updateCommentListUI(studyUid, seriesUid) {
@@ -112,8 +129,14 @@
             time: comment.time,
             seriesUid
         });
-        if (saved?.id !== undefined && saved?.id !== null) {
-            comment.id = saved.id;
+        if (saved) {
+            // Promote record_uuid (or id) from server response as canonical identifier
+            if (saved.record_uuid) {
+                comment.id = saved.record_uuid;
+                comment.record_uuid = saved.record_uuid;
+            } else if (saved.id !== undefined && saved.id !== null) {
+                comment.id = saved.id;
+            }
             updateCommentListUI(studyUid, seriesUid);
         }
     }

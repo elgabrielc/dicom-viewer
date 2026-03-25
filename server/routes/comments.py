@@ -1,10 +1,14 @@
 """
 Comment add/update/delete endpoints.
 
+Uses record_uuid as the canonical identifier for sync compatibility.
+Deletes are soft (tombstoned with deleted_at) to support sync replication.
+
 Copyright (c) 2026 Divergent Health Technologies
 """
 
 import time
+import uuid
 
 from flask import Blueprint, jsonify, request
 
@@ -29,15 +33,20 @@ def add_comment(study_uid):
     else:
         timestamp = now
 
+    record_uuid = str(uuid.uuid4())
+
     db = get_db()
     cursor = db.execute(
-        "INSERT INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)",
-        (study_uid, series_uid, text, timestamp)
+        """INSERT INTO comments
+           (study_uid, series_uid, text, time, record_uuid, created_at, updated_at, sync_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
+        (study_uid, series_uid, text, timestamp, record_uuid, timestamp, timestamp)
     )
     db.commit()
 
     return jsonify({
         'id': cursor.lastrowid,
+        'record_uuid': record_uuid,
         'studyUid': study_uid,
         'seriesUid': series_uid,
         'text': text,
@@ -45,8 +54,8 @@ def add_comment(study_uid):
     })
 
 
-@comments_bp.route('/api/notes/<study_uid>/comments/<int:comment_id>', methods=['PUT'])
-def update_comment(study_uid, comment_id):
+@comments_bp.route('/api/notes/<study_uid>/comments/<comment_uuid>', methods=['PUT'])
+def update_comment(study_uid, comment_uuid):
     data = request.get_json(silent=True) or {}
     text = (data.get('text') or '').strip()
     if not text:
@@ -55,33 +64,58 @@ def update_comment(study_uid, comment_id):
     # Always use server time for edits to preserve audit integrity
     now = int(time.time() * 1000)
     db = get_db()
+
+    # Support lookup by either record_uuid or legacy integer id
     cursor = db.execute(
-        "UPDATE comments SET text = ?, time = ? WHERE id = ? AND study_uid = ?",
-        (text, now, comment_id, study_uid)
+        """UPDATE comments SET text = ?, time = ?, updated_at = ?
+           WHERE record_uuid = ? AND study_uid = ? AND deleted_at IS NULL""",
+        (text, now, now, comment_uuid, study_uid)
     )
+    if cursor.rowcount == 0:
+        # Fall back to integer id lookup for backward compatibility
+        legacy_id = parse_int(comment_uuid)
+        if legacy_id is not None:
+            cursor = db.execute(
+                """UPDATE comments SET text = ?, time = ?, updated_at = ?
+                   WHERE id = ? AND study_uid = ? AND deleted_at IS NULL""",
+                (text, now, now, legacy_id, study_uid)
+            )
     db.commit()
 
     if cursor.rowcount == 0:
         return jsonify({'error': 'Comment not found'}), 404
 
     return jsonify({
-        'id': comment_id,
+        'record_uuid': comment_uuid,
         'studyUid': study_uid,
         'text': text,
         'time': now
     })
 
 
-@comments_bp.route('/api/notes/<study_uid>/comments/<int:comment_id>', methods=['DELETE'])
-def delete_comment(study_uid, comment_id):
+@comments_bp.route('/api/notes/<study_uid>/comments/<comment_uuid>', methods=['DELETE'])
+def delete_comment(study_uid, comment_uuid):
+    now = int(time.time() * 1000)
     db = get_db()
+
+    # Soft delete: set deleted_at timestamp instead of removing the row
     cursor = db.execute(
-        "DELETE FROM comments WHERE id = ? AND study_uid = ?",
-        (comment_id, study_uid)
+        """UPDATE comments SET deleted_at = ?, updated_at = ?
+           WHERE record_uuid = ? AND study_uid = ? AND deleted_at IS NULL""",
+        (now, now, comment_uuid, study_uid)
     )
+    if cursor.rowcount == 0:
+        # Fall back to integer id lookup for backward compatibility
+        legacy_id = parse_int(comment_uuid)
+        if legacy_id is not None:
+            cursor = db.execute(
+                """UPDATE comments SET deleted_at = ?, updated_at = ?
+                   WHERE id = ? AND study_uid = ? AND deleted_at IS NULL""",
+                (now, now, legacy_id, study_uid)
+            )
     db.commit()
 
     if cursor.rowcount == 0:
         return jsonify({'error': 'Comment not found'}), 404
 
-    return jsonify({'deleted': True, 'id': comment_id})
+    return jsonify({'deleted': True, 'record_uuid': comment_uuid})

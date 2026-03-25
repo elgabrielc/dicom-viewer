@@ -50,9 +50,10 @@ def _build_notes_payload(study_uids, db):
 
     comment_rows = db.execute(
         f"""
-        SELECT id, study_uid, series_uid, text, time
+        SELECT id, study_uid, series_uid, text, time, record_uuid
         FROM comments
         WHERE study_uid IN ({placeholders})
+          AND deleted_at IS NULL
         ORDER BY time ASC, id ASC
         """,
         study_uids
@@ -100,7 +101,7 @@ def _build_notes_payload(study_uids, db):
         study_uid = row['study_uid']
         ensure(study_uid)
         comment = {
-            'id': row['id'],
+            'id': row['record_uuid'] or row['id'],
             'text': row['text'],
             'time': row['time']
         }

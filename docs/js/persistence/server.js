@@ -150,11 +150,16 @@ const _NotesServer = (() => {
 
         async addComment(studyUid, payload) {
             if (!studyUid) return null;
-            return await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments`, {
+            const result = await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            // Promote record_uuid to id for canonical identifier usage
+            if (result && result.record_uuid) {
+                result.id = result.record_uuid;
+            }
+            return result;
         },
 
         async updateComment(studyUid, commentId, payload) {

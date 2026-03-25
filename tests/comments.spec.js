@@ -5,9 +5,12 @@
  * Playwright API tests for comment endpoints.
  *
  * Endpoints covered:
- *   POST /api/notes/<study>/comments          (add comment)
- *   PUT  /api/notes/<study>/comments/<id>     (edit comment)
- *   DELETE /api/notes/<study>/comments/<id>   (delete comment)
+ *   POST   /api/notes/<study>/comments                (add comment)
+ *   PUT    /api/notes/<study>/comments/<uuid>         (edit comment)
+ *   DELETE /api/notes/<study>/comments/<uuid>         (soft delete)
+ *
+ * Comments use record_uuid as the canonical identifier.
+ * Deletes are soft (tombstoned with deleted_at).
  *
  * Test suites: 28-30 (split from notes-api.spec.js)
  */
@@ -20,7 +23,7 @@ const { BASE_URL, uniqueStudyUid, uniqueSeriesUid } = require('./notes-test-help
 // ---------------------------------------------------------------------------
 
 test.describe('Test Suite 28: POST /api/notes/<study_uid>/comments - Add Comment', () => {
-    test('creates a comment and returns the new comment with an id', async ({ request }) => {
+    test('creates a comment and returns the new comment with a record_uuid', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const response = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
             data: { text: 'Normal study - no acute findings' },
@@ -28,7 +31,8 @@ test.describe('Test Suite 28: POST /api/notes/<study_uid>/comments - Add Comment
         expect(response.status()).toBe(200);
 
         const body = await response.json();
-        expect(typeof body.id).toBe('number');
+        expect(typeof body.record_uuid).toBe('string');
+        expect(body.record_uuid.length).toBeGreaterThan(0);
         expect(body.studyUid).toBe(studyUid);
         expect(body.text).toBe('Normal study - no acute findings');
         expect(typeof body.time).toBe('number');
@@ -64,13 +68,14 @@ test.describe('Test Suite 28: POST /api/notes/<study_uid>/comments - Add Comment
         expect(response.status()).toBe(400);
     });
 
-    test('created comment is visible in batch GET results', async ({ request }) => {
+    test('created comment is visible in batch GET results with UUID as id', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const commentText = 'Mild cardiomegaly noted';
 
-        await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+        const createResponse = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
             data: { text: commentText },
         });
+        const { record_uuid } = await createResponse.json();
 
         const body = await (
             await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
@@ -80,9 +85,10 @@ test.describe('Test Suite 28: POST /api/notes/<study_uid>/comments - Add Comment
         expect(Array.isArray(comments)).toBe(true);
         expect(comments.length).toBeGreaterThan(0);
 
-        const found = comments.find(c => c.text === commentText);
+        // Batch GET returns record_uuid as the id field
+        const found = comments.find(c => c.id === record_uuid);
         expect(found).toBeDefined();
-        expect(typeof found.id).toBe('number');
+        expect(found.text).toBe(commentText);
         expect(typeof found.time).toBe('number');
     });
 
@@ -182,28 +188,28 @@ test.describe('Test Suite 28: POST /api/notes/<study_uid>/comments - Add Comment
 });
 
 // ---------------------------------------------------------------------------
-// Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Comment
+// Test Suite 29: PUT /api/notes/<study_uid>/comments/<uuid> - Edit Comment
 // ---------------------------------------------------------------------------
 
-test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Comment', () => {
-    test('edits an existing comment and returns the updated text', async ({ request }) => {
+test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<uuid> - Edit Comment', () => {
+    test('edits an existing comment by record_uuid and returns the updated text', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
         // Create comment
         const createResponse = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
             data: { text: 'original text' },
         });
-        const { id } = await createResponse.json();
+        const { record_uuid } = await createResponse.json();
 
-        // Edit it
+        // Edit it using record_uuid
         const editResponse = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${id}`,
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`,
             { data: { text: 'updated text' } }
         );
         expect(editResponse.status()).toBe(200);
 
         const body = await editResponse.json();
-        expect(body.id).toBe(id);
+        expect(body.record_uuid).toBe(record_uuid);
         expect(body.text).toBe('updated text');
         expect(body.studyUid).toBe(studyUid);
         expect(typeof body.time).toBe('number');
@@ -213,7 +219,7 @@ test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Co
         const studyUid = uniqueStudyUid();
         const oldTime = Date.now() - 5 * 60 * 1000; // 5 minutes ago
 
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'before edit', time: oldTime },
             })
@@ -223,7 +229,7 @@ test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Co
 
         // Edit with an old client timestamp -- server must ignore it
         const editResponse = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${id}`,
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`,
             { data: { text: 'after edit', time: oldTime } }
         );
 
@@ -237,26 +243,27 @@ test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Co
 
     test('returns 404 when editing a comment that does not exist', async ({ request }) => {
         const studyUid = uniqueStudyUid();
+        const fakeUuid = '00000000-0000-0000-0000-000000000000';
         const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/999999999`,
+            `${BASE_URL}/api/notes/${studyUid}/comments/${fakeUuid}`,
             { data: { text: 'ghost edit' } }
         );
         expect(response.status()).toBe(404);
     });
 
-    test('returns 404 when comment id belongs to a different study', async ({ request }) => {
+    test('returns 404 when comment uuid belongs to a different study', async ({ request }) => {
         // Comment exists but under studyA -- editing via studyB URL must fail
         const studyA = uniqueStudyUid();
         const studyB = uniqueStudyUid();
 
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyA}/comments`, {
                 data: { text: 'belongs to study A' },
             })
         ).json();
 
         const response = await request.put(
-            `${BASE_URL}/api/notes/${studyB}/comments/${id}`,
+            `${BASE_URL}/api/notes/${studyB}/comments/${record_uuid}`,
             { data: { text: 'cross-study edit attempt' } }
         );
         expect(response.status()).toBe(404);
@@ -264,14 +271,14 @@ test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Co
 
     test('returns 400 when update text is empty', async ({ request }) => {
         const studyUid = uniqueStudyUid();
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'valid comment' },
             })
         ).json();
 
         const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${id}`,
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`,
             { data: { text: '' } }
         );
         expect(response.status()).toBe(400);
@@ -280,14 +287,14 @@ test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Co
     test('edited text is reflected in subsequent batch GET results', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'pre-edit text' },
             })
         ).json();
 
         await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${id}`,
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`,
             { data: { text: 'post-edit text' } }
         );
 
@@ -295,40 +302,42 @@ test.describe('Test Suite 29: PUT /api/notes/<study_uid>/comments/<id> - Edit Co
             await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
         ).json();
 
-        const found = body.studies[studyUid].comments.find(c => c.id === id);
+        // Batch GET returns record_uuid as the id field
+        const found = body.studies[studyUid].comments.find(c => c.id === record_uuid);
         expect(found).toBeDefined();
         expect(found.text).toBe('post-edit text');
     });
 });
 
 // ---------------------------------------------------------------------------
-// Test Suite 30: DELETE /api/notes/<study_uid>/comments/<id>
+// Test Suite 30: DELETE /api/notes/<study_uid>/comments/<uuid> (soft delete)
 // ---------------------------------------------------------------------------
 
-test.describe('Test Suite 30: DELETE /api/notes/<study_uid>/comments/<id>', () => {
-    test('deletes an existing comment and returns confirmation', async ({ request }) => {
+test.describe('Test Suite 30: DELETE /api/notes/<study_uid>/comments/<uuid>', () => {
+    test('soft-deletes an existing comment and returns confirmation', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'to be deleted' },
             })
         ).json();
 
         const deleteResponse = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${id}`
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`
         );
         expect(deleteResponse.status()).toBe(200);
 
         const body = await deleteResponse.json();
         expect(body.deleted).toBe(true);
-        expect(body.id).toBe(id);
+        expect(body.record_uuid).toBe(record_uuid);
     });
 
     test('returns 404 when deleting a comment that does not exist', async ({ request }) => {
         const studyUid = uniqueStudyUid();
+        const fakeUuid = '00000000-0000-0000-0000-000000000000';
         const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/comments/999999999`
+            `${BASE_URL}/api/notes/${studyUid}/comments/${fakeUuid}`
         );
         expect(response.status()).toBe(404);
     });
@@ -337,7 +346,7 @@ test.describe('Test Suite 30: DELETE /api/notes/<study_uid>/comments/<id>', () =
         const studyA = uniqueStudyUid();
         const studyB = uniqueStudyUid();
 
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyA}/comments`, {
                 data: { text: 'study A comment' },
             })
@@ -345,61 +354,102 @@ test.describe('Test Suite 30: DELETE /api/notes/<study_uid>/comments/<id>', () =
 
         // Attempt deletion via a different study URL
         const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyB}/comments/${id}`
+            `${BASE_URL}/api/notes/${studyB}/comments/${record_uuid}`
         );
         expect(response.status()).toBe(404);
 
-        // Original comment should still exist
+        // Original comment should still exist (not soft-deleted)
         const body = await (
             await request.get(`${BASE_URL}/api/notes/?studies=${studyA}`)
         ).json();
-        const found = body.studies[studyA]?.comments?.find(c => c.id === id);
+        const found = body.studies[studyA]?.comments?.find(c => c.id === record_uuid);
         expect(found).toBeDefined();
     });
 
-    test('deleted comment is absent from subsequent batch GET results', async ({ request }) => {
+    test('soft-deleted comment is absent from subsequent batch GET results', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
-        const { id } = await (
+        const { record_uuid } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'will vanish' },
             })
         ).json();
 
-        await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/${id}`);
+        await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`);
 
-        // Study has no remaining notes -- should drop from results
+        // Study has no remaining visible notes -- should drop from results
         const body = await (
             await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
         ).json();
         expect(body.studies).not.toHaveProperty(studyUid);
     });
 
-    test('deleting one comment leaves sibling comments intact', async ({ request }) => {
+    test('soft-deleting one comment leaves sibling comments intact', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
-        const { id: idA } = await (
+        const { record_uuid: uuidA } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'comment A - keep' },
             })
         ).json();
 
-        const { id: idB } = await (
+        const { record_uuid: uuidB } = await (
             await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
                 data: { text: 'comment B - delete' },
             })
         ).json();
 
-        await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/${idB}`);
+        await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/${uuidB}`);
 
         const body = await (
             await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
         ).json();
         const comments = body.studies[studyUid]?.comments || [];
-        const foundA = comments.find(c => c.id === idA);
-        const foundB = comments.find(c => c.id === idB);
+        const foundA = comments.find(c => c.id === uuidA);
+        const foundB = comments.find(c => c.id === uuidB);
 
         expect(foundA).toBeDefined();
         expect(foundB).toBeUndefined();
+    });
+
+    test('double-delete returns 404 (already soft-deleted)', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+
+        const { record_uuid } = await (
+            await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+                data: { text: 'delete me twice' },
+            })
+        ).json();
+
+        // First delete succeeds
+        const first = await request.delete(
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`
+        );
+        expect(first.status()).toBe(200);
+
+        // Second delete returns 404 (already tombstoned)
+        const second = await request.delete(
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`
+        );
+        expect(second.status()).toBe(404);
+    });
+
+    test('cannot edit a soft-deleted comment', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+
+        const { record_uuid } = await (
+            await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+                data: { text: 'soon deleted' },
+            })
+        ).json();
+
+        await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`);
+
+        // Attempt to edit the soft-deleted comment
+        const editResponse = await request.put(
+            `${BASE_URL}/api/notes/${studyUid}/comments/${record_uuid}`,
+            { data: { text: 'resurrection attempt' } }
+        );
+        expect(editResponse.status()).toBe(404);
     });
 });
