@@ -138,6 +138,20 @@ def sync():
             if not all(change.get(f) for f in required_fields):
                 continue
 
+            # Belt-and-suspenders: reject comment changes with empty record_uuid.
+            # The comments.record_uuid column is nullable in SQLite (can't add
+            # NOT NULL to existing column), so we enforce non-null here.
+            change_key = (change.get("key") or "").strip()
+            if change.get("table") == "comments" and not change_key:
+                rejected.append({
+                    "operation_uuid": change["operation_uuid"],
+                    "key": change.get("key", ""),
+                    "reason": "empty_record_uuid",
+                    "current_sync_version": 0,
+                    "current_data": {},
+                })
+                continue
+
             result = process_change(db, user_id, device_id, change)
 
             if result["status"] == "accepted":

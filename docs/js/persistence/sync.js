@@ -219,6 +219,8 @@ const _SyncOutbox = (() => {
 
     /**
      * Read all pending (un-synced) outbox entries.
+     * Synchronous version -- reads from localStorage only.
+     * Desktop callers should prefer readPendingChangesAsync().
      * @returns {Array} Entries sorted by created_at ascending
      */
     function readPendingChanges() {
@@ -226,6 +228,44 @@ const _SyncOutbox = (() => {
         return outbox
             .filter(entry => !entry.synced_at)
             .sort((a, b) => a.created_at - b.created_at);
+    }
+
+    /**
+     * Read all pending (un-synced) outbox entries asynchronously.
+     * On desktop, reads from SQLite (source of truth) with localStorage fallback.
+     * On browser, reads from localStorage.
+     * @returns {Promise<Array>} Entries sorted by created_at ascending
+     */
+    async function readPendingChangesAsync() {
+        const db = await getDb();
+        if (!db) {
+            return readPendingChanges();
+        }
+
+        try {
+            const rows = await db.select(
+                `SELECT id, operation_uuid, table_name, record_key, operation,
+                        base_sync_version, created_at, synced_at, attempts, last_error
+                 FROM sync_outbox
+                 WHERE synced_at IS NULL
+                 ORDER BY created_at ASC`
+            );
+            return rows.map(row => ({
+                id: String(row.id),
+                operation_uuid: row.operation_uuid,
+                table_name: row.table_name,
+                record_key: row.record_key,
+                operation: row.operation,
+                base_sync_version: row.base_sync_version,
+                created_at: row.created_at,
+                synced_at: row.synced_at,
+                attempts: row.attempts || 0,
+                last_error: row.last_error
+            }));
+        } catch (e) {
+            console.warn('SyncOutbox: SQLite pending read failed, falling back to localStorage:', e);
+            return readPendingChanges();
+        }
     }
 
     /**
@@ -239,7 +279,7 @@ const _SyncOutbox = (() => {
      * - Use the oldest base_sync_version from the collapsed group
      *
      * @param {Array} entries - Pending outbox entries (sorted by created_at)
-     * @returns {Array} Collapsed entries ready for sync
+     * @returns {Array} Collapsed entries ready for sync (with _noopsCleaned on the array)
      */
     function collapseChanges(entries) {
         // Group entries by (table_name, record_key), preserving order
@@ -253,13 +293,20 @@ const _SyncOutbox = (() => {
         }
 
         const collapsed = [];
+        let noopCount = 0;
         for (const [, group] of groups) {
             const result = collapseGroup(group);
             if (result) {
+                if (result._noop) {
+                    noopCount++;
+                }
                 collapsed.push(result);
             }
             // null result means the group collapsed to a no-op (insert+delete)
         }
+
+        // Attach the noop count so callers can report it
+        collapsed._noopsCleaned = noopCount;
 
         return collapsed;
     }
@@ -629,6 +676,7 @@ const _SyncOutbox = (() => {
     return {
         enqueueChange,
         readPendingChanges,
+        readPendingChangesAsync,
         collapseChanges,
         markSynced,
         markFailed,

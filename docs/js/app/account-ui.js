@@ -146,7 +146,9 @@
                 });
 
                 if (!res.ok) {
-                    // Refresh token rejected -- user must re-authenticate
+                    // Refresh token rejected -- clear stale tokens to prevent
+                    // infinite retry loops on next page load
+                    clearTokens();
                     return null;
                 }
 
@@ -155,6 +157,9 @@
                 return data.access_token;
             } catch (e) {
                 console.warn('AccountUI: token refresh failed:', e);
+                // Network error during refresh -- clear stale tokens so the
+                // next page load does not immediately retry with expired creds
+                clearTokens();
                 return null;
             }
         })();
@@ -272,8 +277,11 @@
             }
         });
 
-        // Expose instance for other modules (e.g., dispatcher integration)
+        // Expose instance for other modules (e.g., dispatcher integration).
+        // window.syncEngine is the canonical reference used by main.js and
+        // external callers; app.syncEngine is the module-scoped alias.
         app.syncEngine = syncEngineInstance;
+        window.syncEngine = syncEngineInstance;
 
         syncEngineInstance.start();
     }
@@ -283,6 +291,7 @@
             syncEngineInstance.stop();
             syncEngineInstance = null;
             app.syncEngine = null;
+            window.syncEngine = null;
         }
     }
 

@@ -166,8 +166,12 @@ const _SyncEngine = (() => {
                 return { skipped: true, reason: 'no_access_token' };
             }
 
-            // 2. Read and collapse pending outbox entries
-            const pending = outbox.readPendingChanges();
+            // 2. Read and collapse pending outbox entries.
+            // Prefer the async path (reads SQLite on desktop) over the
+            // synchronous localStorage-only fallback.
+            const pending = typeof outbox.readPendingChangesAsync === 'function'
+                ? await outbox.readPendingChangesAsync()
+                : outbox.readPendingChanges();
             const collapsed = outbox.collapseChanges(pending);
 
             // Separate no-ops (insert+delete pairs) from real changes
@@ -297,6 +301,12 @@ const _SyncEngine = (() => {
                 entryByOpUuid.set(entry.operation_uuid, entry);
             }
 
+            // Build a study_uid -> study object lookup map once, so that
+            // _updateLocalSyncVersion and _applyRemoteData can do O(1)
+            // lookups instead of scanning all studies for comment changes.
+            const { loadStore } = window._NotesInternals;
+            const studyLookup = this._buildStudyLookup(loadStore());
+
             // 5a. Process accepted changes
             const acceptedIds = [];
             for (const acc of accepted) {
@@ -304,7 +314,7 @@ const _SyncEngine = (() => {
                 if (entry) {
                     // Update local sync_version for this record
                     this._updateLocalSyncVersion(
-                        entry.table_name, entry.record_key, acc.sync_version
+                        entry.table_name, entry.record_key, acc.sync_version, studyLookup
                     );
                     // Collect all original entry IDs for this collapsed entry
                     const ids = entry._entry_ids || [entry.id];
@@ -355,8 +365,39 @@ const _SyncEngine = (() => {
                 accepted: accepted.length,
                 rejected: rejected.length,
                 remoteChanges: remoteChanges.length,
-                noopsCleaned: 0
+                noopsCleaned: noops.length
             };
+        }
+
+        /**
+         * Build a lookup map from comment record_uuid/id to {studyUid, comment}
+         * for O(1) lookups when updating sync_version on comments.
+         *
+         * @param {Object} store - The notes store from _NotesInternals
+         * @returns {Map<string, {studyUid: string, comment: Object}>}
+         */
+        _buildStudyLookup(store) {
+            const map = new Map();
+            for (const studyUid of Object.keys(store.studies || {})) {
+                const studyEntry = store.studies[studyUid];
+                if (Array.isArray(studyEntry.comments)) {
+                    for (const comment of studyEntry.comments) {
+                        if (comment.record_uuid) map.set(comment.record_uuid, { studyUid, comment });
+                        if (comment.id) map.set(String(comment.id), { studyUid, comment });
+                    }
+                }
+                if (studyEntry.series && typeof studyEntry.series === 'object') {
+                    for (const seriesEntry of Object.values(studyEntry.series)) {
+                        if (Array.isArray(seriesEntry.comments)) {
+                            for (const comment of seriesEntry.comments) {
+                                if (comment.record_uuid) map.set(comment.record_uuid, { studyUid, comment });
+                                if (comment.id) map.set(String(comment.id), { studyUid, comment });
+                            }
+                        }
+                    }
+                }
+            }
+            return map;
         }
 
         /**
@@ -365,8 +406,9 @@ const _SyncEngine = (() => {
          * @param {string} tableName
          * @param {string} recordKey
          * @param {number} syncVersion
+         * @param {Map} [studyLookup] - Optional pre-built comment lookup map for O(1) access
          */
-        _updateLocalSyncVersion(tableName, recordKey, syncVersion) {
+        _updateLocalSyncVersion(tableName, recordKey, syncVersion, studyLookup) {
             const { loadStore, saveStore, ensureStudy } = window._NotesInternals;
             const store = loadStore();
 
@@ -380,6 +422,17 @@ const _SyncEngine = (() => {
             }
 
             if (tableName === 'comments') {
+                // Use the pre-built lookup map for O(1) access if available
+                if (studyLookup) {
+                    const hit = studyLookup.get(recordKey);
+                    if (hit) {
+                        hit.comment.sync_version = syncVersion;
+                        saveStore(store);
+                        return;
+                    }
+                }
+                // Fallback: linear scan (only reached if lookup was not provided
+                // or the comment was added after the map was built)
                 for (const studyUid of Object.keys(store.studies)) {
                     const studyEntry = ensureStudy(store, studyUid);
                     const comment = this._findCommentByKey(studyEntry, recordKey);
@@ -443,16 +496,20 @@ const _SyncEngine = (() => {
                     // Update existing comment
                     existing.text = data.text || '';
                     existing.updated_at = data.updated_at || Date.now();
+                    // Keep time in sync with the remote timestamp so the UI
+                    // shows the correct display time for this comment
+                    existing.time = data.updated_at || existing.time || Date.now();
                     existing.sync_version = syncVersion;
                 } else {
                     // Insert new comment from remote
+                    const createdAt = data.created_at || Date.now();
                     studyEntry.comments.push({
                         id: recordKey,
                         record_uuid: recordKey,
                         text: data.text || '',
-                        time: data.created_at || Date.now(),
-                        created_at: data.created_at || Date.now(),
-                        updated_at: data.updated_at || Date.now(),
+                        time: createdAt,
+                        created_at: createdAt,
+                        updated_at: data.updated_at || createdAt,
                         sync_version: syncVersion
                     });
                 }
