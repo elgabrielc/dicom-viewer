@@ -21,7 +21,11 @@
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const config = window.CONFIG;
 
-    // localStorage keys for tokens
+    // localStorage keys for tokens.
+    // KNOWN LIMITATION (v1): Auth tokens are stored in localStorage on all
+    // platforms, including desktop. The ADR specifies OS credential storage
+    // (Tauri keychain plugin) for desktop mode, but that requires additional
+    // native plugin integration. Migrate to secure storage in a future release.
     const ACCESS_TOKEN_KEY = 'dicom-viewer-access-token';
     const REFRESH_TOKEN_KEY = 'dicom-viewer-refresh-token';
     const USER_EMAIL_KEY = 'dicom-viewer-user-email';

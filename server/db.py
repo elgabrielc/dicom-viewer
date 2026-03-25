@@ -290,32 +290,41 @@ def init_db():
 
         # -- Server-side sync tables --
 
-        # Version tracking per record (monotonic counter for cursor watermarks)
+        # Version tracking per record per user (monotonic counter for cursor watermarks)
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS sync_server_versions (
                 table_name TEXT NOT NULL,
                 record_key TEXT NOT NULL,
+                user_id TEXT NOT NULL,
                 sync_version INTEGER NOT NULL DEFAULT 1,
                 device_id TEXT,
                 updated_at INTEGER NOT NULL,
-                PRIMARY KEY (table_name, record_key)
+                PRIMARY KEY (table_name, record_key, user_id)
             )
             """
         )
 
-        # Processed operations for idempotent dedup
+        # Idempotent migration: add user_id column if table already exists
+        # without it (pre-isolation schema). Safe no-op on fresh databases.
+        _add_column(db, 'sync_server_versions', 'user_id', "TEXT NOT NULL DEFAULT ''")
+
+        # Processed operations for idempotent dedup (scoped by user_id)
         db.execute(
             """
             CREATE TABLE IF NOT EXISTS sync_processed_ops (
                 operation_uuid TEXT PRIMARY KEY,
                 table_name TEXT NOT NULL,
                 record_key TEXT NOT NULL,
+                user_id TEXT NOT NULL DEFAULT '',
                 sync_version INTEGER NOT NULL,
                 processed_at INTEGER NOT NULL
             )
             """
         )
+
+        # Idempotent migration: add user_id column to existing sync_processed_ops
+        _add_column(db, 'sync_processed_ops', 'user_id', "TEXT NOT NULL DEFAULT ''")
 
         # Opaque cursor tracking (token -> position mapping)
         db.execute(

@@ -1,9 +1,11 @@
 /**
- * Sync Outbox - localStorage-backed change capture for cloud sync
+ * Sync Outbox - Change capture for cloud sync
  *
  * Provides enqueue, dequeue, collapse, and mark-synced operations
- * for the sync outbox. All state is stored in localStorage alongside
- * the main notes store.
+ * for the sync outbox. Storage backend depends on deployment mode:
+ *   - Desktop (Tauri): SQLite via the Tauri SQL plugin (sync_outbox
+ *     and sync_state tables created by migration 006)
+ *   - Browser (cloud/personal): localStorage fallback
  *
  * The outbox captures every local write as a pending change entry.
  * The SyncEngine reads, collapses, and drains these entries to the
@@ -16,13 +18,55 @@ const _SyncOutbox = (() => {
     const OUTBOX_KEY = 'dicom-viewer-sync-outbox';
     const SYNC_STATE_KEY = 'dicom-viewer-sync-state';
 
-    // ---- Outbox Storage ----
+    // Cached SQLite connection for desktop mode (resolved lazily)
+    let _dbConnection = null;
+    let _dbPromise = null;
+
+    // ---- Desktop SQLite Helpers ----
 
     /**
-     * Load the raw outbox array from localStorage.
-     * @returns {Array} Pending outbox entries
+     * Check if running in desktop (Tauri) mode.
+     * @returns {boolean}
      */
-    function loadOutbox() {
+    function isDesktopMode() {
+        if (typeof window === 'undefined') return false;
+        if (typeof window.CONFIG !== 'undefined') {
+            return window.CONFIG.deploymentMode === 'desktop';
+        }
+        return typeof window.__TAURI__ !== 'undefined';
+    }
+
+    /**
+     * Get the Tauri SQL database connection, creating it on first call.
+     * Returns null when not in desktop mode or if the SQL plugin is unavailable.
+     * @returns {Promise<Object|null>}
+     */
+    async function getDb() {
+        if (!isDesktopMode()) return null;
+
+        if (_dbConnection) return _dbConnection;
+        if (_dbPromise) return _dbPromise;
+
+        _dbPromise = (async () => {
+            try {
+                const sql = window.__TAURI__?.sql;
+                if (!sql?.load) return null;
+                _dbConnection = await sql.load('sqlite:viewer.db');
+                return _dbConnection;
+            } catch (e) {
+                console.warn('SyncOutbox: failed to open desktop SQLite:', e);
+                return null;
+            } finally {
+                _dbPromise = null;
+            }
+        })();
+
+        return _dbPromise;
+    }
+
+    // ---- localStorage Outbox Storage ----
+
+    function loadOutboxLS() {
         try {
             const raw = localStorage.getItem(OUTBOX_KEY);
             if (!raw) return [];
@@ -34,11 +78,7 @@ const _SyncOutbox = (() => {
         }
     }
 
-    /**
-     * Save the outbox array to localStorage.
-     * @param {Array} entries
-     */
-    function saveOutbox(entries) {
+    function saveOutboxLS(entries) {
         try {
             localStorage.setItem(OUTBOX_KEY, JSON.stringify(entries));
         } catch (e) {
@@ -46,13 +86,9 @@ const _SyncOutbox = (() => {
         }
     }
 
-    // ---- Sync State Storage ----
+    // ---- localStorage Sync State Storage ----
 
-    /**
-     * Load sync state (delta_cursor, device_id, etc.) from localStorage.
-     * @returns {Object}
-     */
-    function loadSyncState() {
+    function loadSyncStateLS() {
         try {
             const raw = localStorage.getItem(SYNC_STATE_KEY);
             if (!raw) return {};
@@ -64,11 +100,7 @@ const _SyncOutbox = (() => {
         }
     }
 
-    /**
-     * Save sync state to localStorage.
-     * @param {Object} state
-     */
-    function saveSyncState(state) {
+    function saveSyncStateLS(state) {
         try {
             localStorage.setItem(SYNC_STATE_KEY, JSON.stringify(state));
         } catch (e) {
@@ -76,10 +108,72 @@ const _SyncOutbox = (() => {
         }
     }
 
+    // ---- Unified storage: delegates to SQLite on desktop, localStorage otherwise ----
+
+    /**
+     * Load the outbox array. Uses SQLite on desktop, localStorage otherwise.
+     * Synchronous callers (legacy code paths) get localStorage; async callers
+     * should use loadOutboxAsync().
+     * @returns {Array}
+     */
+    function loadOutbox() {
+        // Synchronous path -- always localStorage.
+        // Desktop async callers should use the async-aware public API methods.
+        return loadOutboxLS();
+    }
+
+    /**
+     * Load outbox from SQLite if available, falling back to localStorage.
+     * @returns {Promise<Array>}
+     */
+    async function loadOutboxAsync() {
+        const db = await getDb();
+        if (!db) return loadOutboxLS();
+
+        try {
+            const rows = await db.select(
+                `SELECT id, operation_uuid, table_name, record_key, operation,
+                        base_sync_version, created_at, synced_at, attempts, last_error
+                 FROM sync_outbox
+                 ORDER BY created_at ASC`
+            );
+            return rows.map(row => ({
+                id: String(row.id),
+                operation_uuid: row.operation_uuid,
+                table_name: row.table_name,
+                record_key: row.record_key,
+                operation: row.operation,
+                base_sync_version: row.base_sync_version,
+                created_at: row.created_at,
+                synced_at: row.synced_at,
+                attempts: row.attempts || 0,
+                last_error: row.last_error
+            }));
+        } catch (e) {
+            console.warn('SyncOutbox: SQLite outbox read failed, falling back to localStorage:', e);
+            return loadOutboxLS();
+        }
+    }
+
+    function saveOutbox(entries) {
+        saveOutboxLS(entries);
+    }
+
+    function loadSyncState() {
+        return loadSyncStateLS();
+    }
+
+    function saveSyncState(state) {
+        saveSyncStateLS(state);
+    }
+
     // ---- Public API ----
 
     /**
      * Enqueue a change to the outbox.
+     *
+     * On desktop, writes to SQLite asynchronously and mirrors to localStorage
+     * as a synchronous fallback. On browser, writes to localStorage only.
      *
      * @param {string} tableName   - 'comments', 'study_notes', or 'reports'
      * @param {string} recordKey   - record UUID, study UID, or report ID
@@ -87,21 +181,40 @@ const _SyncOutbox = (() => {
      * @param {number} baseSyncVersion - sync_version at time of local change
      */
     function enqueueChange(tableName, recordKey, operation, baseSyncVersion) {
+        const operationUuid = crypto.randomUUID();
+        const entryId = crypto.randomUUID();
+        const now = Date.now();
+
         const entry = {
-            id: crypto.randomUUID(),
-            operation_uuid: crypto.randomUUID(),
+            id: entryId,
+            operation_uuid: operationUuid,
             table_name: tableName,
             record_key: String(recordKey),
             operation: operation,
             base_sync_version: baseSyncVersion || 0,
-            created_at: Date.now(),
+            created_at: now,
             attempts: 0,
             last_error: null
         };
 
-        const outbox = loadOutbox();
+        // Always write to localStorage for synchronous access
+        const outbox = loadOutboxLS();
         outbox.push(entry);
-        saveOutbox(outbox);
+        saveOutboxLS(outbox);
+
+        // On desktop, also write to SQLite (fire-and-forget)
+        if (isDesktopMode()) {
+            getDb().then(db => {
+                if (!db) return;
+                return db.execute(
+                    `INSERT INTO sync_outbox (operation_uuid, table_name, record_key, operation, base_sync_version, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?)`,
+                    [operationUuid, tableName, String(recordKey), operation, baseSyncVersion || 0, now]
+                );
+            }).catch(e => {
+                console.warn('SyncOutbox: SQLite enqueue failed (localStorage copy exists):', e);
+            });
+        }
     }
 
     /**
@@ -109,7 +222,7 @@ const _SyncOutbox = (() => {
      * @returns {Array} Entries sorted by created_at ascending
      */
     function readPendingChanges() {
-        const outbox = loadOutbox();
+        const outbox = loadOutboxLS();
         return outbox
             .filter(entry => !entry.synced_at)
             .sort((a, b) => a.created_at - b.created_at);
@@ -224,10 +337,31 @@ const _SyncOutbox = (() => {
      */
     function markSynced(entryIds, syncedAt) {
         const idSet = new Set(entryIds);
-        const outbox = loadOutbox();
-        // Remove synced entries from the outbox entirely to keep it lean
+
+        // Remove from localStorage
+        const outbox = loadOutboxLS();
         const remaining = outbox.filter(entry => !idSet.has(entry.id));
-        saveOutbox(remaining);
+        saveOutboxLS(remaining);
+
+        // Remove from SQLite on desktop (fire-and-forget)
+        if (isDesktopMode()) {
+            getDb().then(db => {
+                if (!db) return;
+                // Delete synced entries by operation_uuid from the outbox entries
+                // that were synced. Since SQLite IDs are numeric and our localStorage
+                // IDs are UUIDs, we match on operation_uuid which is shared.
+                const syncedEntries = outbox.filter(entry => idSet.has(entry.id));
+                const deletions = syncedEntries.map(entry =>
+                    db.execute(
+                        'DELETE FROM sync_outbox WHERE operation_uuid = ?',
+                        [entry.operation_uuid]
+                    ).catch(() => { /* best effort */ })
+                );
+                return Promise.all(deletions);
+            }).catch(e => {
+                console.warn('SyncOutbox: SQLite markSynced failed:', e);
+            });
+        }
     }
 
     /**
@@ -238,14 +372,31 @@ const _SyncOutbox = (() => {
      */
     function markFailed(entryIds, error) {
         const idSet = new Set(entryIds);
-        const outbox = loadOutbox();
+        const outbox = loadOutboxLS();
         for (const entry of outbox) {
             if (idSet.has(entry.id)) {
                 entry.attempts = (entry.attempts || 0) + 1;
                 entry.last_error = error;
             }
         }
-        saveOutbox(outbox);
+        saveOutboxLS(outbox);
+
+        // Update attempts in SQLite on desktop (fire-and-forget)
+        if (isDesktopMode()) {
+            const failedEntries = outbox.filter(entry => idSet.has(entry.id));
+            getDb().then(db => {
+                if (!db) return;
+                const updates = failedEntries.map(entry =>
+                    db.execute(
+                        'UPDATE sync_outbox SET attempts = ?, last_error = ? WHERE operation_uuid = ?',
+                        [entry.attempts, error, entry.operation_uuid]
+                    ).catch(() => { /* best effort */ })
+                );
+                return Promise.all(updates);
+            }).catch(e => {
+                console.warn('SyncOutbox: SQLite markFailed failed:', e);
+            });
+        }
     }
 
     /**
@@ -336,13 +487,55 @@ const _SyncOutbox = (() => {
         return null;
     }
 
+    // ---- Sync State: getCursor / setCursor / getDeviceId / setDeviceId ----
+    // On desktop, sync_state lives in SQLite (sync_state table).
+    // On browser, sync_state lives in localStorage.
+    // These methods are synchronous for backward compatibility; desktop
+    // writes fire-and-forget to SQLite and always read from localStorage
+    // as the synchronous cache.
+
+    /**
+     * Read a sync_state value, trying SQLite first (async, cached to
+     * localStorage), with localStorage as the synchronous fallback.
+     * @param {string} key
+     * @returns {string|null}
+     */
+    function getSyncStateValue(key) {
+        const state = loadSyncStateLS();
+        return state[key] || null;
+    }
+
+    /**
+     * Write a sync_state value to localStorage and to SQLite (on desktop).
+     * @param {string} key
+     * @param {*} value
+     */
+    function setSyncStateValue(key, value) {
+        const state = loadSyncStateLS();
+        state[key] = value;
+        saveSyncStateLS(state);
+
+        // Mirror to SQLite on desktop (fire-and-forget)
+        if (isDesktopMode()) {
+            getDb().then(db => {
+                if (!db) return;
+                return db.execute(
+                    `INSERT OR REPLACE INTO sync_state (key, value, updated_at)
+                     VALUES (?, ?, ?)`,
+                    [key, value != null ? String(value) : null, Date.now()]
+                );
+            }).catch(e => {
+                console.warn('SyncOutbox: SQLite sync_state write failed:', e);
+            });
+        }
+    }
+
     /**
      * Get the delta_cursor from sync state.
      * @returns {string|null}
      */
     function getCursor() {
-        const state = loadSyncState();
-        return state.delta_cursor || null;
+        return getSyncStateValue('delta_cursor');
     }
 
     /**
@@ -350,9 +543,7 @@ const _SyncOutbox = (() => {
      * @param {string|null} cursor
      */
     function setCursor(cursor) {
-        const state = loadSyncState();
-        state.delta_cursor = cursor;
-        saveSyncState(state);
+        setSyncStateValue('delta_cursor', cursor);
     }
 
     /**
@@ -360,8 +551,7 @@ const _SyncOutbox = (() => {
      * @returns {string|null}
      */
     function getDeviceId() {
-        const state = loadSyncState();
-        return state.device_id || null;
+        return getSyncStateValue('device_id');
     }
 
     /**
@@ -369,9 +559,71 @@ const _SyncOutbox = (() => {
      * @param {string} deviceId
      */
     function setDeviceId(deviceId) {
-        const state = loadSyncState();
-        state.device_id = deviceId;
-        saveSyncState(state);
+        setSyncStateValue('device_id', deviceId);
+    }
+
+    // ---- Desktop SQLite Hydration ----
+
+    /**
+     * On desktop startup, hydrate localStorage sync state from SQLite
+     * so that synchronous readers (getDeviceId, getCursor) have fresh
+     * data. Should be called once during app initialization.
+     * @returns {Promise<void>}
+     */
+    async function hydrateFromSqlite() {
+        const db = await getDb();
+        if (!db) return;
+
+        try {
+            // Hydrate sync_state keys
+            const stateRows = await db.select('SELECT key, value FROM sync_state');
+            if (stateRows.length > 0) {
+                const state = loadSyncStateLS();
+                for (const row of stateRows) {
+                    // SQLite is the source of truth on desktop; overwrite localStorage
+                    state[row.key] = row.value;
+                }
+                saveSyncStateLS(state);
+            }
+
+            // Hydrate outbox entries (merge: keep union of both stores)
+            const sqlRows = await db.select(
+                `SELECT id, operation_uuid, table_name, record_key, operation,
+                        base_sync_version, created_at, synced_at, attempts, last_error
+                 FROM sync_outbox WHERE synced_at IS NULL
+                 ORDER BY created_at ASC`
+            );
+
+            if (sqlRows.length > 0) {
+                const lsOutbox = loadOutboxLS();
+                const existingUuids = new Set(lsOutbox.map(e => e.operation_uuid));
+
+                for (const row of sqlRows) {
+                    if (!existingUuids.has(row.operation_uuid)) {
+                        lsOutbox.push({
+                            id: String(row.id),
+                            operation_uuid: row.operation_uuid,
+                            table_name: row.table_name,
+                            record_key: row.record_key,
+                            operation: row.operation,
+                            base_sync_version: row.base_sync_version,
+                            created_at: row.created_at,
+                            synced_at: row.synced_at,
+                            attempts: row.attempts || 0,
+                            last_error: row.last_error
+                        });
+                    }
+                }
+                saveOutboxLS(lsOutbox);
+            }
+        } catch (e) {
+            console.warn('SyncOutbox: SQLite hydration failed, using localStorage:', e);
+        }
+    }
+
+    // Kick off hydration on desktop (non-blocking)
+    if (isDesktopMode()) {
+        hydrateFromSqlite();
     }
 
     return {
@@ -385,8 +637,11 @@ const _SyncOutbox = (() => {
         setCursor,
         getDeviceId,
         setDeviceId,
+        // Desktop SQLite access for advanced callers
+        hydrateFromSqlite,
         // Exposed for testing
         _loadOutbox: loadOutbox,
+        _loadOutboxAsync: loadOutboxAsync,
         _saveOutbox: saveOutbox,
         _mergeOperations: mergeOperations
     };

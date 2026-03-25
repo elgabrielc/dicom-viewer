@@ -70,11 +70,11 @@ def process_change(db, user_id, device_id, change):
             "current_data": {},
         }
 
-    # Idempotency check: if we already processed this operation_uuid, return
-    # the previously assigned sync_version without re-applying.
+    # Idempotency check: if we already processed this operation_uuid for this
+    # user, return the previously assigned sync_version without re-applying.
     existing_op = db.execute(
-        "SELECT sync_version FROM sync_processed_ops WHERE operation_uuid = ?",
-        (operation_uuid,),
+        "SELECT sync_version FROM sync_processed_ops WHERE operation_uuid = ? AND user_id = ?",
+        (operation_uuid, user_id),
     ).fetchone()
     if existing_op is not None:
         return {
@@ -86,17 +86,19 @@ def process_change(db, user_id, device_id, change):
 
     key_col = TABLE_KEY_COLUMN[table]
 
-    # Fetch current server state for this record
-    current_row = db.execute(
-        f"SELECT sync_version FROM {table} WHERE {key_col} = ?",
-        (key,),
+    # Fetch current server state for this record, scoped to the authenticated user.
+    # We use sync_server_versions (which carries user_id) to determine the current
+    # sync_version, rather than the entity table directly.
+    version_row = db.execute(
+        "SELECT sync_version FROM sync_server_versions WHERE table_name = ? AND record_key = ? AND user_id = ?",
+        (table, key, user_id),
     ).fetchone()
 
-    current_version = current_row["sync_version"] if current_row else 0
+    current_version = version_row["sync_version"] if version_row else 0
 
     # Optimistic concurrency: base_sync_version must match current
     if base_version != current_version:
-        current_data = _read_record_data(db, table, key)
+        current_data = _read_record_data(db, table, key, user_id)
         return {
             "status": "rejected",
             "operation_uuid": operation_uuid,
@@ -107,7 +109,7 @@ def process_change(db, user_id, device_id, change):
         }
 
     # Allocate next global sync_version from the server version counter
-    new_version = _next_sync_version(db, table, key, device_id)
+    new_version = _next_sync_version(db, table, key, device_id, user_id)
 
     now = int(time.time() * 1000)
 
@@ -127,13 +129,13 @@ def process_change(db, user_id, device_id, change):
             "current_data": {},
         }
 
-    # Record the operation for idempotency
+    # Record the operation for idempotency (scoped by user_id)
     db.execute(
         """
-        INSERT INTO sync_processed_ops (operation_uuid, table_name, record_key, sync_version, processed_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO sync_processed_ops (operation_uuid, table_name, record_key, user_id, sync_version, processed_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (operation_uuid, table, key, new_version, int(time.time())),
+        (operation_uuid, table, key, user_id, new_version, int(time.time())),
     )
 
     return {
@@ -164,22 +166,28 @@ def compute_remote_changes(db, user_id, device_id, cursor_position):
         data_cols = TABLE_DATA_COLUMNS[table]
 
         # Build SELECT columns: key, sync_version, deleted_at, plus all data columns
+        # Prefix entity columns with the table alias to avoid ambiguity with the join.
         select_cols = [key_col, "sync_version", "deleted_at"] + [
             c for c in data_cols if c not in (key_col, "sync_version", "deleted_at")
         ]
-        cols_sql = ", ".join(select_cols)
+        cols_sql = ", ".join(f"t.{c}" for c in select_cols)
 
-        # Query records with sync_version > cursor_position, excluding this device
-        # For the server DB, we use sync_server_versions to track which device made
-        # each change, but the actual data lives in the entity tables.
+        # Query records changed since cursor_position that belong to this user,
+        # excluding changes made by the requesting device (to avoid echo).
+        # The JOIN on sync_server_versions enforces per-user data isolation:
+        # only records with a version row for this user are returned.
         rows = db.execute(
             f"""
             SELECT {cols_sql}
-            FROM {table}
-            WHERE sync_version > ?
-              AND (device_id IS NULL OR device_id != ?)
+            FROM {table} t
+            INNER JOIN sync_server_versions sv
+                ON sv.table_name = ?
+               AND sv.record_key = t.{key_col}
+               AND sv.user_id = ?
+            WHERE t.sync_version > ?
+              AND (sv.device_id IS NULL OR sv.device_id != ?)
             """,
-            (cursor_position, device_id),
+            (table, user_id, cursor_position, device_id),
         ).fetchall()
 
         for row in rows:
@@ -213,11 +221,24 @@ def compute_remote_changes(db, user_id, device_id, cursor_position):
     return changes
 
 
-def get_max_sync_version(db):
+def get_max_sync_version(db, user_id=None):
     """Return the highest sync_version across all synced tables.
+
+    When user_id is provided, only considers records belonging to that user
+    (via sync_server_versions). When None, returns the global max across
+    all users (used internally for version allocation).
 
     This is used as the cursor position for newly issued cursors.
     """
+    if user_id is not None:
+        row = db.execute(
+            "SELECT MAX(sync_version) AS max_ver FROM sync_server_versions WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        return row["max_ver"] if row and row["max_ver"] is not None else 0
+
+    # Global max across all users -- used by _next_sync_version to ensure
+    # monotonic increase even across user boundaries.
     max_ver = 0
     for table in SYNC_TABLES:
         row = db.execute(
@@ -233,12 +254,12 @@ def get_max_sync_version(db):
 # -- Private helpers --
 
 
-def _next_sync_version(db, table, key, device_id):
-    """Allocate the next sync_version for a record.
+def _next_sync_version(db, table, key, device_id, user_id):
+    """Allocate the next sync_version for a record owned by user_id.
 
     Uses the sync_server_versions table as a monotonic counter per
-    (table, key) pair, and also tracks globally so cursors can use
-    a single watermark.
+    (table, key, user_id) triple, and also tracks globally so cursors
+    can use a single watermark.
     """
     now = int(time.time())
 
@@ -246,32 +267,53 @@ def _next_sync_version(db, table, key, device_id):
     global_max = get_max_sync_version(db)
     new_version = global_max + 1
 
-    # Upsert the server version tracker
+    # Upsert the server version tracker (scoped by user_id)
     db.execute(
         """
-        INSERT INTO sync_server_versions (table_name, record_key, sync_version, device_id, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(table_name, record_key) DO UPDATE SET
+        INSERT INTO sync_server_versions (table_name, record_key, user_id, sync_version, device_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(table_name, record_key, user_id) DO UPDATE SET
             sync_version = excluded.sync_version,
             device_id = excluded.device_id,
             updated_at = excluded.updated_at
         """,
-        (table, key, new_version, device_id, now),
+        (table, key, user_id, new_version, device_id, now),
     )
 
     return new_version
 
 
-def _read_record_data(db, table, key):
-    """Read the current data for a record, used when rejecting a stale change."""
+def _read_record_data(db, table, key, user_id=None):
+    """Read the current data for a record, used when rejecting a stale change.
+
+    When user_id is provided, verifies the record belongs to this user via
+    sync_server_versions before returning data. Returns empty dict if the
+    record doesn't exist or doesn't belong to the user.
+    """
     key_col = TABLE_KEY_COLUMN[table]
     data_cols = TABLE_DATA_COLUMNS[table]
-    cols_sql = ", ".join(data_cols)
+    cols_sql = ", ".join(f"t.{c}" for c in data_cols)
 
-    row = db.execute(
-        f"SELECT {cols_sql} FROM {table} WHERE {key_col} = ?",
-        (key,),
-    ).fetchone()
+    if user_id is not None:
+        # Only return data for records that belong to this user
+        row = db.execute(
+            f"""
+            SELECT {cols_sql}
+            FROM {table} t
+            INNER JOIN sync_server_versions sv
+                ON sv.table_name = ?
+               AND sv.record_key = t.{key_col}
+               AND sv.user_id = ?
+            WHERE t.{key_col} = ?
+            """,
+            (table, user_id, key),
+        ).fetchone()
+    else:
+        cols_sql_plain = ", ".join(data_cols)
+        row = db.execute(
+            f"SELECT {cols_sql_plain} FROM {table} WHERE {key_col} = ?",
+            (key,),
+        ).fetchone()
 
     if row is None:
         return {}

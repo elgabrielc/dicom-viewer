@@ -22,6 +22,7 @@ from flask import Blueprint, g, jsonify, request, send_file
 
 from server import db as db_module
 from server.db import get_db, sanitize_report_id, REPORT_TYPE_MAP
+from server.routes.auth import _require_jwt_auth
 from server.sync.cursor import (
     CursorExpiredError,
     CursorInvalidError,
@@ -43,6 +44,19 @@ sync_bp = Blueprint("sync", __name__)
 SYNC_REPORTS_SUBDIR = "sync-reports"
 
 
+@sync_bp.before_request
+def _enforce_jwt_auth():
+    """Enforce JWT bearer-token authentication on all sync routes.
+
+    Sets g.user_id and g.device_id from the validated JWT before any
+    sync handler runs. Returns a 401 JSON response if the token is
+    missing, expired, or invalid.
+    """
+    error = _require_jwt_auth()
+    if error is not None:
+        return error
+
+
 def _get_sync_reports_dir():
     """Return the path to the sync-reports directory, creating it if needed."""
     sync_dir = os.path.join(db_module.DATA_DIR, SYNC_REPORTS_SUBDIR)
@@ -53,12 +67,10 @@ def _get_sync_reports_dir():
 def _require_auth():
     """Validate that the request has an authenticated user.
 
-    Expects auth middleware to set g.user_id before this runs.
+    The before_request hook (_enforce_jwt_auth) sets g.user_id from the JWT.
+    This helper validates it was set and returns the user_id for use in handlers.
     Returns (user_id, None) on success or (None, error_response) on failure.
     """
-    # TODO: Auth middleware (owned by auth-devices lane) sets g.user_id from
-    # the JWT bearer token. Until that middleware is merged, this placeholder
-    # checks for g.user_id and returns 401 if missing.
     user_id = getattr(g, "user_id", None)
     if user_id is None:
         return None, (jsonify({"error": "unauthorized"}), 401)
@@ -69,13 +81,14 @@ def _validate_device(db, user_id, device_id):
     """Validate that device_id belongs to the authenticated user.
 
     Returns True if valid, False otherwise.
+    Uses the devices table (populated by auth endpoints) for ownership check.
     """
-    # TODO: Once the auth-devices lane merges the devices table, validate
-    # device_id ownership here. For now, accept any non-empty device_id
-    # since we cannot query the devices table yet.
     if not device_id or not isinstance(device_id, str) or not device_id.strip():
         return False
-    return True
+
+    from server.routes.auth import validate_device_ownership
+    error_response, _ = validate_device_ownership(device_id, user_id)
+    return error_response is None
 
 
 @sync_bp.route("/api/sync", methods=["POST"])
@@ -146,8 +159,8 @@ def sync():
     # -- Compute remote changes --
     remote_changes = compute_remote_changes(db, user_id, device_id, cursor_position)
 
-    # -- Issue new cursor at current max sync_version --
-    new_position = get_max_sync_version(db)
+    # -- Issue new cursor at current max sync_version for this user --
+    new_position = get_max_sync_version(db, user_id)
     new_cursor = issue_cursor(db, user_id, device_id, new_position)
 
     # Opportunistically clean up expired cursors (cheap, bounded work)
@@ -186,12 +199,20 @@ def upload_report_file(report_id):
 
     db = get_db()
 
-    # Verify the report exists and belongs to this user (via device ownership)
-    # TODO: Once user_id is on entity tables, filter by user_id directly.
-    # For now, just check the report exists and is not tombstoned.
+    # Verify the report exists, is not tombstoned, and belongs to this user.
+    # Ownership is established via sync_server_versions: if a user synced
+    # this report, they have a version row for it.
     report_row = db.execute(
-        "SELECT id, type, deleted_at FROM reports WHERE id = ?",
-        (report_id,),
+        """
+        SELECT r.id, r.type, r.deleted_at
+        FROM reports r
+        INNER JOIN sync_server_versions sv
+            ON sv.table_name = 'reports'
+           AND sv.record_key = r.id
+           AND sv.user_id = ?
+        WHERE r.id = ?
+        """,
+        (user_id, report_id),
     ).fetchone()
 
     if not report_row:
@@ -276,9 +297,18 @@ def download_report_file(report_id):
 
     db = get_db()
 
+    # Verify the report belongs to this user via sync_server_versions
     report_row = db.execute(
-        "SELECT id, type, content_hash, deleted_at FROM reports WHERE id = ?",
-        (report_id,),
+        """
+        SELECT r.id, r.type, r.content_hash, r.deleted_at
+        FROM reports r
+        INNER JOIN sync_server_versions sv
+            ON sv.table_name = 'reports'
+           AND sv.record_key = r.id
+           AND sv.user_id = ?
+        WHERE r.id = ?
+        """,
+        (user_id, report_id),
     ).fetchone()
 
     if not report_row:
