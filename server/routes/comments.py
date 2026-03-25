@@ -33,7 +33,10 @@ def add_comment(study_uid):
     else:
         timestamp = now
 
-    record_uuid = str(uuid.uuid4())
+    record_uuid = data.get('record_uuid') or str(uuid.uuid4())
+    # Validate record_uuid is never empty
+    if not record_uuid or not record_uuid.strip():
+        record_uuid = str(uuid.uuid4())
 
     db = get_db()
     cursor = db.execute(

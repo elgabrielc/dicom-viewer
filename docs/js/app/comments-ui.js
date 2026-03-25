@@ -37,7 +37,10 @@
 
     function renderComments(comments, studyUid, seriesUid = null) {
         if (!comments || comments.length === 0) return '';
-        return comments.map(comment => {
+        // Filter out soft-deleted comments (tombstones kept for sync replication)
+        const visible = comments.filter(c => !c.deleted_at);
+        if (visible.length === 0) return '';
+        return visible.map(comment => {
             const cid = commentIdentifier(comment);
             return `
             <div class="comment-item" data-comment-id="${escapeHtml(cid)}">
@@ -84,7 +87,7 @@
             });
         }
 
-        const count = comments.length;
+        const count = comments.filter(c => !c.deleted_at).length;
         let btn;
         if (seriesUid) {
             btn = document.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);

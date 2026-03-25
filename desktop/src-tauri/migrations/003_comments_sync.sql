@@ -9,7 +9,7 @@ ALTER TABLE comments ADD COLUMN device_id TEXT;
 ALTER TABLE comments ADD COLUMN sync_version INTEGER DEFAULT 0;
 
 UPDATE comments SET
-    record_uuid = lower(hex(randomblob(16))),
+    record_uuid = lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || '4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))),
     created_at = time,
     updated_at = time
 WHERE record_uuid IS NULL;

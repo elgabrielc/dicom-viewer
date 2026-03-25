@@ -28,26 +28,42 @@ const _NotesDesktop = (() => {
     let cachedDeviceId = null;
 
     /**
-     * Read device_id from sync_state table (localStorage-backed until SQL
-     * connection is wired up by sync-core). Falls back to generating one.
+     * Read device_id from the sync_state (single source of truth shared with
+     * sync.js). Falls back to generating one if none exists yet.
+     * Migrates any legacy 'dicom-viewer-device-id' value on first read.
      */
     function getDeviceId() {
         if (cachedDeviceId) return cachedDeviceId;
+
+        // Use sync.js getDeviceId as single source of truth when available
+        if (window._SyncOutbox?.getDeviceId) {
+            const syncDeviceId = window._SyncOutbox.getDeviceId();
+            if (syncDeviceId) {
+                cachedDeviceId = syncDeviceId;
+                return cachedDeviceId;
+            }
+        }
+
+        // Migrate legacy key if present
         try {
-            const raw = localStorage.getItem('dicom-viewer-device-id');
-            if (raw) {
-                cachedDeviceId = raw;
+            const legacy = localStorage.getItem('dicom-viewer-device-id');
+            if (legacy) {
+                cachedDeviceId = legacy;
+                // Write into sync_state so future reads go through the canonical path
+                if (window._SyncOutbox?.setDeviceId) {
+                    window._SyncOutbox.setDeviceId(legacy);
+                }
+                localStorage.removeItem('dicom-viewer-device-id');
                 return cachedDeviceId;
             }
         } catch (e) {
             // localStorage may not be available
         }
-        // Generate and persist a stable device_id
+
+        // Generate and persist a stable device_id via the canonical store
         cachedDeviceId = crypto.randomUUID();
-        try {
-            localStorage.setItem('dicom-viewer-device-id', cachedDeviceId);
-        } catch (e) {
-            // Best effort persistence
+        if (window._SyncOutbox?.setDeviceId) {
+            window._SyncOutbox.setDeviceId(cachedDeviceId);
         }
         return cachedDeviceId;
     }
@@ -88,6 +104,8 @@ const _NotesDesktop = (() => {
         if (!window._SyncOutbox?.enqueueChange) return;
         try {
             window._SyncOutbox.enqueueChange(tableName, recordKey, operation, baseSyncVersion);
+            // Notify UI that changes are waiting to sync
+            window.dispatchEvent(new CustomEvent('sync:pending'));
         } catch (e) {
             console.warn('DesktopBackend: outbox enqueue failed:', e);
         }
@@ -204,16 +222,15 @@ const _NotesDesktop = (() => {
             }
 
             if (found) {
-                // Soft delete: mark with deleted_at and remove from visible list
+                // Soft delete: mark with deleted_at but keep the tombstone in
+                // storage so sync can replicate the deletion. UI filters out
+                // comments where deleted_at is set.
                 const now = Date.now();
                 const recordUuid = found.comment.record_uuid || found.comment.id;
                 const currentSyncVersion = found.comment.sync_version || 0;
                 found.comment.deleted_at = now;
                 found.comment.updated_at = now;
                 found.comment.device_id = getDeviceId();
-                // Remove from the array so it's not visible in the UI
-                const idx = found.array.indexOf(found.comment);
-                if (idx !== -1) found.array.splice(idx, 1);
                 enqueueIfSyncEnabled('comments', recordUuid, 'delete', currentSyncVersion);
             }
 

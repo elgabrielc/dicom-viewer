@@ -154,7 +154,19 @@ const _SyncEngine = (() => {
                 throw new Error('SyncOutbox not available');
             }
 
-            // 1. Read and collapse pending outbox entries
+            // 1. Check access token before reading the outbox, so we don't
+            //    mark no-ops as synced or build payloads when auth is missing.
+            const accessToken = await this.getAccessToken();
+            if (!accessToken) {
+                // No token available -- stop the engine and signal auth required
+                // so it doesn't spin at full rate while logged out
+                this.stop();
+                window.dispatchEvent(new CustomEvent('sync:auth-required'));
+                this.onAuthRequired();
+                return { skipped: true, reason: 'no_access_token' };
+            }
+
+            // 2. Read and collapse pending outbox entries
             const pending = outbox.readPendingChanges();
             const collapsed = outbox.collapseChanges(pending);
 
@@ -169,7 +181,7 @@ const _SyncEngine = (() => {
                 }
             }
 
-            // 2. Build request payload per contract
+            // 3. Build request payload per contract
             const requestChanges = [];
             for (const entry of changes) {
                 const recordState = outbox.readRecordState(entry.table_name, entry.record_key);
@@ -194,13 +206,6 @@ const _SyncEngine = (() => {
                 delta_cursor: deltaCursor,
                 changes: requestChanges
             };
-
-            // 3. POST to /api/sync
-            const accessToken = await this.getAccessToken();
-            if (!accessToken) {
-                // No token available -- skip sync but don't error
-                return { skipped: true, reason: 'no_access_token' };
-            }
 
             const response = await this._fetchSync(requestBody, accessToken);
 

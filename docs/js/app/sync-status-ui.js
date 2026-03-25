@@ -297,4 +297,12 @@ const _SyncStatusUI = (() => {
 
 if (typeof window !== 'undefined') {
     window._SyncStatusUI = _SyncStatusUI;
+
+    // Self-initialize: same pattern as account-ui.js.
+    // init() already gates on CONFIG.features.cloudSync.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => _SyncStatusUI.init());
+    } else {
+        _SyncStatusUI.init();
+    }
 }
