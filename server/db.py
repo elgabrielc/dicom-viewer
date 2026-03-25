@@ -192,6 +192,39 @@ def init_db():
             """
         )
 
+        # -- Auth tables (cloud mode) --
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS devices (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                device_name TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_devices_user_id
+            ON devices(user_id)
+            """
+        )
+
         # -- Sync infrastructure tables --
 
         db.execute(
