@@ -39,12 +39,12 @@ def _build_notes_payload(study_uids, db):
     placeholders = ','.join('?' for _ in study_uids)
 
     study_rows = db.execute(
-        f"SELECT study_uid, description FROM study_notes WHERE study_uid IN ({placeholders})",
+        f"SELECT study_uid, description FROM study_notes WHERE study_uid IN ({placeholders}) AND deleted_at IS NULL",
         study_uids
     ).fetchall()
 
     series_rows = db.execute(
-        f"SELECT study_uid, series_uid, description FROM series_notes WHERE study_uid IN ({placeholders})",
+        f"SELECT study_uid, series_uid, description FROM series_notes WHERE study_uid IN ({placeholders}) AND deleted_at IS NULL",
         study_uids
     ).fetchall()
 
