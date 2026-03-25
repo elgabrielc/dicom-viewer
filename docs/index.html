@@ -63,6 +63,7 @@ Copyright (c) 2026 Divergent Health Technologies
             <h1>DICOM Medical Imaging Viewer</h1>
             <p class="subtitle">Browse and view CT, MRI, and other imaging studies</p>
             <button class="help-btn library-help-btn" aria-label="Open user guide" data-tooltip="H">?</button>
+            <span id="accountStatus" class="account-status" style="display: none;"></span>
         </header>
 
         <section class="upload-section">
@@ -185,6 +186,24 @@ Copyright (c) 2026 Divergent Health Technologies
         </div>
     </div>
 
+    <!-- ACCOUNT MODAL (cloud mode only) -->
+    <div id="accountModal" class="account-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+        <div class="account-modal-content">
+            <h2 id="accountModalTitle">Sign In</h2>
+            <form id="loginForm">
+                <input type="email" id="accountEmail" placeholder="Email" required autocomplete="email">
+                <input type="password" id="accountPassword" placeholder="Password" required autocomplete="current-password">
+                <input type="text" id="accountName" placeholder="Name" style="display: none;" autocomplete="name">
+                <button type="submit" id="accountSubmit">Sign In</button>
+                <p class="account-toggle">
+                    <span id="accountToggleText">Don't have an account?</span>
+                    <a href="#" id="accountToggleLink">Sign Up</a>
+                </p>
+                <p id="accountError" class="account-error" style="display: none;"></p>
+            </form>
+        </div>
+    </div>
+
     <!-- HELP VIEWER MODAL -->
     <div id="helpViewer" class="help-viewer" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="helpViewerTitle">
         <div class="help-viewer-header">
@@ -213,6 +232,7 @@ Copyright (c) 2026 Divergent Health Technologies
     <script src="js/app/viewer.js"></script>
     <script src="js/app/library.js"></script>
     <script src="js/app/sync-engine.js"></script>
+    <script src="js/app/account-ui.js"></script>
     <script src="js/app/main.js"></script>
 </body>
 </html>
