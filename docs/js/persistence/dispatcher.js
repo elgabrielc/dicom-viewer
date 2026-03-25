@@ -141,6 +141,27 @@ const NotesAPI = (() => {
         return LocalBackend.getReportFileUrl(reportId);
     }
 
+    // ---- Sync helpers ----
+
+    /**
+     * Trigger an immediate sync cycle if the sync engine is running.
+     * No-op when cloud sync is not active.
+     * @returns {Promise<Object|undefined>} Sync result, or undefined if no engine
+     */
+    async function syncNow() {
+        if (window.syncEngine) {
+            return await window.syncEngine.syncNow();
+        }
+    }
+
+    /**
+     * Check whether the background sync engine is currently running.
+     * @returns {boolean}
+     */
+    function isSyncing() {
+        return window.syncEngine?.isRunning || false;
+    }
+
     return {
         isEnabled,
         loadNotes,
@@ -153,7 +174,9 @@ const NotesAPI = (() => {
         deleteReport,
         migrate,
         getReportFileUrl,
-        authenticatedFetch
+        authenticatedFetch,
+        syncNow,
+        isSyncing
     };
 })();
 

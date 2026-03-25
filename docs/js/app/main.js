@@ -484,6 +484,80 @@
 
     setTool(state.currentTool);
 
+    // ---- Sync engine bootstrap ----
+
+    /**
+     * Initialize the background sync engine for cloud mode.
+     * Creates the SyncEngine instance but does not auto-start unless
+     * an auth token is already stored (indicating a previous login).
+     * The account-ui lane calls startSyncIfAuthenticated() after login.
+     */
+    function initializeSyncEngine() {
+        if (!config?.features?.cloudSync) return;
+
+        const SyncEngine = window._SyncEngine?.SyncEngine;
+        if (!SyncEngine) {
+            console.warn('SyncEngine class not available; cloud sync disabled.');
+            return;
+        }
+
+        const syncEngine = new SyncEngine({
+            syncUrl: `${window.location.origin}/api/sync`,
+            getAccessToken: () => {
+                const token = localStorage.getItem('dicom-viewer-access-token');
+                return Promise.resolve(token);
+            },
+            onAuthRequired: () => {
+                window.dispatchEvent(new CustomEvent('sync:auth-required'));
+            }
+        });
+
+        // Wrap syncNow to emit lifecycle events
+        const originalSyncNow = syncEngine.syncNow.bind(syncEngine);
+        syncEngine.syncNow = async function () {
+            window.dispatchEvent(new CustomEvent('sync:started'));
+            const result = await originalSyncNow();
+            if (result?.error) {
+                window.dispatchEvent(new CustomEvent('sync:error', { detail: result }));
+            } else {
+                window.dispatchEvent(new CustomEvent('sync:completed', { detail: result }));
+            }
+            return result;
+        };
+
+        window.syncEngine = syncEngine;
+
+        // Auto-start if credentials already exist from a previous session
+        const token = localStorage.getItem('dicom-viewer-access-token');
+        if (token) {
+            syncEngine.start();
+        }
+    }
+
+    /**
+     * Start the sync engine if an auth token is present.
+     * Intended to be called after login completes (from account-ui).
+     */
+    function startSyncIfAuthenticated() {
+        const token = localStorage.getItem('dicom-viewer-access-token');
+        if (token && window.syncEngine && !window.syncEngine.isRunning) {
+            window.syncEngine.start();
+        }
+    }
+    window.startSyncIfAuthenticated = startSyncIfAuthenticated;
+
+    initializeSyncEngine();
+
+    // Graceful shutdown: stop sync engine before page unloads to avoid
+    // orphaned network requests.
+    window.addEventListener('beforeunload', () => {
+        if (window.syncEngine) {
+            window.syncEngine.stop();
+        }
+    });
+
+    // ---- App initialization ----
+
     if (isTestMode) {
         initializeTestMode();
     } else if (config?.features?.libraryAutoLoad && !noLib) {
