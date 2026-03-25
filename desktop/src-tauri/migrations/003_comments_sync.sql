@@ -1,0 +1,2 @@
+-- Placeholder: populated by entity sync lane
+-- See master plan Stage 2 for details

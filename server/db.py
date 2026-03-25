@@ -5,6 +5,7 @@ Copyright (c) 2026 Divergent Health Technologies
 """
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -190,9 +191,92 @@ def init_db():
             ON comments(study_uid, series_uid, text, time)
             """
         )
+
+        # -- Sync infrastructure tables --
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_outbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                operation_uuid TEXT NOT NULL,
+                table_name TEXT NOT NULL,
+                record_key TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                base_sync_version INTEGER,
+                created_at INTEGER NOT NULL,
+                synced_at INTEGER,
+                attempts INTEGER DEFAULT 0,
+                last_error TEXT
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_outbox_operation_uuid
+            ON sync_outbox(operation_uuid)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_outbox_pending
+            ON sync_outbox(synced_at) WHERE synced_at IS NULL
+            """
+        )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sync_state (
+                key TEXT PRIMARY KEY,
+                value TEXT,
+                updated_at INTEGER
+            )
+            """
+        )
+
+        # -- Sync columns on entity tables (idempotent ALTER TABLE) --
+
+        _add_column(db, 'comments', 'record_uuid', 'TEXT')
+        _add_column(db, 'comments', 'created_at', 'INTEGER')
+        _add_column(db, 'comments', 'updated_at', 'INTEGER')
+        _add_column(db, 'comments', 'deleted_at', 'INTEGER')
+        _add_column(db, 'comments', 'device_id', 'TEXT')
+        _add_column(db, 'comments', 'sync_version', 'INTEGER DEFAULT 0')
+
+        _add_column(db, 'study_notes', 'deleted_at', 'INTEGER')
+        _add_column(db, 'study_notes', 'device_id', 'TEXT')
+        _add_column(db, 'study_notes', 'sync_version', 'INTEGER DEFAULT 0')
+
+        _add_column(db, 'reports', 'content_hash', 'TEXT')
+        _add_column(db, 'reports', 'deleted_at', 'INTEGER')
+        _add_column(db, 'reports', 'device_id', 'TEXT')
+        _add_column(db, 'reports', 'sync_version', 'INTEGER DEFAULT 0')
+
+        # -- Backfill existing comments with UUIDs --
+        db.execute(
+            """
+            UPDATE comments SET
+                record_uuid = lower(hex(randomblob(16))),
+                created_at = time,
+                updated_at = time
+            WHERE record_uuid IS NULL
+            """
+        )
+
         db.commit()
     finally:
         db.close()
+
+
+def _add_column(db, table, column, col_type):
+    """Add a column to a table if it does not already exist. Idempotent."""
+    try:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+    except sqlite3.OperationalError as exc:
+        # "duplicate column name" means it already exists -- safe to ignore
+        if 'duplicate column' not in str(exc).lower():
+            logging.getLogger(__name__).warning(
+                "Failed to add column %s.%s: %s", table, column, exc
+            )
 
 
 def parse_int(value, default=None):
