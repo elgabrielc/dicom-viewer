@@ -345,6 +345,44 @@ def init_db():
             """
         )
 
+        # -- HIPAA audit log --
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                user_id TEXT,
+                device_id TEXT,
+                session_token_hash TEXT,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status_code INTEGER,
+                study_uid TEXT,
+                ip_address TEXT,
+                user_agent TEXT
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp
+            ON audit_log(timestamp)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_log_user
+            ON audit_log(user_id)
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_log_study
+            ON audit_log(study_uid)
+            """
+        )
+
         # -- Backfill existing comments with UUIDs --
         db.execute(
             """

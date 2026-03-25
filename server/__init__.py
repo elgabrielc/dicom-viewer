@@ -26,6 +26,7 @@ from server.security import (
     session_token_check,
     set_security_headers,
 )
+from server.audit import audit_after_request
 from server.routes.library import library_bp, init_library_sources
 from server.routes.test_data import test_data_bp
 from server.routes.study_notes import study_notes_bp
@@ -62,6 +63,7 @@ def create_app():
     app.before_request(csrf_origin_check)
     app.before_request(session_token_check)
     app.after_request(set_security_headers)
+    app.after_request(audit_after_request)
 
     # Register teardown for DB connections
     app.teardown_appcontext(db_module.close_db)
