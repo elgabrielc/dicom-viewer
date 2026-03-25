@@ -20,7 +20,7 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 
 # Routes that carry PHI and require session-token authentication.
 # /api/test-data/* is intentionally excluded (anonymized sample data).
-_PHI_ROUTE_PREFIXES = ('/api/notes', '/api/library/')
+_PHI_ROUTE_PREFIXES = ('/api/notes', '/api/library/', '/api/maintenance')
 
 
 def _is_test_mode_request():
