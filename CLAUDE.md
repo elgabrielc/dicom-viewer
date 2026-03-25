@@ -435,3 +435,24 @@ Canonical location for new decision records is `docs/decisions/` (Architecture D
 - Dark theme optimized for radiologist viewing environment
 - Single source of truth in docs/ (consolidation done 2026-01-28)
 - GitHub Flow branching strategy (simple, single main branch)
+
+<!-- claude-3-meta -->
+# Meta: Inter-Session Messaging
+
+This project provides file-based messaging between Claude Code sessions.
+
+## Receiving messages
+
+When you see a `[META]` message injected into your context, act on it:
+1. Do the requested work
+2. Send results back: `/meta send --from <your_alias> <sender_alias> --type result --reply-to <msg_id> "<summary>"`
+
+Always include `--from <your_alias>` on every `/meta send` so the recipient can reply. Your alias is in the `[meta] Registered as '...'` message from session start.
+
+## Message types
+
+- `task` -- work request (default). Do the work, reply with `result`.
+- `result` -- response to a task. Report it to the user.
+- `status` -- progress update. Note it and continue.
+- `ping` -- liveness check. Respond with `/meta send <alias> --type status "alive"`.
+<!-- /claude-3-meta -->
