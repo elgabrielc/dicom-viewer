@@ -12,6 +12,69 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-005: Multi-agent cloud sync build dropped 460 lines of desktop code due to stale branch
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved (by Codex rewrite) |
+| **Priority** | Critical |
+| **Found** | 2026-03-25 |
+| **Resolved** | 2026-03-26 |
+| **PR** | #41 |
+
+**How Encountered:**
+PR #41 (cloud sync v1) passed 244 tests locally but failed 80 of 397 tests on CI.
+Desktop persistence tests reported `initializeDesktopStorage is not a function`.
+Sync protocol and E2E tests failed at `setupSyncUser()` due to status code mismatches.
+
+**Root Cause:**
+A cascading failure with three links:
+
+1. **Stale branch.** The orchestrator started multi-agent work on `local/WIP`, which
+   had diverged from `main` by 40 commits. Main's `docs/js/api.js` was 1548 lines.
+   `local/WIP`'s was 739 lines -- missing the entire desktop persistence pipeline
+   (migration, scan cache, library config, report storage) that was added by merged
+   PRs after the branch diverged. The orchestrator never ran `git log HEAD..origin/main`
+   to check.
+
+2. **Split on stale code.** The Stage 1 client-split agent was told to split `api.js`
+   into four modules. It correctly split the 739-line file it had. But the resulting
+   modules were missing ~460 lines of desktop functions that existed on main. The agent
+   reported "all tests pass" because it was true -- for the stale branch.
+
+3. **Test exclusions masked the damage.** The orchestrator ran tests with
+   `--grep-invert "Suite 35|Suite 36|..."` to skip known auth-test failures. This
+   also excluded the desktop persistence tests that would have caught the missing
+   functions. Every integration checkpoint reported 244/244 pass. The first time the
+   full suite ran was on CI, where 80 tests failed.
+
+Additionally:
+- `tests/sync-helpers.js` asserted `toBe(200)` for signup and device registration,
+  but the server returned 201. This cascaded through all 48 sync/E2E tests.
+- Tombstone filtering in `loadNotes()` missed series-level comments and had field
+  name mismatches (`deleted_at` vs `deletedAt`).
+- Three review-fix cycles by Claude Code each introduced new issues (dual sync
+  engine, stale token reads, localStorage instead of SQLite for outbox).
+
+**Solution:**
+Codex performed a clean rewrite of the affected modules, restoring the missing
+desktop functions, fixing test assertions, and implementing proper user isolation
+with separate cloud tables.
+
+**Prevention Controls:**
+1. **CLAUDE.md** and **AGENT_WORKTREES.md** now require a mandatory divergence check
+   (`git log HEAD..origin/main`) before any multi-agent work. If diverged, rebase first.
+2. **Never exclude failing tests.** `--grep-invert` to skip failures is prohibited.
+   Every failure must be investigated. If pre-existing, verify on main.
+3. **Memory entries** saved for future sessions:
+   - `feedback_rebase-before-splitting.md` -- never split files that differ from main
+   - `feedback_never-exclude-failing-tests.md` -- investigate failures, don't filter
+   - `feedback_orchestrator-review-against-plan.md` -- verify architecture match
+   - `feedback_check-divergence-at-preflight.md` -- check divergence before starting
+   - `feedback_know-when-to-hand-off.md` -- hand off after repeated failures
+
+---
+
 ### BUG-004: Packaged Tauri app hid desktop library UI and included non-image DICOM objects
 
 | Field | Value |

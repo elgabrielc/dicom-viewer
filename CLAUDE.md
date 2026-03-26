@@ -29,6 +29,29 @@ before editing anything:
 8. Do not use `git add -A` in the shared main checkout.
 9. If the shared checkout is dirty and you cannot prove which files are yours, stop and report instead of committing.
 
+### Mandatory Preflight: Sync Check Before Multi-Stage Work
+
+**Before starting any multi-stage or multi-agent work, run this check:**
+
+```bash
+git fetch origin main
+git log --oneline HEAD..origin/main   # what main has that you don't
+git log --oneline origin/main..HEAD   # what you have that main doesn't
+```
+
+If the working branch has diverged from main:
+- **Do not split, refactor, or replace files** without rebasing first. Agents will
+  work on a stale version and silently drop code that exists on main.
+- **Do not exclude failing tests** with `--grep-invert` or similar. Investigate
+  every failure. If it's pre-existing, prove it by checking the same test on main.
+
+**Incident (2026-03-25):** 20 parallel agents built cloud sync on `local/WIP` which
+had diverged from main by 40 commits. The client-split agent worked on api.js (739
+lines) instead of main's version (1548 lines). The split silently dropped 460 lines
+of desktop persistence code. 80 tests failed on CI. Three review-fix cycles failed
+to fully resolve it. The fix required handing off to Codex for a clean rewrite.
+This was entirely preventable by checking divergence before starting.
+
 ### Starting a New Parallel Session
 
 If the shared checkout is clean, create a dedicated external worktree first:
