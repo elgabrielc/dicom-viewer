@@ -284,6 +284,12 @@
     // Guard against concurrent refresh attempts
     let refreshPromise = null;
 
+    function createTransientRefreshError(message) {
+        const error = new Error(message);
+        error.transient = true;
+        return error;
+    }
+
     /**
      * Refresh the access token using the stored refresh token.
      * Returns the new access token on success, null on failure.
@@ -305,21 +311,26 @@
                 });
 
                 if (!res.ok) {
-                    // Refresh token rejected -- clear stale tokens to prevent
-                    // infinite retry loops on next page load
-                    await clearTokens();
-                    return null;
+                    if (res.status === 401 || res.status === 403) {
+                        // Refresh token rejected -- clear stale tokens to prevent
+                        // infinite retry loops on next page load
+                        await clearTokens();
+                        return null;
+                    }
+                    throw createTransientRefreshError(`Token refresh failed: ${res.status}`);
                 }
 
                 const data = await res.json();
                 await storeTokens(data.access_token, data.refresh_token || null);
                 return data.access_token;
             } catch (e) {
+                if (e?.transient) {
+                    throw e;
+                }
                 console.warn('AccountUI: token refresh failed:', e);
-                // Network error during refresh -- clear stale tokens so the
-                // next page load does not immediately retry with expired creds
-                await clearTokens();
-                return null;
+                throw createTransientRefreshError(
+                    `Token refresh failed: ${e?.message || 'network error'}`
+                );
             }
         })();
 
@@ -686,7 +697,17 @@
         }
 
         // Try to get a valid token
-        const validToken = await getValidAccessToken();
+        let validToken = null;
+        try {
+            validToken = await getValidAccessToken();
+        } catch (error) {
+            if (error?.transient) {
+                console.warn('AccountUI: restoreSession deferred due to transient auth error:', error);
+                updateAccountStatus();
+                return;
+            }
+            throw error;
+        }
         if (!validToken) {
             // Refresh failed -- clear stale tokens, show sign-in option
             await clearTokens();

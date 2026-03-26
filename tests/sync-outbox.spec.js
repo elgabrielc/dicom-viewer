@@ -148,6 +148,62 @@ async function enqueueChange(page, table, key, operation, data = {}) {
 // ---------------------------------------------------------------------------
 
 test.describe('Outbox Collapsing', () => {
+    test('enqueueChange dispatches sync:pending with record details', async ({ page }) => {
+        await setupOutboxPage(page);
+        await clearOutbox(page);
+
+        const result = await page.evaluate(() => {
+            const events = [];
+            window.addEventListener('sync:pending', (event) => {
+                events.push(event.detail || null);
+            }, { once: true });
+
+            const entry = window._SyncOutbox.enqueueChange('comments', 'pending-event-comment', 'insert', 0);
+            return {
+                entry,
+                events,
+                pending: window._SyncOutbox.readPendingChanges()
+            };
+        });
+
+        expect(result.entry).toMatchObject({
+            table_name: 'comments',
+            record_key: 'pending-event-comment',
+            operation: 'insert'
+        });
+        expect(result.events).toEqual([
+            {
+                tableName: 'comments',
+                recordKey: 'pending-event-comment',
+                operation: 'insert'
+            }
+        ]);
+        expect(result.pending).toHaveLength(1);
+    });
+
+    test('enqueueChange ignores empty record keys', async ({ page }) => {
+        await setupOutboxPage(page);
+        await clearOutbox(page);
+
+        const result = await page.evaluate(() => {
+            const events = [];
+            window.addEventListener('sync:pending', (event) => {
+                events.push(event.detail || null);
+            });
+
+            const entry = window._SyncOutbox.enqueueChange('comments', null, 'insert', 0);
+            return {
+                entry,
+                events,
+                pending: window._SyncOutbox.readPendingChanges()
+            };
+        });
+
+        expect(result.entry).toBeNull();
+        expect(result.events).toEqual([]);
+        expect(result.pending).toEqual([]);
+    });
+
     test('multiple updates on same record collapse to one', async ({ page }) => {
         await setupOutboxPage(page);
         await clearOutbox(page);

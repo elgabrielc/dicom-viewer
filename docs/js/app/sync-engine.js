@@ -25,6 +25,11 @@ const _SyncEngine = (() => {
     // Backoff schedule: 30s, 60s, 120s, 300s (max 5 min)
     const BACKOFF_SCHEDULE_MS = [30000, 60000, 120000, 300000];
 
+    function dispatchSyncEvent(type, detail) {
+        if (typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent(type, detail === undefined ? undefined : { detail }));
+    }
+
     /**
      * SyncEngine manages the periodic sync loop.
      *
@@ -95,10 +100,17 @@ const _SyncEngine = (() => {
                 const result = await this._doSync();
                 this._consecutiveErrors = 0;
                 this._retryAfterMs = 0;
+                if (!result?.skipped) {
+                    dispatchSyncEvent('sync:completed', result);
+                }
                 return result;
             } catch (err) {
                 this._consecutiveErrors++;
                 console.warn('SyncEngine: sync failed:', err.message || err);
+                dispatchSyncEvent('sync:error', {
+                    message: err.message || String(err),
+                    consecutiveErrors: this._consecutiveErrors
+                });
                 return { error: true, message: err.message || String(err) };
             } finally {
                 this._syncing = false;
@@ -161,10 +173,12 @@ const _SyncEngine = (() => {
                 // No token available -- stop the engine and signal auth required
                 // so it doesn't spin at full rate while logged out
                 this.stop();
-                window.dispatchEvent(new CustomEvent('sync:auth-required'));
+                dispatchSyncEvent('sync:auth-required');
                 this.onAuthRequired();
                 return { skipped: true, reason: 'no_access_token' };
             }
+
+            dispatchSyncEvent('sync:started');
 
             // 2. Read and collapse pending outbox entries.
             // Prefer the async path (reads SQLite on desktop) over the
@@ -216,7 +230,7 @@ const _SyncEngine = (() => {
             const response = await this._fetchSync(requestBody, accessToken);
 
             // 4. Process the response
-            return await this._processResponse(response, changes);
+            return await this._processResponse(response, changes, noops.length);
         }
 
         /**
@@ -239,9 +253,6 @@ const _SyncEngine = (() => {
                 });
             } catch (networkError) {
                 // Network failure (offline, DNS, etc.)
-                const allEntryIds = [];
-                // Mark entries as failed for backoff tracking
-                // (caller handles this in _doSync catch)
                 throw new Error(`Network error: ${networkError.message || 'fetch failed'}`);
             }
 
@@ -287,9 +298,10 @@ const _SyncEngine = (() => {
          *
          * @param {Object} response - Parsed JSON response
          * @param {Array} changes - The collapsed outbox entries we sent
+         * @param {number} noopCount - Number of collapsed no-op groups cleaned locally
          * @returns {Object} Summary of what was processed
          */
-        async _processResponse(response, changes) {
+        async _processResponse(response, changes, noopCount = 0) {
             const outbox = window._SyncOutbox;
             const accepted = response.accepted || [];
             const rejected = response.rejected || [];
@@ -364,10 +376,13 @@ const _SyncEngine = (() => {
             }
 
             return {
-                accepted: accepted.length,
-                rejected: rejected.length,
-                remoteChanges: remoteChanges.length,
-                noopsCleaned: noops.length
+                accepted,
+                acceptedCount: accepted.length,
+                rejected,
+                rejectedCount: rejected.length,
+                remoteChanges,
+                remoteChangeCount: remoteChanges.length,
+                noopsCleaned: noopCount
             };
         }
 
@@ -376,7 +391,7 @@ const _SyncEngine = (() => {
          * for O(1) lookups when updating sync_version on comments.
          *
          * @param {Object} store - The notes store from _NotesInternals
-         * @returns {Map<string, {studyUid: string, comment: Object}>}
+         * @returns {Map<string, {studyUid: string}>}
          */
         _buildStudyLookup(store) {
             const map = new Map();
@@ -384,16 +399,16 @@ const _SyncEngine = (() => {
                 const studyEntry = store.studies[studyUid];
                 if (Array.isArray(studyEntry.comments)) {
                     for (const comment of studyEntry.comments) {
-                        if (comment.record_uuid) map.set(comment.record_uuid, { studyUid, comment });
-                        if (comment.id) map.set(String(comment.id), { studyUid, comment });
+                        if (comment.record_uuid) map.set(comment.record_uuid, { studyUid });
+                        if (comment.id) map.set(String(comment.id), { studyUid });
                     }
                 }
                 if (studyEntry.series && typeof studyEntry.series === 'object') {
                     for (const seriesEntry of Object.values(studyEntry.series)) {
                         if (Array.isArray(seriesEntry.comments)) {
                             for (const comment of seriesEntry.comments) {
-                                if (comment.record_uuid) map.set(comment.record_uuid, { studyUid, comment });
-                                if (comment.id) map.set(String(comment.id), { studyUid, comment });
+                                if (comment.record_uuid) map.set(comment.record_uuid, { studyUid });
+                                if (comment.id) map.set(String(comment.id), { studyUid });
                             }
                         }
                     }
@@ -428,9 +443,13 @@ const _SyncEngine = (() => {
                 if (studyLookup) {
                     const hit = studyLookup.get(recordKey);
                     if (hit) {
-                        hit.comment.sync_version = syncVersion;
-                        saveStore(store);
-                        return;
+                        const studyEntry = ensureStudy(store, hit.studyUid);
+                        const comment = this._findCommentByKey(studyEntry, recordKey);
+                        if (comment) {
+                            comment.sync_version = syncVersion;
+                            saveStore(store);
+                            return;
+                        }
                     }
                 }
                 // Fallback: linear scan (only reached if lookup was not provided

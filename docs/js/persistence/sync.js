@@ -137,6 +137,17 @@ const _SyncOutbox = (() => {
         return entries.map((entry) => ({ ...entry }));
     }
 
+    function dispatchSyncEvent(type, detail) {
+        if (typeof window === 'undefined') return;
+        window.dispatchEvent(new CustomEvent(type, detail === undefined ? undefined : { detail }));
+    }
+
+    function normalizeRecordKey(recordKey) {
+        if (recordKey === null || recordKey === undefined) return null;
+        const normalized = String(recordKey).trim();
+        return normalized || null;
+    }
+
     async function migrateLegacyDesktopStorage(db) {
         const legacyState = loadSyncStateLS();
         try {
@@ -273,11 +284,17 @@ const _SyncOutbox = (() => {
     }
 
     function enqueueChange(tableName, recordKey, operation, baseSyncVersion) {
+        const normalizedRecordKey = normalizeRecordKey(recordKey);
+        if (!normalizedRecordKey) {
+            console.warn(`SyncOutbox: refusing to enqueue ${tableName} ${operation} with empty record key`);
+            return null;
+        }
+
         const entry = {
             id: crypto.randomUUID(),
             operation_uuid: crypto.randomUUID(),
             table_name: tableName,
-            record_key: String(recordKey),
+            record_key: normalizedRecordKey,
             operation,
             base_sync_version: baseSyncVersion || 0,
             created_at: Date.now(),
@@ -307,12 +324,15 @@ const _SyncOutbox = (() => {
             }).catch((error) => {
                 console.warn('SyncOutbox: failed to persist desktop outbox entry:', error);
             });
-            return;
+            dispatchSyncEvent('sync:pending', { tableName, recordKey: normalizedRecordKey, operation });
+            return entry;
         }
 
         const outbox = loadOutboxLS();
         outbox.push(entry);
         saveOutboxLS(outbox);
+        dispatchSyncEvent('sync:pending', { tableName, recordKey: normalizedRecordKey, operation });
+        return entry;
     }
 
     function readPendingChanges() {
