@@ -23,12 +23,11 @@
 
 const { test, expect } = require('@playwright/test');
 
-// This file tests auth enforcement. Override global extraHTTPHeaders so
-// X-Test-Mode is NOT sent by default. Suites that need specific headers
-// set them explicitly per-request, making each test self-documenting.
-test.use({ extraHTTPHeaders: {} });
-
 const BASE_URL = 'http://127.0.0.1:5001';
+
+// Override the global X-Test-Mode header for this file so the suite exercises
+// the real session-token auth path instead of the test bypass.
+test.use({ extraHTTPHeaders: {} });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -53,6 +52,13 @@ function uniqueStudyUid() {
     return `test-auth-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function sameOriginHeaders(extra = {}) {
+    return {
+        Origin: BASE_URL,
+        ...extra,
+    };
+}
+
 // ---------------------------------------------------------------------------
 // Test Suite 35: Unauthenticated Mutating Routes Rejected
 // ---------------------------------------------------------------------------
@@ -66,7 +72,10 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     test('PUT /api/notes/<study>/description without token returns 401', async ({ request }) => {
         const response = await request.put(
             `${BASE_URL}/api/notes/${studyUid}/description`,
-            { data: { description: 'should be rejected' } }
+            {
+                headers: sameOriginHeaders(),
+                data: { description: 'should be rejected' },
+            }
         );
         expect(response.status()).toBe(401);
     });
@@ -74,7 +83,10 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     test('PUT /api/notes/<study>/series/<series>/description without token returns 401', async ({ request }) => {
         const response = await request.put(
             `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'should be rejected' } }
+            {
+                headers: sameOriginHeaders(),
+                data: { description: 'should be rejected' },
+            }
         );
         expect(response.status()).toBe(401);
     });
@@ -82,7 +94,10 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     test('POST /api/notes/<study>/comments without token returns 401', async ({ request }) => {
         const response = await request.post(
             `${BASE_URL}/api/notes/${studyUid}/comments`,
-            { data: { text: 'rejected comment', time: Date.now() } }
+            {
+                headers: sameOriginHeaders(),
+                data: { text: 'rejected comment', time: Date.now() },
+            }
         );
         expect(response.status()).toBe(401);
     });
@@ -90,14 +105,18 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     test('PUT /api/notes/<study>/comments/1 without token returns 401', async ({ request }) => {
         const response = await request.put(
             `${BASE_URL}/api/notes/${studyUid}/comments/1`,
-            { data: { text: 'rejected edit' } }
+            {
+                headers: sameOriginHeaders(),
+                data: { text: 'rejected edit' },
+            }
         );
         expect(response.status()).toBe(401);
     });
 
     test('DELETE /api/notes/<study>/comments/1 without token returns 401', async ({ request }) => {
         const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/comments/1`
+            `${BASE_URL}/api/notes/${studyUid}/comments/1`,
+            { headers: sameOriginHeaders() }
         );
         expect(response.status()).toBe(401);
     });
@@ -106,6 +125,7 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
         const response = await request.post(
             `${BASE_URL}/api/notes/${studyUid}/reports`,
             {
+                headers: sameOriginHeaders(),
                 multipart: {
                     file: {
                         name: 'report.pdf',
@@ -120,7 +140,8 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
 
     test('DELETE /api/notes/<study>/reports/fake-id without token returns 401', async ({ request }) => {
         const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/reports/fake-report-id`
+            `${BASE_URL}/api/notes/${studyUid}/reports/fake-report-id`,
+            { headers: sameOriginHeaders() }
         );
         expect(response.status()).toBe(401);
     });
@@ -128,7 +149,10 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     test('POST /api/notes/migrate without token returns 401', async ({ request }) => {
         const response = await request.post(
             `${BASE_URL}/api/notes/migrate`,
-            { data: {} }
+            {
+                headers: sameOriginHeaders(),
+                data: {},
+            }
         );
         expect(response.status()).toBe(401);
     });
@@ -138,14 +162,18 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     test('POST /api/library/config without token returns 401', async ({ request }) => {
         const response = await request.post(
             `${BASE_URL}/api/library/config`,
-            { data: { folder: '/tmp/should-be-rejected' } }
+            {
+                headers: sameOriginHeaders(),
+                data: { folder: '/tmp/should-be-rejected' },
+            }
         );
         expect(response.status()).toBe(401);
     });
 
     test('POST /api/library/refresh without token returns 401', async ({ request }) => {
         const response = await request.post(
-            `${BASE_URL}/api/library/refresh`
+            `${BASE_URL}/api/library/refresh`,
+            { headers: sameOriginHeaders() }
         );
         expect(response.status()).toBe(401);
     });
@@ -232,7 +260,7 @@ test.describe('Test Suite 38: Test-Mode Bypass', () => {
         // Should succeed -- test-data routes are not behind auth
         expect(response.status()).toBe(200);
         const body = await response.json();
-        expect(body).toHaveProperty('test_data_available');
+        expect(body).toHaveProperty('available');
     });
 
     test('GET /api/test-data/studies works without token', async ({ request }) => {
@@ -287,25 +315,25 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const response = await request.put(
             `${BASE_URL}/api/notes/${studyUid}/description`,
             {
-                headers: { 'X-Session-Token': token, 'Origin': BASE_URL },
+                headers: sameOriginHeaders({ 'X-Session-Token': token }),
                 data: { description: 'authenticated write' },
             }
         );
         expect(response.status()).toBe(200);
     });
 
-    test('POST /api/notes/<study>/comments with valid token returns 201', async ({ request }) => {
+    test('POST /api/notes/<study>/comments with valid token returns 200', async ({ request }) => {
         const token = await getSessionToken(request);
         const studyUid = uniqueStudyUid();
 
         const response = await request.post(
             `${BASE_URL}/api/notes/${studyUid}/comments`,
             {
-                headers: { 'X-Session-Token': token, 'Origin': BASE_URL },
+                headers: sameOriginHeaders({ 'X-Session-Token': token }),
                 data: { text: 'authenticated comment', time: Date.now() },
             }
         );
-        expect(response.status()).toBe(201);
+        expect(response.status()).toBe(200);
     });
 
     test('GET /api/notes/ with valid token returns 200', async ({ request }) => {
@@ -350,7 +378,7 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const token = await getSessionToken(request);
 
         const response = await request.post(`${BASE_URL}/api/library/refresh`, {
-            headers: { 'X-Session-Token': token },
+            headers: sameOriginHeaders({ 'X-Session-Token': token }),
         });
         // 200 on success, possibly 500 if library folder doesn't exist --
         // but should never be 401 with a valid token
@@ -365,16 +393,16 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const createResponse = await request.post(
             `${BASE_URL}/api/notes/${studyUid}/comments`,
             {
-                headers: { 'X-Session-Token': token, 'Origin': BASE_URL },
+                headers: sameOriginHeaders({ 'X-Session-Token': token }),
                 data: { text: 'comment to delete', time: Date.now() },
             }
         );
-        expect(createResponse.status()).toBe(201);
+        expect(createResponse.status()).toBe(200);
         const created = await createResponse.json();
 
         const deleteResponse = await request.delete(
             `${BASE_URL}/api/notes/${studyUid}/comments/${created.id}`,
-            { headers: { 'X-Session-Token': token } }
+            { headers: sameOriginHeaders({ 'X-Session-Token': token }) }
         );
         // Should be 200 on successful delete, not 401
         expect(deleteResponse.status()).toBe(200);
@@ -387,7 +415,7 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const response = await request.post(
             `${BASE_URL}/api/notes/${studyUid}/reports`,
             {
-                headers: { 'X-Session-Token': token, 'Origin': BASE_URL },
+                headers: sameOriginHeaders({ 'X-Session-Token': token }),
                 multipart: {
                     file: {
                         name: 'auth-test-report.pdf',
@@ -397,7 +425,7 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
                 },
             }
         );
-        expect(response.status()).toBe(201);
+        expect(response.status()).toBe(200);
     });
 });
 
@@ -412,7 +440,7 @@ test.describe('Test Suite 41: Invalid Token Rejected - 401', () => {
         const response = await request.put(
             `${BASE_URL}/api/notes/${uniqueStudyUid()}/description`,
             {
-                headers: { 'X-Session-Token': FAKE_TOKEN, 'Origin': BASE_URL },
+                headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
                 data: { description: 'should fail' },
             }
         );
@@ -423,7 +451,7 @@ test.describe('Test Suite 41: Invalid Token Rejected - 401', () => {
         const response = await request.post(
             `${BASE_URL}/api/notes/${uniqueStudyUid()}/comments`,
             {
-                headers: { 'X-Session-Token': FAKE_TOKEN, 'Origin': BASE_URL },
+                headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
                 data: { text: 'should fail', time: Date.now() },
             }
         );
@@ -433,7 +461,7 @@ test.describe('Test Suite 41: Invalid Token Rejected - 401', () => {
     test('DELETE with invalid token returns 401', async ({ request }) => {
         const response = await request.delete(
             `${BASE_URL}/api/notes/${uniqueStudyUid()}/comments/999`,
-            { headers: { 'X-Session-Token': FAKE_TOKEN } }
+            { headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }) }
         );
         expect(response.status()).toBe(401);
     });
@@ -461,7 +489,7 @@ test.describe('Test Suite 41: Invalid Token Rejected - 401', () => {
 
     test('POST /api/library/config with invalid token returns 401', async ({ request }) => {
         const response = await request.post(`${BASE_URL}/api/library/config`, {
-            headers: { 'X-Session-Token': FAKE_TOKEN },
+            headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
             data: { folder: '/tmp/nope' },
         });
         expect(response.status()).toBe(401);
@@ -469,7 +497,7 @@ test.describe('Test Suite 41: Invalid Token Rejected - 401', () => {
 
     test('POST /api/library/refresh with invalid token returns 401', async ({ request }) => {
         const response = await request.post(`${BASE_URL}/api/library/refresh`, {
-            headers: { 'X-Session-Token': FAKE_TOKEN },
+            headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
         });
         expect(response.status()).toBe(401);
     });
