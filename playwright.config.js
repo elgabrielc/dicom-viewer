@@ -40,6 +40,13 @@ module.exports = defineConfig({
     /* Base URL to use in actions like `await page.goto('/')` */
     baseURL: 'http://127.0.0.1:5001',
 
+    /* Session auth bypass for tests.
+     * The server checks X-Test-Mode to skip session-token validation,
+     * allowing Playwright API tests to exercise PHI routes directly. */
+    extraHTTPHeaders: {
+      'X-Test-Mode': '1',
+    },
+
     /* Collect trace when retrying the failed test */
     trace: 'on-first-retry',
 

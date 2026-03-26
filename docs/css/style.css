@@ -1491,6 +1491,263 @@ header .subtitle {
 }
 
 /* ==========================================================================
+   5b. ACCOUNT UI
+   Login/signup modal and account status indicator (cloud mode)
+   ========================================================================== */
+
+.account-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2500;
+}
+
+.account-modal-content {
+    background-color: #16213e;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.account-modal-content h2 {
+    color: #fff;
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.account-modal-content input[type="email"],
+.account-modal-content input[type="password"],
+.account-modal-content input[type="text"] {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background-color: #0f1629;
+    color: #ddd;
+    font-size: 0.95rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 0.75rem;
+}
+
+.account-modal-content input:focus {
+    border-color: #4a9eff;
+}
+
+.account-modal-content input::placeholder {
+    color: #555;
+}
+
+.account-modal-content button[type="submit"] {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #4a9eff 0%, #357abd 100%);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    margin-top: 0.25rem;
+}
+
+.account-modal-content button[type="submit"]:hover {
+    opacity: 0.9;
+}
+
+.account-modal-content button[type="submit"]:disabled {
+    background: #444;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.account-toggle {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.account-toggle a {
+    color: #4a9eff;
+    text-decoration: none;
+    margin-left: 0.3rem;
+}
+
+.account-toggle a:hover {
+    text-decoration: underline;
+}
+
+.account-error {
+    color: #ff7b7b;
+    font-size: 0.85rem;
+    text-align: center;
+    margin-top: 0.75rem;
+}
+
+.account-status {
+    position: absolute;
+    top: 0;
+    right: 0;
+    font-size: 0.8rem;
+    color: #888;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: color 0.2s;
+}
+
+.account-status:hover {
+    color: #4a9eff;
+}
+
+.account-status.signed-in {
+    color: #7ed39a;
+}
+
+.account-status.signed-in:hover {
+    color: #ff7b7b;
+}
+
+/* ==========================================================================
+   5c. SYNC STATUS INDICATOR
+   Cloud sync status dot and conflict banner (cloud mode only)
+   ========================================================================== */
+
+/* Status indicator - positioned in the library header */
+.sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    position: absolute;
+    right: 3rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: #888;
+    cursor: default;
+    user-select: none;
+}
+
+/* Status dot */
+.sync-status-icon {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #666;
+    flex-shrink: 0;
+}
+
+.sync-status-text {
+    white-space: nowrap;
+}
+
+/* State: synced (green) */
+.sync-status--synced .sync-status-icon {
+    background-color: #4caf50;
+}
+
+.sync-status--synced .sync-status-text {
+    color: #8aaf8c;
+}
+
+/* State: syncing (animated green) */
+.sync-status--syncing .sync-status-icon {
+    background-color: #4caf50;
+    animation: sync-pulse 1.2s ease-in-out infinite;
+}
+
+.sync-status--syncing .sync-status-text {
+    color: #8aaf8c;
+}
+
+/* State: pending (yellow) */
+.sync-status--pending .sync-status-icon {
+    background-color: #ff9800;
+}
+
+.sync-status--pending .sync-status-text {
+    color: #c4a35a;
+}
+
+/* State: offline (gray) */
+.sync-status--offline .sync-status-icon {
+    background-color: #666;
+}
+
+.sync-status--offline .sync-status-text {
+    color: #888;
+}
+
+/* State: error (red) */
+.sync-status--error .sync-status-icon {
+    background-color: #f44336;
+}
+
+.sync-status--error .sync-status-text {
+    color: #d48a86;
+}
+
+@keyframes sync-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* Conflict banner - fixed at top of page, dismissible */
+.sync-conflict-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.6rem 1.5rem;
+    background-color: #3d2e0a;
+    border-bottom: 1px solid #6b5a1e;
+    color: #f0cc6b;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.sync-conflict-dismiss {
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #6b5a1e;
+    border-radius: 4px;
+    background-color: transparent;
+    color: #f0cc6b;
+    font-size: 0.75rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.2s;
+}
+
+.sync-conflict-dismiss:hover {
+    background-color: #4d3e14;
+}
+
+/* ==========================================================================
    6. RESPONSIVE ADJUSTMENTS
    Adaptations for smaller screens
    ========================================================================== */

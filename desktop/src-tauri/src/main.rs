@@ -1,8 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod decode;
-mod persistence;
-mod scan;
+mod secure_store;
 
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
@@ -92,6 +91,30 @@ fn desktop_db_migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/002_scan_cache.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "comments_sync",
+            sql: include_str!("../migrations/003_comments_sync.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "study_notes_sync",
+            sql: include_str!("../migrations/004_study_notes_sync.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "reports_sync",
+            sql: include_str!("../migrations/005_reports_sync.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "sync_core",
+            sql: include_str!("../migrations/006_sync_core.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -112,12 +135,11 @@ fn main() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            persistence::apply_desktop_migration,
-            persistence::load_legacy_desktop_browser_stores,
             decode::decode_frame,
-            decode::read_scan_header,
-            scan::read_scan_manifest,
-            decode::take_decoded_frame
+            decode::take_decoded_frame,
+            secure_store::load_secure_auth_state,
+            secure_store::store_secure_auth_state,
+            secure_store::clear_secure_auth_state
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),

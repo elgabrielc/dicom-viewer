@@ -50,15 +50,31 @@ Copyright (c) 2026 Divergent Health Technologies
     <script src="js/help-content.js"></script>
 
     <!-- Notes API abstraction (server persistence with graceful fallback) -->
-    <script src="js/api.js"></script>
+    <script src="js/persistence/local.js"></script>
+    <script src="js/persistence/server.js"></script>
+    <script src="js/persistence/sync.js"></script>
+    <script src="js/persistence/desktop.js"></script>
+    <script src="js/persistence/dispatcher.js"></script>
 </head>
 <body>
+    <!-- SYNC CONFLICT BANNER (cloud mode only) -->
+    <div id="syncConflictBanner" class="sync-conflict-banner" style="display: none;">
+        <span id="syncConflictText"></span>
+        <button id="syncConflictDismiss" class="sync-conflict-dismiss">Dismiss</button>
+    </div>
+
     <!-- LIBRARY VIEW -->
     <div id="libraryView" class="container">
         <header class="library-header">
             <h1>DICOM Medical Imaging Viewer</h1>
             <p class="subtitle">Browse and view CT, MRI, and other imaging studies</p>
+            <!-- SYNC STATUS (cloud mode only) -->
+            <div id="syncStatus" class="sync-status" style="display: none;">
+                <span id="syncStatusIcon" class="sync-status-icon"></span>
+                <span id="syncStatusText" class="sync-status-text">Synced</span>
+            </div>
             <button class="help-btn library-help-btn" aria-label="Open user guide" data-tooltip="H">?</button>
+            <span id="accountStatus" class="account-status" style="display: none;"></span>
         </header>
 
         <section class="upload-section">
@@ -181,6 +197,24 @@ Copyright (c) 2026 Divergent Health Technologies
         </div>
     </div>
 
+    <!-- ACCOUNT MODAL (cloud mode only) -->
+    <div id="accountModal" class="account-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+        <div class="account-modal-content">
+            <h2 id="accountModalTitle">Sign In</h2>
+            <form id="loginForm">
+                <input type="email" id="accountEmail" placeholder="Email" required autocomplete="email">
+                <input type="password" id="accountPassword" placeholder="Password" required autocomplete="current-password">
+                <input type="text" id="accountName" placeholder="Name" style="display: none;" autocomplete="name">
+                <button type="submit" id="accountSubmit">Sign In</button>
+                <p class="account-toggle">
+                    <span id="accountToggleText">Don't have an account?</span>
+                    <a href="#" id="accountToggleLink">Sign Up</a>
+                </p>
+                <p id="accountError" class="account-error" style="display: none;"></p>
+            </form>
+        </div>
+    </div>
+
     <!-- HELP VIEWER MODAL -->
     <div id="helpViewer" class="help-viewer" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="helpViewerTitle">
         <div class="help-viewer-header">
@@ -202,10 +236,15 @@ Copyright (c) 2026 Divergent Health Technologies
     <script src="js/app/sources.js"></script>
     <script src="js/app/desktop-library.js"></script>
     <script src="js/app/desktop-decode.js"></script>
-    <script src="js/app/notes-reports.js"></script>
+    <script src="js/app/notes-ui.js"></script>
+    <script src="js/app/comments-ui.js"></script>
+    <script src="js/app/reports-ui.js"></script>
     <script src="js/app/help-viewer.js"></script>
     <script src="js/app/viewer.js"></script>
     <script src="js/app/library.js"></script>
+    <script src="js/app/sync-status-ui.js"></script>
+    <script src="js/app/sync-engine.js"></script>
+    <script src="js/app/account-ui.js"></script>
     <script src="js/app/main.js"></script>
 </body>
 </html>

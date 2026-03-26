@@ -785,7 +785,8 @@
             case 'blob':
                 return source.blob.arrayBuffer();
             case 'api': {
-                const resp = await fetch(
+                const apiFetch = window.NotesAPI?.authenticatedFetch || fetch;
+                const resp = await apiFetch(
                     `${source.apiBase}/dicom/${encodeURIComponent(source.studyId)}/${encodeURIComponent(source.seriesId)}/${source.sliceIndex}`
                 );
                 if (!resp.ok) throw new Error(`Failed to ${purpose} slice: ${resp.status}`);
@@ -865,7 +866,8 @@
     }
 
     async function loadStudiesFromApi(apiBase, options = {}) {
-        const response = await fetch(`${apiBase}/studies`, options);
+        const apiFetch = window.NotesAPI?.authenticatedFetch || fetch;
+        const response = await apiFetch(`${apiBase}/studies`, options);
         if (!response.ok) throw new Error(`Failed to load studies: ${response.status}`);
         const payload = await response.json();
         return normalizeStudiesPayload(payload, apiBase);

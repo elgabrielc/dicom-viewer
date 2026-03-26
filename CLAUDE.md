@@ -29,6 +29,29 @@ before editing anything:
 8. Do not use `git add -A` in the shared main checkout.
 9. If the shared checkout is dirty and you cannot prove which files are yours, stop and report instead of committing.
 
+### Mandatory Preflight: Sync Check Before Multi-Stage Work
+
+**Before starting any multi-stage or multi-agent work, run this check:**
+
+```bash
+git fetch origin main
+git log --oneline HEAD..origin/main   # what main has that you don't
+git log --oneline origin/main..HEAD   # what you have that main doesn't
+```
+
+If the working branch has diverged from main:
+- **Do not split, refactor, or replace files** without rebasing first. Agents will
+  work on a stale version and silently drop code that exists on main.
+- **Do not exclude failing tests** with `--grep-invert` or similar. Investigate
+  every failure. If it's pre-existing, prove it by checking the same test on main.
+
+**Incident (2026-03-25):** 20 parallel agents built cloud sync on `local/WIP` which
+had diverged from main by 40 commits. The client-split agent worked on api.js (739
+lines) instead of main's version (1548 lines). The split silently dropped 460 lines
+of desktop persistence code. 80 tests failed on CI. Three review-fix cycles failed
+to fully resolve it. The fix required handing off to Codex for a clean rewrite.
+This was entirely preventable by checking divergence before starting.
+
 ### Starting a New Parallel Session
 
 If the shared checkout is clean, create a dedicated external worktree first:
@@ -435,3 +458,24 @@ Canonical location for new decision records is `docs/decisions/` (Architecture D
 - Dark theme optimized for radiologist viewing environment
 - Single source of truth in docs/ (consolidation done 2026-01-28)
 - GitHub Flow branching strategy (simple, single main branch)
+
+<!-- claude-3-meta -->
+# Meta: Inter-Session Messaging
+
+This project provides file-based messaging between Claude Code sessions.
+
+## Receiving messages
+
+When you see a `[META]` message injected into your context, act on it:
+1. Do the requested work
+2. Send results back: `/meta send --from <your_alias> <sender_alias> --type result --reply-to <msg_id> "<summary>"`
+
+Always include `--from <your_alias>` on every `/meta send` so the recipient can reply. Your alias is in the `[meta] Registered as '...'` message from session start.
+
+## Message types
+
+- `task` -- work request (default). Do the work, reply with `result`.
+- `result` -- response to a task. Report it to the user.
+- `status` -- progress update. Note it and continue.
+- `ping` -- liveness check. Respond with `/meta send <alias> --type status "alive"`.
+<!-- /claude-3-meta -->

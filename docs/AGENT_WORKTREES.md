@@ -90,14 +90,52 @@ See [AGENT_LAUNCHERS.md](./AGENT_LAUNCHERS.md) for the exact behavior and shell 
 
 ---
 
+## Mandatory Preflight: Divergence Check
+
+**Before any multi-agent work, verify the working branch is in sync with main.**
+
+```bash
+git fetch origin main
+git log --oneline HEAD..origin/main   # what main has that you don't
+git log --oneline origin/main..HEAD   # what you have that main doesn't
+git diff --stat origin/main -- <files-you-plan-to-split-or-refactor>
+```
+
+If the working branch has diverged from main:
+
+1. **Rebase or merge main** before dispatching agents. Otherwise agents work on
+   stale code and their output will be missing functions, routes, or tests that
+   exist on main.
+2. **Never split or replace a file** that differs from main without reconciling
+   first. The split will be correct for what the agent sees, but incomplete
+   relative to main.
+3. **Never exclude failing tests** to make a suite "pass." Investigate every
+   failure. If it is pre-existing, verify on main before moving on.
+
+### Why This Rule Exists
+
+On 2026-03-25, 20 parallel agents built cloud sync infrastructure on `local/WIP`,
+which had diverged from main by 40 commits. The client-split agent split `api.js`
+(739 lines on local/WIP) into four modules -- but main's `api.js` was 1548 lines.
+The 460-line difference (the entire desktop persistence pipeline) was silently
+dropped. The orchestrator ran tests with `--grep-invert` to exclude desktop tests,
+saw 244 pass, and integrated. On CI, 80 of 397 tests failed. Three review-fix
+cycles introduced new bugs. The fix required a clean rewrite by a different agent.
+
+Every failure in this chain was preventable by running `git log HEAD..origin/main`
+before starting.
+
+---
+
 ## Safe Workflow
 
-1. Commit any integration state you need on `local/WIP`.
-2. Create one worktree per agent branch.
-3. Let each agent commit on its own branch only.
-4. Review and integrate with `cherry-pick` or merge into `local/WIP`.
-5. Update shared index files once during integration, not inside every agent branch.
-6. Retire the agent branch only after its worktree is clean and integrated.
+1. **Run the divergence check above.** Rebase if needed.
+2. Commit any integration state you need on `local/WIP`.
+3. Create one worktree per agent branch.
+4. Let each agent commit on its own branch only.
+5. Review and integrate with `cherry-pick` or merge into `local/WIP`.
+6. Update shared index files once during integration, not inside every agent branch.
+7. Retire the agent branch only after its worktree is clean and integrated.
 
 Shared coordination files such as [docs/INDEX.md](./INDEX.md) and
 [docs/planning/SITEMAP.md](./planning/SITEMAP.md) should usually be touched only
@@ -183,3 +221,9 @@ Retire cleanly:
 - Never assume uncommitted changes belong to the current session.
 - Prefer cheap local commits over stashes.
 - Keep agent branches narrow and disposable.
+- **Never exclude failing tests.** Do not use `--grep-invert`, `--ignore`, or
+  similar flags to skip test failures during integration. Every failure must be
+  investigated. If a test is pre-existing, verify it fails on main too.
+- **Never split or refactor files that have diverged from main.** The agent will
+  work on a stale version and silently drop code. Rebase first.
+- **Run the full test suite at every integration checkpoint.** No exclusions.

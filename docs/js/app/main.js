@@ -19,7 +19,7 @@
         loadSampleCtBtn,
         loadSampleMriBtn
     } = app.dom;
-    const { closeReportViewer } = app.notesReports;
+    const { closeReportViewer } = app.reportsUi;
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
     const {
         applyDesktopLibraryScan,
@@ -483,6 +483,37 @@
     });
 
     setTool(state.currentTool);
+
+    // ---- Sync engine bootstrap ----
+    //
+    // The SyncEngine is created and owned by account-ui.js, which has the
+    // proper token lifecycle (getValidAccessToken with refresh). main.js
+    // only exposes a thin helper and handles graceful shutdown. This avoids
+    // dual engines polling the same endpoint with divergent auth state.
+
+    /**
+     * Start the sync engine if an auth token is present.
+     * Delegates to the single SyncEngine instance owned by account-ui.js
+     * (exposed at app.syncEngine / window.syncEngine).
+     */
+    function startSyncIfAuthenticated() {
+        const engine = app.syncEngine || window.syncEngine;
+        if (engine && !engine.isRunning) {
+            engine.start();
+        }
+    }
+    window.startSyncIfAuthenticated = startSyncIfAuthenticated;
+
+    // Graceful shutdown: stop sync engine before page unloads to avoid
+    // orphaned network requests.
+    window.addEventListener('beforeunload', () => {
+        const engine = app.syncEngine || window.syncEngine;
+        if (engine) {
+            engine.stop();
+        }
+    });
+
+    // ---- App initialization ----
 
     if (isTestMode) {
         initializeTestMode();

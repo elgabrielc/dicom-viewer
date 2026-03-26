@@ -1,3 +1,8 @@
+// Copyright (c) 2026 Divergent Health Technologies
+//
+// Mock Tauri SQL plugin for Playwright desktop tests.
+// Simulates plugin:sql commands using localStorage-backed in-memory tables.
+// Schema mirrors desktop/src-tauri/migrations/ (001 through 006).
 (function () {
     if (typeof window === 'undefined') return;
 
@@ -17,8 +22,11 @@
             reports: [],
             app_config: [],
             desktop_scan_cache: [],
+            sync_outbox: [],
+            sync_state: [],
             meta: {
                 lastCommentId: 0,
+                lastOutboxId: 0,
                 loadCalls: 0
             }
         };
@@ -48,11 +56,16 @@
         if (!Array.isArray(normalized.reports)) normalized.reports = [];
         if (!Array.isArray(normalized.app_config)) normalized.app_config = [];
         if (!Array.isArray(normalized.desktop_scan_cache)) normalized.desktop_scan_cache = [];
+        if (!Array.isArray(normalized.sync_outbox)) normalized.sync_outbox = [];
+        if (!Array.isArray(normalized.sync_state)) normalized.sync_state = [];
         if (!normalized.meta || typeof normalized.meta !== 'object') {
-            normalized.meta = { lastCommentId: 0, loadCalls: 0 };
+            normalized.meta = { lastCommentId: 0, lastOutboxId: 0, loadCalls: 0 };
         }
         if (!Number.isFinite(Number(normalized.meta.lastCommentId))) {
             normalized.meta.lastCommentId = 0;
+        }
+        if (!Number.isFinite(Number(normalized.meta.lastOutboxId))) {
+            normalized.meta.lastOutboxId = 0;
         }
         if (!Number.isFinite(Number(normalized.meta.loadCalls))) {
             normalized.meta.loadCalls = 0;
@@ -98,9 +111,13 @@
                     || normalized === 'rollback'
                     || normalized.startsWith('create table')
                     || normalized.startsWith('create unique index')
+                    || normalized.startsWith('create index')
+                    || normalized.startsWith('alter table')
                 ) {
                     return { rowsAffected: 0, lastInsertId: null };
                 }
+
+                // -- study_notes --
 
                 if (normalized.startsWith('insert into study_notes')) {
                     const [studyUid, description, updatedAt] = values;
@@ -117,7 +134,10 @@
                     state.study_notes.push({
                         study_uid: studyUid,
                         description,
-                        updated_at: updatedAt
+                        updated_at: updatedAt,
+                        deleted_at: null,
+                        device_id: null,
+                        sync_version: 0
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
@@ -130,6 +150,8 @@
                     persistState(db, state);
                     return { rowsAffected: before - state.study_notes.length, lastInsertId: null };
                 }
+
+                // -- series_notes --
 
                 if (normalized.startsWith('insert into series_notes')) {
                     const [studyUid, seriesUid, description, updatedAt] = values;
@@ -163,6 +185,8 @@
                     return { rowsAffected: before - state.series_notes.length, lastInsertId: null };
                 }
 
+                // -- comments --
+
                 if (normalized.startsWith('insert into comments') || normalized.startsWith('insert or ignore into comments')) {
                     const [studyUid, seriesUid, text, time] = values;
                     const existing = state.comments.find(
@@ -181,7 +205,13 @@
                         study_uid: studyUid,
                         series_uid: seriesUid,
                         text,
-                        time
+                        time,
+                        record_uuid: null,
+                        created_at: time,
+                        updated_at: time,
+                        deleted_at: null,
+                        device_id: null,
+                        sync_version: 0
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: id };
@@ -195,6 +225,7 @@
                     }
                     existing.text = text;
                     existing.time = time;
+                    existing.updated_at = time;
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
                 }
@@ -208,6 +239,8 @@
                     persistState(db, state);
                     return { rowsAffected: before - state.comments.length, lastInsertId: null };
                 }
+
+                // -- reports --
 
                 if (normalized.startsWith('insert into reports') || normalized.startsWith('insert or replace into reports')) {
                     const [id, studyUid, name, type, size, filePath, addedAt, updatedAt] = values;
@@ -229,7 +262,11 @@
                             size,
                             file_path: filePath,
                             added_at: addedAt,
-                            updated_at: updatedAt
+                            updated_at: updatedAt,
+                            content_hash: null,
+                            deleted_at: null,
+                            device_id: null,
+                            sync_version: 0
                         });
                     }
                     persistState(db, state);
@@ -246,6 +283,8 @@
                     return { rowsAffected: before - state.reports.length, lastInsertId: null };
                 }
 
+                // -- app_config --
+
                 if (normalized.startsWith('insert into app_config')) {
                     const [key, value, updatedAt] = values;
                     const existing = state.app_config.find((row) => row.key === key);
@@ -258,6 +297,8 @@
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
                 }
+
+                // -- desktop_scan_cache --
 
                 if (normalized.startsWith('insert into desktop_scan_cache')) {
                     const stride = 8;
@@ -298,6 +339,87 @@
                     return { rowsAffected: values.length / stride, lastInsertId: null };
                 }
 
+                // -- sync_outbox --
+
+                if (normalized.startsWith('insert into sync_outbox')) {
+                    const [operationUuid, tableName, recordKey, operation, baseSyncVersion, createdAt] = values;
+                    state.meta.lastOutboxId += 1;
+                    const id = state.meta.lastOutboxId;
+                    state.sync_outbox.push({
+                        id,
+                        operation_uuid: operationUuid,
+                        table_name: tableName,
+                        record_key: recordKey,
+                        operation,
+                        base_sync_version: baseSyncVersion,
+                        created_at: createdAt,
+                        synced_at: null,
+                        attempts: 0,
+                        last_error: null
+                    });
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: id };
+                }
+
+                if (normalized.startsWith('update sync_outbox')) {
+                    const lookupValue = values[values.length - 1];
+                    const existing = normalized.includes('where operation_uuid = ?')
+                        ? state.sync_outbox.find((row) => row.operation_uuid === lookupValue)
+                        : state.sync_outbox.find((row) => row.id === Number(lookupValue));
+                    if (!existing) {
+                        return { rowsAffected: 0, lastInsertId: null };
+                    }
+                    if (values.length >= 3) {
+                        existing.attempts = values[0];
+                        existing.last_error = values[1];
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: null };
+                }
+
+                if (normalized.startsWith('delete from sync_outbox')) {
+                    const before = state.sync_outbox.length;
+                    if (values.length > 0) {
+                        const [lookupValue] = values;
+                        state.sync_outbox = normalized.includes('where operation_uuid = ?')
+                            ? state.sync_outbox.filter((row) => row.operation_uuid !== lookupValue)
+                            : state.sync_outbox.filter((row) => row.id !== Number(lookupValue));
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: before - state.sync_outbox.length, lastInsertId: null };
+                }
+
+                // -- sync_state --
+
+                if (normalized.startsWith('insert into sync_state') || normalized.startsWith('insert or ignore into sync_state') || normalized.startsWith('insert or replace into sync_state')) {
+                    const [key, value, updatedAt] = values;
+                    const existing = state.sync_state.find((row) => row.key === key);
+                    if (existing) {
+                        if (!normalized.includes('or ignore')) {
+                            existing.value = value;
+                            existing.updated_at = updatedAt;
+                        }
+                    } else {
+                        state.sync_state.push({ key, value, updated_at: updatedAt });
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: null };
+                }
+
+                if (normalized.startsWith('update sync_state')) {
+                    const key = values[values.length - 1];
+                    const existing = state.sync_state.find((row) => row.key === key);
+                    if (!existing) {
+                        return { rowsAffected: 0, lastInsertId: null };
+                    }
+                    if (values.length >= 3) {
+                        existing.value = values[0];
+                        existing.updated_at = values[1];
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: null };
+                }
+
                 throw new Error(`Unhandled mock SQL execute: ${query}`);
             },
 
@@ -316,6 +438,12 @@
                     return state.study_notes
                         .filter((row) => studyUids.has(row.study_uid))
                         .map((row) => ({ study_uid: row.study_uid, description: row.description }));
+                }
+
+                if (normalized.startsWith('select study_uid, description from study_notes where study_uid = ? limit 1')) {
+                    const [studyUid] = values;
+                    const row = state.study_notes.find((entry) => entry.study_uid === studyUid);
+                    return row ? [{ study_uid: row.study_uid, description: row.description }] : [];
                 }
 
                 if (normalized.startsWith('select study_uid, series_uid, description from series_notes where study_uid in')) {
@@ -342,6 +470,38 @@
                     }));
                 }
 
+                if (normalized.startsWith('select id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where study_uid in')) {
+                    const studyUids = new Set(values);
+                    return sortComments(
+                        state.comments.filter((row) => studyUids.has(row.study_uid))
+                    ).map((row) => ({
+                        id: row.id,
+                        record_uuid: row.record_uuid,
+                        study_uid: row.study_uid,
+                        series_uid: row.series_uid,
+                        text: row.text,
+                        time: row.time,
+                        created_at: row.created_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at
+                    }));
+                }
+
+                if (normalized.startsWith('select record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where record_uuid = ? limit 1')) {
+                    const [recordUuid] = values;
+                    const row = state.comments.find((entry) => entry.record_uuid === recordUuid);
+                    return row ? [{
+                        record_uuid: row.record_uuid,
+                        study_uid: row.study_uid,
+                        series_uid: row.series_uid,
+                        text: row.text,
+                        time: row.time,
+                        created_at: row.created_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at
+                    }] : [];
+                }
+
                 if (normalized.startsWith('select id, study_uid, name, type, size, added_at, updated_at, file_path from reports where study_uid in')) {
                     const studyUids = new Set(values);
                     return sortByAddedAtThenId(
@@ -356,6 +516,40 @@
                         updated_at: row.updated_at,
                         file_path: row.file_path
                     }));
+                }
+
+                if (normalized.startsWith('select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, file_path from reports where study_uid in')) {
+                    const studyUids = new Set(values);
+                    return sortByAddedAtThenId(
+                        state.reports.filter((row) => studyUids.has(row.study_uid) && row.file_path !== null && row.file_path !== undefined)
+                    ).map((row) => ({
+                        id: row.id,
+                        study_uid: row.study_uid,
+                        name: row.name,
+                        type: row.type,
+                        size: row.size,
+                        content_hash: row.content_hash || null,
+                        added_at: row.added_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at || null,
+                        file_path: row.file_path
+                    }));
+                }
+
+                if (normalized.startsWith('select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at from reports where id = ? limit 1')) {
+                    const [id] = values;
+                    const row = state.reports.find((entry) => String(entry.id) === String(id));
+                    return row ? [{
+                        id: row.id,
+                        study_uid: row.study_uid,
+                        name: row.name,
+                        type: row.type,
+                        size: row.size,
+                        content_hash: row.content_hash || null,
+                        added_at: row.added_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at || null
+                    }] : [];
                 }
 
                 if (normalized.startsWith('select file_path, added_at from reports where id = ? limit 1')) {
@@ -384,6 +578,30 @@
                             renderable: row.renderable,
                             meta_json: row.meta_json
                         }));
+                }
+
+                // -- sync_outbox selects --
+
+                if (normalized.startsWith('select') && normalized.includes('sync_outbox') && normalized.includes('synced_at is null')) {
+                    return state.sync_outbox
+                        .filter((row) => row.synced_at === null)
+                        .map((row) => clone(row));
+                }
+
+                if (normalized.startsWith('select') && normalized.includes('sync_outbox')) {
+                    return state.sync_outbox.map((row) => clone(row));
+                }
+
+                // -- sync_state selects --
+
+                if (normalized.startsWith('select') && normalized.includes('sync_state') && normalized.includes('where key = ?')) {
+                    const [key] = values;
+                    const row = state.sync_state.find((entry) => entry.key === key);
+                    return row ? [clone(row)] : [];
+                }
+
+                if (normalized.startsWith('select') && normalized.includes('sync_state')) {
+                    return state.sync_state.map((row) => clone(row));
                 }
 
                 throw new Error(`Unhandled mock SQL select: ${query}`);

@@ -167,7 +167,7 @@
         libraryFolderInput.readOnly = false;
         saveLibraryFolderBtn.textContent = 'Save';
 
-        const response = await fetch('/api/library/config');
+        const response = await notesApi.authenticatedFetch('/api/library/config');
         if (!response.ok) throw new Error(`Failed to load library config: ${response.status}`);
         const payload = await response.json().catch(() => {
             throw new Error('Library config response was not valid JSON');
@@ -208,7 +208,7 @@
                 return;
             }
 
-            const response = await fetch('/api/library/config', {
+            const response = await notesApi.authenticatedFetch('/api/library/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ folder })
@@ -266,7 +266,7 @@
                 return;
             }
 
-            const response = await fetch('/api/library/refresh', { method: 'POST' });
+            const response = await notesApi.authenticatedFetch('/api/library/refresh', { method: 'POST' });
             const payload = await response.json();
             if (!response.ok) {
                 throw new Error(payload.error || `Failed to refresh library: ${response.status}`);
@@ -292,11 +292,13 @@
     }
 
     async function displayStudies() {
-        const notesReports = app.notesReports;
+        const notesUi = app.notesUi;
+        const commentsUi = app.commentsUi;
+        const reportsUi = app.reportsUi;
         const viewer = app.viewer;
 
-        await notesReports.migrateIfNeeded();
-        await notesReports.loadNotesForStudies();
+        await notesUi.migrateIfNeeded();
+        await notesUi.loadNotesForStudies();
 
         refreshLibraryBtn.style.display = state.libraryAvailable ? 'inline-block' : 'none';
         libraryFolderConfig.style.display = (state.libraryAvailable || state.libraryConfigReachable) ? 'block' : 'none';
@@ -382,7 +384,7 @@
                             </div>
                             <div class="comment-section">
                                 <h4>Comments</h4>
-                                <div class="comment-list">${notesReports.renderComments(study.comments, study.studyInstanceUid)}</div>
+                                <div class="comment-list">${commentsUi.renderComments(study.comments, study.studyInstanceUid)}</div>
                                 <div class="comment-add">
                                     <input type="text" class="comment-input add-study-comment" data-study-uid="${escapeHtml(study.studyInstanceUid)}" placeholder="Write a comment...">
                                     <button class="comment-submit" data-study-uid="${escapeHtml(study.studyInstanceUid)}">Add</button>
@@ -390,7 +392,7 @@
                             </div>
                             <div class="report-section">
                                 <h4>Reports</h4>
-                                <div class="report-list" data-study-uid="${escapeHtml(study.studyInstanceUid)}">${notesReports.renderReports(study.reports, study.studyInstanceUid)}</div>
+                                <div class="report-list" data-study-uid="${escapeHtml(study.studyInstanceUid)}">${reportsUi.renderReports(study.reports, study.studyInstanceUid)}</div>
                                 <div class="report-upload">
                                     <input type="file" class="report-file-input" data-study-uid="${escapeHtml(study.studyInstanceUid)}" accept=".pdf,.png,.jpg,.jpeg" style="display: none;">
                                     <button class="report-upload-btn" data-study-uid="${escapeHtml(study.studyInstanceUid)}">Upload Report</button>
@@ -426,7 +428,7 @@
                                                 </div>
                                                 <div class="comment-section">
                                                     <h4>Comments</h4>
-                                                    <div class="comment-list">${notesReports.renderComments(series.comments, study.studyInstanceUid, series.seriesInstanceUid)}</div>
+                                                    <div class="comment-list">${commentsUi.renderComments(series.comments, study.studyInstanceUid, series.seriesInstanceUid)}</div>
                                                     <div class="comment-add">
                                                         <input type="text" class="comment-input add-series-comment" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}" placeholder="Write a comment...">
                                                         <button class="comment-submit" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}">Add</button>
@@ -520,7 +522,7 @@
             btn.onclick = () => {
                 const studyUid = btn.dataset.studyUid;
                 const input = studiesBody.querySelector(`.add-study-comment[data-study-uid="${CSS.escape(studyUid)}"]`);
-                notesReports.addComment(studyUid, null, input.value);
+                commentsUi.addComment(studyUid, null, input.value);
             };
         });
 
@@ -529,7 +531,7 @@
                 const studyUid = btn.dataset.studyUid;
                 const seriesUid = btn.dataset.seriesUid;
                 const input = studiesBody.querySelector(`.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
-                notesReports.addComment(studyUid, seriesUid, input.value);
+                commentsUi.addComment(studyUid, seriesUid, input.value);
             };
         });
 
@@ -538,7 +540,7 @@
                 if (e.key === 'Enter') {
                     const studyUid = input.dataset.studyUid;
                     const seriesUid = input.dataset.seriesUid || null;
-                    notesReports.addComment(studyUid, seriesUid, input.value);
+                    commentsUi.addComment(studyUid, seriesUid, input.value);
                 }
             };
         });
@@ -546,13 +548,13 @@
         studiesBody.querySelectorAll('.edit-comment').forEach(btn => {
             btn.onclick = e => {
                 e.stopPropagation();
-                notesReports.editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
+                commentsUi.editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
             };
         });
         studiesBody.querySelectorAll('.delete-comment').forEach(btn => {
             btn.onclick = e => {
                 e.stopPropagation();
-                notesReports.deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
+                commentsUi.deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
             };
         });
 
@@ -637,14 +639,14 @@
             fileInput.onchange = async () => {
                 const file = fileInput.files[0];
                 if (file) {
-                    await notesReports.addReport(studyUid, file);
+                    await reportsUi.addReport(studyUid, file);
                     fileInput.value = '';
                 }
             };
         });
 
         Object.keys(state.studies).forEach(studyUid => {
-            notesReports.attachReportEventHandlers(studyUid);
+            reportsUi.attachReportEventHandlers(studyUid);
         });
 
         document.querySelectorAll('.sortable').forEach(th => {

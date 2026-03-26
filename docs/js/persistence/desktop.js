@@ -1,16 +1,28 @@
 /**
- * NotesAPI - Persistence abstraction with pluggable backends
+ * DesktopBackend - Tauri native SQLite persistence for desktop app
  *
- * Routes to LocalBackend (browser localStorage), DesktopSqliteBackend
- * (native desktop SQLite), or ServerBackend (Flask API) based on
- * deployment mode from CONFIG.
+ * Restores the pre-split desktop storage path: native SQLite for notes,
+ * comments, reports, app config, and scan cache, plus one-time migration
+ * from legacy browser/localStorage stores.
+ *
+ * Depends on window._NotesInternals from local.js (loaded first).
  *
  * Copyright (c) 2026 Divergent Health Technologies
  */
 
-const NotesAPI = (() => {
-    const STORAGE_KEY = 'dicom-viewer-notes-v3';
-    const baseUrl = '/api/notes';
+const _NotesDesktop = (() => {
+    const {
+        createEmptyStore,
+        clone,
+        normalizeCommentId,
+        loadStore,
+        ensureStudy,
+        ensureSeries,
+        normalizeReportId,
+        sanitizeFilenamePart,
+        getDesktopTauriApis
+    } = window._NotesInternals;
+
     const DESKTOP_DB_URL = 'sqlite:viewer.db';
     const DESKTOP_LIBRARY_CONFIG_KEY = 'desktop_library_config';
     const DESKTOP_LOCALSTORAGE_MIGRATION_KEY = 'localstorage_migrated';
@@ -27,11 +39,7 @@ const NotesAPI = (() => {
         png: 'png',
         jpg: 'jpg'
     });
-    let serverAvailable = true;
-    let serverDisabledAt = 0;
-    const SERVER_RETRY_MS = 60000; // Retry server after 60 seconds
-    let lastCommentTimestamp = 0;
-    let commentCounter = 0;
+
     let desktopDbPromise = null;
     let desktopDbFailure = null;
     let desktopDbRetryAt = 0;
@@ -40,131 +48,8 @@ const NotesAPI = (() => {
     let desktopMigrationRetryAt = 0;
     const desktopReportPathCache = new Map();
 
-    function createEmptyStore() {
-        return { studies: {} };
-    }
-
-    function clone(value) {
-        return JSON.parse(JSON.stringify(value));
-    }
-
-    function normalizeCommentId(value) {
-        if (value === null || value === undefined) return null;
-        const asNumber = Number(value);
-        if (!Number.isNaN(asNumber)) return asNumber;
-        return String(value);
-    }
-
-    function createCommentId() {
-        const now = Date.now();
-        if (now === lastCommentTimestamp) {
-            commentCounter += 1;
-            return `${now}-${commentCounter}`;
-        }
-        lastCommentTimestamp = now;
-        commentCounter = 0;
-        return String(now);
-    }
-
-    function loadStore() {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return createEmptyStore();
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object' || !parsed.studies || typeof parsed.studies !== 'object') {
-                return createEmptyStore();
-            }
-            return parsed;
-        } catch (e) {
-            console.warn('LocalBackend: failed to load:', e);
-            return createEmptyStore();
-        }
-    }
-
-    function saveStore(store) {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-        } catch (e) {
-            console.warn('LocalBackend: failed to save:', e);
-        }
-    }
-
-    function ensureStudy(store, studyUid) {
-        if (!store.studies[studyUid]) {
-            store.studies[studyUid] = {
-                description: '',
-                comments: [],
-                series: {},
-                reports: []
-            };
-            return store.studies[studyUid];
-        }
-
-        const entry = store.studies[studyUid];
-        if (typeof entry.description !== 'string') entry.description = '';
-        if (!Array.isArray(entry.comments)) entry.comments = [];
-        if (!entry.series || typeof entry.series !== 'object') entry.series = {};
-        if (!Array.isArray(entry.reports)) entry.reports = [];
-        return entry;
-    }
-
-    function ensureSeries(studyEntry, seriesUid) {
-        if (!studyEntry.series[seriesUid]) {
-            studyEntry.series[seriesUid] = {
-                description: '',
-                comments: []
-            };
-            return studyEntry.series[seriesUid];
-        }
-
-        const entry = studyEntry.series[seriesUid];
-        if (typeof entry.description !== 'string') entry.description = '';
-        if (!Array.isArray(entry.comments)) entry.comments = [];
-        return entry;
-    }
-
-    function normalizeReportId(value) {
-        if (value === null || value === undefined) return null;
-        return String(value);
-    }
-
-    function findCommentById(comments, commentId) {
-        if (!Array.isArray(comments)) return null;
-        const target = normalizeCommentId(commentId);
-        if (target === null) return null;
-        return comments.find((comment) => normalizeCommentId(comment.id) === target) || null;
-    }
-
-    function findReportMetadata(store, reportId) {
-        const target = normalizeReportId(reportId);
-        if (!target || !store?.studies || typeof store.studies !== 'object') return null;
-
-        for (const [studyUid] of Object.entries(store.studies)) {
-            const studyEntry = ensureStudy(store, studyUid);
-            const report = studyEntry.reports.find((entry) => normalizeReportId(entry?.id) === target) || null;
-            if (report) {
-                return { studyUid, studyEntry, report };
-            }
-        }
-
-        return null;
-    }
-
-    function sanitizeFilenamePart(value, fallback = 'report') {
-        const safe = String(value || '')
-            .replace(/[^A-Za-z0-9._-]+/g, '_')
-            .replace(/^_+|_+$/g, '');
-        return safe || fallback;
-    }
-
-    function getDesktopTauriApis() {
-        const tauri = window.__TAURI__;
-        return {
-            fs: tauri?.fs || null,
-            path: tauri?.path || null,
-            core: tauri?.core || null,
-            sql: tauri?.sql || null
-        };
+    function isDesktopMode() {
+        return typeof CONFIG !== 'undefined' && CONFIG.deploymentMode === 'desktop';
     }
 
     function normalizeDesktopLibraryConfig(config) {
@@ -614,7 +499,7 @@ const NotesAPI = (() => {
                     } catch (error) {
                         failures += 1;
                         console.warn(
-                            `DesktopSqliteBackend: failed to migrate legacy report blob ${report.id} for ${studyUid}:`,
+                            `DesktopBackend: failed to migrate legacy report blob ${report.id} for ${studyUid}:`,
                             error
                         );
                     }
@@ -635,8 +520,6 @@ const NotesAPI = (() => {
             throw new Error('Desktop migration runtime is not ready. Quit and reopen the app if this persists.');
         }
 
-        // tauri-plugin-sql does not expose a pinned transaction object to JS, so
-        // migration upserts run through a native command that owns one SQLite tx.
         return await invoke('apply_desktop_migration', {
             db: DESKTOP_DB_URL,
             batch
@@ -658,7 +541,7 @@ const NotesAPI = (() => {
         const migrated = await getDesktopAppConfigValue(DESKTOP_LOCALSTORAGE_MIGRATION_KEY);
         if (migrated === '1') return false;
 
-        const currentStore = safeJsonParse(safeLocalStorageGet(STORAGE_KEY), createEmptyStore());
+        const currentStore = safeJsonParse(safeLocalStorageGet('dicom-viewer-notes-v3'), createEmptyStore());
         const legacyPayload = safeJsonParse(safeLocalStorageGet(LEGACY_STORAGE_KEY), null);
         const libraryConfig = normalizeDesktopLibraryConfig(
             safeJsonParse(safeLocalStorageGet(DESKTOP_LIBRARY_CONFIG_STORAGE_KEY), {})
@@ -688,7 +571,7 @@ const NotesAPI = (() => {
             const blobFailures = await migrateLegacyReportBlobs(legacyPayload, db);
             if (blobFailures > 0) {
                 console.warn(
-                    `DesktopSqliteBackend: deferred completion of legacy localStorage migration after ${blobFailures} legacy report blob failure(s).`
+                    `DesktopBackend: deferred completion of legacy localStorage migration after ${blobFailures} legacy report blob failure(s).`
                 );
                 return true;
             }
@@ -731,7 +614,7 @@ const NotesAPI = (() => {
     }
 
     async function initializeDesktopPersistence() {
-        if (getBackend() !== 'desktop') return false;
+        if (!isDesktopMode()) return false;
         if (desktopMigrationFailure && Date.now() < desktopMigrationRetryAt) {
             throw desktopMigrationFailure;
         }
@@ -847,7 +730,7 @@ const NotesAPI = (() => {
                     await fs.remove(backupPath);
                 }
             } catch (cleanupError) {
-                console.warn('DesktopSqliteBackend: failed to remove report backup file:', cleanupError);
+                console.warn('DesktopBackend: failed to remove report backup file:', cleanupError);
             }
         }
 
@@ -857,7 +740,7 @@ const NotesAPI = (() => {
                     await fs.remove(existing.file_path);
                 }
             } catch (cleanupError) {
-                console.warn('DesktopSqliteBackend: failed to remove superseded report file:', cleanupError);
+                console.warn('DesktopBackend: failed to remove superseded report file:', cleanupError);
             }
         }
 
@@ -880,124 +763,7 @@ const NotesAPI = (() => {
         return await storeDesktopReportWithDb(db, studyUid, file, report);
     }
 
-    // ---- LocalBackend ----
-    const LocalBackend = {
-        async loadNotes(studyUids) {
-            const list = (studyUids || []).filter(Boolean);
-            if (!list.length) return createEmptyStore();
-
-            const store = loadStore();
-            const filtered = createEmptyStore();
-            for (const studyUid of list) {
-                if (store.studies[studyUid]) {
-                    filtered.studies[studyUid] = clone(ensureStudy(store, studyUid));
-                }
-            }
-            return filtered;
-        },
-
-        async saveStudyDescription(studyUid, description) {
-            if (!studyUid) return null;
-            const store = loadStore();
-            const studyEntry = ensureStudy(store, studyUid);
-            studyEntry.description = description || '';
-            saveStore(store);
-            return clone(studyEntry);
-        },
-
-        async saveSeriesDescription(studyUid, seriesUid, description) {
-            if (!studyUid || !seriesUid) return null;
-            const store = loadStore();
-            const studyEntry = ensureStudy(store, studyUid);
-            const seriesEntry = ensureSeries(studyEntry, seriesUid);
-            seriesEntry.description = description || '';
-            saveStore(store);
-            return clone(seriesEntry);
-        },
-
-        async addComment(studyUid, payload = {}) {
-            if (!studyUid) return null;
-            const store = loadStore();
-            const studyEntry = ensureStudy(store, studyUid);
-            const seriesUid = payload.seriesUid || null;
-            const target = seriesUid ? ensureSeries(studyEntry, seriesUid) : studyEntry;
-
-            const comment = {
-                id: createCommentId(),
-                text: (payload.text || '').trim(),
-                time: payload.time ?? Date.now()
-            };
-            target.comments.push(comment);
-            saveStore(store);
-            return clone(comment);
-        },
-
-        async updateComment(studyUid, commentId, payload = {}) {
-            if (!studyUid || commentId === undefined || commentId === null) return null;
-            const store = loadStore();
-            const studyEntry = store.studies[studyUid];
-            if (!studyEntry) return null;
-
-            ensureStudy(store, studyUid);
-
-            let comment = findCommentById(studyEntry.comments, commentId);
-            if (!comment) {
-                for (const seriesEntry of Object.values(studyEntry.series)) {
-                    comment = findCommentById(seriesEntry.comments, commentId);
-                    if (comment) break;
-                }
-            }
-            if (!comment) return null;
-
-            comment.text = (payload.text || '').trim();
-            comment.time = Date.now();
-            saveStore(store);
-            return clone(comment);
-        },
-
-        async deleteComment(studyUid, commentId) {
-            if (!studyUid || commentId === undefined || commentId === null) return false;
-            const store = loadStore();
-            const studyEntry = store.studies[studyUid];
-            if (!studyEntry) return true;
-
-            ensureStudy(store, studyUid);
-            const target = normalizeCommentId(commentId);
-            studyEntry.comments = studyEntry.comments.filter((comment) => normalizeCommentId(comment.id) !== target);
-
-            for (const seriesEntry of Object.values(studyEntry.series)) {
-                if (!Array.isArray(seriesEntry.comments)) {
-                    seriesEntry.comments = [];
-                    continue;
-                }
-                seriesEntry.comments = seriesEntry.comments.filter((comment) => normalizeCommentId(comment.id) !== target);
-            }
-
-            saveStore(store);
-            return true;
-        },
-
-        async uploadReport() {
-            return null;
-        },
-
-        async deleteReport() {
-            // No persistent report storage in localStorage, so delete is a no-op success.
-            // Returning true lets the UI remove the in-memory entry without error.
-            return true;
-        },
-
-        async migrate() {
-            return null;
-        },
-
-        getReportFileUrl() {
-            return '';
-        }
-    };
-
-    // ---- DesktopSqliteBackend ----
-    const DesktopSqliteBackend = {
+    const DesktopBackend = {
         async loadNotes(studyUids) {
             const list = (studyUids || []).filter(Boolean);
             if (!list.length) return createEmptyStore();
@@ -1020,14 +786,14 @@ const NotesAPI = (() => {
                     list
                 ),
                 db.select(
-                    `SELECT id, study_uid, series_uid, text, time
+                    `SELECT id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at
                      FROM comments
                      WHERE study_uid IN (${placeholders})
                      ORDER BY time ASC, id ASC`,
                     list
                 ),
                 db.select(
-                    `SELECT id, study_uid, name, type, size, added_at, updated_at, file_path
+                    `SELECT id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, file_path
                      FROM reports
                      WHERE study_uid IN (${placeholders})
                      AND file_path IS NOT NULL
@@ -1046,25 +812,33 @@ const NotesAPI = (() => {
             }
 
             for (const row of commentRows) {
+                if (row.deleted_at) continue;
                 const target = row.series_uid
                     ? ensureSeries(ensureStudy(notes, row.study_uid), row.series_uid)
                     : ensureStudy(notes, row.study_uid);
                 target.comments.push({
                     id: row.id,
+                    record_uuid: row.record_uuid || null,
                     text: row.text,
-                    time: row.time
+                    time: row.time,
+                    created_at: row.created_at || row.time,
+                    updated_at: row.updated_at || row.time,
+                    deletedAt: null
                 });
             }
 
             for (const row of reportRows) {
+                if (row.deleted_at) continue;
                 ensureStudy(notes, row.study_uid).reports.push({
                     id: row.id,
                     name: row.name,
                     type: row.type,
                     size: row.size,
+                    contentHash: row.content_hash || null,
                     filePath: row.file_path,
                     addedAt: row.added_at,
-                    updatedAt: row.updated_at
+                    updatedAt: row.updated_at,
+                    deletedAt: null
                 });
                 desktopReportPathCache.set(normalizeReportId(row.id), row.file_path);
             }
@@ -1171,7 +945,7 @@ const NotesAPI = (() => {
             try {
                 return await storeDesktopReport(studyUid, file, report);
             } catch (error) {
-                console.warn('DesktopSqliteBackend: failed to upload report:', error);
+                console.warn('DesktopBackend: failed to upload report:', error);
                 return null;
             }
         },
@@ -1204,12 +978,12 @@ const NotesAPI = (() => {
                             await fs.remove(filePath);
                         }
                     } catch (error) {
-                        console.warn('DesktopSqliteBackend: failed to remove orphaned report file:', error);
+                        console.warn('DesktopBackend: failed to remove orphaned report file:', error);
                     }
                 }
                 return true;
             } catch (error) {
-                console.warn('DesktopSqliteBackend: failed to delete report:', error);
+                console.warn('DesktopBackend: failed to delete report:', error);
                 return false;
             }
         },
@@ -1231,318 +1005,22 @@ const NotesAPI = (() => {
         }
     };
 
-    function disableServer() {
-        serverAvailable = false;
-        serverDisabledAt = Date.now();
-        console.warn('NotesAPI: server unreachable, using local storage. Will retry in 60s.');
-    }
-
-    function checkServerAvailable() {
-        if (serverAvailable) return true;
-        // Circuit breaker: re-enable after retry interval
-        if (Date.now() - serverDisabledAt >= SERVER_RETRY_MS) {
-            serverAvailable = true;
-            return true;
-        }
-        return false;
-    }
-
-    async function requestJson(url, options = {}) {
-        if (!checkServerAvailable()) return null;
-        try {
-            const res = await fetch(url, options);
-            if (!res.ok) {
-                console.warn('NotesAPI request failed:', res.status, url);
-                return null;
-            }
-            return await res.json();
-        } catch (err) {
-            console.warn('NotesAPI unavailable:', err);
-            disableServer();
-            return null;
-        }
-    }
-
-    async function requestOk(url, options = {}) {
-        if (!checkServerAvailable()) return false;
-        try {
-            const res = await fetch(url, options);
-            if (!res.ok) {
-                console.warn('NotesAPI request failed:', res.status, url);
-                return false;
-            }
-            return true;
-        } catch (err) {
-            console.warn('NotesAPI unavailable:', err);
-            disableServer();
-            return false;
-        }
-    }
-
-    function encodeId(value) {
-        return encodeURIComponent(value);
-    }
-
-    // ---- ServerBackend ----
-    const ServerBackend = {
-        async loadNotes(studyUids) {
-            const list = (studyUids || []).filter(Boolean);
-            if (!list.length) return { studies: {} };
-            const query = list.map(encodeId).join(',');
-            const data = await requestJson(`${baseUrl}/?studies=${query}`);
-            return data || null;
-        },
-
-        async saveStudyDescription(studyUid, description) {
-            if (!studyUid) return null;
-            return await requestJson(`${baseUrl}/${encodeId(studyUid)}/description`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description })
-            });
-        },
-
-        async saveSeriesDescription(studyUid, seriesUid, description) {
-            if (!studyUid || !seriesUid) return null;
-            return await requestJson(`${baseUrl}/${encodeId(studyUid)}/series/${encodeId(seriesUid)}/description`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description })
-            });
-        },
-
-        async addComment(studyUid, payload) {
-            if (!studyUid) return null;
-            return await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        },
-
-        async updateComment(studyUid, commentId, payload) {
-            if (!studyUid || commentId === undefined || commentId === null) return null;
-            return await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments/${encodeId(commentId)}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        },
-
-        async deleteComment(studyUid, commentId) {
-            if (!studyUid || commentId === undefined || commentId === null) return false;
-            return await requestOk(`${baseUrl}/${encodeId(studyUid)}/comments/${encodeId(commentId)}`, {
-                method: 'DELETE'
-            });
-        },
-
-        async uploadReport(studyUid, file, meta = {}) {
-            if (!studyUid || !file) return null;
-            if (!checkServerAvailable()) return null;
-
-            const form = new FormData();
-            const filename = meta.name || file.name || 'report';
-            form.append('file', file, filename);
-            if (meta.id) form.append('id', meta.id);
-            if (meta.name) form.append('name', meta.name);
-            if (meta.type) form.append('type', meta.type);
-            if (meta.size !== undefined && meta.size !== null) form.append('size', meta.size);
-            if (meta.addedAt !== undefined && meta.addedAt !== null) form.append('addedAt', meta.addedAt);
-            if (meta.updatedAt !== undefined && meta.updatedAt !== null) form.append('updatedAt', meta.updatedAt);
-
-            try {
-                const res = await fetch(`${baseUrl}/${encodeId(studyUid)}/reports`, {
-                    method: 'POST',
-                    body: form
-                });
-                if (!res.ok) {
-                    console.warn('NotesAPI report upload failed:', res.status);
-                    return null;
-                }
-                return await res.json();
-            } catch (err) {
-                console.warn('NotesAPI unavailable:', err);
-                disableServer();
-                return null;
-            }
-        },
-
-        async deleteReport(studyUid, reportId) {
-            if (!studyUid || !reportId) return false;
-            return await requestOk(`${baseUrl}/${encodeId(studyUid)}/reports/${encodeId(reportId)}`, {
-                method: 'DELETE'
-            });
-        },
-
-        async migrate(payload) {
-            return await requestJson(`${baseUrl}/migrate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-        },
-
-        getReportFileUrl(reportId) {
-            if (!reportId) return '';
-            return `${baseUrl}/reports/${encodeId(reportId)}/file`;
-        }
-    };
-
-    // ---- Dispatcher ----
-    function getBackend() {
-        const mode = (typeof CONFIG !== 'undefined') ? CONFIG.deploymentMode : 'personal';
-        if (mode === 'desktop') return 'desktop';
-        const hasServer = (typeof CONFIG !== 'undefined' && CONFIG.features)
-            ? CONFIG.features.notesServer
-            : mode === 'personal' || mode === 'cloud';
-        if (hasServer) return 'server';
-        return 'local';
-    }
-
-    function isEnabled() {
-        if (typeof CONFIG !== 'undefined' && CONFIG.shouldPersistNotes) {
-            return CONFIG.shouldPersistNotes();
-        }
-        return true;
-    }
-
-    async function withFallback(serverCall, localCall, desktopCall = localCall) {
-        const backend = getBackend();
-        if (backend === 'desktop') {
-            return await desktopCall();
-        }
-        if (backend === 'local') {
-            return await localCall();
-        }
-
-        const result = await serverCall();
-        // Only fall back to localStorage when the server became unreachable
-        // (network error that triggered disableServer). Application-level
-        // errors (4xx, 5xx) should surface as failures, not be silently
-        // absorbed by the local backend -- that would create divergent data.
-        if ((result === null || result === false) && !serverAvailable) {
-            return await localCall();
-        }
-        return result;
-    }
-
-    async function loadNotes(studyUids) {
-        if (!isEnabled()) return { studies: {} };
-        return await withFallback(
-            () => ServerBackend.loadNotes(studyUids),
-            () => LocalBackend.loadNotes(studyUids),
-            () => DesktopSqliteBackend.loadNotes(studyUids)
-        );
-    }
-
-    async function saveStudyDescription(studyUid, description) {
-        if (!isEnabled()) return null;
-        return await withFallback(
-            () => ServerBackend.saveStudyDescription(studyUid, description),
-            () => LocalBackend.saveStudyDescription(studyUid, description),
-            () => DesktopSqliteBackend.saveStudyDescription(studyUid, description)
-        );
-    }
-
-    async function saveSeriesDescription(studyUid, seriesUid, description) {
-        if (!isEnabled()) return null;
-        return await withFallback(
-            () => ServerBackend.saveSeriesDescription(studyUid, seriesUid, description),
-            () => LocalBackend.saveSeriesDescription(studyUid, seriesUid, description),
-            () => DesktopSqliteBackend.saveSeriesDescription(studyUid, seriesUid, description)
-        );
-    }
-
-    async function addComment(studyUid, payload) {
-        if (!isEnabled()) return null;
-        return await withFallback(
-            () => ServerBackend.addComment(studyUid, payload),
-            () => LocalBackend.addComment(studyUid, payload),
-            () => DesktopSqliteBackend.addComment(studyUid, payload)
-        );
-    }
-
-    async function updateComment(studyUid, commentId, payload) {
-        if (!isEnabled()) return null;
-        return await withFallback(
-            () => ServerBackend.updateComment(studyUid, commentId, payload),
-            () => LocalBackend.updateComment(studyUid, commentId, payload),
-            () => DesktopSqliteBackend.updateComment(studyUid, commentId, payload)
-        );
-    }
-
-    async function deleteComment(studyUid, commentId) {
-        if (!isEnabled()) return false;
-        return await withFallback(
-            () => ServerBackend.deleteComment(studyUid, commentId),
-            () => LocalBackend.deleteComment(studyUid, commentId),
-            () => DesktopSqliteBackend.deleteComment(studyUid, commentId)
-        );
-    }
-
-    async function uploadReport(studyUid, file, meta) {
-        if (!isEnabled()) return null;
-        return await withFallback(
-            () => ServerBackend.uploadReport(studyUid, file, meta),
-            () => LocalBackend.uploadReport(studyUid, file, meta),
-            () => DesktopSqliteBackend.uploadReport(studyUid, file, meta)
-        );
-    }
-
-    async function deleteReport(studyUid, reportId) {
-        if (!isEnabled()) return false;
-        return await withFallback(
-            () => ServerBackend.deleteReport(studyUid, reportId),
-            () => LocalBackend.deleteReport(studyUid, reportId),
-            () => DesktopSqliteBackend.deleteReport(studyUid, reportId)
-        );
-    }
-
-    async function migrate(payload) {
-        if (!isEnabled()) return null;
-        return await withFallback(
-            () => ServerBackend.migrate(payload),
-            () => LocalBackend.migrate(payload),
-            () => DesktopSqliteBackend.migrate(payload)
-        );
-    }
-
-    function getReportFileUrl(reportId) {
-        if (!isEnabled()) return '';
-        const backend = getBackend();
-        if (backend === 'server') {
-            return ServerBackend.getReportFileUrl(reportId);
-        }
-        if (backend === 'desktop') {
-            return DesktopSqliteBackend.getReportFileUrl(reportId);
-        }
-        return LocalBackend.getReportFileUrl(reportId);
-    }
-
     async function initializeDesktopStorage() {
         return await initializeDesktopPersistence();
     }
 
     return {
-        isEnabled,
-        loadNotes,
-        saveStudyDescription,
-        saveSeriesDescription,
-        addComment,
-        updateComment,
-        deleteComment,
-        uploadReport,
-        deleteReport,
-        migrate,
-        getReportFileUrl,
+        DesktopBackend,
         initializeDesktopStorage,
         loadDesktopLibraryConfig,
         saveDesktopLibraryConfig,
         loadDesktopScanCache,
-        saveDesktopScanCacheEntries
+        saveDesktopScanCacheEntries,
+        getDesktopDb,
+        initializeDesktopPersistence
     };
 })();
 
 if (typeof window !== 'undefined') {
-    window.NotesAPI = NotesAPI;
+    window._NotesDesktop = _NotesDesktop;
 }
