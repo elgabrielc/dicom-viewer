@@ -15,7 +15,14 @@
 const NotesAPI = (() => {
     const { LocalBackend } = window._NotesInternals;
     const { ServerBackend, authenticatedFetch } = window._NotesServer;
-    const { DesktopBackend } = window._NotesDesktop;
+    const {
+        DesktopBackend,
+        initializeDesktopStorage,
+        loadDesktopLibraryConfig,
+        saveDesktopLibraryConfig,
+        loadDesktopScanCache,
+        saveDesktopScanCacheEntries
+    } = window._NotesDesktop;
 
     // ---- Dispatcher ----
     function getBackend() {
@@ -59,7 +66,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return { studies: {} };
         return await withFallback(
             () => ServerBackend.loadNotes(studyUids),
-            () => LocalBackend.loadNotes(studyUids)
+            () => LocalBackend.loadNotes(studyUids),
+            () => DesktopBackend.loadNotes(studyUids)
         );
     }
 
@@ -67,7 +75,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.saveStudyDescription(studyUid, description),
-            () => LocalBackend.saveStudyDescription(studyUid, description)
+            () => LocalBackend.saveStudyDescription(studyUid, description),
+            () => DesktopBackend.saveStudyDescription(studyUid, description)
         );
     }
 
@@ -75,7 +84,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.saveSeriesDescription(studyUid, seriesUid, description),
-            () => LocalBackend.saveSeriesDescription(studyUid, seriesUid, description)
+            () => LocalBackend.saveSeriesDescription(studyUid, seriesUid, description),
+            () => DesktopBackend.saveSeriesDescription(studyUid, seriesUid, description)
         );
     }
 
@@ -83,7 +93,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.addComment(studyUid, payload),
-            () => LocalBackend.addComment(studyUid, payload)
+            () => LocalBackend.addComment(studyUid, payload),
+            () => DesktopBackend.addComment(studyUid, payload)
         );
     }
 
@@ -91,7 +102,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.updateComment(studyUid, commentId, payload),
-            () => LocalBackend.updateComment(studyUid, commentId, payload)
+            () => LocalBackend.updateComment(studyUid, commentId, payload),
+            () => DesktopBackend.updateComment(studyUid, commentId, payload)
         );
     }
 
@@ -99,7 +111,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return false;
         return await withFallback(
             () => ServerBackend.deleteComment(studyUid, commentId),
-            () => LocalBackend.deleteComment(studyUid, commentId)
+            () => LocalBackend.deleteComment(studyUid, commentId),
+            () => DesktopBackend.deleteComment(studyUid, commentId)
         );
     }
 
@@ -125,7 +138,8 @@ const NotesAPI = (() => {
         if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.migrate(payload),
-            () => LocalBackend.migrate(payload)
+            () => LocalBackend.migrate(payload),
+            () => DesktopBackend.migrate(payload)
         );
     }
 
@@ -174,6 +188,11 @@ const NotesAPI = (() => {
         deleteReport,
         migrate,
         getReportFileUrl,
+        initializeDesktopStorage,
+        loadDesktopLibraryConfig,
+        saveDesktopLibraryConfig,
+        loadDesktopScanCache,
+        saveDesktopScanCacheEntries,
         authenticatedFetch,
         syncNow,
         isSyncing

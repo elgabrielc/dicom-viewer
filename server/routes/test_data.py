@@ -31,7 +31,7 @@ def get_test_studies():
     return jsonify(test_source.format_studies())
 
 
-@test_data_bp.route('/api/test-data/dicom/<study_id>/<series_id>/<int:slice_num>')
+@test_data_bp.route('/api/test-data/dicom/<study_id>/<path:series_id>/<int:slice_num>')
 def get_test_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a test data slice."""
     file_path = test_source.get_safe_slice_path(study_id, series_id, slice_num)

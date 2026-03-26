@@ -39,7 +39,7 @@ def add_comment(study_uid):
         record_uuid = str(uuid.uuid4())
 
     db = get_db()
-    cursor = db.execute(
+    db.execute(
         """INSERT INTO comments
            (study_uid, series_uid, text, time, record_uuid, created_at, updated_at, sync_version)
            VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
@@ -48,7 +48,7 @@ def add_comment(study_uid):
     db.commit()
 
     return jsonify({
-        'id': cursor.lastrowid,
+        'id': record_uuid,
         'record_uuid': record_uuid,
         'studyUid': study_uid,
         'seriesUid': series_uid,

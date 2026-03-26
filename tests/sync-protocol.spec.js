@@ -794,6 +794,46 @@ test.describe('Sync Cross-User Isolation', () => {
         const found = result.remote_changes.find(rc => rc.key === change.key);
         expect(found).toBeUndefined();
     });
+
+    test('same study_uid does not collide across different users', async ({ request }) => {
+        const userA = await setupSyncUser(request);
+        const userB = await setupSyncUser(request);
+        const sharedStudyUid = '1.2.840.2026.cross-user.shared-study';
+
+        const changeA = studyNoteUpdateChange(sharedStudyUid, {
+            description: 'User A private note'
+        });
+        const changeB = studyNoteUpdateChange(sharedStudyUid, {
+            description: 'User B private note'
+        });
+
+        await syncAndExpectOk(
+            request, BASE_URL, userA.access_token, userA.device_id, null, [changeA]
+        );
+        await syncAndExpectOk(
+            request, BASE_URL, userB.access_token, userB.device_id, null, [changeB]
+        );
+
+        const { device_id: userASecondDevice } = await registerDevice(request, BASE_URL, userA.access_token);
+        const { device_id: userBSecondDevice } = await registerDevice(request, BASE_URL, userB.access_token);
+
+        const userAPull = await syncAndExpectOk(
+            request, BASE_URL, userA.access_token, userASecondDevice, null, []
+        );
+        const userBPull = await syncAndExpectOk(
+            request, BASE_URL, userB.access_token, userBSecondDevice, null, []
+        );
+
+        const userAStudyNote = userAPull.remote_changes.find(
+            (change) => change.table === 'study_notes' && change.key === sharedStudyUid
+        );
+        const userBStudyNote = userBPull.remote_changes.find(
+            (change) => change.table === 'study_notes' && change.key === sharedStudyUid
+        );
+
+        expect(userAStudyNote?.data?.description).toBe('User A private note');
+        expect(userBStudyNote?.data?.description).toBe('User B private note');
+    });
 });
 
 // ---------------------------------------------------------------------------

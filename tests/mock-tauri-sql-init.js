@@ -362,11 +362,16 @@
                 }
 
                 if (normalized.startsWith('update sync_outbox')) {
-                    // Generic update -- match by id
-                    const id = values[values.length - 1];
-                    const existing = state.sync_outbox.find((row) => row.id === Number(id));
+                    const lookupValue = values[values.length - 1];
+                    const existing = normalized.includes('where operation_uuid = ?')
+                        ? state.sync_outbox.find((row) => row.operation_uuid === lookupValue)
+                        : state.sync_outbox.find((row) => row.id === Number(lookupValue));
                     if (!existing) {
                         return { rowsAffected: 0, lastInsertId: null };
+                    }
+                    if (values.length >= 3) {
+                        existing.attempts = values[0];
+                        existing.last_error = values[1];
                     }
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
@@ -375,8 +380,10 @@
                 if (normalized.startsWith('delete from sync_outbox')) {
                     const before = state.sync_outbox.length;
                     if (values.length > 0) {
-                        const [id] = values;
-                        state.sync_outbox = state.sync_outbox.filter((row) => row.id !== Number(id));
+                        const [lookupValue] = values;
+                        state.sync_outbox = normalized.includes('where operation_uuid = ?')
+                            ? state.sync_outbox.filter((row) => row.operation_uuid !== lookupValue)
+                            : state.sync_outbox.filter((row) => row.id !== Number(lookupValue));
                     }
                     persistState(db, state);
                     return { rowsAffected: before - state.sync_outbox.length, lastInsertId: null };
@@ -433,6 +440,12 @@
                         .map((row) => ({ study_uid: row.study_uid, description: row.description }));
                 }
 
+                if (normalized.startsWith('select study_uid, description from study_notes where study_uid = ? limit 1')) {
+                    const [studyUid] = values;
+                    const row = state.study_notes.find((entry) => entry.study_uid === studyUid);
+                    return row ? [{ study_uid: row.study_uid, description: row.description }] : [];
+                }
+
                 if (normalized.startsWith('select study_uid, series_uid, description from series_notes where study_uid in')) {
                     const studyUids = new Set(values);
                     return state.series_notes
@@ -457,6 +470,38 @@
                     }));
                 }
 
+                if (normalized.startsWith('select id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where study_uid in')) {
+                    const studyUids = new Set(values);
+                    return sortComments(
+                        state.comments.filter((row) => studyUids.has(row.study_uid))
+                    ).map((row) => ({
+                        id: row.id,
+                        record_uuid: row.record_uuid,
+                        study_uid: row.study_uid,
+                        series_uid: row.series_uid,
+                        text: row.text,
+                        time: row.time,
+                        created_at: row.created_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at
+                    }));
+                }
+
+                if (normalized.startsWith('select record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where record_uuid = ? limit 1')) {
+                    const [recordUuid] = values;
+                    const row = state.comments.find((entry) => entry.record_uuid === recordUuid);
+                    return row ? [{
+                        record_uuid: row.record_uuid,
+                        study_uid: row.study_uid,
+                        series_uid: row.series_uid,
+                        text: row.text,
+                        time: row.time,
+                        created_at: row.created_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at
+                    }] : [];
+                }
+
                 if (normalized.startsWith('select id, study_uid, name, type, size, added_at, updated_at, file_path from reports where study_uid in')) {
                     const studyUids = new Set(values);
                     return sortByAddedAtThenId(
@@ -471,6 +516,40 @@
                         updated_at: row.updated_at,
                         file_path: row.file_path
                     }));
+                }
+
+                if (normalized.startsWith('select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, file_path from reports where study_uid in')) {
+                    const studyUids = new Set(values);
+                    return sortByAddedAtThenId(
+                        state.reports.filter((row) => studyUids.has(row.study_uid) && row.file_path !== null && row.file_path !== undefined)
+                    ).map((row) => ({
+                        id: row.id,
+                        study_uid: row.study_uid,
+                        name: row.name,
+                        type: row.type,
+                        size: row.size,
+                        content_hash: row.content_hash || null,
+                        added_at: row.added_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at || null,
+                        file_path: row.file_path
+                    }));
+                }
+
+                if (normalized.startsWith('select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at from reports where id = ? limit 1')) {
+                    const [id] = values;
+                    const row = state.reports.find((entry) => String(entry.id) === String(id));
+                    return row ? [{
+                        id: row.id,
+                        study_uid: row.study_uid,
+                        name: row.name,
+                        type: row.type,
+                        size: row.size,
+                        content_hash: row.content_hash || null,
+                        added_at: row.added_at,
+                        updated_at: row.updated_at,
+                        deleted_at: row.deleted_at || null
+                    }] : [];
                 }
 
                 if (normalized.startsWith('select file_path, added_at from reports where id = ? limit 1')) {

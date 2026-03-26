@@ -21,11 +21,8 @@
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const config = window.CONFIG;
 
-    // localStorage keys for tokens.
-    // KNOWN LIMITATION (v1): Auth tokens are stored in localStorage on all
-    // platforms, including desktop. The ADR specifies OS credential storage
-    // (Tauri keychain plugin) for desktop mode, but that requires additional
-    // native plugin integration. Migrate to secure storage in a future release.
+    // Browser-storage keys used for web sessions and as a migration source
+    // into desktop secure storage.
     const ACCESS_TOKEN_KEY = 'dicom-viewer-access-token';
     const REFRESH_TOKEN_KEY = 'dicom-viewer-refresh-token';
     const USER_EMAIL_KEY = 'dicom-viewer-user-email';
@@ -50,35 +47,197 @@
 
     // ---- Token Storage ----
 
-    function getAccessToken() {
-        return localStorage.getItem(ACCESS_TOKEN_KEY);
+    function isDesktopSecureStoreMode() {
+        return config?.deploymentMode === 'desktop'
+            && typeof window.__TAURI__?.core?.invoke === 'function';
     }
 
-    function getRefreshToken() {
-        return localStorage.getItem(REFRESH_TOKEN_KEY);
+    function readBrowserSession() {
+        return {
+            accessToken: localStorage.getItem(ACCESS_TOKEN_KEY),
+            refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
+            userEmail: localStorage.getItem(USER_EMAIL_KEY),
+            userName: localStorage.getItem(USER_NAME_KEY)
+        };
     }
 
-    function storeTokens(accessToken, refreshToken) {
-        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-        if (refreshToken) {
-            localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-        }
+    function writeBrowserSession(session) {
+        if (session.accessToken) localStorage.setItem(ACCESS_TOKEN_KEY, session.accessToken);
+        else localStorage.removeItem(ACCESS_TOKEN_KEY);
+
+        if (session.refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, session.refreshToken);
+        else localStorage.removeItem(REFRESH_TOKEN_KEY);
+
+        if (session.userEmail) localStorage.setItem(USER_EMAIL_KEY, session.userEmail);
+        else localStorage.removeItem(USER_EMAIL_KEY);
+
+        if (session.userName) localStorage.setItem(USER_NAME_KEY, session.userName);
+        else localStorage.removeItem(USER_NAME_KEY);
     }
 
-    function clearTokens() {
+    function clearBrowserSession() {
         localStorage.removeItem(ACCESS_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
         localStorage.removeItem(USER_EMAIL_KEY);
         localStorage.removeItem(USER_NAME_KEY);
     }
 
-    function storeUserInfo(email, name) {
-        if (email) localStorage.setItem(USER_EMAIL_KEY, email);
-        if (name) localStorage.setItem(USER_NAME_KEY, name);
+    const authStore = (() => {
+        const cache = {
+            accessToken: null,
+            refreshToken: null,
+            userEmail: null,
+            userName: null
+        };
+        let hydratePromise = null;
+
+        function snapshot() {
+            return {
+                accessToken: cache.accessToken || null,
+                refreshToken: cache.refreshToken || null,
+                userEmail: cache.userEmail || null,
+                userName: cache.userName || null
+            };
+        }
+
+        function assign(session = {}) {
+            cache.accessToken = session.accessToken || null;
+            cache.refreshToken = session.refreshToken || null;
+            cache.userEmail = session.userEmail || null;
+            cache.userName = session.userName || null;
+            return snapshot();
+        }
+
+        async function persistDesktop(session) {
+            const invoke = window.__TAURI__?.core?.invoke;
+            await invoke('store_secure_auth_state', {
+                state: {
+                    access_token: session.accessToken || null,
+                    refresh_token: session.refreshToken || null,
+                    user_email: session.userEmail || null,
+                    user_name: session.userName || null
+                }
+            });
+            clearBrowserSession();
+        }
+
+        async function hydrate() {
+            if (hydratePromise) return hydratePromise;
+
+            hydratePromise = (async () => {
+                if (!isDesktopSecureStoreMode()) {
+                    return assign(readBrowserSession());
+                }
+
+                const invoke = window.__TAURI__?.core?.invoke;
+                const legacy = readBrowserSession();
+                let secure = null;
+
+                try {
+                    secure = await invoke('load_secure_auth_state');
+                } catch (error) {
+                    console.warn('AccountUI: failed to load secure auth state:', error);
+                }
+
+                const session = {
+                    accessToken: secure?.access_token || legacy.accessToken || null,
+                    refreshToken: secure?.refresh_token || legacy.refreshToken || null,
+                    userEmail: secure?.user_email || legacy.userEmail || null,
+                    userName: secure?.user_name || legacy.userName || null
+                };
+
+                assign(session);
+
+                if (legacy.accessToken || legacy.refreshToken || legacy.userEmail || legacy.userName) {
+                    try {
+                        await persistDesktop(session);
+                    } catch (error) {
+                        console.warn('AccountUI: failed to migrate legacy desktop auth state:', error);
+                    }
+                }
+
+                return snapshot();
+            })().finally(() => {
+                hydratePromise = null;
+            });
+
+            return hydratePromise;
+        }
+
+        async function save(partialSession = {}) {
+            const session = assign({
+                ...snapshot(),
+                ...partialSession
+            });
+
+            if (isDesktopSecureStoreMode()) {
+                await persistDesktop(session);
+            } else {
+                writeBrowserSession(session);
+            }
+            return snapshot();
+        }
+
+        async function clear() {
+            assign({});
+            if (isDesktopSecureStoreMode()) {
+                try {
+                    await window.__TAURI__?.core?.invoke('clear_secure_auth_state');
+                } catch (error) {
+                    console.warn('AccountUI: failed to clear secure auth state:', error);
+                }
+            }
+            clearBrowserSession();
+        }
+
+        return {
+            hydrate,
+            save,
+            clear,
+            getAccessToken: () => cache.accessToken,
+            getRefreshToken: () => cache.refreshToken,
+            getUserEmail: () => cache.userEmail,
+            getUserName: () => cache.userName,
+            _snapshot: snapshot
+        };
+    })();
+
+    function getAccessToken() {
+        return authStore.getAccessToken();
+    }
+
+    function getRefreshToken() {
+        return authStore.getRefreshToken();
+    }
+
+    async function storeTokens(accessToken, refreshToken) {
+        await authStore.save({
+            accessToken,
+            refreshToken: refreshToken || authStore.getRefreshToken(),
+            userEmail: authStore.getUserEmail(),
+            userName: authStore.getUserName()
+        });
+    }
+
+    async function clearTokens() {
+        await authStore.clear();
+    }
+
+    async function storeUserInfo(email, name) {
+        await authStore.save({
+            accessToken: authStore.getAccessToken(),
+            refreshToken: authStore.getRefreshToken(),
+            userEmail: email || null,
+            userName: name || null
+        });
     }
 
     function getUserEmail() {
-        return localStorage.getItem(USER_EMAIL_KEY);
+        return authStore.getUserEmail();
+    }
+
+    function getUserName() {
+        return authStore.getUserName();
     }
 
     // ---- JWT Decode (payload only, no verification) ----
@@ -148,18 +307,18 @@
                 if (!res.ok) {
                     // Refresh token rejected -- clear stale tokens to prevent
                     // infinite retry loops on next page load
-                    clearTokens();
+                    await clearTokens();
                     return null;
                 }
 
                 const data = await res.json();
-                storeTokens(data.access_token, data.refresh_token || null);
+                await storeTokens(data.access_token, data.refresh_token || null);
                 return data.access_token;
             } catch (e) {
                 console.warn('AccountUI: token refresh failed:', e);
                 // Network error during refresh -- clear stale tokens so the
                 // next page load does not immediately retry with expired creds
-                clearTokens();
+                await clearTokens();
                 return null;
             }
         })();
@@ -204,6 +363,10 @@
     async function ensureDeviceRegistered(accessToken) {
         const outbox = window._SyncOutbox;
         if (!outbox) return null;
+
+        if (typeof outbox.hydrateFromSqlite === 'function') {
+            await outbox.hydrateFromSqlite();
+        }
 
         const existingDeviceId = outbox.getDeviceId();
         if (existingDeviceId) return existingDeviceId;
@@ -471,8 +634,8 @@
             }
 
             // Store tokens and user info
-            storeTokens(authResponse.access_token, authResponse.refresh_token);
-            storeUserInfo(email, name || '');
+            await storeTokens(authResponse.access_token, authResponse.refresh_token);
+            await storeUserInfo(email, name || authStore.getUserName() || '');
 
             // Update UI
             hideLoginModal();
@@ -491,9 +654,9 @@
     /**
      * Sign out: clear tokens, stop sync, reset UI.
      */
-    function logout() {
+    async function logout() {
         stopSyncEngine();
-        clearTokens();
+        await clearTokens();
 
         // Clear device_id so next login re-registers
         const outbox = window._SyncOutbox;
@@ -512,6 +675,8 @@
      * if possible. If the access token is expired, attempt a refresh.
      */
     async function restoreSession() {
+        await authStore.hydrate();
+
         const accessToken = getAccessToken();
         if (!accessToken) {
             // No stored session -- show sign-in status but do not show modal
@@ -524,13 +689,13 @@
         const validToken = await getValidAccessToken();
         if (!validToken) {
             // Refresh failed -- clear stale tokens, show sign-in option
-            clearTokens();
+            await clearTokens();
             updateAccountStatus();
             return;
         }
 
         // Session restored successfully
-        storeUserInfo(getUserEmail(), localStorage.getItem(USER_NAME_KEY));
+        await storeUserInfo(getUserEmail(), getUserName());
         updateAccountStatus();
 
         // Start sync engine with restored session
@@ -557,7 +722,7 @@
                 if (email) {
                     // Already signed in -- confirm logout
                     if (confirm('Sign out?')) {
-                        logout();
+                        void logout();
                     }
                 } else {
                     showLoginModal();
@@ -618,6 +783,7 @@
         getValidAccessToken,
         isTokenExpired,
         // Exposed for testing
+        _authStore: authStore,
         _decodeJwtPayload: decodeJwtPayload,
         _storeTokens: storeTokens,
         _clearTokens: clearTokens

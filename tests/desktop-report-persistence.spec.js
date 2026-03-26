@@ -10,8 +10,16 @@ async function installMockTauri(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((options) => {
         const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
+        const SECURE_AUTH_STORAGE_KEY = 'mock-tauri-secure-auth-state';
         const failRemoveAll = !!options.failRemoveAll;
         const failWritePatterns = Array.isArray(options.failWritePatterns) ? options.failWritePatterns : [];
+
+        if (options.initialSecureAuthState) {
+            localStorage.setItem(
+                SECURE_AUTH_STORAGE_KEY,
+                JSON.stringify(options.initialSecureAuthState)
+            );
+        }
 
         function joinPaths(...parts) {
             const cleaned = parts
@@ -41,6 +49,26 @@ async function installMockTauri(page, options = {}) {
                     }
                     if (cmd === 'load_legacy_desktop_browser_stores') {
                         return options.legacyDesktopStores || [];
+                    }
+                    if (cmd === 'load_secure_auth_state') {
+                        const raw = localStorage.getItem(SECURE_AUTH_STORAGE_KEY);
+                        return raw ? JSON.parse(raw) : {
+                            access_token: null,
+                            refresh_token: null,
+                            user_email: null,
+                            user_name: null
+                        };
+                    }
+                    if (cmd === 'store_secure_auth_state') {
+                        localStorage.setItem(
+                            SECURE_AUTH_STORAGE_KEY,
+                            JSON.stringify(args.state || {})
+                        );
+                        return true;
+                    }
+                    if (cmd === 'clear_secure_auth_state') {
+                        localStorage.removeItem(SECURE_AUTH_STORAGE_KEY);
+                        return true;
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
@@ -482,6 +510,198 @@ test.describe('Desktop report persistence', () => {
 
         expect(loadCalls.withinBackoff).toBe(1);
         expect(loadCalls.afterRetry).toBe(2);
+    });
+
+    test('desktop auth store migrates legacy browser tokens into secure storage and clears localStorage', async ({ page }) => {
+        await installMockTauri(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const migrated = await page.evaluate(async () => {
+            localStorage.setItem('dicom-viewer-access-token', 'legacy-access-token');
+            localStorage.setItem('dicom-viewer-refresh-token', 'legacy-refresh-token');
+            localStorage.setItem('dicom-viewer-user-email', 'legacy@example.com');
+            localStorage.setItem('dicom-viewer-user-name', 'Legacy User');
+
+            const accountUi = window.DicomViewerApp.accountUi;
+            await accountUi._authStore.hydrate();
+
+            return {
+                snapshot: accountUi._authStore._snapshot(),
+                secureRaw: localStorage.getItem('mock-tauri-secure-auth-state'),
+                legacyAccess: localStorage.getItem('dicom-viewer-access-token'),
+                legacyRefresh: localStorage.getItem('dicom-viewer-refresh-token'),
+                legacyEmail: localStorage.getItem('dicom-viewer-user-email'),
+                legacyName: localStorage.getItem('dicom-viewer-user-name')
+            };
+        });
+
+        expect(migrated.snapshot).toEqual({
+            accessToken: 'legacy-access-token',
+            refreshToken: 'legacy-refresh-token',
+            userEmail: 'legacy@example.com',
+            userName: 'Legacy User'
+        });
+        expect(JSON.parse(migrated.secureRaw || '{}')).toEqual({
+            access_token: 'legacy-access-token',
+            refresh_token: 'legacy-refresh-token',
+            user_email: 'legacy@example.com',
+            user_name: 'Legacy User'
+        });
+        expect(migrated.legacyAccess).toBeNull();
+        expect(migrated.legacyRefresh).toBeNull();
+        expect(migrated.legacyEmail).toBeNull();
+        expect(migrated.legacyName).toBeNull();
+
+        await page.reload();
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const restored = await page.evaluate(async () => {
+            const accountUi = window.DicomViewerApp.accountUi;
+            await accountUi._authStore.hydrate();
+            return {
+                snapshot: accountUi._authStore._snapshot(),
+                legacyAccess: localStorage.getItem('dicom-viewer-access-token')
+            };
+        });
+
+        expect(restored.snapshot).toEqual({
+            accessToken: 'legacy-access-token',
+            refreshToken: 'legacy-refresh-token',
+            userEmail: 'legacy@example.com',
+            userName: 'Legacy User'
+        });
+        expect(restored.legacyAccess).toBeNull();
+    });
+
+    test('desktop sync state and outbox persist via sqlite across reload without legacy localStorage', async ({ page }) => {
+        await installMockTauri(page);
+        await page.addInitScript(() => {
+            if (sessionStorage.getItem('desktop-sync-migration-seeded') === '1') {
+                return;
+            }
+            sessionStorage.setItem('desktop-sync-migration-seeded', '1');
+            localStorage.setItem('dicom-viewer-sync-state', JSON.stringify({
+                delta_cursor: 'legacy-cursor'
+            }));
+            localStorage.setItem('dicom-viewer-device-id', 'legacy-device');
+            localStorage.setItem('dicom-viewer-sync-outbox', JSON.stringify([
+                {
+                    operation_uuid: 'legacy-op-1',
+                    table_name: 'comments',
+                    record_key: 'legacy-comment-1',
+                    operation: 'insert',
+                    base_sync_version: 0,
+                    created_at: 1000
+                }
+            ]));
+        });
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const initial = await page.evaluate(async () => {
+            await window._SyncOutbox.hydrateFromSqlite();
+
+            return {
+                cursor: window._SyncOutbox.getCursor(),
+                deviceId: window._SyncOutbox.getDeviceId(),
+                pending: await window._SyncOutbox.readPendingChangesAsync(),
+                legacySyncState: localStorage.getItem('dicom-viewer-sync-state'),
+                legacyDeviceId: localStorage.getItem('dicom-viewer-device-id'),
+                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox'),
+                sqlStore: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}')
+            };
+        });
+
+        expect(initial.cursor).toBe('legacy-cursor');
+        expect(initial.deviceId).toBe('legacy-device');
+        expect(initial.pending).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    operation_uuid: 'legacy-op-1',
+                    table_name: 'comments',
+                    record_key: 'legacy-comment-1',
+                    operation: 'insert'
+                })
+            ])
+        );
+        expect(initial.legacySyncState).toBeNull();
+        expect(initial.legacyDeviceId).toBeNull();
+        expect(initial.legacyOutbox).toBeNull();
+        expect(initial.sqlStore.sync_state).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ key: 'delta_cursor', value: 'legacy-cursor' }),
+                expect.objectContaining({ key: 'device_id', value: 'legacy-device' })
+            ])
+        );
+        expect(initial.sqlStore.sync_outbox).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    operation_uuid: 'legacy-op-1',
+                    table_name: 'comments',
+                    record_key: 'legacy-comment-1'
+                })
+            ])
+        );
+
+        const mutated = await page.evaluate(async () => {
+            window._SyncOutbox.setCursor('cursor-1');
+            window._SyncOutbox.setDeviceId('device-1');
+            window._SyncOutbox.enqueueChange('comments', 'uuid-1', 'insert', 0);
+            await new Promise((resolve) => setTimeout(resolve, 25));
+
+            return {
+                cursor: window._SyncOutbox.getCursor(),
+                deviceId: window._SyncOutbox.getDeviceId(),
+                pending: await window._SyncOutbox.readPendingChangesAsync(),
+                legacySyncState: localStorage.getItem('dicom-viewer-sync-state'),
+                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox')
+            };
+        });
+
+        expect(mutated.cursor).toBe('cursor-1');
+        expect(mutated.deviceId).toBe('device-1');
+        expect(mutated.pending).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ operation_uuid: 'legacy-op-1' }),
+                expect.objectContaining({
+                    table_name: 'comments',
+                    record_key: 'uuid-1',
+                    operation: 'insert'
+                })
+            ])
+        );
+        expect(mutated.legacySyncState).toBeNull();
+        expect(mutated.legacyOutbox).toBeNull();
+
+        await page.reload();
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const restored = await page.evaluate(async () => {
+            await window._SyncOutbox.hydrateFromSqlite();
+            return {
+                cursor: window._SyncOutbox.getCursor(),
+                deviceId: window._SyncOutbox.getDeviceId(),
+                pending: await window._SyncOutbox.readPendingChangesAsync(),
+                legacySyncState: localStorage.getItem('dicom-viewer-sync-state'),
+                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox')
+            };
+        });
+
+        expect(restored.cursor).toBe('cursor-1');
+        expect(restored.deviceId).toBe('device-1');
+        expect(restored.pending).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ operation_uuid: 'legacy-op-1' }),
+                expect.objectContaining({
+                    table_name: 'comments',
+                    record_key: 'uuid-1',
+                    operation: 'insert'
+                })
+            ])
+        );
+        expect(restored.legacySyncState).toBeNull();
+        expect(restored.legacyOutbox).toBeNull();
     });
 
     test('desktop backend persists report files and metadata across reloads', async ({ page }) => {

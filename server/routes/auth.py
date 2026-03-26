@@ -131,7 +131,7 @@ def refresh():
     except pyjwt.InvalidTokenError:
         return jsonify({'error': 'Invalid refresh token'}), 401
 
-    user_id = payload['sub']
+    user_id = _coerce_subject_user_id(payload['sub'])
 
     # Verify user still exists (could have been deleted)
     user = get_user_by_id(user_id)
@@ -240,6 +240,15 @@ def validate_device_ownership(device_id, user_id):
     return None, None
 
 
+def _coerce_subject_user_id(subject):
+    """Normalize JWT subject claims back to numeric DB IDs when possible."""
+    if isinstance(subject, int):
+        return subject
+    if isinstance(subject, str) and subject.isdigit():
+        return int(subject)
+    return subject
+
+
 def _require_jwt_auth():
     """Extract and validate JWT from Authorization header.
 
@@ -260,7 +269,7 @@ def _require_jwt_auth():
     except pyjwt.InvalidTokenError:
         return jsonify({'error': 'unauthorized', 'message': 'Invalid access token'}), 401
 
-    g.user_id = payload['sub']
+    g.user_id = _coerce_subject_user_id(payload['sub'])
     g.device_id = payload.get('device_id')
 
     return None

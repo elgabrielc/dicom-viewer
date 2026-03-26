@@ -130,6 +130,46 @@ const _NotesInternals = (() => {
         return safe || fallback;
     }
 
+    function normalizeDeletedAt(value) {
+        return value || null;
+    }
+
+    function normalizeCommentForClient(comment) {
+        if (!comment || typeof comment !== 'object') return null;
+        const normalized = { ...comment };
+        normalized.deletedAt = normalizeDeletedAt(normalized.deletedAt || normalized.deleted_at);
+        delete normalized.deleted_at;
+        return normalized.deletedAt ? null : normalized;
+    }
+
+    function normalizeReportForClient(report) {
+        if (!report || typeof report !== 'object') return null;
+        const normalized = { ...report };
+        normalized.deletedAt = normalizeDeletedAt(normalized.deletedAt || normalized.deleted_at);
+        delete normalized.deleted_at;
+        return normalized.deletedAt ? null : normalized;
+    }
+
+    function normalizeStudyForClient(studyEntry) {
+        const normalized = clone(ensureStudy({ studies: { study: studyEntry } }, 'study'));
+        normalized.comments = (normalized.comments || [])
+            .map(normalizeCommentForClient)
+            .filter(Boolean);
+        normalized.reports = (normalized.reports || [])
+            .map(normalizeReportForClient)
+            .filter(Boolean);
+        if (normalized.series && typeof normalized.series === 'object') {
+            for (const [seriesUid, seriesEntry] of Object.entries(normalized.series)) {
+                const nextSeries = ensureSeries({ series: { [seriesUid]: seriesEntry } }, seriesUid);
+                nextSeries.comments = (nextSeries.comments || [])
+                    .map(normalizeCommentForClient)
+                    .filter(Boolean);
+                normalized.series[seriesUid] = nextSeries;
+            }
+        }
+        return normalized;
+    }
+
     function getDesktopTauriApis() {
         const tauri = window.__TAURI__;
         return {
@@ -149,7 +189,7 @@ const _NotesInternals = (() => {
             const filtered = createEmptyStore();
             for (const studyUid of list) {
                 if (store.studies[studyUid]) {
-                    filtered.studies[studyUid] = clone(ensureStudy(store, studyUid));
+                    filtered.studies[studyUid] = normalizeStudyForClient(ensureStudy(store, studyUid));
                 }
             }
             return filtered;

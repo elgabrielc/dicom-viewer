@@ -213,18 +213,11 @@ def upload_report_file(report_id):
 
     db = get_db()
 
-    # Verify the report exists, is not tombstoned, and belongs to this user.
-    # Ownership is established via sync_server_versions: if a user synced
-    # this report, they have a version row for it.
     report_row = db.execute(
         """
-        SELECT r.id, r.type, r.deleted_at
-        FROM reports r
-        INNER JOIN sync_server_versions sv
-            ON sv.table_name = 'reports'
-           AND sv.record_key = r.id
-           AND sv.user_id = ?
-        WHERE r.id = ?
+        SELECT id, type, deleted_at
+        FROM cloud_reports
+        WHERE user_id = ? AND id = ?
         """,
         (user_id, report_id),
     ).fetchone()
@@ -253,8 +246,8 @@ def upload_report_file(report_id):
     if os.path.exists(blob_path):
         # Update the report's content_hash pointer if needed
         db.execute(
-            "UPDATE reports SET content_hash = ? WHERE id = ?",
-            (declared_hash, report_id),
+            "UPDATE cloud_reports SET content_hash = ? WHERE user_id = ? AND id = ?",
+            (declared_hash, user_id, report_id),
         )
         db.commit()
         return jsonify({"stored": True, "content_hash": declared_hash, "dedup": True})
@@ -290,8 +283,8 @@ def upload_report_file(report_id):
 
     # Update the report's content_hash pointer
     db.execute(
-        "UPDATE reports SET content_hash = ? WHERE id = ?",
-        (declared_hash, report_id),
+        "UPDATE cloud_reports SET content_hash = ? WHERE user_id = ? AND id = ?",
+        (declared_hash, user_id, report_id),
     )
     db.commit()
 
@@ -311,16 +304,11 @@ def download_report_file(report_id):
 
     db = get_db()
 
-    # Verify the report belongs to this user via sync_server_versions
     report_row = db.execute(
         """
-        SELECT r.id, r.type, r.content_hash, r.deleted_at
-        FROM reports r
-        INNER JOIN sync_server_versions sv
-            ON sv.table_name = 'reports'
-           AND sv.record_key = r.id
-           AND sv.user_id = ?
-        WHERE r.id = ?
+        SELECT id, type, content_hash, deleted_at
+        FROM cloud_reports
+        WHERE user_id = ? AND id = ?
         """,
         (user_id, report_id),
     ).fetchone()

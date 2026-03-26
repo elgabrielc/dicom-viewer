@@ -64,6 +64,32 @@ def _read_single_dicom(file_path):
         return None
 
 
+def _resolve_series_key(series_map, bare_uid, description):
+    """Mirror the frontend's deterministic series collision handling.
+
+    Uses the bare SeriesInstanceUID unless a collision is detected for that UID
+    with a different description. Once a collision exists, all colliding
+    entries use composite keys of the form "{uid}|{description}".
+    """
+    existing = series_map.get(bare_uid)
+    if existing:
+        existing_desc = existing.get('series_description', '') or ''
+        if existing_desc == description:
+            return bare_uid
+        old_key = f"{bare_uid}|{existing_desc}"
+        series_map[old_key] = existing
+        existing['series_id'] = old_key
+        del series_map[bare_uid]
+        return f"{bare_uid}|{description}"
+
+    composite_key = f"{bare_uid}|{description}"
+    if composite_key in series_map:
+        return composite_key
+
+    has_collision = any(key.startswith(f"{bare_uid}|") for key in series_map)
+    return composite_key if has_collision else bare_uid
+
+
 def scan_dicom_folder(folder_path, logger=None):
     """Scan a folder for DICOM files and organize by study/series."""
     studies = {}
@@ -85,8 +111,6 @@ def scan_dicom_folder(folder_path, logger=None):
                 continue
 
             study_id = meta['study_instance_uid']
-            series_id = meta['series_instance_uid']
-
             # Initialize study
             if study_id not in studies:
                 studies[study_id] = {
@@ -99,6 +123,13 @@ def scan_dicom_folder(folder_path, logger=None):
                     'series': {},
                     'image_count': 0
                 }
+
+            bare_series_id = meta['series_instance_uid']
+            series_id = _resolve_series_key(
+                studies[study_id]['series'],
+                bare_series_id,
+                meta['series_description'] or ''
+            )
 
             # Initialize series
             if series_id not in studies[study_id]['series']:
@@ -461,7 +492,7 @@ def get_library_studies():
     return jsonify(payload)
 
 
-@library_bp.route('/api/library/dicom/<study_id>/<series_id>/<int:slice_num>')
+@library_bp.route('/api/library/dicom/<study_id>/<path:series_id>/<int:slice_num>')
 def get_library_dicom(study_id, series_id, slice_num):
     """Get raw DICOM file bytes for a local library slice."""
     file_path = library_source.get_safe_slice_path(study_id, series_id, slice_num)

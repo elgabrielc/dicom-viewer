@@ -15,6 +15,13 @@ import time
 # Tables the sync protocol supports in v1
 SYNC_TABLES = {"study_notes", "comments", "reports"}
 
+# Cloud-scoped storage tables used exclusively by /api/sync
+TABLE_STORAGE = {
+    "study_notes": "cloud_study_notes",
+    "comments": "cloud_comments",
+    "reports": "cloud_reports",
+}
+
 # Column that serves as the primary key for each synced table
 TABLE_KEY_COLUMN = {
     "study_notes": "study_uid",
@@ -23,7 +30,6 @@ TABLE_KEY_COLUMN = {
 }
 
 # Columns to include in sync data payloads for each table.
-# These are the "data" fields sent to/from clients.
 TABLE_DATA_COLUMNS = {
     "study_notes": ["study_uid", "description", "updated_at", "deleted_at"],
     "comments": [
@@ -38,21 +44,7 @@ TABLE_DATA_COLUMNS = {
 
 
 def process_change(db, user_id, device_id, change):
-    """Process a single change from a client push.
-
-    Args:
-        db: SQLite connection
-        user_id: authenticated user's ID
-        device_id: the pushing device
-        change: dict with keys: operation_uuid, table, key, operation,
-                base_sync_version, data
-
-    Returns:
-        dict -- either an "accepted" result or a "rejected" result.
-        Accepted: {"status": "accepted", "operation_uuid", "key", "sync_version"}
-        Rejected: {"status": "rejected", "operation_uuid", "key", "reason",
-                   "current_sync_version", "current_data"}
-    """
+    """Process a single change from a client push."""
     operation_uuid = change["operation_uuid"]
     table = change["table"]
     key = change["key"]
@@ -70,8 +62,6 @@ def process_change(db, user_id, device_id, change):
             "current_data": {},
         }
 
-    # Idempotency check: if we already processed this operation_uuid for this
-    # user, return the previously assigned sync_version without re-applying.
     existing_op = db.execute(
         "SELECT sync_version FROM sync_processed_ops WHERE operation_uuid = ? AND user_id = ?",
         (operation_uuid, user_id),
@@ -84,19 +74,16 @@ def process_change(db, user_id, device_id, change):
             "sync_version": existing_op["sync_version"],
         }
 
-    key_col = TABLE_KEY_COLUMN[table]
-
-    # Fetch current server state for this record, scoped to the authenticated user.
-    # We use sync_server_versions (which carries user_id) to determine the current
-    # sync_version, rather than the entity table directly.
     version_row = db.execute(
-        "SELECT sync_version FROM sync_server_versions WHERE table_name = ? AND record_key = ? AND user_id = ?",
+        """
+        SELECT sync_version
+        FROM sync_server_versions
+        WHERE table_name = ? AND record_key = ? AND user_id = ?
+        """,
         (table, key, user_id),
     ).fetchone()
-
     current_version = version_row["sync_version"] if version_row else 0
 
-    # Optimistic concurrency: base_sync_version must match current
     if base_version != current_version:
         current_data = _read_record_data(db, table, key, user_id)
         return {
@@ -108,17 +95,15 @@ def process_change(db, user_id, device_id, change):
             "current_data": current_data,
         }
 
-    # Allocate next global sync_version from the server version counter
     new_version = _next_sync_version(db, table, key, device_id, user_id)
-
     now = int(time.time() * 1000)
 
     if operation == "insert":
-        _apply_insert(db, table, key, data, device_id, new_version, now)
+        _apply_insert(db, table, user_id, key, data, device_id, new_version, now)
     elif operation == "update":
-        _apply_update(db, table, key, data, device_id, new_version, now)
+        _apply_update(db, table, user_id, key, data, device_id, new_version, now)
     elif operation == "delete":
-        _apply_delete(db, table, key, device_id, new_version, now)
+        _apply_delete(db, table, user_id, key, device_id, new_version, now)
     else:
         return {
             "status": "rejected",
@@ -129,7 +114,6 @@ def process_change(db, user_id, device_id, change):
             "current_data": {},
         }
 
-    # Record the operation for idempotency (scoped by user_id)
     db.execute(
         """
         INSERT INTO sync_processed_ops (operation_uuid, table_name, record_key, user_id, sync_version, processed_at)
@@ -147,89 +131,45 @@ def process_change(db, user_id, device_id, change):
 
 
 def compute_remote_changes(db, user_id, device_id, cursor_position):
-    """Find all records changed since cursor_position, excluding changes
-    made by the requesting device (to avoid echo).
-
-    Args:
-        db: SQLite connection
-        user_id: authenticated user's ID
-        device_id: the requesting device (excluded from results)
-        cursor_position: sync_version watermark from the cursor
-
-    Returns:
-        list[dict] -- remote changes with table, key, sync_version, operation, data
-    """
+    """Find all records changed since cursor_position, excluding self-echo."""
     changes = []
 
     for table in SYNC_TABLES:
+        storage_table = TABLE_STORAGE[table]
         key_col = TABLE_KEY_COLUMN[table]
         data_cols = TABLE_DATA_COLUMNS[table]
-
-        # Build SELECT columns: key, sync_version, deleted_at, plus all data columns
-        # Prefix entity columns with the table alias to avoid ambiguity with the join.
-        select_cols = [key_col, "sync_version", "deleted_at"] + [
+        select_cols = [key_col, "sync_version", "deleted_at", "last_operation"] + [
             c for c in data_cols if c not in (key_col, "sync_version", "deleted_at")
         ]
-        cols_sql = ", ".join(f"t.{c}" for c in select_cols)
+        cols_sql = ", ".join(f"{c}" for c in select_cols)
 
-        # Query records changed since cursor_position that belong to this user,
-        # excluding changes made by the requesting device (to avoid echo).
-        # The JOIN on sync_server_versions enforces per-user data isolation:
-        # only records with a version row for this user are returned.
         rows = db.execute(
             f"""
             SELECT {cols_sql}
-            FROM {table} t
-            INNER JOIN sync_server_versions sv
-                ON sv.table_name = ?
-               AND sv.record_key = t.{key_col}
-               AND sv.user_id = ?
-            WHERE t.sync_version > ?
-              AND (sv.device_id IS NULL OR sv.device_id != ?)
+            FROM {storage_table}
+            WHERE user_id = ?
+              AND sync_version > ?
+              AND (device_id IS NULL OR device_id != ?)
             """,
-            (table, user_id, cursor_position, device_id),
+            (user_id, cursor_position, device_id),
         ).fetchall()
 
         for row in rows:
-            key_value = row[key_col]
-            deleted_at = row["deleted_at"]
-
-            # Determine operation type from record state
-            if deleted_at is not None:
-                op = "delete"
-            else:
-                # If sync_version == 1 it was an insert, otherwise update.
-                # But from the remote's perspective, the distinction is less
-                # important than having the full data. We use "upsert" semantics
-                # on the client side. Mark as "insert" for version 1, "update" otherwise.
-                op = "insert" if row["sync_version"] == 1 else "update"
-
-            record_data = {}
-            for col in data_cols:
-                record_data[col] = row[col]
-
+            record_data = {col: row[col] for col in data_cols}
             changes.append({
                 "table": table,
-                "key": key_value,
+                "key": row[key_col],
                 "sync_version": row["sync_version"],
-                "operation": op,
+                "operation": row["last_operation"] or ("delete" if row["deleted_at"] is not None else "update"),
                 "data": record_data,
             })
 
-    # Sort by sync_version so the client can apply them in order
     changes.sort(key=lambda c: c["sync_version"])
     return changes
 
 
 def get_max_sync_version(db, user_id=None):
-    """Return the highest sync_version across all synced tables.
-
-    When user_id is provided, only considers records belonging to that user
-    (via sync_server_versions). When None, returns the global max across
-    all users (used internally for version allocation).
-
-    This is used as the cursor position for newly issued cursors.
-    """
+    """Return the highest sync_version across cloud sync records."""
     if user_id is not None:
         row = db.execute(
             "SELECT MAX(sync_version) AS max_ver FROM sync_server_versions WHERE user_id = ?",
@@ -237,37 +177,16 @@ def get_max_sync_version(db, user_id=None):
         ).fetchone()
         return row["max_ver"] if row and row["max_ver"] is not None else 0
 
-    # Global max across all users -- used by _next_sync_version to ensure
-    # monotonic increase even across user boundaries.
-    max_ver = 0
-    for table in SYNC_TABLES:
-        row = db.execute(
-            f"SELECT MAX(sync_version) AS max_ver FROM {table}"
-        ).fetchone()
-        if row and row["max_ver"] is not None:
-            table_max = row["max_ver"]
-            if table_max > max_ver:
-                max_ver = table_max
-    return max_ver
-
-
-# -- Private helpers --
+    row = db.execute(
+        "SELECT MAX(sync_version) AS max_ver FROM sync_server_versions"
+    ).fetchone()
+    return row["max_ver"] if row and row["max_ver"] is not None else 0
 
 
 def _next_sync_version(db, table, key, device_id, user_id):
-    """Allocate the next sync_version for a record owned by user_id.
-
-    Uses the sync_server_versions table as a monotonic counter per
-    (table, key, user_id) triple, and also tracks globally so cursors
-    can use a single watermark.
-    """
+    """Allocate the next sync_version for a user-scoped record."""
     now = int(time.time())
-
-    # Get the current global max to ensure monotonic increase
-    global_max = get_max_sync_version(db)
-    new_version = global_max + 1
-
-    # Upsert the server version tracker (scoped by user_id)
+    new_version = get_max_sync_version(db) + 1
     db.execute(
         """
         INSERT INTO sync_server_versions (table_name, record_key, user_id, sync_version, device_id, updated_at)
@@ -279,39 +198,23 @@ def _next_sync_version(db, table, key, device_id, user_id):
         """,
         (table, key, user_id, new_version, device_id, now),
     )
-
     return new_version
 
 
 def _read_record_data(db, table, key, user_id=None):
-    """Read the current data for a record, used when rejecting a stale change.
-
-    When user_id is provided, verifies the record belongs to this user via
-    sync_server_versions before returning data. Returns empty dict if the
-    record doesn't exist or doesn't belong to the user.
-    """
+    """Read the current data for a record, used when rejecting a stale change."""
     key_col = TABLE_KEY_COLUMN[table]
     data_cols = TABLE_DATA_COLUMNS[table]
-    cols_sql = ", ".join(f"t.{c}" for c in data_cols)
+    storage_table = TABLE_STORAGE[table]
 
     if user_id is not None:
-        # Only return data for records that belong to this user
         row = db.execute(
-            f"""
-            SELECT {cols_sql}
-            FROM {table} t
-            INNER JOIN sync_server_versions sv
-                ON sv.table_name = ?
-               AND sv.record_key = t.{key_col}
-               AND sv.user_id = ?
-            WHERE t.{key_col} = ?
-            """,
-            (table, user_id, key),
+            f"SELECT {', '.join(data_cols)} FROM {storage_table} WHERE user_id = ? AND {key_col} = ?",
+            (user_id, key),
         ).fetchone()
     else:
-        cols_sql_plain = ", ".join(data_cols)
         row = db.execute(
-            f"SELECT {cols_sql_plain} FROM {table} WHERE {key_col} = ?",
+            f"SELECT {', '.join(data_cols)} FROM {storage_table} WHERE {key_col} = ?",
             (key,),
         ).fetchone()
 
@@ -321,58 +224,65 @@ def _read_record_data(db, table, key, user_id=None):
     return {col: row[col] for col in data_cols}
 
 
-def _apply_insert(db, table, key, data, device_id, new_version, now_ms):
-    """Apply an insert operation to an entity table."""
-    key_col = TABLE_KEY_COLUMN[table]
-
+def _apply_insert(db, table, user_id, key, data, device_id, new_version, now_ms):
+    """Apply an insert operation to a cloud entity table."""
     if table == "study_notes":
         db.execute(
             """
-            INSERT INTO study_notes (study_uid, description, updated_at, device_id, sync_version, deleted_at)
-            VALUES (?, ?, ?, ?, ?, NULL)
-            ON CONFLICT(study_uid) DO UPDATE SET
+            INSERT INTO cloud_study_notes (user_id, study_uid, description, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, 'insert')
+            ON CONFLICT(user_id, study_uid) DO UPDATE SET
                 description = excluded.description,
                 updated_at = excluded.updated_at,
+                deleted_at = NULL,
                 device_id = excluded.device_id,
                 sync_version = excluded.sync_version,
-                deleted_at = NULL
+                last_operation = excluded.last_operation
             """,
-            (key, data.get("description", ""), data.get("updated_at", now_ms), device_id, new_version),
+            (user_id, key, data.get("description", ""), data.get("updated_at", now_ms), device_id, new_version),
         )
+        return
 
-    elif table == "comments":
+    if table == "comments":
+        created_at = data.get("created_at", now_ms)
         db.execute(
             """
-            INSERT INTO comments (record_uuid, study_uid, series_uid, text, time, created_at, updated_at,
-                                  device_id, sync_version, deleted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-            ON CONFLICT(study_uid, series_uid, text, time) DO UPDATE SET
-                record_uuid = excluded.record_uuid,
+            INSERT INTO cloud_comments (user_id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'insert')
+            ON CONFLICT(user_id, record_uuid) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                series_uid = excluded.series_uid,
+                text = excluded.text,
+                time = excluded.time,
+                created_at = excluded.created_at,
                 updated_at = excluded.updated_at,
+                deleted_at = NULL,
                 device_id = excluded.device_id,
                 sync_version = excluded.sync_version,
-                deleted_at = NULL
+                last_operation = excluded.last_operation
             """,
             (
+                user_id,
                 key,
                 data.get("study_uid", ""),
                 data.get("series_uid"),
                 data.get("text", ""),
-                data.get("created_at", now_ms),
-                data.get("created_at", now_ms),
-                data.get("updated_at", now_ms),
+                created_at,
+                created_at,
+                data.get("updated_at", created_at),
                 device_id,
                 new_version,
             ),
         )
+        return
 
-    elif table == "reports":
+    if table == "reports":
+        added_at = data.get("added_at", now_ms)
         db.execute(
             """
-            INSERT INTO reports (id, study_uid, name, type, size, content_hash,
-                                 added_at, updated_at, device_id, sync_version, deleted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
-            ON CONFLICT(id) DO UPDATE SET
+            INSERT INTO cloud_reports (user_id, id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'insert')
+            ON CONFLICT(user_id, id) DO UPDATE SET
                 study_uid = excluded.study_uid,
                 name = excluded.name,
                 type = excluded.type,
@@ -380,18 +290,20 @@ def _apply_insert(db, table, key, data, device_id, new_version, now_ms):
                 content_hash = excluded.content_hash,
                 added_at = excluded.added_at,
                 updated_at = excluded.updated_at,
+                deleted_at = NULL,
                 device_id = excluded.device_id,
                 sync_version = excluded.sync_version,
-                deleted_at = NULL
+                last_operation = excluded.last_operation
             """,
             (
+                user_id,
                 key,
                 data.get("study_uid", ""),
                 data.get("name", ""),
                 data.get("type", ""),
                 data.get("size", 0),
                 data.get("content_hash"),
-                data.get("added_at", now_ms),
+                added_at,
                 data.get("updated_at", now_ms),
                 device_id,
                 new_version,
@@ -399,106 +311,156 @@ def _apply_insert(db, table, key, data, device_id, new_version, now_ms):
         )
 
 
-def _apply_update(db, table, key, data, device_id, new_version, now_ms):
-    """Apply an update operation to an entity table."""
-    key_col = TABLE_KEY_COLUMN[table]
-
+def _apply_update(db, table, user_id, key, data, device_id, new_version, now_ms):
+    """Apply an update operation to a cloud entity table."""
     if table == "study_notes":
         db.execute(
             """
-            UPDATE study_notes SET
-                description = ?,
-                updated_at = ?,
-                device_id = ?,
-                sync_version = ?,
-                deleted_at = NULL
-            WHERE study_uid = ?
+            INSERT INTO cloud_study_notes (user_id, study_uid, description, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, ?, ?, NULL, ?, ?, 'update')
+            ON CONFLICT(user_id, study_uid) DO UPDATE SET
+                description = excluded.description,
+                updated_at = excluded.updated_at,
+                deleted_at = NULL,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
             """,
-            (data.get("description", ""), data.get("updated_at", now_ms), device_id, new_version, key),
+            (user_id, key, data.get("description", ""), data.get("updated_at", now_ms), device_id, new_version),
         )
+        return
 
-    elif table == "comments":
+    if table == "comments":
+        existing = _read_cloud_row(db, "cloud_comments", user_id, "record_uuid", key)
+        created_at = data.get("created_at")
+        if created_at is None and existing is not None:
+            created_at = existing["created_at"]
+        if created_at is None:
+            created_at = now_ms
+        time_value = data.get("time", created_at)
         db.execute(
             """
-            UPDATE comments SET
-                text = ?,
-                updated_at = ?,
-                device_id = ?,
-                sync_version = ?,
-                deleted_at = NULL
-            WHERE record_uuid = ?
-            """,
-            (data.get("text", ""), data.get("updated_at", now_ms), device_id, new_version, key),
-        )
-
-    elif table == "reports":
-        db.execute(
-            """
-            UPDATE reports SET
-                name = ?,
-                type = ?,
-                size = ?,
-                content_hash = ?,
-                updated_at = ?,
-                device_id = ?,
-                sync_version = ?,
-                deleted_at = NULL
-            WHERE id = ?
+            INSERT INTO cloud_comments (user_id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'update')
+            ON CONFLICT(user_id, record_uuid) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                series_uid = excluded.series_uid,
+                text = excluded.text,
+                time = excluded.time,
+                created_at = excluded.created_at,
+                updated_at = excluded.updated_at,
+                deleted_at = NULL,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
             """,
             (
-                data.get("name", ""),
-                data.get("type", ""),
-                data.get("size", 0),
-                data.get("content_hash"),
+                user_id,
+                key,
+                data.get("study_uid", existing["study_uid"] if existing else ""),
+                data.get("series_uid", existing["series_uid"] if existing else None),
+                data.get("text", existing["text"] if existing else ""),
+                time_value,
+                created_at,
                 data.get("updated_at", now_ms),
                 device_id,
                 new_version,
+            ),
+        )
+        return
+
+    if table == "reports":
+        existing = _read_cloud_row(db, "cloud_reports", user_id, "id", key)
+        added_at = data.get("added_at")
+        if added_at is None and existing is not None:
+            added_at = existing["added_at"]
+        if added_at is None:
+            added_at = now_ms
+        db.execute(
+            """
+            INSERT INTO cloud_reports (user_id, id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'update')
+            ON CONFLICT(user_id, id) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                name = excluded.name,
+                type = excluded.type,
+                size = excluded.size,
+                content_hash = excluded.content_hash,
+                added_at = excluded.added_at,
+                updated_at = excluded.updated_at,
+                deleted_at = NULL,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
+            """,
+            (
+                user_id,
                 key,
+                data.get("study_uid", existing["study_uid"] if existing else ""),
+                data.get("name", existing["name"] if existing else ""),
+                data.get("type", existing["type"] if existing else ""),
+                data.get("size", existing["size"] if existing else 0),
+                data.get("content_hash", existing["content_hash"] if existing else None),
+                added_at,
+                data.get("updated_at", now_ms),
+                device_id,
+                new_version,
             ),
         )
 
 
-def _apply_delete(db, table, key, device_id, new_version, now_ms):
-    """Apply a delete (tombstone) operation to an entity table."""
-    key_col = TABLE_KEY_COLUMN[table]
-
+def _apply_delete(db, table, user_id, key, device_id, new_version, now_ms):
+    """Apply a delete (tombstone) operation to a cloud entity table."""
     if table == "study_notes":
-        # Study notes use empty description on clear, not deleted_at.
-        # Per the contract's deletion model: study_notes clears description.
         db.execute(
             """
-            UPDATE study_notes SET
+            INSERT INTO cloud_study_notes (user_id, study_uid, description, updated_at, deleted_at, device_id, sync_version, last_operation)
+            VALUES (?, ?, '', ?, NULL, ?, ?, 'delete')
+            ON CONFLICT(user_id, study_uid) DO UPDATE SET
                 description = '',
-                updated_at = ?,
-                device_id = ?,
-                sync_version = ?
-            WHERE study_uid = ?
+                updated_at = excluded.updated_at,
+                deleted_at = NULL,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
             """,
-            (now_ms, device_id, new_version, key),
+            (user_id, key, now_ms, device_id, new_version),
         )
+        return
 
-    elif table == "comments":
+    if table == "comments":
         db.execute(
             """
-            UPDATE comments SET
-                deleted_at = ?,
+            UPDATE cloud_comments
+            SET deleted_at = ?,
                 updated_at = ?,
                 device_id = ?,
-                sync_version = ?
-            WHERE record_uuid = ?
+                sync_version = ?,
+                last_operation = 'delete'
+            WHERE user_id = ? AND record_uuid = ?
             """,
-            (now_ms, now_ms, device_id, new_version, key),
+            (now_ms, now_ms, device_id, new_version, user_id, key),
         )
+        return
 
-    elif table == "reports":
+    if table == "reports":
         db.execute(
             """
-            UPDATE reports SET
-                deleted_at = ?,
+            UPDATE cloud_reports
+            SET deleted_at = ?,
                 updated_at = ?,
                 device_id = ?,
-                sync_version = ?
-            WHERE id = ?
+                sync_version = ?,
+                last_operation = 'delete'
+            WHERE user_id = ? AND id = ?
             """,
-            (now_ms, now_ms, device_id, new_version, key),
+            (now_ms, now_ms, device_id, new_version, user_id, key),
         )
+
+
+def _read_cloud_row(db, table_name, user_id, key_col, key):
+    """Read a raw cloud-table row for upsert fallback behavior."""
+    return db.execute(
+        f"SELECT * FROM {table_name} WHERE user_id = ? AND {key_col} = ?",
+        (user_id, key),
+    ).fetchone()

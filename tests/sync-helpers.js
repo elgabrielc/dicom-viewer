@@ -65,7 +65,7 @@ async function createTestUser(request, baseUrl = BASE_URL) {
     const response = await request.post(`${baseUrl}/api/auth/signup`, {
         data: { email, password, name },
     });
-    expect(response.status()).toBe(200);
+    expect(response.status()).toBe(201);
 
     return { email, password, name };
 }
@@ -109,7 +109,7 @@ async function registerDevice(request, baseUrl = BASE_URL, token) {
             platform: 'test',
         },
     });
-    expect(response.status()).toBe(200);
+    expect(response.status()).toBe(201);
 
     const body = await response.json();
     expect(body).toHaveProperty('device_id');

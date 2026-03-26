@@ -139,7 +139,7 @@ test.describe('E2E Authentication Flow', () => {
         const signupResponse = await request.post(`${BASE_URL}/api/auth/signup`, {
             data: { email, password, name },
         });
-        expect(signupResponse.status()).toBe(200);
+        expect(signupResponse.status()).toBe(201);
 
         // Verify we can now log in with those credentials
         const loginResponse = await request.post(`${BASE_URL}/api/auth/login`, {
@@ -201,7 +201,7 @@ test.describe('E2E Authentication Flow', () => {
                 platform: 'test-e2e',
             },
         });
-        expect(response.status()).toBe(200);
+        expect(response.status()).toBe(201);
 
         const body = await response.json();
         expect(body).toHaveProperty('device_id');
@@ -416,6 +416,7 @@ test.describe('E2E Two-Device Sync', () => {
             request, BASE_URL, deviceB.access_token, deviceB.device_id,
             bInitial.delta_cursor, [changeB]
         );
+        const changeAOnBPush = bResult.remote_changes.find(rc => rc.key === changeA.key);
 
         // Device A syncs again -- should receive Device B's comment
         const aPull = await syncAndExpectOk(
@@ -426,12 +427,15 @@ test.describe('E2E Two-Device Sync', () => {
         expect(foundBonA).toBeDefined();
         expect(foundBonA.data.text).toBe('Comment from B');
 
-        // Device B syncs again -- should receive Device A's comment
+        // Device B may receive Device A's earlier change in the same sync response
+        // that pushes B's own change, because remote_changes are computed from the
+        // provided cursor before the new cursor is issued.
         const bPull = await syncAndExpectOk(
             request, BASE_URL, deviceB.access_token, deviceB.device_id,
             bResult.delta_cursor, []
         );
-        const foundAonB = bPull.remote_changes.find(rc => rc.key === changeA.key);
+        const foundAonB = changeAOnBPush
+            || bPull.remote_changes.find(rc => rc.key === changeA.key);
         expect(foundAonB).toBeDefined();
         expect(foundAonB.data.text).toBe('Comment from A');
     });
@@ -841,6 +845,23 @@ test.describe('E2E Report File Sync', () => {
         const downloadedBytes = await downloadResponse.body();
         const downloadedHash = sha256Hex(downloadedBytes);
         expect(downloadedHash).toBe(expectedHash);
+    });
+
+    test('user B cannot download user A report blob even with a known report id', async ({ request }) => {
+        const deviceA = await setupDevice(request);
+        const userB = await setupDevice(request);
+
+        const pdfContent = minimalPdfBuffer();
+        const { reportId } = await insertReportWithFile(
+            request, deviceA.access_token, deviceA.device_id, null, pdfContent
+        );
+
+        const downloadResponse = await request.get(
+            `${BASE_URL}/api/sync/reports/${reportId}/file`,
+            { headers: { 'Authorization': `Bearer ${userB.access_token}` } }
+        );
+
+        expect(downloadResponse.status()).toBe(404);
     });
 
     test('soft-deleted report file returns 404 on download', async ({ request }) => {

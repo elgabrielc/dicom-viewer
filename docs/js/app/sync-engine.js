@@ -188,7 +188,9 @@ const _SyncEngine = (() => {
             // 3. Build request payload per contract
             const requestChanges = [];
             for (const entry of changes) {
-                const recordState = outbox.readRecordState(entry.table_name, entry.record_key);
+                const recordState = typeof outbox.readRecordStateAsync === 'function'
+                    ? await outbox.readRecordStateAsync(entry.table_name, entry.record_key)
+                    : outbox.readRecordState(entry.table_name, entry.record_key);
                 const data = recordState || {};
 
                 requestChanges.push({
@@ -483,11 +485,12 @@ const _SyncEngine = (() => {
             if (tableName === 'comments') {
                 const studyUid = data.study_uid;
                 if (!studyUid) return;
+                const deletedAt = data.deletedAt || data.deleted_at || null;
 
                 const studyEntry = ensureStudy(store, studyUid);
                 const existing = this._findCommentByKey(studyEntry, recordKey);
 
-                if (data.deleted_at) {
+                if (deletedAt) {
                     // Remote tombstone -- remove from local list
                     if (existing) {
                         this._removeCommentFromStudy(studyEntry, recordKey);
@@ -520,6 +523,7 @@ const _SyncEngine = (() => {
             if (tableName === 'reports') {
                 const studyUid = data.study_uid;
                 if (!studyUid) return;
+                const deletedAt = data.deletedAt || data.deleted_at || null;
 
                 const studyEntry = ensureStudy(store, studyUid);
                 const { normalizeReportId } = window._NotesInternals;
@@ -528,10 +532,10 @@ const _SyncEngine = (() => {
                     r => normalizeReportId(r?.id) === targetId
                 );
 
-                if (data.deleted_at) {
+                if (deletedAt) {
                     // Remote tombstone
                     if (existingIdx !== -1) {
-                        studyEntry.reports[existingIdx].deletedAt = data.deleted_at;
+                        studyEntry.reports[existingIdx].deletedAt = deletedAt;
                         studyEntry.reports[existingIdx].sync_version = syncVersion;
                     }
                 } else if (existingIdx !== -1) {
@@ -542,6 +546,7 @@ const _SyncEngine = (() => {
                     if (data.size !== undefined) report.size = data.size;
                     report.sync_version = syncVersion;
                     delete report.deletedAt;
+                    delete report.deleted_at;
                 } else {
                     // Insert new report from remote (metadata only; file download separate)
                     studyEntry.reports.push({

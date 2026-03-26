@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod decode;
+mod secure_store;
 
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
@@ -135,7 +136,10 @@ fn main() {
         )
         .invoke_handler(tauri::generate_handler![
             decode::decode_frame,
-            decode::take_decoded_frame
+            decode::take_decoded_frame,
+            secure_store::load_secure_auth_state,
+            secure_store::store_secure_auth_state,
+            secure_store::clear_secure_auth_state
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),

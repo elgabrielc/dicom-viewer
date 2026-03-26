@@ -39,7 +39,7 @@ def create_access_token(user_id, device_id=None):
     """
     now = int(time.time())
     payload = {
-        'sub': user_id,
+        'sub': str(user_id),
         'type': 'access',
         'iat': now,
         'exp': now + ACCESS_TOKEN_LIFETIME,
@@ -60,7 +60,7 @@ def create_refresh_token(user_id):
     """
     now = int(time.time())
     payload = {
-        'sub': user_id,
+        'sub': str(user_id),
         'type': 'refresh',
         'iat': now,
         'exp': now + REFRESH_TOKEN_LIFETIME,

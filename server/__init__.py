@@ -61,9 +61,12 @@ def create_app():
     # Initialize library folder source
     init_library_sources(app.logger)
 
-    # Register security hooks
-    app.before_request(csrf_origin_check)
+    # Register security hooks.
+    # Authenticate PHI routes before applying the Origin check so
+    # unauthorized requests fail as 401 rather than leaking route behavior
+    # behind a CSRF-oriented 403 path.
     app.before_request(session_token_check)
+    app.before_request(csrf_origin_check)
     app.after_request(set_security_headers)
     app.after_request(audit_after_request)
 

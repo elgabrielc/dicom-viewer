@@ -225,6 +225,86 @@ def init_db():
             """
         )
 
+        # -- Cloud sync entity tables --
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cloud_study_notes (
+                user_id INTEGER NOT NULL,
+                study_uid TEXT NOT NULL,
+                description TEXT,
+                updated_at INTEGER,
+                deleted_at INTEGER,
+                device_id TEXT,
+                sync_version INTEGER NOT NULL DEFAULT 0,
+                last_operation TEXT NOT NULL DEFAULT 'update',
+                PRIMARY KEY (user_id, study_uid),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cloud_study_notes_study_uid
+            ON cloud_study_notes(study_uid)
+            """
+        )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cloud_comments (
+                user_id INTEGER NOT NULL,
+                record_uuid TEXT NOT NULL,
+                study_uid TEXT NOT NULL,
+                series_uid TEXT,
+                text TEXT NOT NULL,
+                time INTEGER NOT NULL,
+                created_at INTEGER,
+                updated_at INTEGER,
+                deleted_at INTEGER,
+                device_id TEXT,
+                sync_version INTEGER NOT NULL DEFAULT 0,
+                last_operation TEXT NOT NULL DEFAULT 'insert',
+                PRIMARY KEY (user_id, record_uuid),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cloud_comments_study_uid
+            ON cloud_comments(user_id, study_uid)
+            """
+        )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cloud_reports (
+                user_id INTEGER NOT NULL,
+                id TEXT NOT NULL,
+                study_uid TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                content_hash TEXT,
+                added_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                deleted_at INTEGER,
+                device_id TEXT,
+                sync_version INTEGER NOT NULL DEFAULT 0,
+                last_operation TEXT NOT NULL DEFAULT 'insert',
+                PRIMARY KEY (user_id, id),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cloud_reports_study_uid
+            ON cloud_reports(user_id, study_uid)
+            """
+        )
+
         # -- Sync infrastructure tables --
 
         db.execute(
