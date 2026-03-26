@@ -258,6 +258,40 @@ Notes are saved automatically. This means:
 
 ---
 
+## Reports
+
+You can attach report documents to any study. This is useful for keeping radiology reports, referral letters, or annotated images alongside the imaging data they relate to.
+
+Supported file types: **PDF**, **PNG**, and **JPG**.
+
+### Attaching a Report
+
+1. In the library view, find the study you want to attach a report to
+2. Click the **Add report** button (or the report count if reports already exist)
+3. Select a PDF, PNG, or JPG file from your computer
+4. The report appears in the study's report list
+
+### Viewing a Report
+
+Click the **View** button next to any attached report. PDFs open in an embedded viewer; images display directly.
+
+### Removing a Report
+
+Click **Delete** next to the report. The report is removed from the study.
+
+### Where Report Files Are Stored
+
+When you attach a report, the app makes its own copy of the file. The original file on your computer is not moved or modified. The copy is stored inside the app's data folder, organized by study. This means:
+
+- Your original files stay exactly where they are
+- Reports persist even if you move or delete the original file
+- Reports are tied to the study they were attached to
+- Deleting a report from the app does not affect your original file
+
+In the desktop app, report files are stored in the app's native data folder alongside your library settings.
+
+---
+
 ## Keyboard Shortcuts
 
 For faster navigation, you can use these keyboard shortcuts:

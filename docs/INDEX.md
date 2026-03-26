@@ -24,26 +24,35 @@ Master index of all project documentation, organized by audience and purpose.
 | Document | Location | Description |
 |----------|----------|-------------|
 | [CLAUDE.md](../CLAUDE.md) | Root | Project context, architecture, technical decisions, feature inventory, and development guidelines |
+| [Agent Roles](../AGENTS.md) | Root | Agent workflow instructions and mandatory parallel-work rules for any coding agent |
 | [API Reference](./API.md) | docs/ | REST API endpoints for test mode (Flask backend) |
 | [Configuration](./CONFIG.md) | docs/ | Environment variables, runtime settings, browser requirements |
 | [Testing Guide](./TESTING.md) | docs/ | Playwright test setup, helper functions, writing tests, visual verification |
+| [Viewing Tools Test Plan](../TEST_PLAN_VIEWING_TOOLS.md) | Root | Comprehensive test plan for Window/Level, Pan, Zoom, and Reset functionality |
 | [Parallel Agent Workflow](./AGENT_WORKTREES.md) | docs/ | Rules and helper commands for running multiple Codex and Claude sessions safely in parallel |
 | [Parallel Agent Explainer](./AGENT_WORKTREES_EXPLAINER.md) | docs/ | Beginner walkthrough of the multi-agent cleanup, the branch/worktree model, and why the current workflow exists |
+| [Agent Launchers](./AGENT_LAUNCHERS.md) | docs/ | Session launcher scripts for creating worktrees and starting AI sessions safely |
+| [Parallel Execution Process](./PARALLEL_EXECUTION.md) | docs/ | Process for planning, staging, and executing large features using parallel AI agents |
 | [Research Documentation Policy](./RESEARCH_POLICY.md) | docs/ | Policy for what benchmark and planning research belongs in git, what should stay local, and when research docs should be PRs |
 | [Deployment Guide](./DEPLOY.md) | docs/ | Local development, GitHub Pages, custom domains, troubleshooting |
 | [Contributing](../CONTRIBUTING.md) | Root | Code style, git workflow, pull request process, issue templates |
 | [Bug Tracking](./BUGS.md) | docs/ | Known issues, resolved bugs with root cause analysis, bug template |
+| [Code Reviews](./CODE_REVIEWS.md) | docs/ | PR review findings, severity grouping, and resolution status |
+| [Desktop Library Diagnostics](./desktop-library-diagnostics.md) | docs/ | Quick reference for rerunning desktop library scan diagnostics |
 | [Changelog](../CHANGELOG.md) | Root | Version history and release notes |
+| [Benchmarking Research](../BENCHMARKING_RESEARCH.md) | Root | 3D volume rendering competitive benchmarking across established companies |
 
 ### For Planning
 
 | Document | Location | Description |
 |----------|----------|-------------|
+| [Plans Index](./planning/PLANS.md) | docs/planning/ | Chronological index of all implementation plans with human-readable titles |
 | [Project Sitemap](./planning/SITEMAP.md) | docs/planning/ | File structure map and active work tracking |
 | [Remediation Plan](./planning/REMEDIATION-PLAN.md) | docs/planning/ | Prioritized remediation for security and debugging audit findings |
 | [Tauri Release Plan](./planning/PLAN-tauri-release.md) | docs/planning/ | Release plan for the signed/notarized macOS desktop artifact |
 | [3D Volume Rendering Plan](../3D_VOLUME_RENDERING_PLAN.md) | Root | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
 | [Tauri Desktop Plan](./planning/PLAN-tauri-desktop-app.md) | docs/planning/ | Historical plan for the Tauri desktop shell with PR mapping |
+| [Sync Contract v1](./planning/SYNC-CONTRACT-V1.md) | docs/planning/ | Frozen wire protocol and auth model for cloud sync v1 |
 
 ### For Research
 
@@ -61,6 +70,8 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [Visage 7 / Pro Medicus](./planning/RESEARCH-visage.md) | Competitive | Pure SSR from GPU servers, patented adaptive streaming, per-study pricing, 100% retention |
 | [OHIF Viewer](./planning/RESEARCH-ohif.md) | Both | Open-source, Cornerstone3D/vtk.js, extension architecture, DICOMweb, HTJ2K progressive loading |
 | [AWS HealthLake Imaging](./planning/RESEARCH-aws-healthlake-imaging.md) | Infrastructure | HTJ2K encoding, DICOMweb + OIDC, progressive loading via TLM Proxy, cloud storage for ADR 004 |
+| [EasyRadiology](./planning/RESEARCH-easyradiology.md) | Competitive | easyRadiology AG architecture, market positioning, 35% German market share |
+| [Word + OneDrive Sync](./planning/RESEARCH-word-onedrive-sync-prompt_2026-03-25_1124.md) | Infrastructure | Microsoft Word and OneDrive sync architecture, conflict resolution, informing cloud sync design |
 
 ### For Decisions
 
@@ -71,6 +82,8 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [ADR 002: Persistent Local Library](./decisions/002-persistent-local-library.md) | docs/decisions/ | Decision record for persistent DICOM library with DicomFolderSource architecture |
 | [ADR 003: Tauri Desktop Shell](./decisions/003-tauri-desktop-shell-with-shared-web-core.md) | docs/decisions/ | Decision record for the shared web core plus Tauri desktop shell direction |
 | [ADR 004: Cloud Platform Rendering Architecture](./decisions/004-cloud-platform-rendering-architecture.md) | docs/decisions/ | Decision record for client-side vs server-side rendering in the future authenticated cloud platform |
+| [ADR 005: Native Desktop Persistence](./decisions/005-native-desktop-persistence.md) | docs/decisions/ | Decision record for native SQLite persistence for notes, reports, and library config in the Tauri desktop app |
+| [ADR 006: Cloud Sync Storage Architecture](./decisions/006-cloud-sync-storage-architecture.md) | docs/decisions/ | Decision record for cloud sync storage architecture across deployment modes |
 
 ---
 
@@ -86,9 +99,12 @@ Core project documentation visible in the repository root.
 dicom-viewer/
 ├── README.md              # Project overview and quick start
 ├── CLAUDE.md              # Technical context for Claude Code
+├── AGENTS.md              # Agent workflow instructions and parallel-work rules
 ├── USER_GUIDE.md          # End-user documentation
 ├── CONTRIBUTING.md        # Contribution guidelines
 ├── CHANGELOG.md           # Version history
+├── BENCHMARKING_RESEARCH.md     # 3D volume rendering competitive benchmarking
+├── TEST_PLAN_VIEWING_TOOLS.md   # Viewing tools test plan (W/L, Pan, Zoom, Reset)
 └── 3D_VOLUME_RENDERING_PLAN.md  # 3D feature roadmap
 ```
 
@@ -100,6 +116,8 @@ Technical documentation for developers and operations.
 docs/
 ├── AGENT_WORKTREES.md     # Parallel AI agent workflow rules and helper commands
 ├── AGENT_WORKTREES_EXPLAINER.md  # Beginner explainer for the parallel workflow
+├── AGENT_LAUNCHERS.md     # Session launcher scripts for worktree creation
+├── PARALLEL_EXECUTION.md  # Parallel agent execution process for large features
 ├── RESEARCH_POLICY.md     # Policy for benchmark/planning research docs and PRs
 ├── INDEX.md               # This file - master documentation index
 ├── API.md                 # REST API reference
@@ -107,6 +125,8 @@ docs/
 ├── DEPLOY.md              # Deployment guide
 ├── TESTING.md             # Testing documentation
 ├── BUGS.md                # Bug tracking
+├── CODE_REVIEWS.md        # PR review findings and resolution status
+├── desktop-library-diagnostics.md  # Desktop library scan diagnostics reference
 ├── planning/              # Planning and research documents
 └── decisions/             # Architecture Decision Records (ADRs)
 ```
@@ -117,10 +137,12 @@ Plans, research (feature design + competitive intelligence), and reference mater
 
 ```
 docs/planning/
+├── PLANS.md                                # Chronological index of all implementation plans
 ├── SITEMAP.md                              # Project structure map (full index)
 ├── PLAN-notes.md                           # Notes feature plan
 ├── PLAN-tauri-desktop-app.md               # Historical Tauri desktop plan
 ├── PLAN-tauri-release.md                   # Tauri macOS release plan
+├── SYNC-CONTRACT-V1.md                     # Cloud sync wire protocol (frozen v1)
 ├── RESEARCH-3d-volume-rendering.md         # 3D rendering approaches
 ├── RESEARCH-measurement-tool.md            # Measurement tool benchmarking
 ├── RESEARCH-ambra-reports_2026-02-02.md    # Ambra report handling
@@ -131,6 +153,8 @@ docs/planning/
 ├── RESEARCH-visage.md                      # Visage 7 / Pro Medicus (competitive)
 ├── RESEARCH-ohif.md                        # OHIF Viewer (open-source, competitive)
 ├── RESEARCH-aws-healthlake-imaging.md      # AWS HealthLake Imaging (infrastructure)
+├── RESEARCH-easyradiology.md               # easyRadiology AG (competitive)
+├── RESEARCH-word-onedrive-sync-prompt_2026-03-25_1124.md  # Word + OneDrive sync architecture
 ├── RESEARCH-*-prompt.md                    # Research input prompts
 ├── RESEARCH-*-thinking.md                  # Research reasoning process
 ├── SECURITY-AUDIT.md                       # Application security audit (14 findings)
@@ -149,7 +173,9 @@ docs/decisions/
 ├── 001-launch-command.md                   # Decision record for launch.command startup
 ├── 002-persistent-local-library.md         # Decision record for persistent DICOM library
 ├── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
-└── 004-cloud-platform-rendering-architecture.md     # Decision record for cloud rendering architecture
+├── 004-cloud-platform-rendering-architecture.md     # Decision record for cloud rendering architecture
+├── 005-native-desktop-persistence.md       # Decision record for native SQLite persistence in Tauri
+└── 006-cloud-sync-storage-architecture.md  # Decision record for cloud sync storage architecture
 ```
 
 ---
@@ -284,4 +310,4 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 
 ---
 
-*Last updated: 2026-03-10*
+*Last updated: 2026-03-26*
