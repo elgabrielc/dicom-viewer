@@ -531,6 +531,255 @@ test('desktop CSP allows the JPEG 2000 worker to load OpenJPEG WASM', async () =
     expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
 });
 
+// Regression: the cloud-sync PR removed read_scan_manifest and read_scan_header from the
+// invoke_handler! macro in main.rs. The JS called these commands but received "Command not
+// found", causing the scan to fall back to slow fs.readDir walks instead of using the native
+// manifest path. Fix: both commands are re-added to the invoke handler.
+test('Tauri invoke handler registers both scan commands inside generate_handler block', async () => {
+    const mainRsPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'src', 'main.rs');
+    const mainRsContent = fs.readFileSync(mainRsPath, 'utf8');
+
+    // Extract the generate_handler! block to verify commands are inside it (not just anywhere in the file)
+    const handlerBlockMatch = mainRsContent.match(/\.invoke_handler\(tauri::generate_handler!\[([\s\S]*?)\]\)/);
+    expect(handlerBlockMatch).not.toBeNull();
+
+    const handlerBlock = handlerBlockMatch[1];
+    expect(handlerBlock).toContain('scan::read_scan_manifest');
+    expect(handlerBlock).toContain('decode::read_scan_header');
+});
+
+// Regression: the desktop scan falls back to slow fs.readDir when read_scan_manifest or
+// read_scan_header throw "Command not found". Verify the scan pipeline exercises both
+// commands through production code (loadStudiesFromDesktopPaths), not just direct invocation.
+test('desktop scan uses read_scan_manifest and read_scan_header through production code path', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        window.__scanCommandsCalled = { manifest: false, header: [] };
+        window.__TAURI__ = {
+            core: {
+                async invoke(cmd, args) {
+                    if (cmd === 'read_scan_manifest') {
+                        window.__scanCommandsCalled.manifest = true;
+                        return [
+                            { path: '/library/IMG001.dcm', name: 'IMG001.dcm', rootPath: '/library', size: 100, modifiedMs: 1000 }
+                        ];
+                    }
+                    if (cmd === 'read_scan_header') {
+                        window.__scanCommandsCalled.header.push(args.path);
+                        // Return a minimal byte array; the parser will reject it and fall through to full read
+                        return new Uint8Array([0, 0, 0, 0]);
+                    }
+                    if (cmd === 'apply_desktop_migration') {
+                        return window.__applyMockDesktopMigration(args.db, args.batch);
+                    }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return [];
+                    }
+                    throw new Error(`Unhandled core invoke: ${cmd}`);
+                }
+            },
+            dialog: { async open() { return null; } },
+            fs: {
+                async exists() { return false; },
+                async readDir() { return []; },
+                async readFile() { return new Uint8Array([0]); },
+                async writeFile() {},
+                async mkdir() {},
+                async remove() {},
+                async stat() { throw new Error('Not found'); },
+                async rename() {}
+            },
+            path: {
+                async appDataDir() { return '/appdata'; },
+                async join(...parts) { return parts.join('/').replace(/\/+/g, '/'); },
+                async normalize(p) { return p; }
+            },
+            sql: window.__createMockTauriSql(),
+            webview: {
+                getCurrentWebview() {
+                    return {
+                        onDragDropEvent() { return Promise.resolve(() => {}); }
+                    };
+                }
+            }
+        };
+    });
+
+    await page.goto('http://127.0.0.1:5001/?nolib');
+    await expect(page.locator('#libraryView')).toBeVisible();
+
+    const result = await page.evaluate(async () => {
+        // Run the actual production scan pipeline
+        await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+        return {
+            manifestCalled: window.__scanCommandsCalled.manifest,
+            headerPaths: window.__scanCommandsCalled.header
+        };
+    });
+
+    // read_scan_manifest must be called (not skipped / "Command not found")
+    expect(result.manifestCalled).toBe(true);
+    // read_scan_header must be called for the file in the manifest
+    expect(result.headerPaths.length).toBeGreaterThan(0);
+    expect(result.headerPaths).toContain('/library/IMG001.dcm');
+});
+
+// Regression: waitForDesktopRuntime() did a one-shot check for window.__TAURI__.sql.load
+// and returned null immediately if it wasn't there yet. On cold start the SQL plugin is
+// injected asynchronously, so getDesktopDb() would throw before the plugin was ready.
+// Fix: waitForDesktopRuntime() now polls up to 5 seconds before giving up.
+test('waitForDesktopRuntime polls until sql.load is available instead of failing immediately', async ({ page }) => {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        // Start with __TAURI__ present but sql missing — simulates cold-start race
+        // where the Tauri SQL plugin hasn't been injected yet.
+        window.__TAURI__ = {
+            core: {
+                async invoke(cmd, args) {
+                    if (cmd === 'apply_desktop_migration') {
+                        return window.__applyMockDesktopMigration(args.db, args.batch);
+                    }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return [];
+                    }
+                    throw new Error(`Unhandled core invoke: ${cmd}`);
+                }
+            },
+            dialog: { async open() { return null; } },
+            fs: {
+                async exists() { return false; },
+                async readDir() { return []; },
+                async readFile() { return new Uint8Array([0]); },
+                async writeFile() {},
+                async mkdir() {},
+                async remove() {},
+                async stat() { throw new Error('Not found'); },
+                async rename() {}
+            },
+            path: {
+                async appDataDir() { return '/appdata'; },
+                async join(...parts) { return parts.join('/').replace(/\/+/g, '/'); },
+                async normalize(p) { return p; }
+            },
+            // sql is intentionally absent here — this is the race condition that caused the bug
+            webview: {
+                getCurrentWebview() {
+                    return {
+                        onDragDropEvent() { return Promise.resolve(() => {}); }
+                    };
+                }
+            }
+        };
+
+        // Inject sql after a short delay to simulate the plugin arriving asynchronously.
+        setTimeout(() => {
+            window.__TAURI__.sql = window.__createMockTauriSql();
+        }, 200);
+    });
+
+    await page.goto('http://127.0.0.1:5001/?nolib');
+    await expect(page.locator('#libraryView')).toBeVisible();
+
+    const result = await page.evaluate(async () => {
+        // Before the fix, getDesktopDb() would throw immediately because sql.load was absent
+        // at call time. The fix polls for up to 5 seconds, so injecting sql after 200ms works.
+        let dbError = null;
+        let dbSuccess = false;
+        try {
+            // initializeDesktopStorage wraps initializeDesktopPersistence, which calls
+            // waitForDesktopRuntime internally. If the polling fix is absent, this throws.
+            await window.NotesAPI.initializeDesktopStorage();
+            dbSuccess = true;
+        } catch (error) {
+            dbError = error.message;
+        }
+
+        return {
+            sqlLoadPresent: typeof window.__TAURI__?.sql?.load === 'function',
+            dbSuccess,
+            dbError
+        };
+    });
+
+    expect(result.sqlLoadPresent).toBe(true);
+    // If the bug is present, dbError would be 'Desktop SQL runtime is not ready...'
+    // because the one-shot check found sql absent and returned null.
+    expect(result.dbError).toBeNull();
+    expect(result.dbSuccess).toBe(true);
+});
+
+test('waitForDesktopRuntime throws a descriptive error when sql never becomes available', async ({ page }) => {
+    // This test triggers the 5-second polling timeout inside waitForDesktopRuntime.
+    test.setTimeout(20000);
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript(() => {
+        // __TAURI__ present but sql never injected — simulates a permanent failure such as
+        // a plugin crash or missing build artifact that prevents sql from loading.
+        window.__TAURI__ = {
+            core: {
+                async invoke(cmd, args) {
+                    if (cmd === 'apply_desktop_migration') {
+                        return window.__applyMockDesktopMigration(args.db, args.batch);
+                    }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return [];
+                    }
+                    throw new Error(`Unhandled core invoke: ${cmd}`);
+                }
+            },
+            dialog: { async open() { return null; } },
+            fs: {
+                async exists() { return false; },
+                async readDir() { return []; },
+                async readFile() { return new Uint8Array([0]); },
+                async writeFile() {},
+                async mkdir() {},
+                async remove() {},
+                async stat() { throw new Error('Not found'); },
+                async rename() {}
+            },
+            path: {
+                async appDataDir() { return '/appdata'; },
+                async join(...parts) { return parts.join('/').replace(/\/+/g, '/'); },
+                async normalize(p) { return p; }
+            }
+            // sql is permanently absent — no setTimeout injection
+        };
+
+        // Pre-resolve the storage ready promise with null to bypass the 30-second
+        // tauri-compat.js polling loop. This isolates the test to waitForDesktopRuntime's
+        // own 5-second deadline, which is the behavior under test.
+        window.__DICOM_VIEWER_TAURI_STORAGE_READY__ = Promise.resolve(null);
+    });
+
+    await page.goto('http://127.0.0.1:5001/?nolib');
+    await expect(page.locator('#libraryView')).toBeVisible();
+
+    const result = await page.evaluate(async () => {
+        // Pre-resolve the ready promise again in case tauri-compat.js reset it during page load.
+        // This ensures waitForDesktopRuntime falls through immediately to its own polling loop.
+        window.__DICOM_VIEWER_TAURI_STORAGE_READY__ = Promise.resolve(null);
+
+        let dbError = null;
+        const startedAt = performance.now();
+        try {
+            await window._NotesDesktop.getDesktopDb();
+        } catch (error) {
+            dbError = error.message;
+        }
+        const elapsedMs = performance.now() - startedAt;
+
+        return { dbError, elapsedMs };
+    });
+
+    // The error must contain the actionable "not ready" message — not a cryptic JS error.
+    expect(result.dbError).not.toBeNull();
+    expect(result.dbError).toContain('Desktop SQL runtime is not ready');
+    // The polling fix means getDesktopDb now waits at least 5 seconds before throwing,
+    // rather than failing immediately on the first check (the regression behavior).
+    expect(result.elapsedMs).toBeGreaterThan(4000);
+});
+
 test('desktop fs scope includes the native decode cache directory', async () => {
     const capabilityPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'capabilities', 'default.json');
     const capability = JSON.parse(fs.readFileSync(capabilityPath, 'utf8'));
