@@ -577,21 +577,30 @@ const _SyncEngine = (() => {
                 const studyUid = data.study_uid;
                 if (!studyUid) return;
                 const deletedAt = data.deletedAt || data.deleted_at || null;
-
-                const studyEntry = ensureStudy(store, studyUid);
                 const { normalizeReportId } = window._NotesInternals;
                 const targetId = normalizeReportId(recordKey);
+
+                if (deletedAt) {
+                    // Remote tombstone -- only act if study and report exist locally
+                    const existingStudy = store.studies[studyUid];
+                    if (!existingStudy) return;
+                    const idx = existingStudy.reports.findIndex(
+                        r => normalizeReportId(r?.id) === targetId
+                    );
+                    if (idx !== -1) {
+                        existingStudy.reports[idx].deletedAt = deletedAt;
+                        existingStudy.reports[idx].sync_version = syncVersion;
+                        saveStore(store);
+                    }
+                    return;
+                }
+
+                const studyEntry = ensureStudy(store, studyUid);
                 const existingIdx = studyEntry.reports.findIndex(
                     r => normalizeReportId(r?.id) === targetId
                 );
 
-                if (deletedAt) {
-                    // Remote tombstone
-                    if (existingIdx !== -1) {
-                        studyEntry.reports[existingIdx].deletedAt = deletedAt;
-                        studyEntry.reports[existingIdx].sync_version = syncVersion;
-                    }
-                } else if (existingIdx !== -1) {
+                if (existingIdx !== -1) {
                     // Update existing report metadata
                     const report = studyEntry.reports[existingIdx];
                     if (data.name !== undefined) report.name = data.name;
