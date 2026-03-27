@@ -241,6 +241,44 @@
         });
     }
 
+    if (!app.desktopBridge) {
+        app.desktopBridge = {
+            async getRuntime() {
+                const runtime = window.__TAURI__;
+                if (typeof runtime?.core?.invoke === 'function') {
+                    return runtime;
+                }
+
+                const ready = window.__DICOM_VIEWER_TAURI_READY__;
+                if (ready && typeof ready.then === 'function') {
+                    const resolved = await ready;
+                    if (typeof resolved?.core?.invoke === 'function') {
+                        return resolved;
+                    }
+                }
+
+                return window.__TAURI__ || null;
+            },
+            async revealInFinder(path) {
+                if (!path) return false;
+
+                try {
+                    const runtime = await this.getRuntime();
+                    const invoke = runtime?.core?.invoke;
+                    if (typeof invoke !== 'function') {
+                        return false;
+                    }
+
+                    await invoke('reveal_in_finder', { path });
+                    return true;
+                } catch (err) {
+                    console.error('Failed to reveal in Finder:', err);
+                    return false;
+                }
+            }
+        };
+    }
+
     const { show: showContextMenu } = app.contextMenu;
 
     function formatTimestamp(ts) {
@@ -279,11 +317,7 @@
     async function revealReportInFinder(reportId) {
         const filePath = notesApi.getReportFilePath(reportId);
         if (!filePath) return;
-        try {
-            await window.__TAURI__.core.invoke('reveal_in_finder', { path: filePath });
-        } catch (err) {
-            console.error('Failed to reveal report:', err);
-        }
+        await app.desktopBridge.revealInFinder(filePath);
     }
 
     function attachReportEventHandlers(studyUid) {
@@ -304,30 +338,35 @@
         });
 
         studiesBody.querySelectorAll(`.report-item[data-report-id]`).forEach(item => {
-            item.addEventListener('contextmenu', e => {
+            item.oncontextmenu = e => {
+                e.preventDefault();
+                e.stopPropagation();
                 const reportId = item.dataset.reportId;
                 const studyEl = item.closest('.report-list');
                 const uid = studyEl?.dataset.studyUid || studyUid;
                 showReportContextMenu(e, uid, reportId);
-            });
+            };
         });
 
         // Right-click on the "1 report" toggle button
         const toggle = studiesBody.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
         if (toggle) {
-            toggle.addEventListener('contextmenu', e => {
+            toggle.oncontextmenu = e => {
+                e.preventDefault();
+                e.stopPropagation();
+
                 const reports = (state.studies[studyUid]?.reports || []).filter(r => !r.deletedAt);
                 if (reports.length === 0) return;
+
                 // Single report: show context menu directly
                 if (reports.length === 1) {
                     showReportContextMenu(e, studyUid, reports[0].id);
                     return;
                 }
+
                 // Multiple reports: expand the panel so user can right-click individual items
-                e.preventDefault();
-                e.stopPropagation();
                 toggle.click();
-            });
+            };
         }
     }
 

@@ -2850,67 +2850,134 @@ test.describe('Desktop library Reveal in Finder', () => {
         await expect(page.locator('#viewerView')).toBeHidden();
     });
 
-    test('guarded report and series comment targets do not open Reveal in Finder or trigger primary actions', async ({ page }) => {
+    test('report and series comment right-clicks suppress native context menus without triggering actions', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
         await seedDesktopStudies(page, buildRevealInFinderStudies());
 
-        const result = await page.evaluate(() => {
-            const dispatchContextMenu = (target) => {
-                target.dispatchEvent(new MouseEvent('contextmenu', {
-                    bubbles: true,
-                    cancelable: true,
-                    button: 2,
-                    clientX: 120,
-                    clientY: 160
-                }));
+        await page.evaluate(() => {
+            window.__reportTogglePrevented = null;
+            window.__seriesCommentTogglePrevented = null;
+
+            const reportToggle = document.querySelector('.report-toggle');
+            const originalReportToggleHandler = reportToggle.oncontextmenu;
+            reportToggle.oncontextmenu = (event) => {
+                const result = originalReportToggleHandler
+                    ? originalReportToggleHandler.call(reportToggle, event)
+                    : undefined;
+                window.__reportTogglePrevented = event.defaultPrevented;
+                return result;
             };
 
-            const removeMenus = () => {
-                document.querySelectorAll('.report-context-menu').forEach((menu) => menu.remove());
-            };
-
-            const studyRow = document.querySelector('#studiesBody .study-row');
-            const studyDropdown = document.querySelector('.series-dropdown-row');
-            const reportCell = studyRow.querySelector('.report-cell');
-
-            removeMenus();
-
-            dispatchContextMenu(reportCell);
-            const afterReportCell = {
-                menuCount: document.querySelectorAll('.report-context-menu').length,
-                studyDropdownDisplay: studyDropdown.style.display
-            };
-
-            removeMenus();
-            studyRow.click();
-            const seriesCommentPanel = document.querySelector('.series-comment-panel');
             const seriesCommentToggle = document.querySelector('.series-comment-toggle');
-            dispatchContextMenu(seriesCommentToggle);
-            const afterSeriesCommentToggle = {
+            const originalSeriesCommentHandler = seriesCommentToggle.oncontextmenu;
+            seriesCommentToggle.oncontextmenu = (event) => {
+                const result = originalSeriesCommentHandler
+                    ? originalSeriesCommentHandler.call(seriesCommentToggle, event)
+                    : undefined;
+                window.__seriesCommentTogglePrevented = event.defaultPrevented;
+                return result;
+            };
+        });
+
+        await page.locator('.report-toggle').first().click({ button: 'right' });
+
+        const afterReportToggle = await page.evaluate(() => {
+            const commentPanel = document.querySelector('.comment-panel-row');
+            return {
+                defaultPrevented: window.__reportTogglePrevented,
+                menuCount: document.querySelectorAll('.report-context-menu').length,
+                commentPanelDisplay: commentPanel.style.display
+            };
+        });
+
+        await page.locator('.study-row').first().click();
+        await page.locator('.series-comment-toggle').first().click({ button: 'right' });
+
+        const afterSeriesCommentToggle = await page.evaluate(() => {
+            const seriesCommentPanel = document.querySelector('.series-comment-panel');
+            return {
+                defaultPrevented: window.__seriesCommentTogglePrevented,
                 menuCount: document.querySelectorAll('.report-context-menu').length,
                 seriesCommentPanelDisplay: seriesCommentPanel.style.display,
                 viewerDisplay: document.querySelector('#viewerView').style.display
             };
-
-            return {
-                afterReportCell,
-                afterSeriesCommentToggle
-            };
         });
 
-        expect(result).toEqual({
-            afterReportCell: {
+        expect({ afterReportToggle, afterSeriesCommentToggle }).toEqual({
+            afterReportToggle: {
+                defaultPrevented: true,
                 menuCount: 0,
-                studyDropdownDisplay: 'none'
+                commentPanelDisplay: 'none'
             },
             afterSeriesCommentToggle: {
+                defaultPrevented: true,
                 menuCount: 0,
                 seriesCommentPanelDisplay: 'none',
                 viewerDisplay: 'none'
             }
+        });
+    });
+
+    test('report toggle right-click stays single-shot after repeated handler attachment', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const studies = buildRevealInFinderStudies({ withReport: true });
+        studies['1.2.840.reveal.study'].reports.push({
+            id: 'report-2',
+            name: 'followup.pdf',
+            type: 'pdf',
+            size: 1024,
+            addedAt: 1710000005000
+        });
+        await seedDesktopStudies(page, studies);
+
+        await page.evaluate(() => {
+            const studyUid = '1.2.840.reveal.study';
+            const toggle = document.querySelector(`.report-toggle[data-study-uid="${studyUid}"]`);
+
+            window.__reportToggleClickCount = 0;
+            window.__reportTogglePrevented = null;
+            const originalClick = toggle.click.bind(toggle);
+            toggle.click = () => {
+                window.__reportToggleClickCount += 1;
+                return originalClick();
+            };
+
+            window.DicomViewerApp.reportsUi.attachReportEventHandlers(studyUid);
+            window.DicomViewerApp.reportsUi.attachReportEventHandlers(studyUid);
+
+            const originalContextMenuHandler = toggle.oncontextmenu;
+            toggle.oncontextmenu = (event) => {
+                const result = originalContextMenuHandler
+                    ? originalContextMenuHandler.call(toggle, event)
+                    : undefined;
+                window.__reportTogglePrevented = event.defaultPrevented;
+                return result;
+            };
+        });
+
+        await page.locator('.report-toggle').first().click({ button: 'right' });
+
+        const result = await page.evaluate(() => {
+            const panel = document.querySelector('.comment-panel-row');
+            return {
+                clickCount: window.__reportToggleClickCount,
+                defaultPrevented: window.__reportTogglePrevented,
+                menuCount: document.querySelectorAll('.report-context-menu').length,
+                panelDisplay: panel.style.display
+            };
+        });
+
+        expect(result).toEqual({
+            clickCount: 1,
+            defaultPrevented: true,
+            menuCount: 0,
+            panelDisplay: 'table-row'
         });
     });
 

@@ -98,14 +98,8 @@
     }
 
     async function revealInFinder(path) {
-        const invoke = window.__TAURI__?.core?.invoke;
-        if (!path || typeof invoke !== 'function') return;
-
-        try {
-            await invoke('reveal_in_finder', { path });
-        } catch (err) {
-            console.error('Failed to reveal in Finder:', err);
-        }
+        if (!path || typeof app.desktopBridge?.revealInFinder !== 'function') return;
+        await app.desktopBridge.revealInFinder(path);
     }
 
     const openPanels = {
@@ -611,17 +605,21 @@
                 const seriesCommentToggle = e.target.closest('.series-comment-toggle');
                 const commentCell = e.target.closest('.comment-cell');
                 const reportCell = e.target.closest('.report-cell');
-                if (seriesCommentToggle || commentCell || reportCell) {
-                    e.preventDefault();
-                    e.stopPropagation();
+                const seriesMainRow = e.target.closest('.series-main-row');
+                const studyRow = e.target.closest('.study-row');
+
+                if (!(seriesCommentToggle || commentCell || reportCell || seriesMainRow || studyRow)) {
                     return;
                 }
 
-                const seriesMainRow = e.target.closest('.series-main-row');
-                if (seriesMainRow) {
-                    e.preventDefault();
-                    e.stopPropagation();
+                e.preventDefault();
+                e.stopPropagation();
 
+                if (seriesCommentToggle || commentCell || reportCell) {
+                    return;
+                }
+
+                if (seriesMainRow) {
                     const item = seriesMainRow.closest('.series-dropdown-item');
                     const filePath = getSeriesFilePath(item.dataset.studyUid, item.dataset.seriesUid);
                     if (!filePath) return;
@@ -632,11 +630,7 @@
                     return;
                 }
 
-                const studyRow = e.target.closest('.study-row');
                 if (studyRow) {
-                    e.preventDefault();
-                    e.stopPropagation();
-
                     const folderPath = getStudyFolderPath(studyRow.dataset.uid);
                     if (!folderPath) return;
 
