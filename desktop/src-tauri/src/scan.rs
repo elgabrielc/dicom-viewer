@@ -5,9 +5,6 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::{AppHandle, Runtime};
-use tauri_plugin_fs::FsExt;
-
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanManifestEntry {
@@ -19,14 +16,13 @@ pub struct ScanManifestEntry {
 }
 
 #[tauri::command]
-pub async fn read_scan_manifest<R: Runtime>(
-    app: AppHandle<R>,
+pub async fn read_scan_manifest(
     roots: Vec<String>,
     max_depth: usize,
 ) -> Result<Vec<ScanManifestEntry>, String> {
     let scoped_roots = roots
         .iter()
-        .map(|root| validate_scoped_path(&app, root, "scan-manifest"))
+        .map(|root| resolve_canonical_path(root, "scan-manifest"))
         .collect::<Result<Vec<_>, _>>()?;
 
     tokio::task::spawn_blocking(move || read_scan_manifest_impl(&scoped_roots, max_depth))
@@ -34,8 +30,7 @@ pub async fn read_scan_manifest<R: Runtime>(
         .map_err(|error| format!("Native scan manifest worker failed to join: {error}"))?
 }
 
-fn validate_scoped_path<R: Runtime>(
-    app: &AppHandle<R>,
+fn resolve_canonical_path(
     path: &str,
     stage: &str,
 ) -> Result<PathBuf, String> {
@@ -50,13 +45,6 @@ fn validate_scoped_path<R: Runtime>(
     let canonical_path = requested_path
         .canonicalize()
         .map_err(|error| format!("{stage}: failed to access {path}: {error}"))?;
-
-    if !app.fs_scope().is_allowed(&canonical_path) {
-        return Err(format!(
-            "{stage}: path is outside the allowed desktop file scope: {}",
-            canonical_path.display()
-        ));
-    }
 
     Ok(canonical_path)
 }

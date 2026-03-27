@@ -17,7 +17,6 @@ use dicom_pixeldata::{DecodedPixelData, PixelDecoder};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{ipc::Response, AppHandle, Manager, Runtime, State};
-use tauri_plugin_fs::FsExt;
 
 const DECODE_TIMEOUT_SECS: u64 = 30;
 const MAX_DECODE_STORE_ENTRIES: usize = 8;
@@ -207,7 +206,7 @@ pub async fn decode_frame<R: Runtime>(
     frame_index: u32,
     store: State<'_, DecodeStore>,
 ) -> DecodeResult<DecodeFrameMetadata> {
-    let scoped_path = validate_scoped_path(&app, &path, "decode", "Decode path")?;
+    let scoped_path = resolve_canonical_path(&path, "decode", "Decode path")?;
     let cache_paths = resolve_cache_paths(&app)?;
     let decode_result = run_decode_with_timeout(scoped_path, frame_index, cache_paths).await?;
     let decode_id = store.insert(decode_result.pixel_bytes);
@@ -216,11 +215,11 @@ pub async fn decode_frame<R: Runtime>(
 
 #[tauri::command]
 pub async fn read_scan_header<R: Runtime>(
-    app: AppHandle<R>,
+    _app: AppHandle<R>,
     path: String,
     max_bytes: usize,
 ) -> DecodeResult<Response> {
-    let scoped_path = validate_scoped_path(&app, &path, "scan-header", "Scan header path")?;
+    let scoped_path = resolve_canonical_path(&path, "scan-header", "Scan header path")?;
     let bytes = tokio::task::spawn_blocking(move || read_scan_header_impl(&scoped_path, max_bytes))
         .await
         .map_err(|error| {
@@ -286,8 +285,7 @@ fn resolve_cache_paths<R: Runtime>(app: &AppHandle<R>) -> DecodeResult<DecodeCac
     Ok(cache_paths)
 }
 
-fn validate_scoped_path<R: Runtime>(
-    app: &AppHandle<R>,
+fn resolve_canonical_path(
     path: &str,
     stage: &str,
     path_label: &str,
@@ -309,16 +307,6 @@ fn validate_scoped_path<R: Runtime>(
             format!("Failed to access scoped file {path}: {error}"),
         )
     })?;
-
-    if !app.fs_scope().is_allowed(&canonical_path) {
-        return Err(DecodeError::new(
-            stage,
-            format!(
-                "{path_label} is outside the allowed desktop file scope: {}",
-                canonical_path.display()
-            ),
-        ));
-    }
 
     Ok(canonical_path)
 }

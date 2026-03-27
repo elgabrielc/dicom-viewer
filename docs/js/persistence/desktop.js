@@ -134,6 +134,13 @@ const _NotesDesktop = (() => {
         if (ready && typeof ready.then === 'function') {
             await ready;
         }
+        if (window.__TAURI__?.sql?.load) return window.__TAURI__;
+
+        const deadline = performance.now() + 5000;
+        while (performance.now() < deadline) {
+            if (window.__TAURI__?.sql?.load) return window.__TAURI__;
+            await new Promise(r => setTimeout(r, 50));
+        }
         return window.__TAURI__ || null;
     }
 
@@ -1002,6 +1009,10 @@ const _NotesDesktop = (() => {
             if (!core?.convertFileSrc) return '';
             const filePath = desktopReportPathCache.get(normalizeReportId(reportId)) || '';
             return filePath ? core.convertFileSrc(filePath) : '';
+        },
+
+        getReportFilePath(reportId) {
+            return desktopReportPathCache.get(normalizeReportId(reportId)) || '';
         }
     };
 

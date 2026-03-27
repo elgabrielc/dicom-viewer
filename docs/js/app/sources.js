@@ -145,6 +145,10 @@
             };
         }
         const series = studies[studyUid].series[seriesUid];
+        // DICOMDIR-indexed slices arrive without transferSyntax; update when a real file read provides it
+        if (!series.transferSyntax && meta.transferSyntax) {
+            series.transferSyntax = meta.transferSyntax;
+        }
         for (const slice of expandFrameSlices(meta, source)) {
             const sliceKey = getSliceDedupKey(slice);
             if (sliceKey && series.seenSliceKeys.has(sliceKey)) {
@@ -764,8 +768,6 @@
                     continue;
                 }
                 indexedCount += 1;
-                indexedFilePaths.add(entry.source.path);
-                addSliceToStudies(studies, entry.meta, entry.source);
             }
             stats.valid += indexedCount;
         } catch (error) {
@@ -1033,7 +1035,7 @@
         if (captureTiming && manifestEntries) {
             stats.readDirMs += performance.now() - manifestStartedAt;
         }
-        const cacheByPath = manifestEntries ? await loadDesktopScanCache(normalizedPaths) : new Map();
+        const cacheByPath = await loadDesktopScanCache(normalizedPaths);
         for (const path of normalizedPaths) {
             stack.push({ path, depth: 0, rootPath: path });
         }
