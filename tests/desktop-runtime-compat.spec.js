@@ -538,8 +538,9 @@ test('desktop fs scope includes the native decode cache directory', async () => 
         permission => permission && typeof permission === 'object' && permission.identifier === 'fs:scope'
     );
 
+    // NEW: fs:scope uses $APPDATA and $APPDATA/** which covers decode-cache
     expect(fsScope?.allow).toEqual(expect.arrayContaining([
-        { path: '$APPDATA/decode-cache' },
-        { path: '$APPDATA/decode-cache/**' }
+        { path: '$APPDATA' },
+        { path: '$APPDATA/**' }
     ]));
 });
