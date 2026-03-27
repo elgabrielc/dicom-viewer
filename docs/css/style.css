@@ -766,6 +766,48 @@ header .subtitle {
     text-decoration: underline;
 }
 
+/* Report Context Menu */
+
+.report-context-menu {
+    position: fixed;
+    z-index: 10000;
+    background: #16213e;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 4px 0;
+    min-width: 180px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+}
+
+.report-context-item {
+    padding: 7px 14px;
+    font-size: 0.82rem;
+    color: #ddd;
+    cursor: pointer;
+    letter-spacing: 0.01em;
+}
+
+.report-context-item:hover {
+    background: rgba(74, 158, 255, 0.12);
+    color: #4a9eff;
+}
+
+.report-context-sep {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.06);
+    margin: 4px 10px;
+}
+
+.report-context-meta {
+    padding: 6px 14px;
+    font-size: 0.72rem;
+    color: #555;
+    letter-spacing: 0.02em;
+    cursor: default;
+    user-select: text;
+}
+
 .report-upload {
     display: flex;
     gap: 0.5rem;

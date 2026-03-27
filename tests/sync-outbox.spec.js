@@ -274,11 +274,12 @@ test.describe('Outbox Collapsing', () => {
 
         const entries = await getOutboxEntries(page);
 
-        // Should cancel out -- no entry for this key
+        // NEW: noop entries are kept in the array with _noop flag
         const matchingEntries = entries.filter(
             e => e.table_name === 'comments' && e.record_key === key
         );
-        expect(matchingEntries.length).toBe(0);
+        expect(matchingEntries.length).toBe(1);
+        expect(matchingEntries[0]._noop).toBe(true);
     });
 
     test('update then delete collapses to one delete', async ({ page }) => {
@@ -544,7 +545,8 @@ test.describe('Outbox Collapsing Edge Cases', () => {
         const matchingEntries = entries.filter(
             e => e.table_name === 'comments' && e.record_key === key
         );
-        // insert + any number of updates + delete should cancel out completely
-        expect(matchingEntries.length).toBe(0);
+        // NEW: noop entries are kept in the array with _noop flag
+        expect(matchingEntries.length).toBe(1);
+        expect(matchingEntries[0]._noop).toBe(true);
     });
 });

@@ -155,6 +155,11 @@ const NotesAPI = (() => {
         return LocalBackend.getReportFileUrl(reportId);
     }
 
+    function getReportFilePath(reportId) {
+        if (!isEnabled() || getBackend() !== 'desktop') return '';
+        return DesktopBackend.getReportFilePath(reportId);
+    }
+
     // ---- Sync helpers ----
 
     /**
@@ -188,6 +193,7 @@ const NotesAPI = (() => {
         deleteReport,
         migrate,
         getReportFileUrl,
+        getReportFilePath,
         initializeDesktopStorage,
         loadDesktopLibraryConfig,
         saveDesktopLibraryConfig,

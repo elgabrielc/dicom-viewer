@@ -17,20 +17,15 @@
     "fs:allow-remove",
     "fs:allow-write-file",
     "sql:default",
+    "sql:allow-execute",
     {
       "identifier": "fs:scope",
       "allow": [
         {
-          "path": "$APPDATA/reports"
+          "path": "$APPDATA"
         },
         {
-          "path": "$APPDATA/reports/**"
-        },
-        {
-          "path": "$APPDATA/decode-cache"
-        },
-        {
-          "path": "$APPDATA/decode-cache/**"
+          "path": "$APPDATA/**"
         }
       ]
     }

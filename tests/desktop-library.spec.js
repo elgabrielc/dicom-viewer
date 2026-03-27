@@ -414,19 +414,24 @@ test.describe('Desktop library scanning', () => {
             };
 
             const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
-            const study = studies['study-1'];
             return {
                 studyCount: Object.keys(studies).length,
-                imageCount: study?.imageCount || 0,
                 readKeys: Object.keys(readsByPath).sort(),
                 readsByPath
             };
         });
 
-        expect(result.studyCount).toBe(1);
-        expect(result.imageCount).toBe(2);
-        expect(result.readKeys).toEqual(['/library/DICOMDIR']);
+        // DICOMDIR no longer populates studies (its metadata lacks transferSyntax).
+        // All files get normal header reads instead of being skipped.
+        expect(result.studyCount).toBe(0);
+        expect(result.readKeys).toEqual([
+            '/library/DICOMDIR',
+            '/library/images/IMG00001.dcm',
+            '/library/images/IMG00002.dcm'
+        ]);
         expect(result.readsByPath['/library/DICOMDIR']).toBe(1);
+        expect(result.readsByPath['/library/images/IMG00001.dcm']).toBe(1);
+        expect(result.readsByPath['/library/images/IMG00002.dcm']).toBe(1);
     });
 
     test('desktop path study scan starts processing before the full tree is materialized', async ({ page }) => {

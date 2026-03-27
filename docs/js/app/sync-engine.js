@@ -25,11 +25,6 @@ const _SyncEngine = (() => {
     // Backoff schedule: 30s, 60s, 120s, 300s (max 5 min)
     const BACKOFF_SCHEDULE_MS = [30000, 60000, 120000, 300000];
 
-    function dispatchSyncEvent(type, detail) {
-        if (typeof window === 'undefined') return;
-        window.dispatchEvent(new CustomEvent(type, detail === undefined ? undefined : { detail }));
-    }
-
     /**
      * SyncEngine manages the periodic sync loop.
      *
@@ -101,13 +96,13 @@ const _SyncEngine = (() => {
                 this._consecutiveErrors = 0;
                 this._retryAfterMs = 0;
                 if (!result?.skipped) {
-                    dispatchSyncEvent('sync:completed', result);
+                    this._dispatchSyncEvent('sync:completed', result);
                 }
                 return result;
             } catch (err) {
                 this._consecutiveErrors++;
                 console.warn('SyncEngine: sync failed:', err.message || err);
-                dispatchSyncEvent('sync:error', {
+                this._dispatchSyncEvent('sync:error', {
                     message: err.message || String(err),
                     consecutiveErrors: this._consecutiveErrors
                 });
@@ -118,6 +113,22 @@ const _SyncEngine = (() => {
         }
 
         // ---- Internal ----
+
+        /**
+         * Dispatch a sync lifecycle event. Delegates to the canonical
+         * implementation on _SyncOutbox when available; falls back to
+         * a direct CustomEvent dispatch otherwise.
+         *
+         * Resolved at call time (not module load) so it works regardless
+         * of script load order.
+         *
+         * @param {string} type - Event type (e.g. 'sync:started')
+         * @param {*} [detail] - Optional event detail payload
+         */
+        _dispatchSyncEvent(type, detail) {
+            if (typeof window === 'undefined') return;
+            window.dispatchEvent(new CustomEvent(type, detail === undefined ? undefined : { detail }));
+        }
 
         /**
          * Schedule the next sync tick.
@@ -173,12 +184,12 @@ const _SyncEngine = (() => {
                 // No token available -- stop the engine and signal auth required
                 // so it doesn't spin at full rate while logged out
                 this.stop();
-                dispatchSyncEvent('sync:auth-required');
+                this._dispatchSyncEvent('sync:auth-required');
                 this.onAuthRequired();
                 return { skipped: true, reason: 'no_access_token' };
             }
 
-            dispatchSyncEvent('sync:started');
+            this._dispatchSyncEvent('sync:started');
 
             // 2. Read and collapse pending outbox entries.
             // Prefer the async path (reads SQLite on desktop) over the
@@ -227,7 +238,21 @@ const _SyncEngine = (() => {
                 changes: requestChanges
             };
 
-            const response = await this._fetchSync(requestBody, accessToken);
+            let response;
+            try {
+                response = await this._fetchSync(requestBody, accessToken);
+            } catch (fetchError) {
+                // Mark outbox entries as failed for non-transient errors so the
+                // outbox tracks retry attempts and error context.  Transient
+                // errors (network offline, 429 rate-limit) will be retried by
+                // the backoff loop without penalising entries.
+                const isTransient = /network error|rate limited \(429\)/i.test(fetchError.message);
+                if (!isTransient && changes.length > 0) {
+                    const failedIds = changes.flatMap(e => e._entry_ids || [e.id]);
+                    outbox.markFailed(failedIds, fetchError.message || String(fetchError));
+                }
+                throw fetchError;
+            }
 
             // 4. Process the response
             return await this._processResponse(response, changes, noops.length);
@@ -506,15 +531,24 @@ const _SyncEngine = (() => {
                 if (!studyUid) return;
                 const deletedAt = data.deletedAt || data.deleted_at || null;
 
+                if (deletedAt) {
+                    // Remote tombstone -- only act if the study and comment
+                    // already exist locally.  Calling ensureStudy here would
+                    // create a phantom empty study entry for a record we
+                    // never had.
+                    const existingStudy = store.studies[studyUid];
+                    if (!existingStudy) return;
+                    const existing = this._findCommentByKey(existingStudy, recordKey);
+                    if (!existing) return;
+                    this._removeCommentFromStudy(existingStudy, recordKey);
+                    saveStore(store);
+                    return;
+                }
+
                 const studyEntry = ensureStudy(store, studyUid);
                 const existing = this._findCommentByKey(studyEntry, recordKey);
 
-                if (deletedAt) {
-                    // Remote tombstone -- remove from local list
-                    if (existing) {
-                        this._removeCommentFromStudy(studyEntry, recordKey);
-                    }
-                } else if (existing) {
+                if (existing) {
                     // Update existing comment
                     existing.text = data.text || '';
                     existing.updated_at = data.updated_at || Date.now();

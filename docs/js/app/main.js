@@ -239,15 +239,15 @@
 
     async function initializeDesktopLibrary() {
         try {
+            const runtime = await waitForDesktopRuntime();
+            if (!runtime?.fs || !runtime?.path) {
+                throw new Error('Desktop runtime is not ready yet.');
+            }
+
             await loadLibraryConfig();
             if (!state.libraryFolder) {
                 await displayStudies();
                 return;
-            }
-
-            const runtime = await waitForDesktopRuntime();
-            if (!runtime?.fs || !runtime?.path) {
-                throw new Error('Desktop runtime is not ready yet.');
             }
 
             const cachedStudies = await app.desktopLibrary.loadCachedStudies(state.libraryFolder);
@@ -267,7 +267,7 @@
             });
             await applyDesktopLibraryScan(state.libraryFolder, studies);
         } catch (e) {
-            await app.desktopLibrary.markScanFailed(state.libraryFolder);
+            try { await app.desktopLibrary.markScanFailed(state.libraryFolder); } catch {}
             state.libraryAvailable = !!state.libraryFolder;
             setLibraryFolderMessage(e.message || 'Failed to auto-load desktop library.', 'error');
             console.warn('Failed to auto-load desktop library:', e);

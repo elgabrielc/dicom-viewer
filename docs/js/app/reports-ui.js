@@ -172,6 +172,95 @@
         viewer.style.display = 'none';
     }
 
+    // -- Context menu --
+
+    let activeContextMenu = null;
+
+    function dismissContextMenu() {
+        if (activeContextMenu) {
+            activeContextMenu.remove();
+            activeContextMenu = null;
+        }
+    }
+
+    function formatTimestamp(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const month = d.getMonth() + 1;
+        const day = d.getDate();
+        const year = String(d.getFullYear()).slice(2);
+        let hours = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return `${month}/${day}/${year} ${hours}:${mins} ${ampm}`;
+    }
+
+    function showReportContextMenu(e, studyUid, reportId) {
+        e.preventDefault();
+        e.stopPropagation();
+        dismissContextMenu();
+
+        const report = state.studies[studyUid]?.reports?.find(r => r.id === reportId);
+        if (!report) return;
+
+        const menu = document.createElement('div');
+        menu.className = 'report-context-menu';
+
+        const isDesktop = typeof CONFIG !== 'undefined' && CONFIG.deploymentMode === 'desktop';
+
+        if (isDesktop) {
+            const revealItem = document.createElement('div');
+            revealItem.className = 'report-context-item';
+            revealItem.textContent = 'Reveal in Finder';
+            revealItem.addEventListener('click', () => {
+                dismissContextMenu();
+                revealReportInFinder(reportId);
+            });
+            menu.appendChild(revealItem);
+        }
+
+        const addedAt = report.addedAt || report.added_at;
+        if (addedAt) {
+            if (isDesktop) {
+                const sep = document.createElement('div');
+                sep.className = 'report-context-sep';
+                menu.appendChild(sep);
+            }
+            const meta = document.createElement('div');
+            meta.className = 'report-context-meta';
+            meta.textContent = `Added ${formatTimestamp(addedAt)}`;
+            menu.appendChild(meta);
+        }
+
+        const menuWidth = 200;
+        const menuHeight = 70;
+        const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
+        const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+
+        document.body.appendChild(menu);
+        activeContextMenu = menu;
+    }
+
+    async function revealReportInFinder(reportId) {
+        const filePath = notesApi.getReportFilePath(reportId);
+        if (!filePath) return;
+        try {
+            await window.__TAURI__.core.invoke('reveal_in_finder', { path: filePath });
+        } catch (err) {
+            console.error('Failed to reveal report:', err);
+        }
+    }
+
+    document.addEventListener('click', dismissContextMenu);
+    document.addEventListener('contextmenu', (e) => {
+        if (activeContextMenu && !activeContextMenu.contains(e.target)) {
+            dismissContextMenu();
+        }
+    });
+
     function attachReportEventHandlers(studyUid) {
         studiesBody.querySelectorAll(`.view-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach(btn => {
             btn.onclick = e => {
@@ -188,6 +277,33 @@
                 }
             };
         });
+
+        studiesBody.querySelectorAll(`.report-item[data-report-id]`).forEach(item => {
+            item.addEventListener('contextmenu', e => {
+                const reportId = item.dataset.reportId;
+                const studyEl = item.closest('.report-list');
+                const uid = studyEl?.dataset.studyUid || studyUid;
+                showReportContextMenu(e, uid, reportId);
+            });
+        });
+
+        // Right-click on the "1 report" toggle button
+        const toggle = studiesBody.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
+        if (toggle) {
+            toggle.addEventListener('contextmenu', e => {
+                const reports = (state.studies[studyUid]?.reports || []).filter(r => !r.deletedAt);
+                if (reports.length === 0) return;
+                // Single report: show context menu directly
+                if (reports.length === 1) {
+                    showReportContextMenu(e, studyUid, reports[0].id);
+                    return;
+                }
+                // Multiple reports: expand the panel so user can right-click individual items
+                e.preventDefault();
+                e.stopPropagation();
+                toggle.click();
+            });
+        }
     }
 
     app.reportsUi = {

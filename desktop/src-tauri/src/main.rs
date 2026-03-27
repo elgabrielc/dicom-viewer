@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod decode;
+mod scan;
 mod secure_store;
 
 use tauri::{
@@ -8,6 +9,24 @@ use tauri::{
     AppHandle, Emitter, Manager, Runtime,
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
+
+#[tauri::command]
+fn reveal_in_finder(path: String) -> Result<(), String> {
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    if meta.is_file() {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    } else {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 
 const MENU_OPEN_FOLDER: &str = "open-folder";
 const MENU_OPEN_HELP: &str = "open-help";
@@ -137,9 +156,12 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             decode::decode_frame,
             decode::take_decoded_frame,
+            decode::read_scan_header,
+            scan::read_scan_manifest,
             secure_store::load_secure_auth_state,
             secure_store::store_secure_auth_state,
-            secure_store::clear_secure_auth_state
+            secure_store::clear_secure_auth_state,
+            reveal_in_finder
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),
