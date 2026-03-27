@@ -359,19 +359,13 @@ const _SyncOutbox = (() => {
         }
 
         const collapsed = [];
-        let noopCount = 0;
         for (const [, group] of groups) {
             const result = collapseGroup(group);
             if (result) {
-                if (result._noop) {
-                    noopCount += 1;
-                    continue;
-                }
                 collapsed.push(result);
             }
         }
 
-        collapsed._noopsCleaned = noopCount;
         return collapsed;
     }
 
@@ -686,7 +680,8 @@ const _SyncOutbox = (() => {
         _saveOutbox: saveOutbox,
         _loadSyncState: loadSyncState,
         _saveSyncState: saveSyncState,
-        _mergeOperations: mergeOperations
+        _mergeOperations: mergeOperations,
+        dispatchSyncEvent
     };
 })();
 
