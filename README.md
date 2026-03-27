@@ -61,12 +61,20 @@ Open `http://localhost:5001` in Chrome or Edge.
 ### Option 3: Tauri desktop shell (desktop development)
 
 ```bash
-cd dicom-viewer/desktop
-npm install
-npx tauri dev
+cd dicom-viewer
+npm run desktop:launch
 ```
 
-This runs the desktop shell against the current `docs/` source and is the fastest way to verify desktop-only behavior while iterating.
+This is the preferred desktop dev launcher. It starts the static `docs/` server, auto-clears a stale port `1420` dev server when no desktop app is running, launches the Rust desktop binary directly, and cleans up the helper server when the session exits.
+
+If you prefer to run from inside `desktop/`, use:
+
+```bash
+cd dicom-viewer/desktop
+npm run dev:desktop
+```
+
+`npx tauri dev` still works for some workflows, but this repo's managed launcher is more reliable after failed startups because it avoids leaving orphaned `dev:web` listeners behind.
 
 ### Option 4: Build the packaged desktop app
 

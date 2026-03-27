@@ -5,6 +5,7 @@
   "description": "Tauri desktop shell for DICOM Viewer",
   "scripts": {
     "build:plain-dmg": "./scripts/build-plain-dmg.sh",
+    "dev:desktop": "./scripts/dev-desktop.sh",
     "dev:web": "python3 -m http.server 1420 --bind 127.0.0.1 --directory ../docs",
     "tauri": "tauri"
   },
