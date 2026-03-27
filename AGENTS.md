@@ -113,3 +113,18 @@ For the full beginner explanation of why this workflow exists:
 
 - `docs/AGENT_WORKTREES_EXPLAINER.md`
 - `docs/RESEARCH_POLICY.md`
+
+---
+
+## Desktop Launch
+
+When you need the desktop app in an agent worktree, prefer the managed launcher:
+
+```bash
+npm run desktop:launch
+```
+
+This starts the `docs/` dev server and the desktop binary in one process and is
+more reliable than `npx tauri dev` in this repo. In particular, it can clear a
+stale port `1420` `dev:web` server when no desktop app is running, which avoids
+the repeated `Address already in use` failure mode we have hit in prior sessions.
