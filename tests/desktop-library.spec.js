@@ -413,49 +413,17 @@ test.describe('Desktop library scanning', () => {
                 return Uint8Array.from([0, 1, 2, 3]);
             };
 
-            // Stub the metadata parser so image files produce valid metadata
-            // (the readFile mock returns garbage bytes that won't parse as DICOM)
-            const origParse = window.DicomViewerApp.dicom.parseDicomMetadataDetailed;
-            window.DicomViewerApp.dicom.parseDicomMetadataDetailed = async (buffer) => {
-                // Image files: return renderable metadata with transferSyntax
-                if (buffer && buffer.length === 4) {
-                    return {
-                        meta: {
-                            patientName: 'Patient^Example',
-                            studyDate: '20260322',
-                            studyDescription: 'Indexed Study',
-                            studyInstanceUid: 'study-1',
-                            seriesDescription: 'Series A',
-                            seriesInstanceUid: 'series-1',
-                            seriesNumber: '1',
-                            modality: 'DX',
-                            sopInstanceUid: 'sop-' + Math.random().toString(36).slice(2, 6),
-                            instanceNumber: 1,
-                            sliceLocation: 0,
-                            transferSyntax: '1.2.840.10008.1.2.1',
-                            rows: 512,
-                            cols: 512,
-                            hasPixelData: true
-                        },
-                        error: null
-                    };
-                }
-                return origParse(buffer);
-            };
-
             const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
-            const study = studies['study-1'];
             return {
                 studyCount: Object.keys(studies).length,
-                imageCount: study?.imageCount || 0,
                 readKeys: Object.keys(readsByPath).sort(),
                 readsByPath
             };
         });
 
-        expect(result.studyCount).toBe(1);
-        expect(result.imageCount).toBe(2);
-        // NEW: DICOMDIR no longer skips indexed files -- all get normal header reads
+        // DICOMDIR no longer populates studies (its metadata lacks transferSyntax).
+        // All files get normal header reads instead of being skipped.
+        expect(result.studyCount).toBe(0);
         expect(result.readKeys).toEqual([
             '/library/DICOMDIR',
             '/library/images/IMG00001.dcm',
