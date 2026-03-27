@@ -172,16 +172,114 @@
         viewer.style.display = 'none';
     }
 
-    // -- Context menu --
+    // -- Context menu (shared helpers on app.contextMenu) --
 
-    let activeContextMenu = null;
+    if (!app.contextMenu) {
+        let activeMenu = null;
+        app.contextMenu = {
+            dismiss() {
+                if (activeMenu) {
+                    activeMenu.remove();
+                    activeMenu = null;
+                }
+            },
+            show(e, items = []) {
+                e.preventDefault();
+                e.stopPropagation();
+                app.contextMenu.dismiss();
 
-    function dismissContextMenu() {
-        if (activeContextMenu) {
-            activeContextMenu.remove();
-            activeContextMenu = null;
-        }
+                if (!Array.isArray(items) || items.length === 0) {
+                    return;
+                }
+
+                const menu = document.createElement('div');
+                menu.className = 'report-context-menu';
+
+                for (const item of items) {
+                    if (item.separator) {
+                        const sep = document.createElement('div');
+                        sep.className = 'report-context-sep';
+                        menu.appendChild(sep);
+                        continue;
+                    }
+
+                    if (item.meta) {
+                        const meta = document.createElement('div');
+                        meta.className = 'report-context-meta';
+                        meta.textContent = item.meta;
+                        menu.appendChild(meta);
+                        continue;
+                    }
+
+                    const actionItem = document.createElement('div');
+                    actionItem.className = 'report-context-item';
+                    actionItem.textContent = item.label;
+                    actionItem.addEventListener('click', () => {
+                        app.contextMenu.dismiss();
+                        item.action();
+                    });
+                    menu.appendChild(actionItem);
+                }
+
+                menu.style.visibility = 'hidden';
+                document.body.appendChild(menu);
+                const rect = menu.getBoundingClientRect();
+                const x = Math.min(e.clientX, window.innerWidth - rect.width - 8);
+                const y = Math.min(e.clientY, window.innerHeight - rect.height - 8);
+                menu.style.left = `${x}px`;
+                menu.style.top = `${y}px`;
+                menu.style.visibility = '';
+                activeMenu = menu;
+            }
+        };
+
+        document.addEventListener('click', () => app.contextMenu.dismiss());
+        document.addEventListener('contextmenu', (e) => {
+            if (activeMenu && !activeMenu.contains(e.target)) {
+                app.contextMenu.dismiss();
+            }
+        });
     }
+
+    if (!app.desktopBridge) {
+        app.desktopBridge = {
+            async getRuntime() {
+                const runtime = window.__TAURI__;
+                if (typeof runtime?.core?.invoke === 'function') {
+                    return runtime;
+                }
+
+                const ready = window.__DICOM_VIEWER_TAURI_READY__;
+                if (ready && typeof ready.then === 'function') {
+                    const resolved = await ready;
+                    if (typeof resolved?.core?.invoke === 'function') {
+                        return resolved;
+                    }
+                }
+
+                return window.__TAURI__ || null;
+            },
+            async revealInFinder(path) {
+                if (!path) return false;
+
+                try {
+                    const runtime = await this.getRuntime();
+                    const invoke = runtime?.core?.invoke;
+                    if (typeof invoke !== 'function') {
+                        return false;
+                    }
+
+                    await invoke('reveal_in_finder', { path });
+                    return true;
+                } catch (err) {
+                    console.error('Failed to reveal in Finder:', err);
+                    return false;
+                }
+            }
+        };
+    }
+
+    const { show: showContextMenu } = app.contextMenu;
 
     function formatTimestamp(ts) {
         if (!ts) return '';
@@ -197,69 +295,30 @@
     }
 
     function showReportContextMenu(e, studyUid, reportId) {
-        e.preventDefault();
-        e.stopPropagation();
-        dismissContextMenu();
-
         const report = state.studies[studyUid]?.reports?.find(r => r.id === reportId);
         if (!report) return;
 
-        const menu = document.createElement('div');
-        menu.className = 'report-context-menu';
-
         const isDesktop = typeof CONFIG !== 'undefined' && CONFIG.deploymentMode === 'desktop';
+        const items = [];
 
         if (isDesktop) {
-            const revealItem = document.createElement('div');
-            revealItem.className = 'report-context-item';
-            revealItem.textContent = 'Reveal in Finder';
-            revealItem.addEventListener('click', () => {
-                dismissContextMenu();
-                revealReportInFinder(reportId);
-            });
-            menu.appendChild(revealItem);
+            items.push({ label: 'Reveal in Finder', action: () => revealReportInFinder(reportId) });
         }
 
         const addedAt = report.addedAt || report.added_at;
         if (addedAt) {
-            if (isDesktop) {
-                const sep = document.createElement('div');
-                sep.className = 'report-context-sep';
-                menu.appendChild(sep);
-            }
-            const meta = document.createElement('div');
-            meta.className = 'report-context-meta';
-            meta.textContent = `Added ${formatTimestamp(addedAt)}`;
-            menu.appendChild(meta);
+            if (isDesktop) items.push({ separator: true });
+            items.push({ meta: `Added ${formatTimestamp(addedAt)}` });
         }
 
-        const menuWidth = 200;
-        const menuHeight = 70;
-        const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
-        const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
-        menu.style.left = `${x}px`;
-        menu.style.top = `${y}px`;
-
-        document.body.appendChild(menu);
-        activeContextMenu = menu;
+        showContextMenu(e, items);
     }
 
     async function revealReportInFinder(reportId) {
         const filePath = notesApi.getReportFilePath(reportId);
         if (!filePath) return;
-        try {
-            await window.__TAURI__.core.invoke('reveal_in_finder', { path: filePath });
-        } catch (err) {
-            console.error('Failed to reveal report:', err);
-        }
+        await app.desktopBridge.revealInFinder(filePath);
     }
-
-    document.addEventListener('click', dismissContextMenu);
-    document.addEventListener('contextmenu', (e) => {
-        if (activeContextMenu && !activeContextMenu.contains(e.target)) {
-            dismissContextMenu();
-        }
-    });
 
     function attachReportEventHandlers(studyUid) {
         studiesBody.querySelectorAll(`.view-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach(btn => {
@@ -279,30 +338,35 @@
         });
 
         studiesBody.querySelectorAll(`.report-item[data-report-id]`).forEach(item => {
-            item.addEventListener('contextmenu', e => {
+            item.oncontextmenu = e => {
+                e.preventDefault();
+                e.stopPropagation();
                 const reportId = item.dataset.reportId;
                 const studyEl = item.closest('.report-list');
                 const uid = studyEl?.dataset.studyUid || studyUid;
                 showReportContextMenu(e, uid, reportId);
-            });
+            };
         });
 
         // Right-click on the "1 report" toggle button
         const toggle = studiesBody.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
         if (toggle) {
-            toggle.addEventListener('contextmenu', e => {
+            toggle.oncontextmenu = e => {
+                e.preventDefault();
+                e.stopPropagation();
+
                 const reports = (state.studies[studyUid]?.reports || []).filter(r => !r.deletedAt);
                 if (reports.length === 0) return;
+
                 // Single report: show context menu directly
                 if (reports.length === 1) {
                     showReportContextMenu(e, studyUid, reports[0].id);
                     return;
                 }
+
                 // Multiple reports: expand the panel so user can right-click individual items
-                e.preventDefault();
-                e.stopPropagation();
                 toggle.click();
-            });
+            };
         }
     }
 
