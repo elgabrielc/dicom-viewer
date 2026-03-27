@@ -20,6 +20,94 @@
     const { getTransferSyntaxInfo } = app.dicom;
     const { normalizeStudiesPayload } = app.sources;
 
+    // -- Reveal in Finder helpers --
+
+    function normalizeFinderPath(path) {
+        return String(path || '')
+            .replace(/\\/g, '/')
+            .replace(/\/+/g, '/');
+    }
+
+    function getParentDirectory(path) {
+        const normalized = normalizeFinderPath(path);
+        if (!normalized) return '';
+
+        const lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash < 0) return '';
+        if (lastSlash === 0) return '/';
+        return normalized.slice(0, lastSlash);
+    }
+
+    function getSharedParentDirectory(paths) {
+        const normalizedPaths = paths
+            .map(normalizeFinderPath)
+            .filter(Boolean);
+        if (!normalizedPaths.length) return '';
+        if (normalizedPaths.length === 1) return normalizedPaths[0];
+
+        const splitPaths = normalizedPaths.map((path) => {
+            const hasRoot = path.startsWith('/');
+            const body = hasRoot ? path.slice(1) : path;
+            const segments = body ? body.split('/') : [];
+            return hasRoot ? [''].concat(segments) : segments;
+        });
+
+        let sharedLength = splitPaths[0].length;
+        for (const segments of splitPaths.slice(1)) {
+            let index = 0;
+            while (
+                index < sharedLength
+                && index < segments.length
+                && segments[index] === splitPaths[0][index]
+            ) {
+                index += 1;
+            }
+            sharedLength = index;
+            if (sharedLength === 0) break;
+        }
+
+        if (sharedLength === 0) return '';
+
+        const sharedSegments = splitPaths[0].slice(0, sharedLength);
+        if (sharedSegments.length === 1 && sharedSegments[0] === '') {
+            return '/';
+        }
+        return sharedSegments.join('/');
+    }
+
+    function getStudyFolderPath(studyUid) {
+        const study = state.studies[studyUid];
+        if (!study?.series) return '';
+
+        const directories = [];
+        for (const series of Object.values(study.series)) {
+            const filePath = series.slices?.[0]?.source?.path;
+            const parentDir = getParentDirectory(filePath);
+            if (parentDir) {
+                directories.push(parentDir);
+            }
+        }
+
+        if (directories.length === 0) return '';
+        if (directories.length === 1) return directories[0];
+        return getSharedParentDirectory(directories) || directories[0];
+    }
+
+    function getSeriesFilePath(studyUid, seriesUid) {
+        return state.studies[studyUid]?.series?.[seriesUid]?.slices?.[0]?.source?.path || '';
+    }
+
+    async function revealInFinder(path) {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (!path || typeof invoke !== 'function') return;
+
+        try {
+            await invoke('reveal_in_finder', { path });
+        } catch (err) {
+            console.error('Failed to reveal in Finder:', err);
+        }
+    }
+
     const openPanels = {
         studyPanels: new Set(),
         seriesPanels: new Map(),
@@ -364,13 +452,13 @@
                     <td><span class="modality-badge">${escapeHtml(study.modality || '-')}</span></td>
                     <td>${study.seriesCount}</td>
                     <td>${study.imageCount}</td>
-                    <td class="comment-cell" onclick="event.stopPropagation()">
-                        <button class="comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}">
+                    <td class="comment-cell" onclick="event.stopPropagation()" oncontextmenu="event.preventDefault(); event.stopPropagation()">
+                        <button class="comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" oncontextmenu="event.preventDefault(); event.stopPropagation()">
                             ${commentCount > 0 ? `${commentCount} comment${commentCount > 1 ? 's' : ''}` : 'Add comment'}
                         </button>
                     </td>
-                    <td class="report-cell" onclick="event.stopPropagation()">
-                        <button class="report-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}">
+                    <td class="report-cell" onclick="event.stopPropagation()" oncontextmenu="event.preventDefault(); event.stopPropagation()">
+                        <button class="report-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" oncontextmenu="event.preventDefault(); event.stopPropagation()">
                             ${reportCount > 0 ? `${reportCount} report${reportCount > 1 ? 's' : ''}` : 'Add report'}
                         </button>
                     </td>
@@ -416,7 +504,7 @@
                                             ${warningIcon}
                                             <span class="series-name">${escapeHtml(series.seriesDescription || 'Series ' + (series.seriesNumber || '?'))}</span>
                                             <span class="series-count">${series.slices.length} slices</span>
-                                            <button class="comment-toggle series-comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}" onclick="event.stopPropagation()">
+                                            <button class="comment-toggle series-comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}" onclick="event.stopPropagation()" oncontextmenu="event.preventDefault(); event.stopPropagation()">
                                                 ${seriesCommentCount > 0 ? `${seriesCommentCount} comment${seriesCommentCount > 1 ? 's' : ''}` : 'Add comment'}
                                             </button>
                                         </div>
@@ -517,6 +605,50 @@
                 viewer.openViewerWithSeries(item.dataset.studyUid, item.dataset.seriesUid);
             };
         });
+
+        if (config?.deploymentMode === 'desktop' && app.contextMenu) {
+            studiesBody.oncontextmenu = (e) => {
+                const seriesCommentToggle = e.target.closest('.series-comment-toggle');
+                const commentCell = e.target.closest('.comment-cell');
+                const reportCell = e.target.closest('.report-cell');
+                if (seriesCommentToggle || commentCell || reportCell) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+
+                const seriesMainRow = e.target.closest('.series-main-row');
+                if (seriesMainRow) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const item = seriesMainRow.closest('.series-dropdown-item');
+                    const filePath = getSeriesFilePath(item.dataset.studyUid, item.dataset.seriesUid);
+                    if (!filePath) return;
+
+                    app.contextMenu.show(e, [
+                        { label: 'Reveal in Finder', action: () => revealInFinder(filePath) }
+                    ]);
+                    return;
+                }
+
+                const studyRow = e.target.closest('.study-row');
+                if (studyRow) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const folderPath = getStudyFolderPath(studyRow.dataset.uid);
+                    if (!folderPath) return;
+
+                    app.contextMenu.show(e, [
+                        { label: 'Reveal in Finder', action: () => revealInFinder(folderPath) }
+                    ]);
+                    return;
+                }
+            };
+        } else {
+            studiesBody.oncontextmenu = null;
+        }
 
         studiesBody.querySelectorAll('.comment-submit:not([data-series-uid])').forEach(btn => {
             btn.onclick = () => {

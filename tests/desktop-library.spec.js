@@ -235,6 +235,89 @@ async function installMockDesktop(page, options = {}) {
     }, options);
 }
 
+function buildRevealInFinderStudies({ withReport = false } = {}) {
+    const studyUid = '1.2.840.reveal.study';
+    const seriesAUid = '1.2.840.reveal.series.a';
+    const seriesBUid = '1.2.840.reveal.series.b';
+
+    return {
+        [studyUid]: {
+            patientName: 'Reveal, Test',
+            studyDate: '20240101',
+            studyDescription: 'Reveal test study',
+            studyInstanceUid: studyUid,
+            modality: 'CT',
+            seriesCount: 2,
+            imageCount: 2,
+            comments: [],
+            reports: withReport ? [{
+                id: 'report-1',
+                name: 'report.pdf',
+                type: 'pdf',
+                size: 2048,
+                addedAt: 1710000000000
+            }] : [],
+            series: {
+                [seriesAUid]: {
+                    seriesInstanceUid: seriesAUid,
+                    seriesDescription: 'Series A',
+                    seriesNumber: '1',
+                    transferSyntax: '1.2.840.10008.1.2.1',
+                    comments: [],
+                    slices: [{
+                        source: {
+                            kind: 'path',
+                            path: '/library/study/series-a/IMG0001.dcm'
+                        },
+                        frameIndex: 0,
+                        instanceNumber: 1,
+                        sliceLocation: 1
+                    }]
+                },
+                [seriesBUid]: {
+                    seriesInstanceUid: seriesBUid,
+                    seriesDescription: 'Series B',
+                    seriesNumber: '2',
+                    transferSyntax: '1.2.840.10008.1.2.1',
+                    comments: [],
+                    slices: [{
+                        source: {
+                            kind: 'path',
+                            path: '/library/study/series-b/IMG0001.dcm'
+                        },
+                        frameIndex: 0,
+                        instanceNumber: 1,
+                        sliceLocation: 2
+                    }]
+                }
+            }
+        }
+    };
+}
+
+async function seedDesktopStudies(page, studies) {
+    await page.evaluate(async (studies) => {
+        const app = window.DicomViewerApp;
+        app.state.libraryAvailable = true;
+        app.state.studies = studies;
+        await app.library.displayStudies();
+    }, studies);
+}
+
+async function installRevealInvokeSpy(page) {
+    await page.evaluate(() => {
+        window.__revealInvokeCalls = [];
+        const originalInvoke = window.__TAURI__.core.invoke.bind(window.__TAURI__.core);
+        window.__TAURI__.core.invoke = async (command, args) => {
+            if (command === 'reveal_in_finder') {
+                window.__revealInvokeCalls.push(args.path);
+                return null;
+            }
+            return originalInvoke(command, args);
+        };
+    });
+}
+
 test.describe('Desktop library scanning', () => {
     test('desktop path scan prefers the native manifest when available', async ({ page }) => {
         await installMockDesktop(page, {
@@ -2726,5 +2809,133 @@ test.describe('Desktop library scanning', () => {
         expect(files.some((path) => path.includes('/loop'))).toBe(false);
         expect(files.some((path) => path.includes('file-20.dcm'))).toBe(true);
         expect(files.some((path) => path.includes('file-21.dcm'))).toBe(false);
+    });
+});
+
+test.describe('Desktop library Reveal in Finder', () => {
+    test('study and series rows reveal the expected Finder targets', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        await installRevealInvokeSpy(page);
+        await seedDesktopStudies(page, buildRevealInFinderStudies());
+
+        const studyRow = page.locator('#studiesBody .study-row').first();
+        const studyDropdown = page.locator('.series-dropdown-row').first();
+
+        await expect(studyDropdown).toBeHidden();
+        await studyRow.locator('td').nth(1).click({ button: 'right' });
+        await expect(page.locator('.report-context-menu')).toBeVisible();
+        await expect(studyDropdown).toBeHidden();
+        await page.locator('.report-context-item').click();
+
+        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual([
+            '/library/study'
+        ]);
+
+        await studyRow.click();
+        await expect(studyDropdown).toBeVisible();
+
+        const seriesRow = page.locator('.series-main-row').first();
+        await seriesRow.click({ button: 'right' });
+        await expect(page.locator('.report-context-menu')).toBeVisible();
+        await page.locator('.report-context-item').click();
+
+        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual([
+            '/library/study',
+            '/library/study/series-a/IMG0001.dcm'
+        ]);
+
+        await expect(page.locator('#viewerView')).toBeHidden();
+    });
+
+    test('guarded report and series comment targets do not open Reveal in Finder or trigger primary actions', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        await seedDesktopStudies(page, buildRevealInFinderStudies());
+
+        const result = await page.evaluate(() => {
+            const dispatchContextMenu = (target) => {
+                target.dispatchEvent(new MouseEvent('contextmenu', {
+                    bubbles: true,
+                    cancelable: true,
+                    button: 2,
+                    clientX: 120,
+                    clientY: 160
+                }));
+            };
+
+            const removeMenus = () => {
+                document.querySelectorAll('.report-context-menu').forEach((menu) => menu.remove());
+            };
+
+            const studyRow = document.querySelector('#studiesBody .study-row');
+            const studyDropdown = document.querySelector('.series-dropdown-row');
+            const reportCell = studyRow.querySelector('.report-cell');
+
+            removeMenus();
+
+            dispatchContextMenu(reportCell);
+            const afterReportCell = {
+                menuCount: document.querySelectorAll('.report-context-menu').length,
+                studyDropdownDisplay: studyDropdown.style.display
+            };
+
+            removeMenus();
+            studyRow.click();
+            const seriesCommentPanel = document.querySelector('.series-comment-panel');
+            const seriesCommentToggle = document.querySelector('.series-comment-toggle');
+            dispatchContextMenu(seriesCommentToggle);
+            const afterSeriesCommentToggle = {
+                menuCount: document.querySelectorAll('.report-context-menu').length,
+                seriesCommentPanelDisplay: seriesCommentPanel.style.display,
+                viewerDisplay: document.querySelector('#viewerView').style.display
+            };
+
+            return {
+                afterReportCell,
+                afterSeriesCommentToggle
+            };
+        });
+
+        expect(result).toEqual({
+            afterReportCell: {
+                menuCount: 0,
+                studyDropdownDisplay: 'none'
+            },
+            afterSeriesCommentToggle: {
+                menuCount: 0,
+                seriesCommentPanelDisplay: 'none',
+                viewerDisplay: 'none'
+            }
+        });
+    });
+
+    test('report right-click still uses Reveal in Finder through the shared menu helper', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        await installRevealInvokeSpy(page);
+        await seedDesktopStudies(page, buildRevealInFinderStudies({ withReport: true }));
+
+        await page.evaluate(() => {
+            window.NotesAPI.getReportFilePath = (reportId) => {
+                return reportId === 'report-1' ? '/reports/report-1.pdf' : '';
+            };
+        });
+
+        const reportToggle = page.locator('.report-toggle').first();
+        await reportToggle.click({ button: 'right' });
+        await expect(page.locator('.report-context-menu')).toBeVisible();
+        await expect(page.locator('.report-context-item')).toHaveText('Reveal in Finder');
+        await page.locator('.report-context-item').click();
+
+        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual([
+            '/reports/report-1.pdf'
+        ]);
     });
 });
