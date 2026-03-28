@@ -838,10 +838,12 @@
         container.style.display = 'block';
 
         // Phase-appropriate heading
-        if (stats.phase === 'scan') {
+        if (stats.phase === 'scanning') {
             textEl.textContent = 'Scanning source folder...';
-        } else if (stats.phase === 'copy') {
+        } else if (stats.phase === 'importing') {
             textEl.textContent = 'Importing files...';
+        } else if (stats.phase === 'preparing') {
+            textEl.textContent = 'Preparing import...';
         } else {
             textEl.textContent = 'Importing...';
         }

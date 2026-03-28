@@ -165,7 +165,7 @@
             const payload = {
                 version: this.SNAPSHOT_VERSION,
                 folder: folderPath,
-                savedAt: new Date().toISOString(),
+                savedAt: Date.now(),
                 studies: studies || {}
             };
             const bytes = new TextEncoder().encode(`${JSON.stringify(payload)}\n`);
@@ -240,7 +240,7 @@
         async markScanComplete(folderPath) {
             const config = await this.getConfig();
             config.folder = folderPath || config.folder || null;
-            config.lastScan = new Date().toISOString();
+            config.lastScan = Date.now();
             return await this.saveConfig(config);
         },
 
@@ -328,7 +328,7 @@
                 await notesApi.saveImportJob({
                     id: jobId,
                     source_path: Array.isArray(paths) ? paths.join(', ') : String(paths),
-                    started_at: new Date().toISOString(),
+                    started_at: Date.now(),
                     status: 'running'
                 });
             } catch (error) {
@@ -363,7 +363,7 @@
                 // Record import job completion
                 try {
                     await notesApi.updateImportJob(jobId, {
-                        completed_at: new Date().toISOString(),
+                        completed_at: Date.now(),
                         imported_count: result.imported || 0,
                         skipped_count: result.skipped || 0,
                         error_count: result.errors || 0,
@@ -384,7 +384,7 @@
                 // Record import job failure
                 try {
                     await notesApi.updateImportJob(jobId, {
-                        completed_at: new Date().toISOString(),
+                        completed_at: Date.now(),
                         error_count: 1,
                         status: error.name === 'AbortError' ? 'aborted' : 'failed'
                     });
