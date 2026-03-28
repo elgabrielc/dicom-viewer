@@ -37,7 +37,6 @@
   "bundle": {
     "active": true,
     "macOS": {
-      "signingIdentity": "Developer ID Application: rafael casalduc (Z346MSW259)",
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "11.0"
     }
