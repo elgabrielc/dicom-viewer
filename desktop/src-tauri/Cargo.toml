@@ -1,7 +1,7 @@
 [package]
 name = "dicom-viewer-desktop"
 version = "0.1.0"
-description = "Tauri desktop shell for DICOM Viewer"
+description = "myradone -- your medical imaging library"
 authors = ["Gabriel Casalduc <gabriel@divergent.health>"]
 license = "MIT"
 edition = "2021"

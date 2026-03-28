@@ -2,7 +2,7 @@
   "name": "dicom-viewer-desktop",
   "private": true,
   "version": "0.1.0",
-  "description": "Tauri desktop shell for DICOM Viewer",
+  "description": "myradone -- your medical imaging library",
   "scripts": {
     "build:plain-dmg": "./scripts/build-plain-dmg.sh",
     "dev:desktop": "./scripts/dev-desktop.sh",
