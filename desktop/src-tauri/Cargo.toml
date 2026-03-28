@@ -2,7 +2,7 @@
 name = "dicom-viewer-desktop"
 version = "0.1.0"
 description = "Tauri desktop shell for DICOM Viewer"
-authors = ["Gabriel Casalduc <rgc@alumni.stanford.edu>"]
+authors = ["Gabriel Casalduc <gabriel@divergent.health>"]
 license = "MIT"
 edition = "2021"
 rust-version = "1.77.2"
