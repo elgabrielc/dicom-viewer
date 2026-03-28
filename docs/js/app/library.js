@@ -272,13 +272,22 @@
                     return;
                 }
 
-                libraryFolderInput.value = folder;
-
-                const studies = await app.desktopLibrary.loadStudies(folder, {
-                    onProgress: stats => updateDesktopScanMessage(stats)
-                });
-                if (await applyDesktopLibraryScan(folder, studies)) {
-                    setLibraryFolderMessage('Library folder updated.', 'success');
+                if (state.managedLibrary) {
+                    // Import already ran inside pickAndSetFolder; now rescan the managed library
+                    const libraryPath = await app.importPipeline.getLibraryPath();
+                    const studies = await app.desktopLibrary.loadStudies(libraryPath, {
+                        onProgress: stats => updateDesktopScanMessage(stats)
+                    });
+                    await applyDesktopLibraryScan(libraryPath, studies);
+                    setLibraryFolderMessage('Import complete. Library updated.', 'success');
+                } else {
+                    libraryFolderInput.value = folder;
+                    const studies = await app.desktopLibrary.loadStudies(folder, {
+                        onProgress: stats => updateDesktopScanMessage(stats)
+                    });
+                    if (await applyDesktopLibraryScan(folder, studies)) {
+                        setLibraryFolderMessage('Library folder updated.', 'success');
+                    }
                 }
                 await displayStudies();
                 return;
@@ -335,15 +344,21 @@
         refreshLibraryBtn.textContent = 'Refreshing...';
         try {
             if (config?.deploymentMode === 'desktop') {
-                const payload = await app.desktopLibrary.getConfig();
-                if (!payload.folder) {
-                    throw new Error('Choose a library folder first.');
+                let scanFolder;
+                if (state.managedLibrary) {
+                    scanFolder = await app.importPipeline.getLibraryPath();
+                } else {
+                    const payload = await app.desktopLibrary.getConfig();
+                    if (!payload.folder) {
+                        throw new Error('Choose a library folder first.');
+                    }
+                    scanFolder = payload.folder;
                 }
 
-                const studies = await app.desktopLibrary.loadStudies(payload.folder, {
+                const studies = await app.desktopLibrary.loadStudies(scanFolder, {
                     onProgress: stats => updateDesktopScanMessage(stats)
                 });
-                await applyDesktopLibraryScan(payload.folder, studies);
+                await applyDesktopLibraryScan(scanFolder, studies);
                 await displayStudies();
                 return;
             }

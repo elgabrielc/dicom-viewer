@@ -218,6 +218,9 @@
         // Step (c): process files with bounded concurrency
         const fs = window.__TAURI__.fs;
         let fileIndex = 0;
+        // Track in-flight destinations to prevent concurrent workers from
+        // racing on the same <Study>/<Series>/<SOP>.dcm path.
+        const claimedDestinations = new Set();
 
         async function processNextFile() {
             while (fileIndex < filePaths.length) {
@@ -231,7 +234,7 @@
                 }
 
                 try {
-                    await processOneFile(fs, libraryRoot, filePath, stats, studies);
+                    await processOneFile(fs, libraryRoot, filePath, stats, studies, claimedDestinations);
                 } catch (error) {
                     if (error.name === 'AbortError') throw error;
                     stats.errors++;
@@ -271,7 +274,7 @@
     /**
      * Process a single file: read, parse, deduplicate, and copy.
      */
-    async function processOneFile(fs, libraryRoot, filePath, stats, studies) {
+    async function processOneFile(fs, libraryRoot, filePath, stats, studies, claimedDestinations) {
         // Read the entire file (we need the full buffer for copying anyway)
         const buffer = await fs.readFile(filePath);
 
@@ -293,6 +296,13 @@
 
         // Build the destination path
         const destPath = buildDestinationPath(libraryRoot, meta);
+
+        // Prevent concurrent workers from racing on the same destination
+        if (claimedDestinations.has(destPath)) {
+            stats.skipped++;
+            return;
+        }
+        claimedDestinations.add(destPath);
 
         // Check if destination already exists (deduplication)
         const destExists = await fs.exists(destPath);
