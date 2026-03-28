@@ -804,17 +804,130 @@
         displayStudies();
     }
 
+    // -- Import progress & result UI --
+
+    let dismissHandlerWired = false;
+
+    function updateImportProgress(stats) {
+        const container = document.getElementById('importProgress');
+        const textEl = document.getElementById('importProgressText');
+        const detailEl = document.getElementById('importProgressDetail');
+        const fillEl = document.getElementById('importProgressFill');
+        if (!container || !textEl || !detailEl || !fillEl) return;
+
+        if (!stats || stats.phase === 'complete') {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+
+        // Phase-appropriate heading
+        if (stats.phase === 'scan') {
+            textEl.textContent = 'Scanning source folder...';
+        } else if (stats.phase === 'copy') {
+            textEl.textContent = 'Importing files...';
+        } else {
+            textEl.textContent = 'Importing...';
+        }
+
+        // Detail line: processed/discovered with breakdown
+        const processed = stats.processed || 0;
+        const discovered = stats.discovered || 0;
+        const copied = stats.copied || 0;
+        const skipped = stats.skipped || 0;
+        const invalid = stats.invalid || 0;
+        const errors = stats.errors || 0;
+
+        const parts = [];
+        if (copied > 0) parts.push(`${copied} copied`);
+        if (skipped > 0) parts.push(`${skipped} skipped`);
+        if (invalid > 0) parts.push(`${invalid} invalid`);
+        if (errors > 0) parts.push(`${errors} errors`);
+
+        let detail = `${processed}/${discovered} files processed`;
+        if (parts.length > 0) {
+            detail += ` (${parts.join(', ')})`;
+        }
+        detailEl.textContent = detail;
+
+        // Progress bar width
+        const pct = discovered > 0 ? Math.min(100, Math.round((processed / discovered) * 100)) : 0;
+        fillEl.style.width = `${pct}%`;
+        // Override the pulse animation with a determinate bar
+        fillEl.style.animation = 'none';
+    }
+
+    function hideImportProgress() {
+        const container = document.getElementById('importProgress');
+        if (container) container.style.display = 'none';
+    }
+
+    function displayImportResult(result) {
+        const banner = document.getElementById('importResultBanner');
+        const textEl = document.getElementById('importResultText');
+        const dismissBtn = document.getElementById('importResultDismiss');
+        if (!banner || !textEl) return;
+
+        const imported = result.imported || 0;
+        const skipped = result.skipped || 0;
+        const invalid = result.invalid || 0;
+        const errors = result.errors || 0;
+        const collisions = result.collisions || 0;
+        const duration = result.duration;
+
+        // Build summary message
+        const messageParts = [];
+        messageParts.push(`Imported ${imported} file${imported !== 1 ? 's' : ''}`);
+        if (skipped > 0) {
+            messageParts.push(`${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped`);
+        }
+        if (invalid > 0) {
+            messageParts.push(`${invalid} invalid`);
+        }
+        if (errors > 0) {
+            messageParts.push(`${errors} error${errors !== 1 ? 's' : ''}`);
+        }
+
+        let message = messageParts.join('. ') + '.';
+        if (duration != null) {
+            const seconds = (duration / 1000).toFixed(1);
+            message += ` (${seconds}s)`;
+        }
+        if (collisions > 0) {
+            message += ` Warning: ${collisions} file collision${collisions !== 1 ? 's' : ''} detected.`;
+        }
+
+        textEl.textContent = message;
+
+        // Tone: warning if there were errors or collisions, success otherwise
+        const hasIssues = errors > 0 || collisions > 0;
+        banner.className = `import-result-banner ${hasIssues ? 'warning' : 'success'}`;
+        banner.style.display = 'flex';
+
+        // Wire dismiss button on first call
+        if (!dismissHandlerWired && dismissBtn) {
+            dismissBtn.addEventListener('click', () => {
+                banner.style.display = 'none';
+            });
+            dismissHandlerWired = true;
+        }
+    }
+
     app.library = {
         applyDesktopLibraryScan,
         applyDesktopLibrarySnapshot,
         applyLibraryConfigPayload,
+        displayImportResult,
         displayStudies,
         handleSortClick,
+        hideImportProgress,
         loadLibraryConfig,
         refreshLibrary,
         saveLibraryFolderConfig,
         setLibraryFolderMessage,
         setLibraryFolderStatus,
-        updateDesktopScanMessage
+        updateDesktopScanMessage,
+        updateImportProgress
     };
 })();

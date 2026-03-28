@@ -1844,3 +1844,80 @@ header .subtitle {
         display: none;
     }
 }
+
+/* ==========================================================================
+   IMPORT PROGRESS & RESULT BANNER
+   Desktop copy-on-import UI feedback
+   ========================================================================== */
+
+/* Inline progress block shown during import */
+.import-progress {
+    margin: 1rem 0;
+    padding: 1rem 1.25rem;
+    background-color: #16213e;
+    border-radius: 8px;
+    border: 1px solid #1a1a3e;
+}
+
+.import-progress .progress-bar {
+    margin-top: 0.75rem;
+}
+
+.import-progress .progress-fill {
+    animation: none;
+    transition: width 0.3s ease;
+}
+
+.import-progress-text {
+    font-size: 0.95rem;
+    color: #e0e0e0;
+    margin-bottom: 0.25rem;
+}
+
+.import-progress-detail {
+    font-size: 0.82rem;
+    color: #888;
+}
+
+/* Result banner -- fixed notification after import completes */
+.import-result-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0.75rem 0;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.import-result-banner.success {
+    background-color: #0d2818;
+    border: 1px solid #1a4d2e;
+    color: #7ed39a;
+}
+
+.import-result-banner.warning {
+    background-color: #2a1f0a;
+    border: 1px solid #4d3e14;
+    color: #f0cc6b;
+}
+
+.import-result-dismiss {
+    padding: 0.15rem 0.5rem;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background-color: transparent;
+    color: inherit;
+    font-size: 1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    line-height: 1;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.import-result-dismiss:hover {
+    opacity: 1;
+}
