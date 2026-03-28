@@ -30,9 +30,11 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
 
 const MENU_OPEN_FOLDER: &str = "open-folder";
 const MENU_SHOW_LIBRARY: &str = "show-library-in-finder";
+const MENU_CHECK_UPDATES: &str = "check-for-updates";
 const MENU_OPEN_HELP: &str = "open-help";
 const EVENT_OPEN_FOLDER: &str = "desktop://open-folder";
 const EVENT_SHOW_LIBRARY: &str = "desktop://show-library-in-finder";
+const EVENT_CHECK_UPDATES: &str = "desktop://check-for-updates";
 const EVENT_OPEN_HELP: &str = "desktop://open-help";
 const DESKTOP_DB_URL: &str = "sqlite:viewer.db";
 
@@ -58,8 +60,12 @@ fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> 
     let show_library =
         MenuItemBuilder::with_id(MENU_SHOW_LIBRARY, "Show Library in Finder").build(manager)?;
     let open_help = MenuItemBuilder::with_id(MENU_OPEN_HELP, "Viewer Help").build(manager)?;
+    let check_updates =
+        MenuItemBuilder::with_id(MENU_CHECK_UPDATES, "Check for Updates...").build(manager)?;
     let app_menu = SubmenuBuilder::new(manager, &display_name)
         .about(Some(about_metadata))
+        .separator()
+        .item(&check_updates)
         .separator()
         .services()
         .separator()
@@ -161,6 +167,8 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(DESKTOP_DB_URL, desktop_db_migrations())
@@ -179,6 +187,7 @@ fn main() {
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),
             MENU_SHOW_LIBRARY => emit_menu_event(app, EVENT_SHOW_LIBRARY),
+            MENU_CHECK_UPDATES => emit_menu_event(app, EVENT_CHECK_UPDATES),
             MENU_OPEN_HELP => emit_menu_event(app, EVENT_OPEN_HELP),
             _ => {}
         })

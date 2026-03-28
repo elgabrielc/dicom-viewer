@@ -84,6 +84,9 @@ const CONFIG = {
             // Only when running with the Flask server or cloud platform
             notesServer: mode === 'personal' || mode === 'cloud',
 
+            // Auto-update -- desktop app checks for new versions
+            autoUpdate: mode === 'desktop',
+
             // Cloud sync (future feature)
             // Only available on the cloud platform
             cloudSync: mode === 'cloud',

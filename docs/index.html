@@ -57,6 +57,13 @@ Copyright (c) 2026 Divergent Health Technologies
     <script src="js/persistence/dispatcher.js"></script>
 </head>
 <body>
+    <!-- UPDATE BANNER (desktop mode only) -->
+    <div id="updateBanner" class="update-banner" style="display: none;">
+        <span id="updateBannerText"></span>
+        <button id="updateBannerAction" class="update-banner-btn primary"></button>
+        <button id="updateBannerDismiss" class="update-banner-btn">Dismiss</button>
+    </div>
+
     <!-- SYNC CONFLICT BANNER (cloud mode only) -->
     <div id="syncConflictBanner" class="sync-conflict-banner" style="display: none;">
         <span id="syncConflictText"></span>
@@ -270,6 +277,7 @@ Copyright (c) 2026 Divergent Health Technologies
     <script src="js/app/sync-status-ui.js"></script>
     <script src="js/app/sync-engine.js"></script>
     <script src="js/app/account-ui.js"></script>
+    <script src="js/app/update-ui.js"></script>
     <script src="js/app/main.js"></script>
 </body>
 </html>
