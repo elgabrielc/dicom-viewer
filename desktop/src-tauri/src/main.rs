@@ -39,8 +39,9 @@ const DESKTOP_DB_URL: &str = "sqlite:viewer.db";
 fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
     let package_info = manager.package_info();
     let config = manager.config();
+    let display_name = String::from("myradone");
     let about_metadata = AboutMetadata {
-        name: Some(package_info.name.clone()),
+        name: Some(display_name.clone()),
         version: Some(package_info.version.to_string()),
         copyright: config.bundle.copyright.clone(),
         authors: config
@@ -57,7 +58,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> 
     let show_library =
         MenuItemBuilder::with_id(MENU_SHOW_LIBRARY, "Show Library in Finder").build(manager)?;
     let open_help = MenuItemBuilder::with_id(MENU_OPEN_HELP, "Viewer Help").build(manager)?;
-    let app_menu = SubmenuBuilder::new(manager, package_info.name.clone())
+    let app_menu = SubmenuBuilder::new(manager, &display_name)
         .about(Some(about_metadata))
         .separator()
         .services()

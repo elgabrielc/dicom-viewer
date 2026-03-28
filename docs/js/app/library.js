@@ -870,8 +870,8 @@
         const count = studyKeys.length;
         statsEl.textContent = `${count} ${count === 1 ? 'study' : 'studies'}`;
 
-        // Relative timestamp from state.lastScan or fallback
-        if (state.lastScan) {
+        // Relative timestamp from state.lastScan (only show when we have a real value)
+        if (state.lastScan && typeof state.lastScan === 'number') {
             const elapsed = Date.now() - state.lastScan;
             if (elapsed < 60000) {
                 timestampEl.textContent = 'Last updated just now';
@@ -883,7 +883,7 @@
                 timestampEl.textContent = `Last updated ${hours}h ago`;
             }
         } else {
-            timestampEl.textContent = 'Last updated just now';
+            timestampEl.textContent = '';
         }
     }
 
