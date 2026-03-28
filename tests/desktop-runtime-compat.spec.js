@@ -125,7 +125,6 @@ test('desktop runtime shim enables desktop mode when only __TAURI_INTERNALS__ is
         hasCoreInvoke: typeof window.__TAURI__?.core?.invoke === 'function',
         hasDialogApi: typeof window.__TAURI__?.dialog?.open === 'function',
         hasFsApi: typeof window.__TAURI__?.fs?.readDir === 'function',
-        libraryConfigVisible: getComputedStyle(document.getElementById('libraryFolderConfig')).display !== 'none'
     }));
 
     expect(result.deploymentMode).toBe('desktop');
@@ -133,7 +132,6 @@ test('desktop runtime shim enables desktop mode when only __TAURI_INTERNALS__ is
     expect(result.hasCoreInvoke).toBe(true);
     expect(result.hasDialogApi).toBe(true);
     expect(result.hasFsApi).toBe(true);
-    expect(result.libraryConfigVisible).toBe(true);
 });
 
 test('deployment mode detects packaged Tauri origins before globals are ready', async ({ page }) => {

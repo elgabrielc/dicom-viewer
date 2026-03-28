@@ -179,14 +179,17 @@
 
     async function applyDesktopLibraryScan(folder, studies) {
         applyDesktopLibraryStudies(folder, studies);
+        state.lastScan = Date.now();
         if (Object.keys(studies).length > 0) {
             await app.desktopLibrary.markScanComplete(folder);
             setLibraryFolderMessage('');
+            updateLibraryStatusFooter();
             return true;
         }
 
         await app.desktopLibrary.markScanFailed(folder);
         setLibraryFolderMessage(`No DICOM files found in ${folder}.`, 'warning');
+        updateLibraryStatusFooter();
         return false;
     }
 
@@ -234,9 +237,32 @@
     }
 
     async function loadLibraryConfig() {
+        // Wire the "choose a folder" link (once)
+        const chooseLink = document.getElementById('chooseImportFolder');
+        if (chooseLink && !chooseLink._wired) {
+            chooseLink.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                saveLibraryFolderConfig();
+            });
+            chooseLink._wired = true;
+        }
+
         if (config?.deploymentMode === 'desktop') {
             libraryFolderInput.readOnly = true;
             saveLibraryFolderBtn.textContent = 'Choose...';
+
+            // In managed mode, hide the folder config section and show
+            // consumer-friendly UI elements instead
+            if (state.managedLibrary) {
+                libraryFolderConfig.style.display = 'none';
+                if (chooseLink) chooseLink.style.display = 'inline-block';
+                const mainText = document.querySelector('#folderZone .main-text');
+                if (mainText) mainText.textContent = 'Drop a folder to import';
+            } else {
+                if (chooseLink) chooseLink.style.display = 'none';
+            }
+
             const payload = await app.desktopLibrary.getConfig();
             applyLibraryConfigPayload({
                 folder: payload.folder || '',
@@ -245,6 +271,9 @@
             });
             return payload;
         }
+
+        // Non-desktop modes: hide managed-only elements
+        if (chooseLink) chooseLink.style.display = 'none';
 
         libraryFolderInput.readOnly = false;
         saveLibraryFolderBtn.textContent = 'Save';
@@ -340,8 +369,6 @@
         }
 
         refreshLibraryBtn.disabled = true;
-        const previousText = refreshLibraryBtn.textContent;
-        refreshLibraryBtn.textContent = 'Refreshing...';
         try {
             if (config?.deploymentMode === 'desktop') {
                 let scanFolder;
@@ -384,7 +411,6 @@
             alert(`Failed to refresh library: ${e.message}`);
         } finally {
             refreshLibraryBtn.disabled = false;
-            refreshLibraryBtn.textContent = previousText;
         }
     }
 
@@ -398,7 +424,28 @@
         await notesUi.loadNotesForStudies();
 
         refreshLibraryBtn.style.display = state.libraryAvailable ? 'inline-block' : 'none';
-        libraryFolderConfig.style.display = (state.libraryAvailable || state.libraryConfigReachable) ? 'block' : 'none';
+
+        // In managed desktop mode, keep folder config hidden
+        if (config?.deploymentMode === 'desktop' && state.managedLibrary) {
+            libraryFolderConfig.style.display = 'none';
+        } else {
+            libraryFolderConfig.style.display = (state.libraryAvailable || state.libraryConfigReachable) ? 'block' : 'none';
+        }
+
+        // Toggle compact drop zone and de-emphasized samples in managed mode
+        const folderZone = document.getElementById('folderZone');
+        const sampleSection = document.querySelector('.sample-section');
+        const hasStudies = Object.keys(state.studies).length > 0;
+
+        if (state.managedLibrary && hasStudies) {
+            if (folderZone) folderZone.classList.add('compact');
+            if (sampleSection) sampleSection.classList.add('de-emphasized');
+        } else {
+            if (folderZone) folderZone.classList.remove('compact');
+            if (sampleSection) sampleSection.classList.remove('de-emphasized');
+        }
+
+        updateLibraryStatusFooter();
 
         const studies = Object.values(state.studies);
         const { column, direction } = state.studySort;
@@ -804,6 +851,39 @@
         });
     }
 
+    function updateLibraryStatusFooter() {
+        const footer = document.getElementById('libraryStatusFooter');
+        const statsEl = document.getElementById('libraryStatusStats');
+        const timestampEl = document.getElementById('libraryStatusTimestamp');
+        if (!footer || !statsEl || !timestampEl) return;
+
+        const studyKeys = Object.keys(state.studies);
+        if (!state.managedLibrary || studyKeys.length === 0) {
+            footer.style.display = 'none';
+            return;
+        }
+
+        footer.style.display = 'flex';
+        const count = studyKeys.length;
+        statsEl.textContent = `${count} ${count === 1 ? 'study' : 'studies'}`;
+
+        // Relative timestamp from state.lastScan (only show when we have a real value)
+        if (state.lastScan && typeof state.lastScan === 'number') {
+            const elapsed = Date.now() - state.lastScan;
+            if (elapsed < 60000) {
+                timestampEl.textContent = 'Last updated just now';
+            } else if (elapsed < 3600000) {
+                const mins = Math.floor(elapsed / 60000);
+                timestampEl.textContent = `Last updated ${mins}m ago`;
+            } else {
+                const hours = Math.floor(elapsed / 3600000);
+                timestampEl.textContent = `Last updated ${hours}h ago`;
+            }
+        } else {
+            timestampEl.textContent = '';
+        }
+    }
+
     function handleSortClick(e) {
         const th = e.target.closest('.sortable');
         if (!th) return;
@@ -945,6 +1025,7 @@
         setLibraryFolderMessage,
         setLibraryFolderStatus,
         updateDesktopScanMessage,
-        updateImportProgress
+        updateImportProgress,
+        updateLibraryStatusFooter
     };
 })();

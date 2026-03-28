@@ -7,7 +7,7 @@
         return {
             folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
             lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
-            managedLibrary: config?.managedLibrary === true,
+            managedLibrary: config?.managedLibrary !== false,
             importHistory: Array.isArray(config?.importHistory) ? config.importHistory.filter(entry =>
                 entry && typeof entry === 'object'
                 && typeof entry.sourcePath === 'string'
@@ -68,7 +68,7 @@
                 return legacyConfig;
             }
 
-            return nativeConfig || { folder: null, lastScan: null, managedLibrary: false, importHistory: [] };
+            return nativeConfig || { folder: null, lastScan: null, managedLibrary: true, importHistory: [] };
         },
 
         isScanTimingEnabled() {

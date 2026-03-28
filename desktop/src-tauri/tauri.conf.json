@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DICOM Viewer",
+  "productName": "myradone",
   "version": "0.1.0",
   "identifier": "health.divergent.dicomviewer",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "DICOM Viewer",
+        "title": "myradone",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
