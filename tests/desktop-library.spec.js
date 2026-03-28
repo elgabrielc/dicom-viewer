@@ -2773,6 +2773,208 @@ test.describe('Desktop library scanning', () => {
         });
     });
 
+    // Regression: DICOMDIR processing added slices via addSliceToStudies before reading the
+    // actual file headers, producing series with transferSyntax: undefined. The files were
+    // also added to indexedFilePaths, causing the directory walk to skip them entirely.
+    // Fix: processDesktopPathDicomDirFile no longer calls addSliceToStudies or adds paths
+    // to indexedFilePaths. Every file referenced by DICOMDIR gets a normal header read.
+    test('DICOMDIR-referenced files are not skipped and produce series with a defined transferSyntax', async ({ page }) => {
+        await installMockDesktop(page, {
+            nativeScanManifest: [
+                {
+                    path: '/library/DICOMDIR',
+                    name: 'DICOMDIR',
+                    rootPath: '/library',
+                    size: 128,
+                    modifiedMs: 111
+                },
+                {
+                    path: '/library/images/IMG00001.dcm',
+                    name: 'IMG00001.dcm',
+                    rootPath: '/library',
+                    size: 512,
+                    modifiedMs: 222
+                }
+            ]
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            // Intercept parseDicomDirectoryDetailed to return a DICOMDIR record
+            // that lacks transferSyntax — exactly as real DICOMDIR records do.
+            window.DicomViewerApp.dicom.parseDicomDirectoryDetailed = async () => ({
+                entries: [
+                    {
+                        source: { kind: 'path', path: '/library/images/IMG00001.dcm' },
+                        meta: {
+                            // No transferSyntax here — this is what DICOMDIR records look like.
+                            patientName: 'Patient^Test',
+                            studyDate: '20260322',
+                            studyDescription: 'Regression Study',
+                            studyInstanceUid: 'regression-study-1',
+                            seriesDescription: 'Regression Series',
+                            seriesInstanceUid: 'regression-series-1',
+                            seriesNumber: '1',
+                            modality: 'CT',
+                            sopInstanceUid: 'regression-sop-1',
+                            instanceNumber: 1,
+                            sliceLocation: 0
+                        }
+                    }
+                ],
+                indexedPaths: ['/library/images/IMG00001.dcm'],
+                error: null
+            });
+
+            // Fetch a real DICOM file to use as the file content so parseDicomMetadata
+            // can extract a real transferSyntax from the file header.
+            const studiesResponse = await fetch('/api/test-data/studies');
+            const studiesPayload = await studiesResponse.json();
+            const study = studiesPayload[0];
+            const series = study.series[0];
+            const dicomResponse = await fetch(
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            );
+            const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
+
+            const fileReadsByPath = {};
+            window.__TAURI__.fs.readFile = async (path) => {
+                fileReadsByPath[path] = (fileReadsByPath[path] || 0) + 1;
+                return Uint8Array.from(dicomBytes);
+            };
+
+            const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+            const allSeries = Object.values(studies).flatMap((s) => Object.values(s.series));
+
+            return {
+                studyCount: Object.keys(studies).length,
+                seriesCount: allSeries.length,
+                // If the bug is present, transferSyntax is undefined because the DICOMDIR
+                // record was used to create the series instead of the file header.
+                transferSyntaxValues: allSeries.map((s) => s.transferSyntax),
+                // If the bug is present, IMG00001.dcm is in indexedFilePaths and is skipped
+                // (readFile is never called for it). The fix ensures it IS read.
+                fileReadsByPath,
+                imageFileWasRead: (fileReadsByPath['/library/images/IMG00001.dcm'] || 0) > 0
+            };
+        });
+
+        // The scan must have read the real file to extract the actual transferSyntax.
+        expect(result.imageFileWasRead).toBe(true);
+        // Every series must have a valid DICOM Transfer Syntax UID from the file header.
+        // Checking the UID prefix ensures the value came from parsing, not a hardcoded fallback.
+        for (const ts of result.transferSyntaxValues) {
+            expect(ts).toBeDefined();
+            expect(ts).not.toBeNull();
+            expect(typeof ts).toBe('string');
+            expect(ts).toMatch(/^1\.2\.840\./);
+        }
+    });
+
+    // Regression: DICOMDIR entries were added to indexedFilePaths, causing the subsequent
+    // directory walk to silently skip those files with no header read at all. The study
+    // appeared populated (from DICOMDIR metadata) but with missing transferSyntax.
+    // Fix: indexedFilePaths is never populated from DICOMDIR processing — every file in
+    // the manifest gets its own processDesktopPathFile call.
+    test('DICOMDIR processing does not add referenced files to the skip set', async ({ page }) => {
+        await installMockDesktop(page, {
+            nativeScanManifest: [
+                {
+                    path: '/library/DICOMDIR',
+                    name: 'DICOMDIR',
+                    rootPath: '/library',
+                    size: 128,
+                    modifiedMs: 111
+                },
+                {
+                    path: '/library/IMG00001.dcm',
+                    name: 'IMG00001.dcm',
+                    rootPath: '/library',
+                    size: 512,
+                    modifiedMs: 222
+                },
+                {
+                    path: '/library/IMG00002.dcm',
+                    name: 'IMG00002.dcm',
+                    rootPath: '/library',
+                    size: 512,
+                    modifiedMs: 333
+                }
+            ]
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            window.DicomViewerApp.dicom.parseDicomDirectoryDetailed = async () => ({
+                entries: [
+                    {
+                        source: { kind: 'path', path: '/library/IMG00001.dcm' },
+                        meta: {
+                            // Intentionally no transferSyntax — mirrors real DICOMDIR records.
+                            patientName: 'Patient^Test',
+                            studyDate: '20260322',
+                            studyDescription: 'Skip Set Study',
+                            studyInstanceUid: 'skip-study-1',
+                            seriesDescription: 'Skip Set Series',
+                            seriesInstanceUid: 'skip-series-1',
+                            seriesNumber: '1',
+                            modality: 'MR',
+                            sopInstanceUid: 'skip-sop-1',
+                            instanceNumber: 1,
+                            sliceLocation: 0
+                        }
+                    },
+                    {
+                        source: { kind: 'path', path: '/library/IMG00002.dcm' },
+                        meta: {
+                            patientName: 'Patient^Test',
+                            studyDate: '20260322',
+                            studyDescription: 'Skip Set Study',
+                            studyInstanceUid: 'skip-study-1',
+                            seriesDescription: 'Skip Set Series',
+                            seriesInstanceUid: 'skip-series-1',
+                            seriesNumber: '1',
+                            modality: 'MR',
+                            sopInstanceUid: 'skip-sop-2',
+                            instanceNumber: 2,
+                            sliceLocation: 0
+                        }
+                    }
+                ],
+                indexedPaths: ['/library/IMG00001.dcm', '/library/IMG00002.dcm'],
+                error: null
+            });
+
+            const fileReadsByPath = {};
+            // Return bytes that are not valid DICOM so parseDicomMetadata throws — this makes
+            // the study count zero. That's fine; we only care that BOTH files were attempted.
+            window.__TAURI__.fs.readFile = async (path) => {
+                fileReadsByPath[path] = (fileReadsByPath[path] || 0) + 1;
+                return new Uint8Array([0, 1, 2, 3]);
+            };
+
+            await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
+
+            return {
+                // If the bug is present, img files have 0 reads because indexedFilePaths blocked them.
+                img001Reads: fileReadsByPath['/library/IMG00001.dcm'] || 0,
+                img002Reads: fileReadsByPath['/library/IMG00002.dcm'] || 0,
+                dicomdirReads: fileReadsByPath['/library/DICOMDIR'] || 0
+            };
+        });
+
+        // The DICOMDIR itself must be read (to parse its records).
+        expect(result.dicomdirReads).toBe(1);
+        // Both image files must have been attempted — they must NOT have been silently
+        // skipped because of an incorrectly-populated indexedFilePaths set.
+        expect(result.img001Reads).toBeGreaterThan(0);
+        expect(result.img002Reads).toBeGreaterThan(0);
+    });
+
     test('collectPathSources caps recursion depth and skips symlink paths', async ({ page }) => {
         const dirs = {
             '/root': [
