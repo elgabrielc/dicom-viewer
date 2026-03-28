@@ -6,7 +6,15 @@
     function normalizeDesktopConfig(config) {
         return {
             folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
-            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null
+            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
+            managedLibrary: config?.managedLibrary === true,
+            importHistory: Array.isArray(config?.importHistory) ? config.importHistory.filter(entry =>
+                entry && typeof entry === 'object'
+                && typeof entry.sourcePath === 'string'
+                && typeof entry.importedAt === 'string'
+                && typeof entry.fileCount === 'number'
+                && typeof entry.studyCount === 'number'
+            ) : []
         };
     }
 
@@ -60,7 +68,7 @@
                 return legacyConfig;
             }
 
-            return nativeConfig || { folder: null, lastScan: null };
+            return nativeConfig || { folder: null, lastScan: null, managedLibrary: false, importHistory: [] };
         },
 
         isScanTimingEnabled() {
