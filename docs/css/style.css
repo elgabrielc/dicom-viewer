@@ -1921,3 +1921,121 @@ header .subtitle {
 .import-result-dismiss:hover {
     opacity: 1;
 }
+
+/* ==========================================================================
+   MANAGED LIBRARY UI
+   Consumer-friendly layout for desktop managed mode
+   ========================================================================== */
+
+/* Studies heading: flex row with inline refresh icon */
+.studies-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+/* Refresh icon button (replaces old text button) */
+.library-refresh-icon-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background-color: transparent;
+    color: #888;
+    font-size: 1.1rem;
+    line-height: 28px;
+    text-align: center;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+}
+
+.library-refresh-icon-btn:hover {
+    color: #4a9eff;
+    border-color: #333;
+}
+
+.library-refresh-icon-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Compact drop zone: single-line strip when library has content */
+.folder-load-zone.compact {
+    padding: 0.6rem 1rem;
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.folder-load-zone.compact .folder-load-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.folder-load-zone.compact .folder-icon {
+    font-size: 1.2rem;
+    display: inline;
+    margin-bottom: 0;
+}
+
+.folder-load-zone.compact .main-text {
+    font-size: 0.85rem;
+    color: #888;
+    margin: 0;
+}
+
+.folder-load-zone.compact .choose-import-link {
+    font-size: 0.8rem;
+    margin: 0;
+}
+
+/* "or choose a folder..." link in drop zone */
+.choose-import-link {
+    color: #4a9eff;
+    text-decoration: none;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    display: inline-block;
+}
+
+.choose-import-link:hover {
+    text-decoration: underline;
+}
+
+/* Library status footer */
+.library-status-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    color: #666;
+    font-size: 0.75rem;
+}
+
+/* De-emphasized sample section when library has content */
+.sample-section.de-emphasized {
+    font-size: 0.8rem;
+}
+
+.sample-section.de-emphasized .or-divider {
+    font-size: 0.75rem;
+}
+
+.sample-section.de-emphasized .sample-btn {
+    background: transparent;
+    border: 1px solid #444;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.8rem;
+    box-shadow: none;
+}
+
+.sample-section.de-emphasized .sample-btn:hover {
+    border-color: #4a9eff;
+    color: #4a9eff;
+    transform: none;
+    box-shadow: none;
+}

@@ -82,6 +82,7 @@ Copyright (c) 2026 Divergent Health Technologies
                 <div class="folder-load-content">
                     <span class="folder-icon">&#128193;</span>
                     <p class="main-text">Drop a DICOM folder here</p>
+                    <a id="chooseImportFolder" class="choose-import-link" href="#" style="display: none;">or choose a folder...</a>
                 </div>
             </div>
             <div class="sample-section">
@@ -109,8 +110,10 @@ Copyright (c) 2026 Divergent Health Technologies
         </div>
 
         <section class="studies-section">
-            <h2>Studies <span id="studyCount" class="count"></span></h2>
-            <button id="refreshLibraryBtn" class="library-refresh-btn" style="display: none; margin-bottom: 0.75rem;">Refresh Library</button>
+            <div class="studies-heading">
+                <h2>Studies <span id="studyCount" class="count"></span></h2>
+                <button id="refreshLibraryBtn" class="library-refresh-icon-btn" style="display: none;" aria-label="Refresh Library" title="Refresh Library">&#x21bb;</button>
+            </div>
             <div id="libraryFolderConfig" class="library-folder-config" style="display: none;">
                 <label for="libraryFolderInput">Library Folder</label>
                 <div class="library-folder-controls">
@@ -140,6 +143,10 @@ Copyright (c) 2026 Divergent Health Technologies
                 </thead>
                 <tbody id="studiesBody"></tbody>
             </table>
+            <div id="libraryStatusFooter" class="library-status-footer" style="display: none;">
+                <span id="libraryStatusStats"></span>
+                <span id="libraryStatusTimestamp"></span>
+            </div>
         </section>
     </div>
 
