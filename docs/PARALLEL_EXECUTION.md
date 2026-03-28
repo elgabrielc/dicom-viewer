@@ -148,7 +148,7 @@ Expected: {what passing looks like}
 
 ## When done
 Commit with descriptive message.
-Git author: Gabriel Casalduc <rgc@alumni.stanford.edu>
+Git author: Gabriel Casalduc <gabriel@divergent.health>
 ```
 
 ### Orchestrating running agents

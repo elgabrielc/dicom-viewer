@@ -124,6 +124,18 @@ Tauri Desktop Shell (desktop/src-tauri/)
 └── Shared web core loaded from docs/
 ```
 
+## Domain Separation: Imaging vs. Annotations
+
+The system has two fundamentally different data domains. They share infrastructure where convenient, but they are not the same thing and must not be coupled.
+
+**Imaging** -- DICOM files, pixel data, study/series/slice organization, transfer syntaxes, decoders, rendering. This is the core viewer pipeline. It deals with large, immutable binary objects that are read-heavy and write-once.
+
+**Annotations** -- notes, comments, reports, measurements, labels. These are lightweight, mutable, user-generated metadata layered on top of imaging. They are keyed by DICOM UIDs but have their own lifecycle (created, edited, deleted, synced).
+
+These two domains have different storage characteristics, different sync requirements, different performance profiles, and different compliance implications. In a company context, they would be owned by different engineering teams. Design decisions, APIs, persistence layers, and sync protocols should respect this boundary. Shared infrastructure (SQLite, content hashing, UID-based identity) is fine, but the domains should not depend on each other's internals or assume they will always be co-located.
+
+When in doubt, ask: "Is this about the imaging pipeline or the annotation layer?" and keep the answer in its own lane.
+
 ## Key Files
 
 - `docs/index.html` - Main SPA with all client-side logic
