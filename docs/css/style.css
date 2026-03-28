@@ -1935,6 +1935,10 @@ header .subtitle {
     margin-bottom: 0.5rem;
 }
 
+.studies-heading h2 {
+    margin-bottom: 0;
+}
+
 /* Refresh icon button (replaces old text button) */
 .library-refresh-icon-btn {
     width: 28px;

@@ -345,7 +345,7 @@
             try {
                 if (!state.managedLibrary || !app.importPipeline?.getLibraryPath) return;
                 const libraryPath = await app.importPipeline.getLibraryPath();
-                await window.__TAURI__.core.invoke('reveal_in_finder', { path: libraryPath });
+                await window.__TAURI__?.core?.invoke('reveal_in_finder', { path: libraryPath });
             } catch (err) {
                 console.warn('Failed to reveal library in Finder:', err);
             }

@@ -369,8 +369,6 @@
         }
 
         refreshLibraryBtn.disabled = true;
-        const previousText = refreshLibraryBtn.textContent;
-        refreshLibraryBtn.textContent = 'Refreshing...';
         try {
             if (config?.deploymentMode === 'desktop') {
                 let scanFolder;
@@ -413,7 +411,6 @@
             alert(`Failed to refresh library: ${e.message}`);
         } finally {
             refreshLibraryBtn.disabled = false;
-            refreshLibraryBtn.textContent = previousText;
         }
     }
 
