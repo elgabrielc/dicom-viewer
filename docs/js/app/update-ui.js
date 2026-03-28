@@ -6,8 +6,12 @@
  * at the top of the app when an update is available.
  *
  * Uses window.__TAURI__.updater (withGlobalTauri) -- no npm imports needed.
+ * Waits for the Tauri runtime to be fully available before registering
+ * event listeners or checking for updates.
  *
  * Feature-gated: only activates when CONFIG.features.autoUpdate is true.
+ * Disabled in dev builds (non-packaged apps) to avoid hitting the updater
+ * endpoint during local development.
  *
  * Depends on:
  *   window.CONFIG (config.js)
@@ -26,6 +30,10 @@ const _UpdateUI = (() => {
     // Brief message display time for "up to date" on manual check
     const UP_TO_DATE_DISPLAY_MS = 4000;
 
+    // Max time to wait for Tauri runtime APIs to become available
+    const RUNTIME_WAIT_TIMEOUT_MS = 5000;
+    const RUNTIME_POLL_INTERVAL_MS = 50;
+
     let initialized = false;
     let pendingUpdate = null;
     let installing = false;
@@ -38,19 +46,14 @@ const _UpdateUI = (() => {
             return;
         }
 
-        initialized = true;
-
-        // Listen for manual "Check for Updates..." menu event
-        const eventApi = window.__TAURI__?.event;
-        if (eventApi?.listen) {
-            eventApi.listen('desktop://check-for-updates', () => {
-                checkForUpdates(true);
-            }).catch(err => {
-                console.warn('Failed to register update menu handler:', err);
-            });
+        // Skip updater in dev builds (cargo tauri dev serves from localhost)
+        if (!isPackagedApp()) {
+            return;
         }
 
-        // Wire banner buttons
+        initialized = true;
+
+        // Wire banner buttons (DOM is ready, safe to query)
         const dismissBtn = document.getElementById('updateBannerDismiss');
         if (dismissBtn) {
             dismissBtn.addEventListener('click', hideBanner);
@@ -61,8 +64,63 @@ const _UpdateUI = (() => {
             actionBtn.addEventListener('click', handleActionClick);
         }
 
-        // Background check after initial delay
-        setTimeout(() => checkForUpdates(false), INITIAL_CHECK_DELAY_MS);
+        // Wait for Tauri runtime, then register listeners and check
+        waitForUpdaterRuntime().then(runtime => {
+            if (!runtime) return;
+
+            // Register menu event listener
+            const eventApi = runtime.event;
+            if (eventApi?.listen) {
+                eventApi.listen('desktop://check-for-updates', () => {
+                    checkForUpdates(true);
+                }).catch(err => {
+                    console.warn('Failed to register update menu handler:', err);
+                });
+            }
+
+            // Background check after initial delay
+            setTimeout(() => checkForUpdates(false), INITIAL_CHECK_DELAY_MS);
+        });
+    }
+
+    async function waitForUpdaterRuntime() {
+        // Check if already available
+        if (hasUpdaterApis(window.__TAURI__)) {
+            return window.__TAURI__;
+        }
+
+        // Wait for the ready promise if available
+        const ready = window.__DICOM_VIEWER_TAURI_READY__;
+        if (ready && typeof ready.then === 'function') {
+            const resolved = await ready;
+            if (hasUpdaterApis(resolved)) return resolved;
+        }
+
+        // Poll for late-arriving runtime
+        const deadline = performance.now() + RUNTIME_WAIT_TIMEOUT_MS;
+        while (performance.now() < deadline) {
+            if (hasUpdaterApis(window.__TAURI__)) {
+                return window.__TAURI__;
+            }
+            await new Promise(resolve => setTimeout(resolve, RUNTIME_POLL_INTERVAL_MS));
+        }
+
+        return null;
+    }
+
+    function hasUpdaterApis(runtime) {
+        return !!(
+            runtime
+            && typeof runtime.updater?.check === 'function'
+            && typeof runtime.event?.listen === 'function'
+        );
+    }
+
+    function isPackagedApp() {
+        // Packaged Tauri apps serve from tauri: or tauri.localhost, not localhost:1420
+        const protocol = window.location?.protocol || '';
+        const hostname = window.location?.hostname || '';
+        return protocol === 'tauri:' || hostname === 'tauri.localhost';
     }
 
     async function checkForUpdates(manual) {

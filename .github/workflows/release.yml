@@ -1,7 +1,10 @@
 # Copyright (c) 2026 Divergent Health Technologies
 # Release Workflow - Builds, signs, notarizes, and publishes desktop releases
 #
-# Triggered by pushing a tag matching v* (e.g. v0.2.0).
+# Triggered by pushing a stable semver tag (e.g. v0.2.0).
+# Tags with pre-release suffixes (v0.2.0-rc.1, v0.2.0-beta.1) are marked
+# as GitHub prereleases so they don't become the /releases/latest endpoint.
+#
 # Creates a draft GitHub Release with signed + notarized DMGs and updater
 # artifacts for both aarch64 and x86_64. Publish the draft manually after
 # verifying the artifacts.
@@ -11,7 +14,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 # Only one release at a time
 concurrency:
@@ -33,6 +36,25 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate tag matches app version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          APP_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) does not match app version ($APP_VERSION)"
+            exit 1
+          fi
+
+      - name: Detect prerelease
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          if echo "$TAG" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -86,11 +108,11 @@ jobs:
         with:
           projectPath: desktop
           tauriScript: npm run tauri
-          tagName: v__VERSION__
-          releaseName: 'myradone v__VERSION__'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'myradone ${{ github.ref_name }}'
           releaseBody: 'See the [changelog](https://github.com/elgabrielc/dicom-viewer/blob/main/CHANGELOG.md) for details.'
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           args: --target aarch64-apple-darwin
 
       - name: Build and release (x86_64)
@@ -108,8 +130,8 @@ jobs:
         with:
           projectPath: desktop
           tauriScript: npm run tauri
-          tagName: v__VERSION__
-          releaseName: 'myradone v__VERSION__'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'myradone ${{ github.ref_name }}'
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           args: --target x86_64-apple-darwin
