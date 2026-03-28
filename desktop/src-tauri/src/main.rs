@@ -5,7 +5,7 @@ mod scan;
 mod secure_store;
 
 use tauri::{
-    menu::{AboutMetadata, Menu, MenuItemBuilder, SubmenuBuilder},
+    menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, Runtime,
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
@@ -29,8 +29,10 @@ fn reveal_in_finder(path: String) -> Result<(), String> {
 }
 
 const MENU_OPEN_FOLDER: &str = "open-folder";
+const MENU_SHOW_LIBRARY: &str = "show-library-in-finder";
 const MENU_OPEN_HELP: &str = "open-help";
 const EVENT_OPEN_FOLDER: &str = "desktop://open-folder";
+const EVENT_SHOW_LIBRARY: &str = "desktop://show-library-in-finder";
 const EVENT_OPEN_HELP: &str = "desktop://open-help";
 const DESKTOP_DB_URL: &str = "sqlite:viewer.db";
 
@@ -49,9 +51,11 @@ fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> 
         ..Default::default()
     };
 
-    let open_folder = MenuItemBuilder::with_id(MENU_OPEN_FOLDER, "Open Folder...")
+    let open_folder = MenuItemBuilder::with_id(MENU_OPEN_FOLDER, "Import Folder...")
         .accelerator("CmdOrCtrl+O")
         .build(manager)?;
+    let show_library =
+        MenuItemBuilder::with_id(MENU_SHOW_LIBRARY, "Show Library in Finder").build(manager)?;
     let open_help = MenuItemBuilder::with_id(MENU_OPEN_HELP, "Viewer Help").build(manager)?;
     let app_menu = SubmenuBuilder::new(manager, package_info.name.clone())
         .about(Some(about_metadata))
@@ -66,6 +70,8 @@ fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> 
         .build()?;
     let file_menu = SubmenuBuilder::new(manager, "File")
         .item(&open_folder)
+        .item(&PredefinedMenuItem::separator(manager)?)
+        .item(&show_library)
         .separator()
         .close_window()
         .build()?;
@@ -171,6 +177,7 @@ fn main() {
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),
+            MENU_SHOW_LIBRARY => emit_menu_event(app, EVENT_SHOW_LIBRARY),
             MENU_OPEN_HELP => emit_menu_event(app, EVENT_OPEN_HELP),
             _ => {}
         })
