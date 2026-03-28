@@ -340,6 +340,18 @@
         }).catch(err => {
             console.warn('Failed to register desktop help menu handler:', err);
         });
+
+        eventApi.listen('desktop://show-library-in-finder', async () => {
+            try {
+                if (!app.importPipeline?.getLibraryPath) return;
+                const libraryPath = await app.importPipeline.getLibraryPath();
+                await window.__TAURI__.core.invoke('reveal_in_finder', { path: libraryPath });
+            } catch (err) {
+                console.warn('Failed to reveal library in Finder:', err);
+            }
+        }).catch(err => {
+            console.warn('Failed to register desktop show-library-in-finder menu handler:', err);
+        });
     }
 
     async function initializeDesktopRuntimeBridge() {
