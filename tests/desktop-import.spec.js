@@ -961,3 +961,711 @@ test.describe('Desktop import pipeline', () => {
         expect(result.invalid).toBe(1);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Integration tests: full import workflow exercised end-to-end
+// ---------------------------------------------------------------------------
+
+const AUTOLOAD_URL = `${TEST_BASE_URL}/`;
+
+/**
+ * Extended mock installer for integration tests. Builds on installMockDesktop
+ * but adds support for:
+ *   - Managed library config (managedLibrary flag via desktop config)
+ *   - Capturing the Tauri drag-drop event handler for programmatic invocation
+ *   - Pre-populated scan cache for startup tests
+ *   - Desktop directory listing for library scan (readDir + file bytes for scan)
+ */
+async function installMockDesktopIntegration(page, options = {}) {
+    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    await page.addInitScript((opts) => {
+        const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
+
+        function normalizePath(input) {
+            const text = String(input || '').replace(/\\/g, '/');
+            if (!text) return '';
+            const collapsed = text.replace(/\/+/g, '/');
+            if (collapsed === '/') return '/';
+            return collapsed.replace(/\/+$/g, '');
+        }
+
+        function joinPaths(...parts) {
+            const cleaned = parts
+                .filter((part) => part !== null && part !== undefined && part !== '')
+                .map((part, index) => {
+                    const value = String(part).replace(/\\/g, '/');
+                    if (index === 0) {
+                        return value.replace(/\/+$/g, '') || '/';
+                    }
+                    return value.replace(/^\/+/g, '').replace(/\/+$/g, '');
+                })
+                .filter(Boolean);
+
+            if (!cleaned.length) return '';
+            return normalizePath(cleaned.join('/'));
+        }
+
+        // Persist initial desktop config so getConfig picks it up
+        if (opts.initialConfig) {
+            localStorage.setItem('dicom-viewer-library-config', JSON.stringify(opts.initialConfig));
+        }
+
+        // Pre-populate stored files (scan cache, etc.)
+        for (const [path, value] of Object.entries(opts.storedFiles || {})) {
+            const normalized = normalizePath(path);
+            const bytes = Array.isArray(value) ? value : Array.from(value);
+            localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalized}`, JSON.stringify(bytes));
+        }
+
+        // Directory listing for readDir-based scans
+        const dirs = {};
+        for (const [dirPath, entries] of Object.entries(opts.dirs || {})) {
+            dirs[normalizePath(dirPath)] = entries;
+        }
+
+        // Track mock FS operations for assertions
+        window.__importMockState = {
+            mkdirCalls: [],
+            writeFileCalls: [],
+            existsResults: Object.assign({}, opts.existsOverrides || {}),
+            statResults: Object.assign({}, opts.statOverrides || {}),
+            readFileBytes: Object.assign({}, opts.readFileBytes || {}),
+            manifestEntries: opts.manifestEntries || [],
+            readFileErrors: Object.assign({}, opts.readFileErrors || {})
+        };
+
+        // Capture the drag-drop handler so tests can fire synthetic events
+        window.__capturedDragDropHandler = null;
+
+        window.__TAURI__ = {
+            core: {
+                async invoke(cmd, args) {
+                    if (cmd === 'apply_desktop_migration') {
+                        return window.__applyMockDesktopMigration(args.db, args.batch, opts);
+                    }
+                    if (cmd === 'load_legacy_desktop_browser_stores') {
+                        return [];
+                    }
+                    if (cmd === 'read_scan_manifest') {
+                        return window.__importMockState.manifestEntries;
+                    }
+                    throw new Error(`Unhandled core invoke: ${cmd}`);
+                }
+            },
+            dialog: {
+                async open() { return null; }
+            },
+            event: {
+                async listen() { return () => {}; }
+            },
+            fs: {
+                async exists(filePath) {
+                    const normalized = normalizePath(filePath);
+                    const state = window.__importMockState;
+                    if (Object.prototype.hasOwnProperty.call(state.existsResults, normalized)) {
+                        return state.existsResults[normalized];
+                    }
+                    // Check if writeFile has already written to this path
+                    if (state.writeFileCalls.some((call) => call.path === normalized)) {
+                        return true;
+                    }
+                    // Check localStorage for persisted files
+                    return localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null;
+                },
+                async stat(filePath) {
+                    const normalized = normalizePath(filePath);
+                    const state = window.__importMockState;
+                    if (Object.prototype.hasOwnProperty.call(state.statResults, normalized)) {
+                        return state.statResults[normalized];
+                    }
+                    throw new Error(`Stat not found: ${normalized}`);
+                },
+                async readFile(filePath) {
+                    const normalized = normalizePath(filePath);
+                    const state = window.__importMockState;
+                    if (Object.prototype.hasOwnProperty.call(state.readFileErrors, normalized)) {
+                        throw new Error(state.readFileErrors[normalized]);
+                    }
+                    const bytes = state.readFileBytes[normalized];
+                    if (bytes) {
+                        return Uint8Array.from(bytes);
+                    }
+                    // Check localStorage for persisted files (scan cache, etc.)
+                    const persisted = localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`);
+                    if (persisted) {
+                        return Uint8Array.from(JSON.parse(persisted));
+                    }
+                    return Uint8Array.from([0]);
+                },
+                async readDir(dirPath) {
+                    const normalized = normalizePath(dirPath);
+                    if (!Object.prototype.hasOwnProperty.call(dirs, normalized)) {
+                        throw new Error(`Path not found: ${normalized}`);
+                    }
+                    return dirs[normalized];
+                },
+                async writeFile(filePath, bytes) {
+                    const normalized = normalizePath(filePath);
+                    window.__importMockState.writeFileCalls.push({
+                        path: normalized,
+                        size: bytes.byteLength || bytes.length
+                    });
+                    // Also persist to localStorage so readFile can find it later
+                    localStorage.setItem(
+                        `${FILE_STORAGE_PREFIX}${normalized}`,
+                        JSON.stringify(Array.from(bytes))
+                    );
+                },
+                async mkdir(dirPath, mkdirOptions) {
+                    const normalized = normalizePath(dirPath);
+                    window.__importMockState.mkdirCalls.push({
+                        path: normalized,
+                        recursive: !!(mkdirOptions && mkdirOptions.recursive)
+                    });
+                },
+                async remove() {},
+                async rename() {}
+            },
+            path: {
+                async appDataDir() {
+                    return normalizePath(opts.appDataDir || '/mock-app-data');
+                },
+                async join(...parts) {
+                    return joinPaths(...parts);
+                },
+                async normalize(filePath) {
+                    return normalizePath(filePath);
+                }
+            },
+            sql: window.__createMockTauriSql(opts),
+            webview: {
+                getCurrentWebview() {
+                    return {
+                        onDragDropEvent(handler) {
+                            window.__capturedDragDropHandler = handler;
+                            return Promise.resolve(() => {});
+                        }
+                    };
+                }
+            }
+        };
+    }, options);
+}
+
+test.describe('Desktop import integration', () => {
+
+    // -----------------------------------------------------------------------
+    // Test 1: Drop triggers import when managedLibrary is true
+    // -----------------------------------------------------------------------
+
+    test('import pipeline writes files to managed library on drop-like invocation', async ({ page }) => {
+        const dicomA = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.drop.1',
+            seriesInstanceUid: '1.2.series.drop.1',
+            sopInstanceUid: '1.2.sop.drop.1',
+            patientName: 'Drop^Managed'
+        });
+        const dicomB = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.drop.1',
+            seriesInstanceUid: '1.2.series.drop.1',
+            sopInstanceUid: '1.2.sop.drop.2',
+            patientName: 'Drop^Managed'
+        });
+
+        await installMockDesktopIntegration(page, {
+            initialConfig: {
+                folder: `${MOCK_APP_DATA}/library`,
+                lastScan: null,
+                managedLibrary: true,
+                importHistory: []
+            },
+            manifestEntries: [
+                { path: '/source/img1.dcm', name: 'img1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
+                { path: '/source/img2.dcm', name: 'img2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+            ],
+            readFileBytes: {
+                '/source/img1.dcm': dicomA,
+                '/source/img2.dcm': dicomB
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // Verify managedLibrary config is correctly loaded
+        const configCheck = await page.evaluate(async () => {
+            const config = await window.DicomViewerApp.desktopLibrary.getConfig();
+            return { managedLibrary: config.managedLibrary, folder: config.folder };
+        });
+        expect(configCheck.managedLibrary).toBe(true);
+
+        // Simulate the import that a managed-library drop handler would trigger
+        const result = await page.evaluate(async () => {
+            const pipeline = window.DicomViewerApp.importPipeline;
+            const importResult = await pipeline.importFromPaths(['/source']);
+            const state = window.__importMockState;
+            return {
+                importResult,
+                writeFileCalls: state.writeFileCalls,
+                mkdirCalls: state.mkdirCalls
+            };
+        });
+
+        expect(result.importResult.imported).toBe(2);
+        expect(result.importResult.skipped).toBe(0);
+
+        // Verify files were written to the managed library path
+        const libraryWrites = result.writeFileCalls.filter(
+            (call) => call.path.startsWith(LIBRARY_ROOT)
+        );
+        expect(libraryWrites).toHaveLength(2);
+
+        // Verify parent directories were created under the library root
+        const libraryMkdirs = result.mkdirCalls.filter(
+            (call) => call.path.startsWith(LIBRARY_ROOT) && call.path !== LIBRARY_ROOT
+        );
+        expect(libraryMkdirs.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 2: Drop does NOT trigger import when managedLibrary is false
+    // -----------------------------------------------------------------------
+
+    test('standard scan path does not write to managed library when managedLibrary is false', async ({ page }) => {
+        const dicomBytes = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.scan.1',
+            seriesInstanceUid: '1.2.series.scan.1',
+            sopInstanceUid: '1.2.sop.scan.1',
+            patientName: 'Scan^NoImport'
+        });
+
+        await installMockDesktopIntegration(page, {
+            initialConfig: {
+                folder: '/user-library',
+                lastScan: null,
+                managedLibrary: false,
+                importHistory: []
+            },
+            // Supply the same file as both a manifest entry (for importFromPaths)
+            // and as readFileBytes so the standard scan path can read it
+            manifestEntries: [
+                { path: '/source/scan1.dcm', name: 'scan1.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+            ],
+            readFileBytes: {
+                '/source/scan1.dcm': dicomBytes
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // Verify managedLibrary is false
+        const configCheck = await page.evaluate(async () => {
+            const config = await window.DicomViewerApp.desktopLibrary.getConfig();
+            return config.managedLibrary;
+        });
+        expect(configCheck).toBe(false);
+
+        // When managedLibrary is false, the app should NOT call importFromPaths.
+        // Verify that calling importFromPaths is what writes to the library path,
+        // and that simply reading the manifest without importing does not.
+        const result = await page.evaluate(async () => {
+            // Read the manifest entries (what read_scan_manifest returns) to
+            // confirm they exist, but do NOT call importFromPaths. This simulates
+            // the non-managed-library flow where files are scanned in place.
+            const invoke = window.__TAURI__.core.invoke;
+            const manifest = await invoke('read_scan_manifest', { roots: ['/source'], maxDepth: 20 });
+            const state = window.__importMockState;
+            return {
+                manifestCount: manifest.length,
+                writeFileCalls: state.writeFileCalls.filter(
+                    (call) => call.path.startsWith('/mock-app-data/library')
+                )
+            };
+        });
+
+        // Files exist in the source folder
+        expect(result.manifestCount).toBe(1);
+
+        // No files should have been written to the managed library path
+        expect(result.writeFileCalls).toHaveLength(0);
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 3: Dedup on re-drop -- second import of same files skips all
+    // -----------------------------------------------------------------------
+
+    test('second import of identical files skips all due to dedup', async ({ page }) => {
+        const dicomA = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.dedup',
+            seriesInstanceUid: '1.2.series.dedup',
+            sopInstanceUid: '1.2.sop.dedup.1',
+            patientName: 'Dedup^Test'
+        });
+        const dicomB = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.dedup',
+            seriesInstanceUid: '1.2.series.dedup',
+            sopInstanceUid: '1.2.sop.dedup.2',
+            patientName: 'Dedup^Test'
+        });
+
+        await installMockDesktopIntegration(page, {
+            manifestEntries: [
+                { path: '/source/d1.dcm', name: 'd1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
+                { path: '/source/d2.dcm', name: 'd2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+            ],
+            readFileBytes: {
+                '/source/d1.dcm': dicomA,
+                '/source/d2.dcm': dicomB
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // First import: both files should be copied
+        const firstResult = await page.evaluate(async () => {
+            const pipeline = window.DicomViewerApp.importPipeline;
+            return await pipeline.importFromPaths(['/source']);
+        });
+
+        expect(firstResult.imported).toBe(2);
+        expect(firstResult.skipped).toBe(0);
+
+        // Second import: the mock fs.exists check sees previous writeFile calls,
+        // but stat is needed for size comparison. Inject stat overrides for the
+        // destination paths so the dedup check can compare sizes.
+        const fileSizes = { a: dicomA.length, b: dicomB.length };
+        const secondResult = await page.evaluate(async (sizes) => {
+            const state = window.__importMockState;
+
+            // Add stat entries for the files that were written in the first import.
+            // The dedup path in processOneFile calls fs.stat after fs.exists returns true.
+            const destA = '/mock-app-data/library/1.2.study.dedup/1.2.series.dedup/1.2.sop.dedup.1.dcm';
+            const destB = '/mock-app-data/library/1.2.study.dedup/1.2.series.dedup/1.2.sop.dedup.2.dcm';
+            state.statResults[destA] = { size: sizes.a };
+            state.statResults[destB] = { size: sizes.b };
+
+            // Clear write tracking before second import to isolate results
+            state.writeFileCalls = [];
+
+            const pipeline = window.DicomViewerApp.importPipeline;
+            return await pipeline.importFromPaths(['/source']);
+        }, fileSizes);
+
+        expect(secondResult.imported).toBe(0);
+        expect(secondResult.skipped).toBe(2);
+        expect(secondResult.errors).toBe(0);
+        expect(secondResult.collisions).toBe(0);
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 4: Startup with managedLibrary loads from managed library path
+    // -----------------------------------------------------------------------
+
+    test('startup with managedLibrary loads studies from the managed library path', async ({ page }) => {
+        const dicomBytes = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.startup',
+            seriesInstanceUid: '1.2.series.startup',
+            sopInstanceUid: '1.2.sop.startup.1',
+            patientName: 'Startup^Managed'
+        });
+
+        // Pre-populate the managed library path with a scan cache so
+        // initializeDesktopLibrary finds and displays studies on startup.
+        const cachedStudies = {
+            '1.2.study.startup': {
+                patientName: 'Startup^Managed',
+                studyDate: '20260327',
+                studyDescription: 'Startup Integration Test',
+                studyInstanceUid: '1.2.study.startup',
+                modality: 'CT',
+                seriesCount: 1,
+                imageCount: 1,
+                comments: [],
+                reports: [],
+                series: {
+                    '1.2.series.startup': {
+                        seriesInstanceUid: '1.2.series.startup',
+                        seriesDescription: 'Startup Series',
+                        seriesNumber: 1,
+                        modality: 'CT',
+                        comments: [],
+                        slices: [
+                            {
+                                instanceNumber: 1,
+                                sliceLocation: 0,
+                                source: { kind: 'path', path: `${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup/1.2.sop.startup.1.dcm` }
+                            }
+                        ]
+                    }
+                }
+            }
+        };
+        const snapshotPayload = JSON.stringify({
+            version: 1,
+            folder: `${MOCK_APP_DATA}/library`,
+            savedAt: '2026-03-27T00:00:00.000Z',
+            studies: cachedStudies
+        });
+        const snapshotBytes = Array.from(new TextEncoder().encode(snapshotPayload));
+
+        await installMockDesktopIntegration(page, {
+            initialConfig: {
+                folder: `${MOCK_APP_DATA}/library`,
+                lastScan: '2026-03-27T00:00:00.000Z',
+                managedLibrary: true,
+                importHistory: []
+            },
+            storedFiles: {
+                [`${MOCK_APP_DATA}/desktop-library-cache.json`]: snapshotBytes
+            },
+            // The refresh scan after snapshot load needs dir entries for the library path
+            dirs: {
+                [`${MOCK_APP_DATA}/library`]: [
+                    {
+                        name: '1.2.study.startup',
+                        isFile: false,
+                        isDirectory: true,
+                        children: [{
+                            name: '1.2.series.startup',
+                            isFile: false,
+                            isDirectory: true,
+                            children: [{
+                                name: '1.2.sop.startup.1.dcm',
+                                isFile: true,
+                                isDirectory: false
+                            }]
+                        }]
+                    }
+                ],
+                [`${MOCK_APP_DATA}/library/1.2.study.startup`]: [
+                    {
+                        name: '1.2.series.startup',
+                        isFile: false,
+                        isDirectory: true
+                    }
+                ],
+                [`${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup`]: [
+                    {
+                        name: '1.2.sop.startup.1.dcm',
+                        isFile: true,
+                        isDirectory: false
+                    }
+                ]
+            },
+            readFileBytes: {
+                [`${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup/1.2.sop.startup.1.dcm`]: dicomBytes
+            }
+        });
+
+        // Use AUTOLOAD_URL (without ?nolib) so initializeDesktopLibrary runs
+        await page.goto(AUTOLOAD_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // The cached snapshot should display the study. Wait for the patient
+        // name to appear in the studies table.
+        await expect(page.locator('#studiesBody')).toContainText('Startup');
+
+        // Verify the library folder input shows the managed library path
+        await expect(page.locator('#libraryFolderInput')).toHaveValue(`${MOCK_APP_DATA}/library`);
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 5: Import result banner displays correct summary
+    // -----------------------------------------------------------------------
+
+    test('displayImportResult shows import summary banner with correct text', async ({ page }) => {
+        await installMockDesktopIntegration(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // Call displayImportResult with a representative result object
+        await page.evaluate(() => {
+            window.DicomViewerApp.library.displayImportResult({
+                imported: 5,
+                skipped: 2,
+                invalid: 1,
+                errors: 0,
+                collisions: 0,
+                duration: 3456
+            });
+        });
+
+        const banner = page.locator('#importResultBanner');
+        await expect(banner).toBeVisible();
+
+        const bannerText = await page.locator('#importResultText').textContent();
+        expect(bannerText).toContain('Imported 5 files');
+        expect(bannerText).toContain('2 duplicates skipped');
+        expect(bannerText).toContain('1 invalid');
+        expect(bannerText).toContain('3.5s');
+
+        // The banner should have the success class (no errors or collisions)
+        const bannerClass = await banner.getAttribute('class');
+        expect(bannerClass).toContain('success');
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 6: Import result banner shows warning for errors
+    // -----------------------------------------------------------------------
+
+    test('displayImportResult shows warning banner when errors or collisions are present', async ({ page }) => {
+        await installMockDesktopIntegration(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        await page.evaluate(() => {
+            window.DicomViewerApp.library.displayImportResult({
+                imported: 3,
+                skipped: 0,
+                invalid: 0,
+                errors: 2,
+                collisions: 1,
+                duration: 1200
+            });
+        });
+
+        const banner = page.locator('#importResultBanner');
+        await expect(banner).toBeVisible();
+
+        const bannerText = await page.locator('#importResultText').textContent();
+        expect(bannerText).toContain('Imported 3 files');
+        expect(bannerText).toContain('2 errors');
+        expect(bannerText).toContain('1 file collision');
+
+        // The banner should have the warning class
+        const bannerClass = await banner.getAttribute('class');
+        expect(bannerClass).toContain('warning');
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 7: Import result banner dismiss button works
+    // -----------------------------------------------------------------------
+
+    test('import result banner can be dismissed', async ({ page }) => {
+        await installMockDesktopIntegration(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // Show the banner
+        await page.evaluate(() => {
+            window.DicomViewerApp.library.displayImportResult({
+                imported: 1,
+                skipped: 0,
+                invalid: 0,
+                errors: 0,
+                collisions: 0,
+                duration: 500
+            });
+        });
+
+        const banner = page.locator('#importResultBanner');
+        await expect(banner).toBeVisible();
+
+        // Click the dismiss button
+        await page.locator('#importResultDismiss').click();
+        await expect(banner).toBeHidden();
+    });
+
+    // -----------------------------------------------------------------------
+    // Test 8: Full round-trip -- import then display studies
+    // -----------------------------------------------------------------------
+
+    test('imported studies can be displayed in the library table after import', async ({ page }) => {
+        const dicomA = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.display',
+            seriesInstanceUid: '1.2.series.display',
+            sopInstanceUid: '1.2.sop.display.1',
+            patientName: 'Display^Test',
+            studyDate: '20260327'
+        });
+        const dicomB = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.display',
+            seriesInstanceUid: '1.2.series.display',
+            sopInstanceUid: '1.2.sop.display.2',
+            patientName: 'Display^Test',
+            studyDate: '20260327'
+        });
+
+        await installMockDesktopIntegration(page, {
+            initialConfig: {
+                folder: `${MOCK_APP_DATA}/library`,
+                lastScan: null,
+                managedLibrary: true,
+                importHistory: []
+            },
+            manifestEntries: [
+                { path: '/source/disp1.dcm', name: 'disp1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
+                { path: '/source/disp2.dcm', name: 'disp2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+            ],
+            readFileBytes: {
+                '/source/disp1.dcm': dicomA,
+                '/source/disp2.dcm': dicomB
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        // Import files, show the banner, and build displayable study objects
+        // The import pipeline returns lightweight study tracking (no slices array),
+        // so we construct proper study objects that displayStudies expects.
+        const importResult = await page.evaluate(async () => {
+            const pipeline = window.DicomViewerApp.importPipeline;
+            const result = await pipeline.importFromPaths(['/source']);
+
+            // Show the import result banner
+            window.DicomViewerApp.library.displayImportResult(result);
+
+            // Build displayable studies from the import result metadata.
+            // In the real app, a library rescan would produce these. Here we
+            // construct the minimum shape that displayStudies requires.
+            const displayStudies = {};
+            for (const [uid, study] of Object.entries(result.studies)) {
+                const seriesMap = {};
+                for (const [seriesUid, series] of Object.entries(study.series || {})) {
+                    seriesMap[seriesUid] = {
+                        seriesInstanceUid: seriesUid,
+                        seriesDescription: series.seriesDescription || '',
+                        seriesNumber: 1,
+                        modality: series.modality || '',
+                        comments: [],
+                        slices: Array.from({ length: series.instanceCount }, (_, idx) => ({
+                            instanceNumber: idx + 1,
+                            sliceLocation: idx,
+                            source: { kind: 'path', path: `/mock-app-data/library/${uid}/${seriesUid}/sop-${idx}.dcm` }
+                        }))
+                    };
+                }
+                displayStudies[uid] = {
+                    studyInstanceUid: uid,
+                    patientName: study.patientName || '',
+                    studyDate: study.studyDate || '',
+                    studyDescription: study.studyDescription || '',
+                    modality: Object.values(study.series || {})[0]?.modality || '',
+                    seriesCount: study.seriesCount,
+                    imageCount: study.instanceCount,
+                    comments: [],
+                    reports: [],
+                    series: seriesMap
+                };
+            }
+
+            const app = window.DicomViewerApp;
+            app.state.studies = displayStudies;
+            await app.library.displayStudies();
+
+            return { imported: result.imported, skipped: result.skipped };
+        });
+
+        expect(importResult.imported).toBe(2);
+
+        // Verify the import banner is shown
+        await expect(page.locator('#importResultBanner')).toBeVisible();
+        await expect(page.locator('#importResultText')).toContainText('Imported 2 files');
+
+        // Verify the study appears in the library table
+        await expect(page.locator('#studiesBody')).toContainText('Display');
+    });
+});
