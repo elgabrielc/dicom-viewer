@@ -36,9 +36,18 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "macOS": {
       "entitlements": "entitlements.plist",
       "minimumSystemVersion": "11.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4MzBCQjA5QkJDODJFRDkKUldUWkxzaTdDYnN3bUY3ZitiaWlZVml3MVlibkpyczhmUE5OZTFoYWZSdTBiZWk0dDVrZG9VSWEK",
+      "endpoints": [
+        "https://github.com/elgabrielc/dicom-viewer/releases/latest/download/latest.json"
+      ]
     }
   }
 }

@@ -1754,6 +1754,50 @@ header .subtitle {
     }
 }
 
+/* Update banner - fixed at top, desktop auto-update notifications */
+.update-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.6rem 1.5rem;
+    background-color: #0a2d4d;
+    border-bottom: 1px solid #1a5a8b;
+    color: #a0d0f0;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.update-banner-btn {
+    padding: 0.2rem 0.6rem;
+    border: 1px solid #1a5a8b;
+    border-radius: 4px;
+    background-color: transparent;
+    color: #a0d0f0;
+    font-size: 0.75rem;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background-color 0.2s;
+}
+
+.update-banner-btn:hover {
+    background-color: #143d5e;
+}
+
+.update-banner-btn.primary {
+    background-color: #1a5a8b;
+    border-color: #2a7abf;
+}
+
+.update-banner-btn.primary:hover {
+    background-color: #2a7abf;
+}
+
 /* Conflict banner - fixed at top of page, dismissible */
 .sync-conflict-banner {
     position: fixed;
