@@ -2111,7 +2111,8 @@ test.describe('Desktop library scanning', () => {
         await installMockDesktop(page, {
             initialConfig: {
                 folder: '/slow-library',
-                lastScan: '2026-03-07T12:00:00.000Z'
+                lastScan: '2026-03-07T12:00:00.000Z',
+                managedLibrary: false
             },
             dirs: {
                 '/slow-library': []
@@ -2129,7 +2130,8 @@ test.describe('Desktop library scanning', () => {
         await installMockDesktop(page, {
             initialConfig: {
                 folder: '/slow-library',
-                lastScan: '2026-03-07T12:00:00.000Z'
+                lastScan: '2026-03-07T12:00:00.000Z',
+                managedLibrary: false
             },
             dirs: {
                 '/slow-library': []
@@ -2184,7 +2186,8 @@ test.describe('Desktop library scanning', () => {
         await installMockDesktop(page, {
             initialConfig: {
                 folder: '/slow-library',
-                lastScan: '2026-03-07T12:00:00.000Z'
+                lastScan: '2026-03-07T12:00:00.000Z',
+                managedLibrary: false
             },
             dirs: {
                 '/slow-library': []
