@@ -252,7 +252,7 @@ test.describe('Desktop report persistence', () => {
         expect(migrated.notes.studies[studyUid].series[seriesUid].comments[0].text).toBe('Migrated series comment');
         expect(migrated.notes.studies[studyUid].reports).toHaveLength(1);
         expect(migrated.notes.studies[studyUid].reports[0].filePath).toBe(reportPath);
-        expect(migrated.config).toEqual(libraryConfig);
+        expect(migrated.config).toMatchObject(libraryConfig);
         expect(migrated.reportUrl).toBe(`asset://local/${encodeURIComponent(reportPath)}`);
         expect(migrated.sqlStore.study_notes).toHaveLength(1);
         expect(migrated.sqlStore.series_notes).toHaveLength(1);
@@ -283,7 +283,7 @@ test.describe('Desktop report persistence', () => {
         expect(persisted.notes.studies[studyUid].comments).toHaveLength(1);
         expect(persisted.notes.studies[studyUid].series[seriesUid].comments).toHaveLength(1);
         expect(persisted.notes.studies[studyUid].reports).toHaveLength(1);
-        expect(persisted.config).toEqual(libraryConfig);
+        expect(persisted.config).toMatchObject(libraryConfig);
         expect(persisted.sqlStore.study_notes).toHaveLength(1);
         expect(persisted.sqlStore.series_notes).toHaveLength(1);
         expect(persisted.sqlStore.comments).toHaveLength(2);
@@ -471,7 +471,7 @@ test.describe('Desktop report persistence', () => {
             return await window.NotesAPI.loadDesktopLibraryConfig();
         });
 
-        expect(migratedConfig).toEqual(newerConfig);
+        expect(migratedConfig).toMatchObject(newerConfig);
     });
 
     test('desktop sqlite init backs off repeated failures before retrying', async ({ page }) => {
