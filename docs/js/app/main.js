@@ -89,6 +89,27 @@
         setDragActive(false);
         abortLibraryLoad();
 
+        if (state.managedLibrary) {
+            state.libraryAbort = new AbortController();
+            try {
+                const result = await app.desktopLibrary.runImport(paths, {
+                    signal: state.libraryAbort.signal
+                });
+
+                // Re-scan the managed library folder to update state.studies
+                const libraryPath = await app.importPipeline.getLibraryPath();
+                state.studies = await app.desktopLibrary.loadStudies(libraryPath);
+                await displayStudies();
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    alert(`Error: ${err.message}`);
+                }
+            } finally {
+                state.libraryAbort = null;
+            }
+            return;
+        }
+
         try {
             state.studies = await loadDroppedPaths(paths);
             await displayStudies();
@@ -244,28 +265,56 @@
                 throw new Error('Desktop runtime is not ready yet.');
             }
 
+            const desktopConfig = await app.desktopLibrary.getConfig();
+            state.managedLibrary = desktopConfig.managedLibrary === true;
+
+            // Apply config to library UI (folder input, status indicators)
             await loadLibraryConfig();
-            if (!state.libraryFolder) {
+
+            if (state.managedLibrary) {
+                // Managed library mode: load studies from the import pipeline's library path
+                const libraryPath = await app.importPipeline.getLibraryPath();
+
+                const cachedStudies = await app.desktopLibrary.loadCachedStudies(libraryPath);
+                if (cachedStudies && Object.keys(cachedStudies).length > 0) {
+                    await applyDesktopLibrarySnapshot(libraryPath, cachedStudies);
+                    setLibraryFolderMessage('Showing cached library while refreshing...', 'info');
+                } else {
+                    setLibraryFolderMessage('Loading managed library...', 'info');
+                }
                 await displayStudies();
-                return;
-            }
 
-            const cachedStudies = await app.desktopLibrary.loadCachedStudies(state.libraryFolder);
-            if (cachedStudies && Object.keys(cachedStudies).length > 0) {
-                await applyDesktopLibrarySnapshot(state.libraryFolder, cachedStudies);
-                setLibraryFolderMessage('Showing cached library while refreshing...', 'info');
+                const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
+                    ? 'Refreshing managed library...'
+                    : 'Loading managed library...';
+                const studies = await app.desktopLibrary.loadStudies(libraryPath, {
+                    onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
+                });
+                await applyDesktopLibraryScan(libraryPath, studies);
             } else {
-                setLibraryFolderMessage('Loading saved library folder...', 'info');
-            }
-            await displayStudies();
+                // Direct scan mode: existing behavior
+                if (!state.libraryFolder) {
+                    await displayStudies();
+                    return;
+                }
 
-            const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
-                ? 'Refreshing saved library folder...'
-                : 'Loading saved library folder...';
-            const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
-                onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
-            });
-            await applyDesktopLibraryScan(state.libraryFolder, studies);
+                const cachedStudies = await app.desktopLibrary.loadCachedStudies(state.libraryFolder);
+                if (cachedStudies && Object.keys(cachedStudies).length > 0) {
+                    await applyDesktopLibrarySnapshot(state.libraryFolder, cachedStudies);
+                    setLibraryFolderMessage('Showing cached library while refreshing...', 'info');
+                } else {
+                    setLibraryFolderMessage('Loading saved library folder...', 'info');
+                }
+                await displayStudies();
+
+                const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
+                    ? 'Refreshing saved library folder...'
+                    : 'Loading saved library folder...';
+                const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
+                    onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
+                });
+                await applyDesktopLibraryScan(state.libraryFolder, studies);
+            }
         } catch (e) {
             try { await app.desktopLibrary.markScanFailed(state.libraryFolder); } catch {}
             state.libraryAvailable = !!state.libraryFolder;
