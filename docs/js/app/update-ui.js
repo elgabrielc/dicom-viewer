@@ -28,6 +28,7 @@ const _UpdateUI = (() => {
 
     let initialized = false;
     let pendingUpdate = null;
+    let installing = false;
 
     function init() {
         if (initialized) return;
@@ -100,10 +101,13 @@ const _UpdateUI = (() => {
     }
 
     async function handleActionClick() {
+        if (installing) return;
+
         const actionBtn = document.getElementById('updateBannerAction');
 
         // If update is installed and waiting for restart
         if (actionBtn && actionBtn.dataset.state === 'restart') {
+            installing = true;
             const process = window.__TAURI__?.process;
             if (process?.relaunch) {
                 await process.relaunch();
@@ -111,9 +115,17 @@ const _UpdateUI = (() => {
             return;
         }
 
+        // Retry after failure -- get a fresh update object
+        if (actionBtn && actionBtn.dataset.state === 'retry') {
+            installing = false;
+            await checkForUpdates(true);
+            return;
+        }
+
         // Download and install the pending update
         if (!pendingUpdate) return;
 
+        installing = true;
         if (actionBtn) {
             actionBtn.textContent = 'Downloading...';
             actionBtn.disabled = true;
@@ -135,11 +147,16 @@ const _UpdateUI = (() => {
                 actionBtn.disabled = false;
             }
             pendingUpdate = null;
+            installing = false;
         } catch (err) {
             console.error('Update install failed:', err);
-            showBanner('Update failed. Try again later.', null);
+            // Clear stale update object -- re-check will get a fresh one
+            pendingUpdate = null;
+            installing = false;
+            showBanner('Update failed. Try again later.', 'Retry');
             if (actionBtn) {
                 actionBtn.disabled = false;
+                actionBtn.dataset.state = 'retry';
             }
         }
     }
@@ -179,11 +196,12 @@ const _UpdateUI = (() => {
         }
     }
 
-    // Self-initialize: init() gates on CONFIG.features.autoUpdate.
+    // Self-initialize: call init() directly (not _UpdateUI.init()) because
+    // the IIFE hasn't returned yet when this runs.
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => _UpdateUI.init());
+        document.addEventListener('DOMContentLoaded', () => init());
     } else {
-        _UpdateUI.init();
+        init();
     }
 
     return { init };
