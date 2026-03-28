@@ -91,6 +91,23 @@ Copyright (c) 2026 Divergent Health Technologies
             </div>
         </section>
 
+        <!-- Import Progress (desktop copy-on-import) -->
+        <div id="importProgress" class="import-progress" style="display: none;">
+            <div class="import-progress-text">
+                <span id="importProgressText">Importing...</span>
+            </div>
+            <div class="import-progress-detail">
+                <span id="importProgressDetail"></span>
+            </div>
+            <div class="progress-bar">
+                <div id="importProgressFill" class="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+        <div id="importResultBanner" class="import-result-banner" style="display: none;">
+            <span id="importResultText"></span>
+            <button id="importResultDismiss" class="import-result-dismiss" aria-label="Dismiss">&times;</button>
+        </div>
+
         <section class="studies-section">
             <h2>Studies <span id="studyCount" class="count"></span></h2>
             <button id="refreshLibraryBtn" class="library-refresh-btn" style="display: none; margin-bottom: 0.75rem;">Refresh Library</button>
@@ -234,6 +251,7 @@ Copyright (c) 2026 Divergent Health Technologies
     <script src="js/app/tools.js"></script>
     <script src="js/app/rendering.js"></script>
     <script src="js/app/sources.js"></script>
+    <script src="js/app/import-pipeline.js"></script>
     <script src="js/app/desktop-library.js"></script>
     <script src="js/app/desktop-decode.js"></script>
     <script src="js/app/notes-ui.js"></script>
