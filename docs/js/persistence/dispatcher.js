@@ -21,7 +21,10 @@ const NotesAPI = (() => {
         loadDesktopLibraryConfig,
         saveDesktopLibraryConfig,
         loadDesktopScanCache,
-        saveDesktopScanCacheEntries
+        saveDesktopScanCacheEntries,
+        saveImportJob,
+        updateImportJob,
+        loadRecentImportJobs
     } = window._NotesDesktop;
 
     // ---- Dispatcher ----
@@ -199,6 +202,9 @@ const NotesAPI = (() => {
         saveDesktopLibraryConfig,
         loadDesktopScanCache,
         saveDesktopScanCacheEntries,
+        saveImportJob,
+        updateImportJob,
+        loadRecentImportJobs,
         authenticatedFetch,
         syncNow,
         isSyncing

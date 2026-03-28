@@ -2,7 +2,7 @@
 //
 // Mock Tauri SQL plugin for Playwright desktop tests.
 // Simulates plugin:sql commands using localStorage-backed in-memory tables.
-// Schema mirrors desktop/src-tauri/migrations/ (001 through 006).
+// Schema mirrors desktop/src-tauri/migrations/ (001 through 007).
 (function () {
     if (typeof window === 'undefined') return;
 
@@ -24,6 +24,7 @@
             desktop_scan_cache: [],
             sync_outbox: [],
             sync_state: [],
+            import_jobs: [],
             meta: {
                 lastCommentId: 0,
                 lastOutboxId: 0,
@@ -58,6 +59,7 @@
         if (!Array.isArray(normalized.desktop_scan_cache)) normalized.desktop_scan_cache = [];
         if (!Array.isArray(normalized.sync_outbox)) normalized.sync_outbox = [];
         if (!Array.isArray(normalized.sync_state)) normalized.sync_state = [];
+        if (!Array.isArray(normalized.import_jobs)) normalized.import_jobs = [];
         if (!normalized.meta || typeof normalized.meta !== 'object') {
             normalized.meta = { lastCommentId: 0, lastOutboxId: 0, loadCalls: 0 };
         }
@@ -420,6 +422,49 @@
                     return { rowsAffected: 1, lastInsertId: null };
                 }
 
+                // -- import_jobs --
+
+                if (normalized.startsWith('insert into import_jobs')) {
+                    const [id, sourcePath, startedAt, completedAt, importedCount, skippedCount, errorCount, status] = values;
+                    const existing = state.import_jobs.find((row) => row.id === id);
+                    if (existing) {
+                        return { rowsAffected: 0, lastInsertId: null };
+                    }
+                    state.import_jobs.push({
+                        id,
+                        source_path: sourcePath,
+                        started_at: startedAt,
+                        completed_at: completedAt ?? null,
+                        imported_count: importedCount ?? 0,
+                        skipped_count: skippedCount ?? 0,
+                        error_count: errorCount ?? 0,
+                        status: status || 'running'
+                    });
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: null };
+                }
+
+                if (normalized.startsWith('update import_jobs set')) {
+                    const id = values[values.length - 1];
+                    const existing = state.import_jobs.find((row) => row.id === id);
+                    if (!existing) {
+                        return { rowsAffected: 0, lastInsertId: null };
+                    }
+                    // Parse dynamic SET clauses from the normalized query.
+                    // The production code builds "col = ?" pairs; extract column
+                    // names between "set" and "where" then apply positional values.
+                    const setMatch = normalized.match(/set\s+(.+?)\s+where/);
+                    if (setMatch) {
+                        const pairs = setMatch[1].split(',').map((s) => s.trim());
+                        for (let i = 0; i < pairs.length; i++) {
+                            const colName = pairs[i].replace(/\s*=\s*\?/, '').trim();
+                            existing[colName] = values[i];
+                        }
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: null };
+                }
+
                 throw new Error(`Unhandled mock SQL execute: ${query}`);
             },
 
@@ -602,6 +647,20 @@
 
                 if (normalized.startsWith('select') && normalized.includes('sync_state')) {
                     return state.sync_state.map((row) => clone(row));
+                }
+
+                // -- import_jobs selects --
+
+                if (normalized.startsWith('select') && normalized.includes('from import_jobs')) {
+                    const rows = state.import_jobs.slice();
+                    // Support ORDER BY started_at DESC (the production query pattern)
+                    if (normalized.includes('order by started_at desc')) {
+                        rows.sort((a, b) => (b.started_at || 0) - (a.started_at || 0));
+                    }
+                    // Support LIMIT clause
+                    const limitMatch = normalized.match(/limit\s+\?/);
+                    const limitValue = limitMatch ? Number(values[values.length - 1]) : rows.length;
+                    return rows.slice(0, limitValue).map((row) => clone(row));
                 }
 
                 throw new Error(`Unhandled mock SQL select: ${query}`);

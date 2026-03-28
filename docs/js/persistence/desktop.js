@@ -55,7 +55,15 @@ const _NotesDesktop = (() => {
     function normalizeDesktopLibraryConfig(config) {
         return {
             folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
-            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null
+            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
+            managedLibrary: config?.managedLibrary === true,
+            importHistory: Array.isArray(config?.importHistory) ? config.importHistory.filter(entry =>
+                entry && typeof entry === 'object'
+                && typeof entry.sourcePath === 'string'
+                && typeof entry.importedAt === 'string'
+                && typeof entry.fileCount === 'number'
+                && typeof entry.studyCount === 'number'
+            ) : []
         };
     }
 
@@ -287,6 +295,76 @@ const _NotesDesktop = (() => {
         }
 
         return totalRowsAffected;
+    }
+
+    async function saveImportJob(job) {
+        if (!job || typeof job.id !== 'string' || !job.id) {
+            throw new Error('saveImportJob requires a job with a string id');
+        }
+        await initializeDesktopPersistence();
+        const db = await getDesktopDb();
+        await db.execute(
+            `INSERT INTO import_jobs (id, source_path, started_at, completed_at, imported_count, skipped_count, error_count, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                job.id,
+                job.source_path || '',
+                typeof job.started_at === 'number' ? job.started_at : Date.now(),
+                job.completed_at ?? null,
+                parseInteger(job.imported_count, 0),
+                parseInteger(job.skipped_count, 0),
+                parseInteger(job.error_count, 0),
+                typeof job.status === 'string' && job.status ? job.status : 'running'
+            ]
+        );
+        return job;
+    }
+
+    async function updateImportJob(id, updates) {
+        if (!id || typeof id !== 'string') {
+            throw new Error('updateImportJob requires a string id');
+        }
+        if (!updates || typeof updates !== 'object') return;
+        await initializeDesktopPersistence();
+        const db = await getDesktopDb();
+        const setClauses = [];
+        const values = [];
+        if ('completed_at' in updates) {
+            setClauses.push('completed_at = ?');
+            values.push(updates.completed_at ?? null);
+        }
+        if ('imported_count' in updates) {
+            setClauses.push('imported_count = ?');
+            values.push(parseInteger(updates.imported_count, 0));
+        }
+        if ('skipped_count' in updates) {
+            setClauses.push('skipped_count = ?');
+            values.push(parseInteger(updates.skipped_count, 0));
+        }
+        if ('error_count' in updates) {
+            setClauses.push('error_count = ?');
+            values.push(parseInteger(updates.error_count, 0));
+        }
+        if ('status' in updates) {
+            setClauses.push('status = ?');
+            values.push(typeof updates.status === 'string' ? updates.status : 'running');
+        }
+        if (!setClauses.length) return;
+        values.push(id);
+        await db.execute(
+            `UPDATE import_jobs SET ${setClauses.join(', ')} WHERE id = ?`,
+            values
+        );
+    }
+
+    async function loadRecentImportJobs(limit) {
+        const rowLimit = parseInteger(limit, 20);
+        await initializeDesktopPersistence();
+        const db = await getDesktopDb();
+        return await db.select(
+            'SELECT id, source_path, started_at, completed_at, imported_count, skipped_count, error_count, status FROM import_jobs ORDER BY started_at DESC LIMIT ?',
+            [rowLimit]
+        );
     }
 
     function getReportExtension(reportType, file) {
@@ -1027,6 +1105,9 @@ const _NotesDesktop = (() => {
         saveDesktopLibraryConfig,
         loadDesktopScanCache,
         saveDesktopScanCacheEntries,
+        saveImportJob,
+        updateImportJob,
+        loadRecentImportJobs,
         getDesktopDb,
         initializeDesktopPersistence
     };
