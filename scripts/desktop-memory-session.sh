@@ -155,11 +155,18 @@ DESKTOP_PID="$(wait_for_desktop_process)"
 echo "Desktop app detected: PID ${DESKTOP_PID}"
 echo "Capture will stop automatically when you close the desktop app."
 
-python3 "${REPO_ROOT}/scripts/desktop-memory-capture.py" \
-  --pid "${DESKTOP_PID}" \
-  --html "${DEFAULT_HTML_PATH}" \
-  --ensure-free-mb 0 \
-  "${CAPTURE_ARGS[@]}"
+capture_cmd=(
+  python3 "${REPO_ROOT}/scripts/desktop-memory-capture.py"
+  --pid "${DESKTOP_PID}"
+  --html "${DEFAULT_HTML_PATH}"
+  --ensure-free-mb 0
+)
+
+if (( ${#CAPTURE_ARGS[@]} > 0 )); then
+  capture_cmd+=("${CAPTURE_ARGS[@]}")
+fi
+
+"${capture_cmd[@]}"
 
 if [[ -n "${LAUNCH_PID}" ]]; then
   wait "${LAUNCH_PID}" 2>/dev/null || true
