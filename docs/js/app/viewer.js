@@ -17,7 +17,11 @@
     } = app.dom;
     const { escapeHtml } = app.utils;
     const { toDicomByteArray } = app.dicom;
-    const { renderDicom } = app.rendering;
+    const {
+        decodeWithFallback,
+        renderDecodeError,
+        renderPixels
+    } = app.rendering;
     const { readSliceBuffer, getSliceCacheKey } = app.sources;
     const {
         resetViewForNewSeries,
@@ -25,11 +29,168 @@
     } = app.tools;
 
     const VIEWER_PRELOAD_RADIUS = config?.deploymentMode === 'desktop' ? 1 : 3;
+    let loadGeneration = 0;
+    let activeLoadRequestId = 0;
+    const inFlightLoads = new Map();
+
+    function beginLoadGeneration() {
+        loadGeneration += 1;
+        activeLoadRequestId += 1;
+        inFlightLoads.clear();
+    }
+
+    function isLoadStale(generation, requestId, series) {
+        return generation !== loadGeneration
+            || requestId !== activeLoadRequestId
+            || state.currentSeries !== series;
+    }
+
+    function renderDecodedSlice(decoded, wlOverride = null, options = {}) {
+        const { displayErrors = true } = options;
+        if (!decoded) {
+            return renderDecodeError(
+                {
+                    error: true,
+                    errorMessage: 'Image decode failed',
+                    errorDetails: 'Unknown decode error'
+                },
+                { display: displayErrors }
+            );
+        }
+        if (decoded.error) {
+            return renderDecodeError(decoded, { display: displayErrors });
+        }
+        return renderPixels(decoded, wlOverride);
+    }
+
+    async function getDecodedSlice(slice, index, purpose, generation, options = {}) {
+        const { requestId = null, series = null } = options;
+        const isStale = () => generation !== loadGeneration
+            || (requestId !== null && requestId !== activeLoadRequestId)
+            || (series && state.currentSeries !== series);
+        const cacheKey = getSliceCacheKey(slice, index);
+        if (cacheKey && state.sliceCache.has(cacheKey)) {
+            return state.sliceCache.get(cacheKey);
+        }
+
+        if (cacheKey && inFlightLoads.has(cacheKey)) {
+            return inFlightLoads.get(cacheKey);
+        }
+
+        const loadPromise = (async () => {
+            const buf = await readSliceBuffer(slice, purpose);
+            if (isStale()) return null;
+
+            const byteArray = await toDicomByteArray(buf);
+            if (isStale()) return null;
+
+            const dataSet = dicomParser.parseDicom(byteArray);
+            if (isStale()) return null;
+
+            const decoded = await decodeWithFallback(dataSet, slice.frameIndex || 0, slice);
+            if (isStale()) return null;
+
+            if (decoded && !decoded.error && cacheKey) {
+                state.sliceCache.set(cacheKey, decoded);
+            }
+
+            return decoded || null;
+        })();
+
+        if (cacheKey) {
+            inFlightLoads.set(cacheKey, loadPromise);
+            loadPromise.finally(() => {
+                if (inFlightLoads.get(cacheKey) === loadPromise) {
+                    inFlightLoads.delete(cacheKey);
+                }
+            });
+        }
+
+        return loadPromise;
+    }
+
+    function preloadNearbySlices(slices, index, generation, requestId, series) {
+        if (isLoadStale(generation, requestId, series)) {
+            return;
+        }
+
+        for (let i = index - VIEWER_PRELOAD_RADIUS; i <= index + VIEWER_PRELOAD_RADIUS; i++) {
+            if (i < 0 || i >= slices.length) continue;
+
+            const preloadSlice = slices[i];
+            const preloadCacheKey = getSliceCacheKey(preloadSlice, i);
+            if (!preloadCacheKey || state.sliceCache.has(preloadCacheKey) || inFlightLoads.has(preloadCacheKey)) {
+                continue;
+            }
+
+            getDecodedSlice(preloadSlice, i, 'preload', generation).catch(() => {});
+        }
+    }
+
+    function updateSliceMetadata(info, slice, index, totalSlices) {
+        if (info && info.isBlank) {
+            metadataContent.innerHTML = `
+                <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${totalSlices}</div></div>
+                <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
+                <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
+                <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
+            `;
+            return;
+        }
+
+        if (info && !info.error) {
+            let metadataHtml = `
+                <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${totalSlices}</div></div>
+                <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
+                <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
+                <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
+                <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
+            `;
+
+            if (info.modality === 'MR' && info.mrMetadata) {
+                const mr = info.mrMetadata;
+                metadataHtml += '<div class="metadata-divider"></div>';
+
+                if (mr.protocolName) {
+                    metadataHtml += `<div class="metadata-item"><div class="label">Protocol</div><div class="value">${escapeHtml(mr.protocolName)}</div></div>`;
+                }
+                if (mr.sequenceName) {
+                    metadataHtml += `<div class="metadata-item"><div class="label">Sequence</div><div class="value">${escapeHtml(mr.sequenceName)}</div></div>`;
+                }
+                if (mr.repetitionTime) {
+                    metadataHtml += `<div class="metadata-item"><div class="label">TR</div><div class="value">${mr.repetitionTime.toFixed(1)} ms</div></div>`;
+                }
+                if (mr.echoTime) {
+                    metadataHtml += `<div class="metadata-item"><div class="label">TE</div><div class="value">${mr.echoTime.toFixed(1)} ms</div></div>`;
+                }
+                if (mr.flipAngle) {
+                    metadataHtml += `<div class="metadata-item"><div class="label">Flip Angle</div><div class="value">${escapeHtml(mr.flipAngle)}°</div></div>`;
+                }
+                if (mr.magneticFieldStrength) {
+                    metadataHtml += `<div class="metadata-item"><div class="label">Field</div><div class="value">${escapeHtml(mr.magneticFieldStrength)}T</div></div>`;
+                }
+            }
+
+            metadataContent.innerHTML = metadataHtml;
+            return;
+        }
+
+        if (info && info.error) {
+            metadataContent.innerHTML = `
+                <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${totalSlices}</div></div>
+                <div class="metadata-item"><div class="label">Status</div><div class="value" style="color: #f0ad4e;">Decode Error</div></div>
+                <div class="metadata-item"><div class="label">Format</div><div class="value">${info.tsInfo?.name || 'Unknown'}</div></div>
+            `;
+        }
+    }
 
     async function loadSlice(index) {
         if (!state.currentSeries) return;
-        const slices = state.currentSeries.slices;
+        const series = state.currentSeries;
+        const slices = series.slices;
         if (index < 0 || index >= slices.length) return;
+        const generation = loadGeneration;
+        const requestId = ++activeLoadRequestId;
 
         state.currentSliceIndex = index;
         updateSliceInfo();
@@ -37,88 +198,43 @@
 
         try {
             const slice = slices[index];
-            const cacheKey = getSliceCacheKey(slice, index);
-            let dataSet = state.sliceCache.get(cacheKey);
-
-            if (!dataSet) {
-                const buf = await readSliceBuffer(slice, 'load');
-                dataSet = dicomParser.parseDicom(await toDicomByteArray(buf));
-                state.sliceCache.set(cacheKey, dataSet);
+            let decoded = await getDecodedSlice(slice, index, 'load', generation, { requestId, series });
+            if (!decoded && !isLoadStale(generation, requestId, series)) {
+                decoded = await getDecodedSlice(slice, index, 'load', generation, { requestId, series });
+            }
+            if (isLoadStale(generation, requestId, series)) {
+                return;
             }
 
             const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
                 ? state.windowLevel
                 : null;
-            const info = await renderDicom(dataSet, wlOverride, slice.frameIndex || 0, slice);
+            const info = renderDecodedSlice(decoded, wlOverride);
 
             updateWLDisplay();
-
-            if (info && !info.error) {
-                let metadataHtml = `
-                    <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                    <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
-                    <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
-                    <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
-                    <div class="metadata-item"><div class="label">Window</div><div class="value">C:${info.wc} W:${info.ww}</div></div>
-                `;
-
-                if (info.modality === 'MR' && info.mrMetadata) {
-                    const mr = info.mrMetadata;
-                    metadataHtml += '<div class="metadata-divider"></div>';
-
-                    if (mr.protocolName) {
-                        metadataHtml += `<div class="metadata-item"><div class="label">Protocol</div><div class="value">${escapeHtml(mr.protocolName)}</div></div>`;
-                    }
-                    if (mr.sequenceName) {
-                        metadataHtml += `<div class="metadata-item"><div class="label">Sequence</div><div class="value">${escapeHtml(mr.sequenceName)}</div></div>`;
-                    }
-                    if (mr.repetitionTime) {
-                        metadataHtml += `<div class="metadata-item"><div class="label">TR</div><div class="value">${mr.repetitionTime.toFixed(1)} ms</div></div>`;
-                    }
-                    if (mr.echoTime) {
-                        metadataHtml += `<div class="metadata-item"><div class="label">TE</div><div class="value">${mr.echoTime.toFixed(1)} ms</div></div>`;
-                    }
-                    if (mr.flipAngle) {
-                        metadataHtml += `<div class="metadata-item"><div class="label">Flip Angle</div><div class="value">${escapeHtml(mr.flipAngle)}°</div></div>`;
-                    }
-                    if (mr.magneticFieldStrength) {
-                        metadataHtml += `<div class="metadata-item"><div class="label">Field</div><div class="value">${escapeHtml(mr.magneticFieldStrength)}T</div></div>`;
-                    }
-                }
-
-                metadataContent.innerHTML = metadataHtml;
-            } else if (info && info.isBlank) {
-                metadataContent.innerHTML = `
-                    <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                    <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
-                    <div class="metadata-item"><div class="label">Size</div><div class="value">${info.cols} x ${info.rows}</div></div>
-                    <div class="metadata-item"><div class="label">Location</div><div class="value">${slice.sliceLocation?.toFixed(2) || '-'} mm</div></div>
-                `;
-            } else if (info && info.error) {
-                metadataContent.innerHTML = `
-                    <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${slices.length}</div></div>
-                    <div class="metadata-item"><div class="label">Status</div><div class="value" style="color: #f0ad4e;">Decode Error</div></div>
-                    <div class="metadata-item"><div class="label">Format</div><div class="value">${info.tsInfo?.name || 'Unknown'}</div></div>
-                `;
+            updateSliceMetadata(info, slice, index, slices.length);
+            if (isLoadStale(generation, requestId, series)) {
+                return;
             }
-
-            for (let i = index - VIEWER_PRELOAD_RADIUS; i <= index + VIEWER_PRELOAD_RADIUS; i++) {
-                if (i >= 0 && i < slices.length) {
-                    const preloadSlice = slices[i];
-                    const preloadCacheKey = getSliceCacheKey(preloadSlice, i);
-                    if (state.sliceCache.has(preloadCacheKey)) continue;
-                    readSliceBuffer(preloadSlice, 'preload').then(buf => {
-                        toDicomByteArray(buf).then(byteArray => {
-                            state.sliceCache.set(preloadCacheKey, dicomParser.parseDicom(byteArray));
-                        }).catch(() => {});
-                    }).catch(() => {});
-                }
-            }
+            preloadNearbySlices(slices, index, generation, requestId, series);
         } catch (e) {
             console.error('Error loading slice:', e);
+            if (!isLoadStale(generation, requestId, series)) {
+                const errorInfo = renderDecodedSlice(
+                    {
+                        error: true,
+                        errorMessage: 'Image decode failed',
+                        errorDetails: e.message || 'Unknown decode error'
+                    },
+                    null
+                );
+                updateSliceMetadata(errorInfo, slices[index], index, slices.length);
+            }
+        } finally {
+            if (requestId === activeLoadRequestId) {
+                imageLoading.style.display = 'none';
+            }
         }
-
-        imageLoading.style.display = 'none';
     }
 
     function updateSliceInfo() {
@@ -130,6 +246,7 @@
     }
 
     function selectSeries(seriesUid) {
+        beginLoadGeneration();
         state.currentSeries = state.currentStudy.series[seriesUid];
         state.sliceCache.clear();
         state.currentSliceIndex = 0;
@@ -179,12 +296,17 @@
     }
 
     function closeViewer() {
+        beginLoadGeneration();
         viewerView.style.display = 'none';
         libraryView.style.display = 'block';
         document.body.classList.remove('viewer-page');
         state.currentStudy = null;
         state.currentSeries = null;
         state.sliceCache.clear();
+        state.measurements.clear();
+        state.activeMeasurement = null;
+        state.pixelSpacing = null;
+        imageLoading.style.display = 'none';
         canvas.style.transform = '';
     }
 

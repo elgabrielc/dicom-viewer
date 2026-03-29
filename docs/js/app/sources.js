@@ -197,19 +197,40 @@
         return studies;
     }
 
+    const cacheSourceIds = new WeakMap();
+    let nextCacheSourceId = 0;
+
+    function getCacheSourceId(sourceObject, prefix) {
+        if (!sourceObject || (typeof sourceObject !== 'object' && typeof sourceObject !== 'function')) {
+            return null;
+        }
+
+        if (!cacheSourceIds.has(sourceObject)) {
+            nextCacheSourceId += 1;
+            cacheSourceIds.set(sourceObject, `${prefix}:${nextCacheSourceId}`);
+        }
+
+        return cacheSourceIds.get(sourceObject);
+    }
+
     function getSliceCacheKey(slice, fallbackKey = null) {
         const source = slice?.source;
+        const frameIndex = slice?.frameIndex || 0;
+        if (slice?.sopInstanceUid) {
+            return `sop:${slice.sopInstanceUid}:${frameIndex}`;
+        }
+
         switch (source?.kind) {
             case 'path':
-                return `path:${source.path}`;
+                return `path:${source.path}:${frameIndex}`;
             case 'api':
-                return `api:${source.apiBase}|${source.studyId}|${source.seriesId}|${source.sliceIndex}`;
+                return `api:${source.apiBase}|${source.studyId}|${source.seriesId}|${source.sliceIndex}|${frameIndex}`;
             case 'blob':
-                return source.blob || fallbackKey;
+                return `${getCacheSourceId(source.blob, 'blob') || `blob:${fallbackKey ?? 'unknown'}`}:${frameIndex}`;
             case 'handle':
-                return source.handle || fallbackKey;
+                return `${getCacheSourceId(source.handle, 'handle') || `handle:${fallbackKey ?? 'unknown'}`}:${frameIndex}`;
             default:
-                return fallbackKey ?? source ?? null;
+                return `slice:${fallbackKey ?? 'unknown'}:${frameIndex}`;
         }
     }
 

@@ -825,6 +825,7 @@
         decodeNative,
         decodeWithFallback,
         getDecodeRoute,
+        renderDecodeError,
         renderPixels,
         renderDicom
     };

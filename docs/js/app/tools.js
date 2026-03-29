@@ -325,13 +325,17 @@
         if (!slice) return;
 
         const cacheKey = app.sources?.getSliceCacheKey?.(slice, state.currentSliceIndex);
-        const dataSet = state.sliceCache.get(cacheKey);
-        if (!dataSet) return;
+        const decoded = state.sliceCache.get(cacheKey);
+        if (!decoded) return;
 
         const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
             ? state.windowLevel
             : null;
-        await app.rendering.renderDicom(dataSet, wlOverride, slice.frameIndex || 0, slice);
+        if (decoded.error) {
+            app.rendering.renderDecodeError(decoded);
+            return;
+        }
+        app.rendering.renderPixels(decoded, wlOverride);
     }
 
     function handleWLDrag(dx, dy) {
