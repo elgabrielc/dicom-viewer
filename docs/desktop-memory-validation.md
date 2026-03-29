@@ -14,12 +14,39 @@ This guide is the low-friction way to validate the desktop viewer memory fix on 
 
 ## 1. Launch the desktop app from the worktree
 
+The simplest path is the session wrapper:
+
+```bash
+cd "/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-memory-fix"
+npm run desktop:memory:session
+```
+
+That one command will:
+
+- free rebuildable launch artifacts if disk space is too tight
+- launch the desktop app
+- wait for the Tauri process to appear
+- start memory capture automatically
+- generate [latest.html](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-memory-fix/artifacts/desktop-memory/latest.html) when the app closes
+
+If you want the dashboard to open automatically when the run finishes:
+
+```bash
+npm run desktop:memory:session -- --open-report
+```
+
+You can still type marker labels into the terminal while the session is running.
+
+## 2. Manual launch and capture
+
+Use this path only if you want to launch and capture separately.
+
 ```bash
 cd "/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-memory-fix"
 npm run desktop:launch
 ```
 
-## 2. Start a capture session
+## 3. Start a capture session
 
 In a second terminal:
 
@@ -58,7 +85,7 @@ While the capture is running, type marker labels and press Enter. Suggested labe
 
 Press `Ctrl+C` when you are done.
 
-## 3. Reproduce with a real study
+## 4. Reproduce with a real study
 
 Use the same sequence each run so the dashboards stay comparable:
 
@@ -74,7 +101,7 @@ Use the same sequence each run so the dashboards stay comparable:
 10. Type `close viewer`.
 11. Reopen a different study and repeat once if needed.
 
-## 4. Open the dashboard
+## 5. Open the dashboard
 
 ```bash
 open artifacts/desktop-memory/latest.html

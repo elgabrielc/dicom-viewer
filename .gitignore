@@ -45,6 +45,7 @@ htmlcov/
 
 # Logs
 *.log
+artifacts/desktop-memory/
 
 # Session history (private)
 session-history*.md
