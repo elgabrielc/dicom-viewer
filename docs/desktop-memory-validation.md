@@ -25,19 +25,25 @@ In a second terminal:
 
 ```bash
 cd "/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-memory-fix"
-python3 scripts/desktop-memory-capture.py \
-  --process myradone \
+npm run desktop:memory:capture -- \
   --html artifacts/desktop-memory/latest.html
 ```
 
 If more than one process matches, rerun with an explicit PID:
 
 ```bash
-pgrep -fl myradone
-python3 scripts/desktop-memory-capture.py \
+pgrep -fl "dicom-viewer-desktop|myradone"
+npm run desktop:memory:capture -- \
   --pid <PID> \
   --html artifacts/desktop-memory/latest.html
 ```
+
+The npm shortcut adds two safety rails automatically:
+
+- It checkpoints the session to a `.partial.json` file every few seconds while the run is active.
+- If free disk space is below 1 GB, it will delete the rebuildable [desktop/src-tauri/target](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-memory-fix/desktop/src-tauri/target) directory before starting the capture.
+
+That `target` cleanup is safe, but the next desktop launch will need to rebuild the native app.
 
 While the capture is running, type marker labels and press Enter. Suggested labels:
 
@@ -103,4 +109,12 @@ If you already have a JSON session file, you can rebuild the HTML report without
 python3 scripts/desktop-memory-report.py \
   artifacts/desktop-memory/session-20260329-170000.json \
   --output artifacts/desktop-memory/session-20260329-170000.html
+```
+
+If a run is interrupted, you can also rebuild the dashboard from the checkpoint file:
+
+```bash
+python3 scripts/desktop-memory-report.py \
+  artifacts/desktop-memory/session-20260329-170000.partial.json \
+  --output artifacts/desktop-memory/recovered.html
 ```

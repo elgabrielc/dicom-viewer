@@ -333,6 +333,8 @@ def dashboard_html(
     peak_delta = peak_mb - baseline_mb
     final_delta = final_mb - baseline_mb
     plateau_text = fmt_mb(target_plateau_mb) if target_plateau_mb is not None else "None"
+    disk_guard = session.get("disk_guard") or {}
+    cleanup_actions = [action for action in disk_guard.get("cleanup_actions", []) if action.get("status") == "removed"]
 
     phase_rows_html = "".join(
         """
@@ -382,6 +384,33 @@ def dashboard_html(
         <section class="panel">
           <h2>Notes</h2>
           <p>{html.escape(session["notes"])}</p>
+        </section>
+        """
+
+    disk_guard_html = ""
+    required_free_mb = disk_guard.get("required_free_mb")
+    if required_free_mb:
+        disk_summary = (
+            f"Required at least {fmt_mb(float(required_free_mb))} free before capture. "
+            f"Started with {fmt_mb(float(disk_guard.get('free_before_mb', 0.0)))} "
+            f"and proceeded with {fmt_mb(float(disk_guard.get('free_after_mb', 0.0)))} available."
+        )
+        if cleanup_actions:
+            action_summary = "; ".join(
+                (
+                    f"Removed {html.escape(str(action.get('path', '')))} "
+                    f"(about {fmt_mb(float(action.get('estimated_size_mb', 0.0)))})"
+                )
+                for action in cleanup_actions
+            )
+            disk_summary += f" Auto-cleanup ran before capture: {action_summary}."
+        else:
+            disk_summary += " No preflight cleanup was needed."
+
+        disk_guard_html = f"""
+        <section class="panel">
+          <h2>Disk Guard</h2>
+          <p>{disk_summary}</p>
         </section>
         """
 
@@ -819,6 +848,7 @@ def dashboard_html(
     </section>
 
     {notes_html}
+    {disk_guard_html}
 
     <section class="panel">
       <h2>Session Metadata</h2>

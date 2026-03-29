@@ -5,7 +5,7 @@
   "main": "app.py",
   "scripts": {
     "desktop:launch": "cd desktop && npm run dev:desktop",
-    "desktop:memory:capture": "python3 scripts/desktop-memory-capture.py",
+    "desktop:memory:capture": "python3 scripts/desktop-memory-capture.py --ensure-free-mb 1024 --cleanup-path desktop/src-tauri/target",
     "desktop:memory:report": "python3 scripts/desktop-memory-report.py",
     "test": "npx playwright test",
     "worktree:new": "./scripts/agent-worktree-new.sh",
