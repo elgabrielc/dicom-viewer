@@ -696,7 +696,7 @@ test.describe('Desktop library scanning', () => {
         });
     });
 
-    test('multi-frame metadata expands into virtual slices that share a cache key', async ({ page }) => {
+    test('multi-frame metadata expands into virtual slices with frame-aware cache keys', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -729,7 +729,12 @@ test.describe('Desktop library scanning', () => {
             '1.2.3.4|2',
             '1.2.3.4|3'
         ]);
-        expect(new Set(result.cacheKeys)).toEqual(new Set(['path:/library/multi-frame.dcm']));
+        expect(result.cacheKeys).toEqual([
+            'sop:1.2.3.4:0',
+            'sop:1.2.3.4:1',
+            'sop:1.2.3.4:2',
+            'sop:1.2.3.4:3'
+        ]);
     });
 
     test('scan dedupes duplicate DICOM copies with the same SOP instance UID', async ({ page }) => {
@@ -1884,7 +1889,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.wrapperPixelSpacing).toEqual(result.splitPixelSpacing);
     });
 
-    test('viewer loadSlice falls back to native desktop decode after an explicit js-first decode error', async ({ page }) => {
+    test('viewer loadSlice renders a cached decoded frame without re-decoding', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -1895,11 +1900,33 @@ test.describe('Desktop library scanning', () => {
                 sliceLocation: 12.34,
                 source: {
                     kind: 'path',
-                    path: '/library/native-fallback.dcm'
+                    path: '/library/cached-decoded.dcm'
                 }
             };
             const cacheKey = app.sources.getSliceCacheKey(slice, 0);
-            const nativeCalls = [];
+            const decoded = {
+                rows: 4,
+                cols: 4,
+                bitsAllocated: 16,
+                bitsStored: 16,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                planarConfiguration: 0,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 1500,
+                windowWidth: 3000,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'CT',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: null,
+                pixelSpacing: { row: 0.5, col: 0.25 },
+                skipWindowLevel: false,
+                isBlank: false,
+                pixelData: new Uint16Array(Array.from({ length: 16 }, (_, index) => index * 200))
+            };
+            let readFileCalls = 0;
+            let nativeDecodeCalls = 0;
 
             app.state.currentStudy = {
                 studyInstanceUid: 'study-1'
@@ -1912,76 +1939,50 @@ test.describe('Desktop library scanning', () => {
             app.state.windowLevel = { center: null, width: null };
             app.state.baseWindowLevel = { center: null, width: null };
             app.state.pixelSpacing = null;
-            // Intentionally omit Pixel Data so the js-first route returns a decode error
-            // and the viewer must fall back to the native desktop path for this slice.
-            app.state.sliceCache.set(cacheKey, {
-                elements: {},
-                string(tag) {
-                    const values = {
-                        x00020010: '1.2.840.10008.1.2.1',
-                        x00080060: 'CT',
-                        x00280004: 'MONOCHROME2',
-                        x00280030: '0.5\\0.25',
-                        x00281050: '40',
-                        x00281051: '400',
-                        x00281052: '0',
-                        x00281053: '1'
-                    };
-                    return values[tag] || '';
-                },
-                uint16(tag) {
-                    const values = {
-                        x00280010: 4,
-                        x00280011: 4,
-                        x00280100: 16,
-                        x00280103: 0,
-                        x00280002: 1
-                    };
-                    return values[tag] || 0;
-                }
-            });
-            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
-                nativeCalls.push({ path, frameIndex });
-                return {
-                    rows: 4,
-                    cols: 4,
-                    bitsAllocated: 16,
-                    pixelRepresentation: 0,
-                    samplesPerPixel: 1,
-                    planarConfiguration: 0,
-                    photometricInterpretation: 'MONOCHROME2',
-                    windowCenter: 1500,
-                    windowWidth: 3000,
-                    rescaleSlope: 1,
-                    rescaleIntercept: 0,
-                    pixelDataLength: 32,
-                    pixelData: new Uint16Array(Array.from({ length: 16 }, (_, index) => index * 200))
-                };
+            const originalReadFile = window.__TAURI__.fs.readFile;
+            const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
+            app.state.sliceCache.clear();
+            app.state.sliceCache.set(cacheKey, decoded);
+
+            window.__TAURI__.fs.readFile = async () => {
+                readFileCalls += 1;
+                return Uint8Array.from([1, 2, 3, 4]);
+            };
+            app.desktopDecode.decodeFrameWithPixels = async () => {
+                nativeDecodeCalls += 1;
+                throw new Error('loadSlice should not decode when a decoded frame is already cached');
             };
 
-            await app.viewer.loadSlice(0);
+            try {
+                await app.viewer.loadSlice(0);
+            } finally {
+                window.__TAURI__.fs.readFile = originalReadFile;
+                app.desktopDecode.decodeFrameWithPixels = originalNativeDecode;
+            }
 
             const canvas = document.getElementById('imageCanvas');
             const ctx = canvas.getContext('2d');
             const imageData = Array.from(ctx.getImageData(0, 0, 4, 4).data);
+            const cached = app.state.sliceCache.get(cacheKey);
 
             return {
-                route: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT'),
-                nativeCalls,
+                readFileCalls,
+                nativeDecodeCalls,
                 firstChannel: imageData.filter((_, index) => index % 4 === 0),
                 baseWindowLevel: app.state.baseWindowLevel,
                 pixelSpacing: app.state.pixelSpacing,
-                metadataText: document.getElementById('metadataContent').textContent
+                metadataText: document.getElementById('metadataContent').textContent,
+                cachedSummary: {
+                    hasPixelData: ArrayBuffer.isView(cached?.pixelData),
+                    hasByteArray: !!cached?.byteArray,
+                    hasElements: !!cached?.elements,
+                    sameObject: cached === decoded
+                }
             };
         });
 
-        expect(result.route).toBe('js-first');
-        expect(result.nativeCalls).toEqual([
-            {
-                path: '/library/native-fallback.dcm',
-                frameIndex: 0
-            }
-        ]);
+        expect(result.readFileCalls).toBe(0);
+        expect(result.nativeDecodeCalls).toBe(0);
         expect(result.firstChannel).toEqual([
             0, 17, 34, 51,
             68, 85, 102, 119,
@@ -1992,6 +1993,12 @@ test.describe('Desktop library scanning', () => {
         expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
         expect(result.metadataText).toContain('CT');
         expect(result.metadataText).toContain('4 x 4');
+        expect(result.cachedSummary).toEqual({
+            hasPixelData: true,
+            hasByteArray: false,
+            hasElements: false,
+            sameObject: true
+        });
     });
 
     test('decodeWithFallback uses native-first routing for JPEG 2000 RF desktop slices', async ({ page }) => {

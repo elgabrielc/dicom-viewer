@@ -49,7 +49,7 @@
      * @property {Object|null} currentStudy - Currently viewed study
      * @property {Object|null} currentSeries - Currently viewed series
      * @property {number} currentSliceIndex - Index of currently displayed slice
-     * @property {LRUCache} sliceCache - LRU cache of parsed DICOM datasets by slice index
+     * @property {LRUCache} sliceCache - LRU cache of decoded DICOM frames keyed by slice
      * @property {string} currentTool - Active tool ('wl', 'pan', 'zoom', or null)
      * @property {Object} viewTransform - Pan and zoom state
      * @property {Object} windowLevel - Current W/L override (null = use DICOM values)
