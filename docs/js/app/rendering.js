@@ -86,7 +86,7 @@
     function displayError(message, details, diagnostics = []) {
         canvas.width = 512;
         canvas.height = 512;
-        ctx.fillStyle = '#1a1a2e';
+        ctx.fillStyle = '#0F1E14';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         ctx.fillStyle = '#f0ad4e';
