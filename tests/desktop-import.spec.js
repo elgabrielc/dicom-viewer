@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Divergent Health Technologies
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const { normalizePath, joinPaths } = require('./helpers/desktop-test-utils');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
@@ -12,30 +13,6 @@ const LIBRARY_ROOT = `${MOCK_APP_DATA}/library`;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function normalizePath(input) {
-    const text = String(input || '').replace(/\\/g, '/');
-    if (!text) return '';
-    const collapsed = text.replace(/\/+/g, '/');
-    if (collapsed === '/') return '/';
-    return collapsed.replace(/\/+$/g, '');
-}
-
-function joinPaths(...parts) {
-    const cleaned = parts
-        .filter((part) => part !== null && part !== undefined && part !== '')
-        .map((part, index) => {
-            const value = String(part).replace(/\\/g, '/');
-            if (index === 0) {
-                return value.replace(/\/+$/g, '') || '/';
-            }
-            return value.replace(/^\/+/g, '').replace(/\/+$/g, '');
-        })
-        .filter(Boolean);
-
-    if (!cleaned.length) return '';
-    return normalizePath(cleaned.join('/'));
-}
 
 /**
  * Build a minimal but parseable Explicit VR Little Endian DICOM byte array.

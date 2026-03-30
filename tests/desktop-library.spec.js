@@ -7,6 +7,7 @@ const {
     createSyntheticDicomFolder,
     removeSyntheticDicomFolder
 } = require('./dicom-fixture-helper');
+const { normalizePath, joinPaths } = require('./helpers/desktop-test-utils');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
@@ -18,30 +19,6 @@ const JPEG_BASELINE_RGB_FIXTURE_PATH = path.join(
     'SC_RGB_JPEG_BASELINE_YBR422.dcm'
 );
 const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
-
-function normalizePath(input) {
-    const text = String(input || '').replace(/\\/g, '/');
-    if (!text) return '';
-    const collapsed = text.replace(/\/+/g, '/');
-    if (collapsed === '/') return '/';
-    return collapsed.replace(/\/+$/g, '');
-}
-
-function joinPaths(...parts) {
-    const cleaned = parts
-        .filter((part) => part !== null && part !== undefined && part !== '')
-        .map((part, index) => {
-            const value = String(part).replace(/\\/g, '/');
-            if (index === 0) {
-                return value.replace(/\/+$/g, '') || '/';
-            }
-            return value.replace(/^\/+/g, '').replace(/\/+$/g, '');
-        })
-        .filter(Boolean);
-
-    if (!cleaned.length) return '';
-    return normalizePath(cleaned.join('/'));
-}
 
 async function installMockDesktop(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
