@@ -2,7 +2,8 @@
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { createStagedError, normalizeStagedError, getPixelDataArrayType } = app.utils;
     let activeQueuedNativeDecode = null;
-    let pendingQueuedNativeDecode = null;
+    let activeQueuedNativeDecodeRequest = null;
+    const pendingQueuedNativeDecodeRequests = [];
 
     function describeBinaryPayload(payload) {
         if (payload === null) {
@@ -18,6 +19,8 @@
     }
 
     function normalizeBinaryResponse(bytes) {
+        // Unlike import header probing, the decode bridge cannot recover from an absent or malformed
+        // payload here. Treat unexpected shapes as a hard error so callers never consume partial pixels.
         if (bytes instanceof Uint8Array) {
             return bytes;
         }
@@ -102,15 +105,29 @@
         return new PixelArrayType(bytes.buffer, bytes.byteOffset, sampleCount).slice();
     }
 
+    function findQueuedNativeDecodeRequest(path, frameIndex) {
+        if (
+            activeQueuedNativeDecodeRequest &&
+            activeQueuedNativeDecodeRequest.path === path &&
+            activeQueuedNativeDecodeRequest.frameIndex === frameIndex
+        ) {
+            return activeQueuedNativeDecodeRequest;
+        }
+
+        return pendingQueuedNativeDecodeRequests.find((request) =>
+            request.path === path && request.frameIndex === frameIndex
+        ) || null;
+    }
+
     function drainQueuedNativeDecodes(runtime) {
         if (activeQueuedNativeDecode) {
             return activeQueuedNativeDecode;
         }
 
         activeQueuedNativeDecode = (async () => {
-            while (pendingQueuedNativeDecode) {
-                const request = pendingQueuedNativeDecode;
-                pendingQueuedNativeDecode = null;
+            while (pendingQueuedNativeDecodeRequests.length > 0) {
+                const request = pendingQueuedNativeDecodeRequests.shift();
+                activeQueuedNativeDecodeRequest = request;
 
                 try {
                     const payload = await runtime.core.invoke('decode_frame_with_pixels', {
@@ -125,11 +142,14 @@
                     for (const waiter of request.waiters) {
                         waiter.reject(normalizedError);
                     }
+                } finally {
+                    activeQueuedNativeDecodeRequest = null;
                 }
             }
         })().finally(() => {
             activeQueuedNativeDecode = null;
-            if (pendingQueuedNativeDecode) {
+            activeQueuedNativeDecodeRequest = null;
+            if (pendingQueuedNativeDecodeRequests.length > 0) {
                 void drainQueuedNativeDecodes(runtime);
             }
         });
@@ -139,26 +159,17 @@
 
     function queueNativeDecodeWithPixels(runtime, path, frameIndex = 0) {
         return new Promise((resolve, reject) => {
-            const nextRequest = {
-                path,
-                frameIndex,
-                waiters: [{ resolve, reject }]
-            };
-
-            if (
-                pendingQueuedNativeDecode &&
-                pendingQueuedNativeDecode.path === path &&
-                pendingQueuedNativeDecode.frameIndex === frameIndex
-            ) {
-                pendingQueuedNativeDecode.waiters.push({ resolve, reject });
+            const existingRequest = findQueuedNativeDecodeRequest(path, frameIndex);
+            if (existingRequest) {
+                existingRequest.waiters.push({ resolve, reject });
                 return;
             }
 
-            if (pendingQueuedNativeDecode) {
-                nextRequest.waiters.push(...pendingQueuedNativeDecode.waiters);
-            }
-
-            pendingQueuedNativeDecode = nextRequest;
+            pendingQueuedNativeDecodeRequests.push({
+                path,
+                frameIndex,
+                waiters: [{ resolve, reject }]
+            });
             void drainQueuedNativeDecodes(runtime);
         });
     }

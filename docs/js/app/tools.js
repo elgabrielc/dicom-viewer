@@ -386,6 +386,7 @@
     function resetView() {
         state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
         state.windowLevel = { center: null, width: null };
+        state.windowLevelAnchor = { center: null, width: null };
         applyViewTransform();
         reRenderCurrentSlice();
         updateWLDisplay();
@@ -395,6 +396,7 @@
         state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
         state.windowLevel = { center: null, width: null };
         state.baseWindowLevel = { center: null, width: null };
+        state.windowLevelAnchor = { center: null, width: null };
         state.measurements.clear();
         state.activeMeasurement = null;
         state.pixelSpacing = null;

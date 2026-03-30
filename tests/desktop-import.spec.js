@@ -584,6 +584,49 @@ test.describe('Desktop import pipeline', () => {
         expect(result.readFileCalls).toHaveLength(0);
     });
 
+    test('importFromPaths: staged header reads continue until Study, Series, and SOP UIDs are available', async ({ page }) => {
+        const dicomBytes = buildSyntheticDicomBytes({
+            patientName: 'P'.repeat(65300),
+            studyInstanceUid: '1.2.study.staged',
+            seriesInstanceUid: '1.2.series.staged',
+            sopInstanceUid: '1.2.sop.staged'
+        });
+
+        const destPath = `${LIBRARY_ROOT}/1.2.study.staged/1.2.series.staged/1.2.sop.staged.dcm`;
+
+        await installMockDesktop(page, {
+            manifestEntries: [
+                { path: '/source/staged-header.dcm', name: 'staged-header.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+            ],
+            readFileBytes: {
+                '/source/staged-header.dcm': dicomBytes
+            },
+            existsOverrides: {
+                [destPath]: true
+            },
+            statOverrides: {
+                [destPath]: { size: dicomBytes.length }
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const pipeline = window.DicomViewerApp.importPipeline;
+            const importResult = await pipeline.importFromPaths(['/source']);
+            return {
+                importResult,
+                readFileCalls: window.__importMockState.readFileCalls.slice(),
+                headerReadCalls: window.__importMockState.headerReadCalls.slice()
+            };
+        });
+
+        expect(result.importResult.skipped).toBe(1);
+        expect(result.headerReadCalls.map((call) => call.maxBytes)).toEqual([64 * 1024, 256 * 1024]);
+        expect(result.readFileCalls).toHaveLength(0);
+    });
+
     // -----------------------------------------------------------------------
     // importFromPaths: size mismatch collision
     // -----------------------------------------------------------------------

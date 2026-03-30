@@ -34,6 +34,9 @@
         frontendDecodeTrace: false,
         nativeDecodeDebug: false
     };
+    // XA series can mix 8-bit scout-style frames with 12/16-bit angiography frames.
+    // A 4x default window-width jump is a reliable signal that a carried-over W/L override
+    // is crossing into a different display domain and should be dropped.
     const INCOMPATIBLE_WINDOW_WIDTH_RATIO = 4;
     let reusableRenderImageData = null;
     let frontendDecodeTraceSequence = 0;
@@ -270,12 +273,21 @@
             windowLevel.width > 0;
     }
 
+    function getWindowLevelAnchor() {
+        return hasWindowLevel(state.windowLevelAnchor) ? state.windowLevelAnchor : null;
+    }
+
     function shouldResetWindowLevelOverride(decoded, wlOverride) {
         if (!hasWindowLevel(wlOverride)) {
             return false;
         }
 
-        const previousBaseWidth = Number(state.baseWindowLevel.width);
+        const anchor = getWindowLevelAnchor();
+        if (!anchor) {
+            return false;
+        }
+
+        const previousBaseWidth = Number(anchor.width);
         const nextBaseWidth = Number(decoded.windowWidth);
         if (
             !Number.isFinite(previousBaseWidth) ||
@@ -291,7 +303,7 @@
             return true;
         }
 
-        const previousBaseCenter = Number(state.baseWindowLevel.center);
+        const previousBaseCenter = Number(anchor.center);
         const nextBaseCenter = Number(decoded.windowCenter);
         if (!Number.isFinite(previousBaseCenter) || !Number.isFinite(nextBaseCenter)) {
             return false;
@@ -1223,10 +1235,14 @@
             return buildRenderInfo(decoded, windowCenter, windowWidth, { isBlank: true });
         }
 
+        if (!hasWindowLevel(wlOverride) || !getWindowLevelAnchor()) {
+            state.windowLevelAnchor = { center: windowCenter, width: windowWidth };
+        }
+
         if (shouldResetWindowLevelOverride(decoded, wlOverride)) {
             void emitDesktopDecodeTrace('wl-override-reset', {
-                previousBaseCenter: state.baseWindowLevel.center,
-                previousBaseWidth: state.baseWindowLevel.width,
+                previousBaseCenter: state.windowLevelAnchor.center,
+                previousBaseWidth: state.windowLevelAnchor.width,
                 requestedCenter: wlOverride?.center ?? null,
                 requestedWidth: wlOverride?.width ?? null,
                 nextBaseCenter: decoded.windowCenter,
@@ -1239,6 +1255,7 @@
                 transferSyntax: decoded.transferSyntax
             });
             state.windowLevel = { center: null, width: null };
+            state.windowLevelAnchor = { center: windowCenter, width: windowWidth };
             effectiveWindowLevelOverride = null;
         }
 

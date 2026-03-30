@@ -50,6 +50,14 @@
         );
     }
 
+    function hasImportDestinationMetadata(meta) {
+        return !!(
+            meta?.studyInstanceUid &&
+            meta?.seriesInstanceUid &&
+            meta?.sopInstanceUid
+        );
+    }
+
     /**
      * Sanitize a single UID segment for use as a directory or file name.
      * Replaces non-alphanumeric/non-dot characters with underscore and
@@ -119,7 +127,7 @@
         if (!headerBytes || headerBytes.byteLength < requestedBytes) return false;
 
         if (parseResult?.meta) {
-            return hasLikelyDicomMetadata(parseResult.meta) && !parseResult.meta.sopInstanceUid;
+            return hasLikelyDicomMetadata(parseResult.meta) && !hasImportDestinationMetadata(parseResult.meta);
         }
 
         if (hasDicomPreamble(headerBytes)) {

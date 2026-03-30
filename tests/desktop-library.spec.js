@@ -1493,6 +1493,7 @@ test.describe('Desktop library scanning', () => {
 
             state.baseWindowLevel = { center: null, width: null };
             state.windowLevel = { center: null, width: null };
+            state.windowLevelAnchor = { center: null, width: null };
             state.pixelSpacing = null;
 
             rendering.renderPixels(decoded12BitXa);
@@ -1553,6 +1554,7 @@ test.describe('Desktop library scanning', () => {
 
             state.baseWindowLevel = { center: null, width: null };
             state.windowLevel = { center: null, width: null };
+            state.windowLevelAnchor = { center: null, width: null };
             state.pixelSpacing = null;
 
             rendering.renderPixels(decodedA);
