@@ -6,13 +6,16 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import pathlib
 import queue
+import shutil
 import socket
 import subprocess
 import sys
 import threading
 import time
+from collections import defaultdict
 from typing import Any
 
 
@@ -70,6 +73,27 @@ def parse_args() -> argparse.Namespace:
         default=200.0,
         help="Target settled RSS shown in the report. Default: 200 MB",
     )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=float,
+        default=5.0,
+        help="How often to checkpoint the capture to disk in seconds. Default: 5.0",
+    )
+    parser.add_argument(
+        "--ensure-free-mb",
+        type=float,
+        default=0.0,
+        help="Minimum free disk space required before capture starts. Default: 0",
+    )
+    parser.add_argument(
+        "--cleanup-path",
+        action="append",
+        default=[],
+        help=(
+            "Optional rebuildable path to delete if free disk space is below --ensure-free-mb. "
+            "Can be passed multiple times."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -100,9 +124,146 @@ def ensure_parent(path: pathlib.Path) -> pathlib.Path:
     return path
 
 
+def bytes_to_mb(value: int | float) -> float:
+    return float(value) / (1024.0 * 1024.0)
+
+
+def resolve_path(raw_path: str) -> pathlib.Path:
+    path = pathlib.Path(raw_path).expanduser()
+    if path.is_absolute():
+        return path
+    return pathlib.Path.cwd() / path
+
+
+def resolve_cleanup_paths(raw_paths: list[str]) -> list[pathlib.Path]:
+    resolved_paths: list[pathlib.Path] = []
+    seen: set[str] = set()
+    for raw_path in raw_paths:
+        path = resolve_path(raw_path).resolve(strict=False)
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        resolved_paths.append(path)
+    return resolved_paths
+
+
+def existing_anchor(path: pathlib.Path) -> pathlib.Path:
+    current = path.resolve(strict=False)
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def free_space_bytes(path: pathlib.Path) -> int:
+    anchor = existing_anchor(path)
+    return shutil.disk_usage(anchor).free
+
+
+def estimate_path_size_bytes(path: pathlib.Path) -> int:
+    if not path.exists():
+        return 0
+
+    result = run_command(["du", "-sk", str(path)])
+    if result.returncode == 0:
+        output = result.stdout.strip()
+        if output:
+            size_kb = output.split()[0]
+            if size_kb.isdigit():
+                return int(size_kb) * 1024
+
+    if path.is_file():
+        return path.stat().st_size
+
+    total = 0
+    for child in path.rglob("*"):
+        try:
+            if child.is_file():
+                total += child.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def remove_path(path: pathlib.Path) -> None:
+    if not path.exists():
+        return
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+        return
+    shutil.rmtree(path)
+
+
+def ensure_free_space(
+    root: pathlib.Path,
+    minimum_free_mb: float,
+    cleanup_paths: list[pathlib.Path],
+) -> dict[str, Any]:
+    free_before_bytes = free_space_bytes(root)
+    summary: dict[str, Any] = {
+        "required_free_mb": round(minimum_free_mb, 1),
+        "free_before_mb": round(bytes_to_mb(free_before_bytes), 1),
+        "free_after_mb": round(bytes_to_mb(free_before_bytes), 1),
+        "cleanup_actions": [],
+        "satisfied": True,
+    }
+    if minimum_free_mb <= 0:
+        return summary
+
+    required_bytes = int(minimum_free_mb * 1024.0 * 1024.0)
+    if free_before_bytes >= required_bytes:
+        return summary
+
+    print(
+        "Free space is low "
+        f"({bytes_to_mb(free_before_bytes):.1f} MB available, {minimum_free_mb:.1f} MB required)."
+    )
+
+    for cleanup_path in cleanup_paths:
+        action: dict[str, Any] = {
+            "path": str(cleanup_path),
+            "status": "missing",
+        }
+        if cleanup_path.exists():
+            estimated_size_mb = round(bytes_to_mb(estimate_path_size_bytes(cleanup_path)), 1)
+            print(
+                f"Removing rebuildable path {cleanup_path} "
+                f"(about {estimated_size_mb:.1f} MB) to recover space..."
+            )
+            remove_path(cleanup_path)
+            free_after_action = free_space_bytes(root)
+            action = {
+                "path": str(cleanup_path),
+                "status": "removed",
+                "estimated_size_mb": estimated_size_mb,
+                "free_after_mb": round(bytes_to_mb(free_after_action), 1),
+            }
+            if free_after_action >= required_bytes:
+                summary["cleanup_actions"].append(action)
+                summary["free_after_mb"] = round(bytes_to_mb(free_after_action), 1)
+                return summary
+        summary["cleanup_actions"].append(action)
+
+    free_after_bytes = free_space_bytes(root)
+    summary["free_after_mb"] = round(bytes_to_mb(free_after_bytes), 1)
+    summary["satisfied"] = free_after_bytes >= required_bytes
+    if summary["satisfied"]:
+        return summary
+
+    cleanup_hint = ""
+    if cleanup_paths:
+        cleanup_hint = " Cleanup paths were attempted but did not free enough space."
+    raise SystemExit(
+        "Not enough free disk space to start capture. "
+        f"Available: {bytes_to_mb(free_after_bytes):.1f} MB. "
+        f"Required: {minimum_free_mb:.1f} MB."
+        f"{cleanup_hint}"
+    )
+
+
 def resolve_process(pid: int | None, process_name: str) -> tuple[int, str]:
     if pid is not None:
-        snapshot = sample_process(pid)
+        snapshot = sample_root_process(pid)
         if snapshot is None:
             raise SystemExit(f"Process with PID {pid} is not running.")
         return pid, snapshot["command"]
@@ -137,28 +298,123 @@ def resolve_process(pid: int | None, process_name: str) -> tuple[int, str]:
     return candidates[0]
 
 
-def sample_process(pid: int) -> dict[str, Any] | None:
-    result = run_command(["ps", "-o", "rss=,vsz=,%cpu=,etime=,comm=", "-p", str(pid)])
+def parse_ps_row(parts: list[str]) -> dict[str, Any] | None:
+    if len(parts) < 7:
+        return None
+
+    return {
+        "pid": int(parts[0]),
+        "ppid": int(parts[1]),
+        "rss_kb": int(parts[2]),
+        "vsz_kb": int(parts[3]),
+        "cpu_percent": float(parts[4]),
+        "elapsed": parts[5],
+        "command": parts[6],
+    }
+
+
+def sample_root_process(pid: int) -> dict[str, Any] | None:
+    result = run_command(["ps", "-o", "pid=,ppid=,rss=,vsz=,%cpu=,etime=,comm=", "-p", str(pid)])
     output = result.stdout.strip()
     if result.returncode != 0 or not output:
         return None
 
-    parts = output.split(None, 4)
-    if len(parts) < 5:
+    parts = output.split(None, 6)
+    return parse_ps_row(parts)
+
+
+def sample_process_tree(root_pid: int) -> dict[str, Any] | None:
+    result = run_command(["ps", "-axo", "pid=,ppid=,rss=,vsz=,%cpu=,etime=,comm="])
+    output = result.stdout
+    if result.returncode != 0 or not output.strip():
         return None
 
+    processes: dict[int, dict[str, Any]] = {}
+    children: dict[int, list[int]] = defaultdict(list)
+
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 6)
+        snapshot = parse_ps_row(parts)
+        if snapshot is None:
+            continue
+        pid = int(snapshot["pid"])
+        processes[pid] = snapshot
+        children[int(snapshot["ppid"])].append(pid)
+
+    if root_pid not in processes:
+        return None
+
+    stack = [root_pid]
+    seen: set[int] = set()
+    tree: list[dict[str, Any]] = []
+    while stack:
+        pid = stack.pop()
+        if pid in seen or pid not in processes:
+            continue
+        seen.add(pid)
+        tree.append(processes[pid])
+        stack.extend(children.get(pid, []))
+
+    root = processes[root_pid]
+    root_rss_kb = int(root["rss_kb"])
+    root_vsz_kb = int(root["vsz_kb"])
+    root_cpu_percent = float(root["cpu_percent"])
+    tree_rss_kb = sum(int(process["rss_kb"]) for process in tree)
+    tree_vsz_kb = sum(int(process["vsz_kb"]) for process in tree)
+    tree_cpu_percent = sum(float(process["cpu_percent"]) for process in tree)
+    top_processes = sorted(tree, key=lambda process: int(process["rss_kb"]), reverse=True)[:5]
+
     return {
-        "rss_kb": int(parts[0]),
-        "vsz_kb": int(parts[1]),
-        "cpu_percent": float(parts[2]),
-        "elapsed": parts[3],
-        "command": parts[4],
+        "rss_kb": tree_rss_kb,
+        "vsz_kb": tree_vsz_kb,
+        "cpu_percent": round(tree_cpu_percent, 1),
+        "elapsed": root["elapsed"],
+        "command": root["command"],
+        "root_pid": root_pid,
+        "process_count": len(tree),
+        "root_rss_kb": root_rss_kb,
+        "root_vsz_kb": root_vsz_kb,
+        "root_cpu_percent": root_cpu_percent,
+        "tree_rss_kb": tree_rss_kb,
+        "tree_vsz_kb": tree_vsz_kb,
+        "tree_cpu_percent": round(tree_cpu_percent, 1),
+        "helper_rss_kb": max(0, tree_rss_kb - root_rss_kb),
+        "helper_vsz_kb": max(0, tree_vsz_kb - root_vsz_kb),
+        "top_processes": [
+            {
+                "pid": int(process["pid"]),
+                "rss_kb": int(process["rss_kb"]),
+                "ppid": int(process["ppid"]),
+                "command": str(process["command"]),
+            }
+            for process in top_processes
+        ],
     }
 
 
-def print_instructions(pid: int, command: str, output_path: pathlib.Path, html_path: pathlib.Path | None) -> None:
+def sample_process(pid: int) -> dict[str, Any] | None:
+    return sample_process_tree(pid)
+
+
+def checkpoint_path_for(output_path: pathlib.Path) -> pathlib.Path:
+    if output_path.suffix:
+        return output_path.with_name(f"{output_path.stem}.partial{output_path.suffix}")
+    return output_path.with_name(f"{output_path.name}.partial.json")
+
+
+def print_instructions(
+    pid: int,
+    command: str,
+    output_path: pathlib.Path,
+    checkpoint_path: pathlib.Path,
+    html_path: pathlib.Path | None,
+) -> None:
     print(f"Monitoring PID {pid}: {command}")
     print(f"Writing session data to {output_path}")
+    print(f"Checkpointing live data to {checkpoint_path}")
     if html_path is not None:
         print(f"Dashboard will be written to {html_path} after capture")
     if sys.stdin.isatty():
@@ -187,6 +443,7 @@ def build_session_metadata(
     process_name: str,
     resolved_command: str,
     args: argparse.Namespace,
+    disk_guard: dict[str, Any],
 ) -> dict[str, Any]:
     git = resolve_git_metadata()
     return {
@@ -197,19 +454,69 @@ def build_session_metadata(
         "pid": pid,
         "process_name": process_name,
         "resolved_command": resolved_command,
+        "sample_scope": "process-tree",
         "interval_seconds": args.interval,
         "duration_seconds": args.duration,
         "notes": args.notes,
         "target_plateau_mb": args.target_plateau_mb,
         "git_branch": git["branch"],
         "git_commit": git["commit"],
+        "disk_guard": disk_guard,
     }
 
 
 def write_session_file(path: pathlib.Path, session: dict[str, Any]) -> None:
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(session, handle, indent=2)
-        handle.write("\n")
+    temp_path = path.with_name(f".{path.name}.tmp")
+    try:
+        with temp_path.open("w", encoding="utf-8") as handle:
+            json.dump(session, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
+class CheckpointWriter:
+    def __init__(self, output_path: pathlib.Path, interval_seconds: float) -> None:
+        self.output_path = output_path
+        self.checkpoint_path = checkpoint_path_for(output_path)
+        self.interval_seconds = max(interval_seconds, 0.0)
+        self.last_write_monotonic = 0.0
+        self.warning_emitted = False
+
+    def maybe_write(self, session: dict[str, Any], force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and self.interval_seconds > 0 and (now - self.last_write_monotonic) < self.interval_seconds:
+            return
+        self._write_checkpoint(session, now)
+
+    def _write_checkpoint(self, session: dict[str, Any], now: float) -> None:
+        try:
+            write_session_file(self.checkpoint_path, session)
+        except OSError as exc:
+            if not self.warning_emitted:
+                print(
+                    f"Warning: failed to write checkpoint {self.checkpoint_path}: {exc}",
+                    file=sys.stderr,
+                )
+                self.warning_emitted = True
+            return
+
+        self.last_write_monotonic = now
+        self.warning_emitted = False
+
+    def finalize(self, session: dict[str, Any]) -> pathlib.Path:
+        write_session_file(self.checkpoint_path, session)
+        os.replace(self.checkpoint_path, self.output_path)
+        self.last_write_monotonic = time.monotonic()
+        self.warning_emitted = False
+        return self.output_path
 
 
 def maybe_generate_report(
@@ -242,25 +549,37 @@ def main() -> None:
     args = parse_args()
     output_path = ensure_parent(pathlib.Path(args.output) if args.output else default_output_path())
     html_path = ensure_parent(pathlib.Path(args.html)) if args.html else None
+    cleanup_paths = resolve_cleanup_paths(args.cleanup_path)
+    disk_guard = ensure_free_space(output_path, args.ensure_free_mb, cleanup_paths)
 
     pid, resolved_command = resolve_process(args.pid, args.process)
-    print_instructions(pid, resolved_command, output_path, html_path)
+    checkpoint_writer = CheckpointWriter(output_path, args.checkpoint_interval)
+    print_instructions(pid, resolved_command, output_path, checkpoint_writer.checkpoint_path, html_path)
 
     marker_queue: queue.Queue[str] = queue.Queue()
     start_marker_reader(marker_queue)
 
     started_at = time.time()
-    samples: list[dict[str, Any]] = []
-    markers: list[dict[str, Any]] = [
+    session = build_session_metadata(pid, args.process, resolved_command, args, disk_guard)
+    session.update(
         {
-            "time_seconds": 0.0,
-            "label": "Capture start",
-            "source": "system",
+            "stop_reason": "running",
+            "sample_count": 0,
+            "samples": [],
+            "markers": [
+                {
+                    "time_seconds": 0.0,
+                    "label": "Capture start",
+                    "source": "system",
+                }
+            ],
+            "checkpoint_path": str(checkpoint_writer.checkpoint_path),
+            "last_updated_at": utc_now_iso(),
         }
-    ]
+    )
+    checkpoint_writer.maybe_write(session, force=True)
 
     marker_count = 0
-    stop_reason = "manual-stop"
 
     try:
         while True:
@@ -268,8 +587,8 @@ def main() -> None:
             time_seconds = round(now - started_at, 3)
             snapshot = sample_process(pid)
             if snapshot is None:
-                stop_reason = "process-exited"
-                markers.append(
+                session["stop_reason"] = "process-exited"
+                session["markers"].append(
                     {
                         "time_seconds": time_seconds,
                         "label": "Process exited",
@@ -278,30 +597,34 @@ def main() -> None:
                 )
                 break
 
-            samples.append(
+            session["samples"].append(
                 {
                     "timestamp": utc_now_iso(),
                     "time_seconds": time_seconds,
                     **snapshot,
                 }
             )
+            session["sample_count"] = len(session["samples"])
+            session["last_updated_at"] = utc_now_iso()
 
+            wrote_marker = False
             while not marker_queue.empty():
                 raw_label = marker_queue.get_nowait().strip()
                 marker_count += 1
                 label = raw_label or f"Marker {marker_count}"
-                markers.append(
+                session["markers"].append(
                     {
                         "time_seconds": time_seconds,
                         "label": label,
                         "source": "manual",
                     }
                 )
+                wrote_marker = True
                 print(f"[marker @ {time_seconds:7.1f}s] {label}")
 
             if args.duration > 0 and time_seconds >= args.duration:
-                stop_reason = "duration-reached"
-                markers.append(
+                session["stop_reason"] = "duration-reached"
+                session["markers"].append(
                     {
                         "time_seconds": time_seconds,
                         "label": "Duration reached",
@@ -310,10 +633,11 @@ def main() -> None:
                 )
                 break
 
+            checkpoint_writer.maybe_write(session, force=wrote_marker)
             time.sleep(max(args.interval, 0.1))
     except KeyboardInterrupt:
-        stop_reason = "keyboard-interrupt"
-        markers.append(
+        session["stop_reason"] = "keyboard-interrupt"
+        session["markers"].append(
             {
                 "time_seconds": round(time.time() - started_at, 3),
                 "label": "Capture stopped",
@@ -322,20 +646,17 @@ def main() -> None:
         )
         print("\nStopping capture...")
 
-    session = build_session_metadata(pid, args.process, resolved_command, args)
-    session.update(
-        {
-            "stop_reason": stop_reason,
-            "sample_count": len(samples),
-            "samples": samples,
-            "markers": markers,
-        }
-    )
-    write_session_file(output_path, session)
-    maybe_generate_report(output_path, html_path, args.target_plateau_mb)
+    session["sample_count"] = len(session["samples"])
+    session["last_updated_at"] = utc_now_iso()
+    session["captured_finished_at"] = utc_now_iso()
+    checkpoint_writer.finalize(session)
+    if session["sample_count"] > 0:
+        maybe_generate_report(output_path, html_path, args.target_plateau_mb)
+    elif html_path is not None:
+        print("Skipped dashboard generation because the capture recorded no samples.", file=sys.stderr)
 
-    print(f"Saved {len(samples)} samples to {output_path}")
-    if html_path is not None:
+    print(f"Saved {session['sample_count']} samples to {output_path}")
+    if html_path is not None and session["sample_count"] > 0:
         print(f"Saved dashboard to {html_path}")
 
 

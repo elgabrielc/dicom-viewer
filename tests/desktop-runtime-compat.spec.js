@@ -390,15 +390,7 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
 test('desktop runtime ready promise waits for a partial global Tauri object to finish initializing', async ({ page }) => {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript(() => {
-        window.__TAURI__ = {
-            core: {
-                invoke() {
-                    return Promise.resolve('native-invoke');
-                }
-            }
-        };
-
-        setTimeout(() => {
+        window.__finishMockPartialTauriInitialization = () => {
             window.__TAURI__.dialog = {
                 async open() {
                     return null;
@@ -424,7 +416,15 @@ test('desktop runtime ready promise waits for a partial global Tauri object to f
                     };
                 }
             };
-        }, 150);
+        };
+
+        window.__TAURI__ = {
+            core: {
+                invoke() {
+                    return Promise.resolve('native-invoke');
+                }
+            }
+        };
     });
 
     await page.goto(HOME_URL);
@@ -434,6 +434,7 @@ test('desktop runtime ready promise waits for a partial global Tauri object to f
             window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
             new Promise((resolve) => setTimeout(() => resolve(false), 25))
         ]);
+        window.__finishMockPartialTauriInitialization();
         const runtime = await window.__DICOM_VIEWER_TAURI_READY__;
         return {
             settledEarly,

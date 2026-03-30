@@ -53,7 +53,8 @@
      * @property {string} currentTool - Active tool ('wl', 'pan', 'zoom', or null)
      * @property {Object} viewTransform - Pan and zoom state
      * @property {Object} windowLevel - Current W/L override (null = use DICOM values)
-     * @property {Object} baseWindowLevel - Original W/L values for reset
+     * @property {Object} baseWindowLevel - Current slice default W/L values for reset/display
+     * @property {Object} windowLevelAnchor - The slice defaults that an active W/L override is anchored to
      */
     const state = {
         studies: {},
@@ -76,6 +77,7 @@
         viewTransform: { panX: 0, panY: 0, zoom: 1 },
         windowLevel: { center: null, width: null },
         baseWindowLevel: { center: null, width: null },
+        windowLevelAnchor: { center: null, width: null },
         isDragging: false,
         dragStart: { x: 0, y: 0 },
         measurements: new Map(),

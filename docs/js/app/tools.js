@@ -10,6 +10,7 @@
         canvasContainer
     } = app.dom;
     const { getString, generateUUID } = app.utils;
+    let pendingCurrentSliceRender = false;
 
     function getMeasurementSliceKey() {
         if (!state.currentStudy || !state.currentSeries) return null;
@@ -319,7 +320,7 @@
         }
     }
 
-    async function reRenderCurrentSlice() {
+    function performCurrentSliceRender() {
         if (!state.currentSeries) return;
         const slice = state.currentSeries.slices[state.currentSliceIndex];
         if (!slice) return;
@@ -336,6 +337,25 @@
             return;
         }
         app.rendering.renderPixels(decoded, wlOverride);
+    }
+
+    function reRenderCurrentSlice() {
+        if (pendingCurrentSliceRender) {
+            return;
+        }
+
+        pendingCurrentSliceRender = true;
+        const flush = () => {
+            pendingCurrentSliceRender = false;
+            performCurrentSliceRender();
+        };
+
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(flush);
+            return;
+        }
+
+        setTimeout(flush, 0);
     }
 
     function handleWLDrag(dx, dy) {
@@ -366,6 +386,7 @@
     function resetView() {
         state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
         state.windowLevel = { center: null, width: null };
+        state.windowLevelAnchor = { center: null, width: null };
         applyViewTransform();
         reRenderCurrentSlice();
         updateWLDisplay();
@@ -375,6 +396,7 @@
         state.viewTransform = { panX: 0, panY: 0, zoom: 1 };
         state.windowLevel = { center: null, width: null };
         state.baseWindowLevel = { center: null, width: null };
+        state.windowLevelAnchor = { center: null, width: null };
         state.measurements.clear();
         state.activeMeasurement = null;
         state.pixelSpacing = null;

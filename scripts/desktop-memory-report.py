@@ -57,8 +57,34 @@ def ensure_output(path: pathlib.Path) -> pathlib.Path:
     return path
 
 
+def total_rss_mb(sample: dict[str, Any]) -> float:
+    return float(sample.get("tree_rss_kb", sample["rss_kb"])) / 1024.0
+
+
+def root_rss_mb(sample: dict[str, Any]) -> float:
+    return float(sample.get("root_rss_kb", sample.get("rss_kb", 0))) / 1024.0
+
+
+def helper_rss_mb(sample: dict[str, Any]) -> float:
+    if "helper_rss_kb" in sample:
+        return float(sample["helper_rss_kb"]) / 1024.0
+    return max(0.0, total_rss_mb(sample) - root_rss_mb(sample))
+
+
+def process_count(sample: dict[str, Any]) -> int:
+    return int(sample.get("process_count", 1))
+
+
+def peak_helper_sample(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    return max(samples, key=helper_rss_mb)
+
+
+def peak_process_count_sample(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    return max(samples, key=process_count)
+
+
 def rss_mb(sample: dict[str, Any]) -> float:
-    return float(sample["rss_kb"]) / 1024.0
+    return total_rss_mb(sample)
 
 
 def fmt_mb(value: float) -> str:
@@ -231,10 +257,15 @@ def svg_chart(
     chart_height = height - top - bottom
 
     xs = [float(sample["time_seconds"]) for sample in samples]
-    ys = [rss_mb(sample) for sample in samples]
+    ys = [total_rss_mb(sample) for sample in samples]
+    root_ys = [root_rss_mb(sample) for sample in samples]
+    show_root_breakout = any("root_rss_kb" in sample for sample in samples)
     max_time = max(xs[-1], 1.0)
-    min_y = min(ys + [baseline_mb, settled_mb] + ([target_plateau_mb] if target_plateau_mb is not None else []))
-    max_y = max(ys + [baseline_mb, settled_mb] + ([target_plateau_mb] if target_plateau_mb is not None else []))
+    y_values = ys + [baseline_mb, settled_mb] + ([target_plateau_mb] if target_plateau_mb is not None else [])
+    if show_root_breakout:
+        y_values.extend(root_ys)
+    min_y = min(y_values)
+    max_y = max(y_values)
     min_y = max(0.0, math.floor(max(min_y - 10.0, 0.0) / 10.0) * 10.0)
     max_y = math.ceil((max_y + 10.0) / 10.0) * 10.0
     if math.isclose(max_y, min_y):
@@ -248,6 +279,7 @@ def svg_chart(
         return top + chart_height - (ratio * chart_height)
 
     points = " ".join(f"{x_pos(x):.2f},{y_pos(y):.2f}" for x, y in zip(xs, ys))
+    root_points = " ".join(f"{x_pos(x):.2f},{y_pos(y):.2f}" for x, y in zip(xs, root_ys))
 
     horizontal_lines = []
     for index in range(6):
@@ -286,6 +318,9 @@ def svg_chart(
 
     baseline_y = y_pos(baseline_mb)
     settled_y = y_pos(settled_mb)
+    root_line = ""
+    if show_root_breakout:
+        root_line = f'<polyline points="{root_points}" class="root-rss-line" />'
     return f"""
 <svg viewBox="0 0 {width} {height}" class="chart-svg" role="img" aria-label="RSS over time">
   <rect x="0" y="0" width="{width}" height="{height}" rx="24" class="chart-bg" />
@@ -295,6 +330,7 @@ def svg_chart(
   <line x1="{left}" y1="{baseline_y:.2f}" x2="{width - right}" y2="{baseline_y:.2f}" class="baseline-line" />
   <line x1="{left}" y1="{settled_y:.2f}" x2="{width - right}" y2="{settled_y:.2f}" class="settled-line" />
   <polyline points="{points}" class="rss-line" />
+  {root_line}
   {''.join(marker_lines)}
 </svg>
 """
@@ -317,22 +353,107 @@ def dashboard_html(
     settled_samples = last_window(samples, settled_window_seconds)
     tail_samples = last_window(samples, tail_window_seconds)
 
-    baseline_mb = median([rss_mb(sample) for sample in baseline_samples])
-    settled_mb = median([rss_mb(sample) for sample in settled_samples])
-    final_mb = rss_mb(samples[-1])
-    peak_sample = max(samples, key=rss_mb)
-    peak_mb = rss_mb(peak_sample)
+    show_root_breakout = any("root_rss_kb" in sample for sample in samples)
+    baseline_mb = median([total_rss_mb(sample) for sample in baseline_samples])
+    settled_mb = median([total_rss_mb(sample) for sample in settled_samples])
+    final_mb = total_rss_mb(samples[-1])
+    peak_sample = max(samples, key=total_rss_mb)
+    peak_mb = total_rss_mb(peak_sample)
     peak_time_seconds = float(peak_sample["time_seconds"])
     tail_slope = slope_mb_per_minute(tail_samples)
     verdict_text, verdict_tone = classify_session(baseline_mb, settled_mb, tail_slope, target_plateau_mb)
     phases = build_phase_rows(samples, markers)
     marker_table = marker_rows(samples, markers)
 
+    peak_root_mb = root_rss_mb(peak_sample)
+    peak_helper_mb = helper_rss_mb(peak_sample)
+    peak_process_sample = peak_process_count_sample(samples)
+    peak_process_total = process_count(peak_process_sample)
+    peak_process_time_seconds = float(peak_process_sample["time_seconds"])
+    peak_helper_sample_value = peak_helper_sample(samples)
+    peak_helper_value_mb = helper_rss_mb(peak_helper_sample_value)
+    peak_helper_time_seconds = float(peak_helper_sample_value["time_seconds"])
+
     chart = svg_chart(samples, markers, baseline_mb, settled_mb, target_plateau_mb)
     baseline_delta = settled_mb - baseline_mb
     peak_delta = peak_mb - baseline_mb
     final_delta = final_mb - baseline_mb
     plateau_text = fmt_mb(target_plateau_mb) if target_plateau_mb is not None else "None"
+    disk_guard = session.get("disk_guard") or {}
+    cleanup_actions = [action for action in disk_guard.get("cleanup_actions", []) if action.get("status") == "removed"]
+    metric_cards = [
+        """
+      <article class="metric-card">
+        <div class="metric-label">Baseline</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">Median of the first {window}</div>
+      </article>
+        """.format(value=fmt_mb(baseline_mb), window=fmt_seconds(baseline_window_seconds)),
+        """
+      <article class="metric-card">
+        <div class="metric-label">Peak total</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">At {timecode} ({delta} vs baseline)</div>
+      </article>
+        """.format(value=fmt_mb(peak_mb), timecode=fmt_timecode(peak_time_seconds), delta=fmt_delta_mb(peak_delta)),
+        """
+      <article class="metric-card">
+        <div class="metric-label">Settled total</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">Median of the last {window}</div>
+      </article>
+        """.format(value=fmt_mb(settled_mb), window=fmt_seconds(settled_window_seconds)),
+        """
+      <article class="metric-card">
+        <div class="metric-label">Final sample</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">{delta} vs baseline</div>
+      </article>
+        """.format(value=fmt_mb(final_mb), delta=fmt_delta_mb(final_delta)),
+        """
+      <article class="metric-card">
+        <div class="metric-label">Plateau delta</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">Settled minus baseline</div>
+      </article>
+        """.format(value=fmt_delta_mb(baseline_delta)),
+        """
+      <article class="metric-card">
+        <div class="metric-label">Tail slope</div>
+        <div class="metric-value">{value:+.1f} MB/min</div>
+        <div class="metric-note">Linear trend over the last {window}</div>
+      </article>
+        """.format(value=tail_slope, window=fmt_seconds(tail_window_seconds)),
+    ]
+
+    if show_root_breakout:
+        metric_cards.extend(
+            [
+                """
+      <article class="metric-card">
+        <div class="metric-label">Peak main process</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">Root PID share at the total peak</div>
+      </article>
+                """.format(value=fmt_mb(peak_root_mb)),
+                """
+      <article class="metric-card">
+        <div class="metric-label">Peak helper memory</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">Helpers peaked at {timecode}</div>
+      </article>
+                """.format(value=fmt_mb(peak_helper_value_mb), timecode=fmt_timecode(peak_helper_time_seconds)),
+                """
+      <article class="metric-card">
+        <div class="metric-label">Peak process count</div>
+        <div class="metric-value">{value}</div>
+        <div class="metric-note">At {timecode}</div>
+      </article>
+                """.format(value=peak_process_total, timecode=fmt_timecode(peak_process_time_seconds)),
+            ]
+        )
+
+    metric_cards_html = "".join(metric_cards)
 
     phase_rows_html = "".join(
         """
@@ -382,6 +503,81 @@ def dashboard_html(
         <section class="panel">
           <h2>Notes</h2>
           <p>{html.escape(session["notes"])}</p>
+        </section>
+        """
+
+    disk_guard_html = ""
+    required_free_mb = disk_guard.get("required_free_mb")
+    if required_free_mb:
+        disk_summary = (
+            f"Required at least {fmt_mb(float(required_free_mb))} free before capture. "
+            f"Started with {fmt_mb(float(disk_guard.get('free_before_mb', 0.0)))} "
+            f"and proceeded with {fmt_mb(float(disk_guard.get('free_after_mb', 0.0)))} available."
+        )
+        if cleanup_actions:
+            action_summary = "; ".join(
+                (
+                    f"Removed {html.escape(str(action.get('path', '')))} "
+                    f"(about {fmt_mb(float(action.get('estimated_size_mb', 0.0)))})"
+                )
+                for action in cleanup_actions
+            )
+            disk_summary += f" Auto-cleanup ran before capture: {action_summary}."
+        else:
+            disk_summary += " No preflight cleanup was needed."
+
+        disk_guard_html = f"""
+        <section class="panel">
+          <h2>Disk Guard</h2>
+          <p>{disk_summary}</p>
+        </section>
+        """
+
+    process_tree_html = ""
+    if show_root_breakout:
+        top_process_rows = "".join(
+            """
+            <tr>
+              <td>{pid}</td>
+              <td>{rss}</td>
+              <td><code>{command}</code></td>
+            </tr>
+            """.format(
+                pid=process.get("pid"),
+                rss=fmt_mb(float(process.get("rss_kb", 0.0)) / 1024.0),
+                command=html.escape(str(process.get("command", ""))),
+            )
+            for process in peak_sample.get("top_processes", [])
+        )
+        process_tree_html = f"""
+        <section class="two-up">
+          <section class="panel">
+            <h2>Peak Composition</h2>
+            <p>
+              At {fmt_timecode(peak_time_seconds)}, total desktop RSS was {fmt_mb(peak_mb)}.
+              The root process accounted for {fmt_mb(peak_root_mb)} and helper processes accounted for {fmt_mb(peak_helper_mb)}.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>RSS</th>
+                  <th>Command</th>
+                </tr>
+              </thead>
+              <tbody>
+                {top_process_rows}
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel">
+            <h2>Scope</h2>
+            <p>
+              This session sampled the full desktop process tree rooted at PID <code>{session.get("pid")}</code>,
+              so the totals include the main Tauri process plus helper processes such as WebKit content workers.
+            </p>
+          </section>
         </section>
         """
 
@@ -568,6 +764,7 @@ def dashboard_html(
     }}
 
     .legend-rss::before {{ background: var(--accent); }}
+    .legend-root::before {{ background: #2563eb; }}
     .legend-baseline::before {{ background: #64748b; }}
     .legend-settled::before {{ background: var(--good); }}
     .legend-target::before {{ background: var(--warning); }}
@@ -608,6 +805,15 @@ def dashboard_html(
       stroke-width: 4;
       stroke-linejoin: round;
       stroke-linecap: round;
+    }}
+
+    .root-rss-line {{
+      fill: none;
+      stroke: #2563eb;
+      stroke-width: 2.5;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      opacity: 0.85;
     }}
 
     .target-line {{
@@ -712,61 +918,34 @@ def dashboard_html(
   <main class="shell">
     <section class="hero">
       <div class="eyebrow">Desktop Memory Validation</div>
-      <h1>RSS stayed {html.escape(verdict_text.lower())}</h1>
+      <h1>Total desktop RSS stayed {html.escape(verdict_text.lower())}</h1>
       <p>
         Session duration was {fmt_seconds(duration_seconds)} on host <code>{html.escape(str(session.get("host", "")))}</code>.
-        Baseline settled at {fmt_mb(baseline_mb)}, peak reached {fmt_mb(peak_mb)}, and the end-of-run plateau was {fmt_mb(settled_mb)}.
+        Total desktop memory started near {fmt_mb(baseline_mb)}, peaked at {fmt_mb(peak_mb)}, and the end-of-run plateau was {fmt_mb(settled_mb)}.
       </p>
       <div class="hero-meta">
         <span class="chip chip-{verdict_tone}">{html.escape(verdict_text)}</span>
         <span class="chip">PID {session.get("pid")}</span>
         <span class="chip">{html.escape(str(session.get("resolved_command", "")))}</span>
+        <span class="chip">Scope: {html.escape(str(session.get("sample_scope", "single-process")))}</span>
         <span class="chip">Target {plateau_text}</span>
         <span class="chip">Stop reason: {html.escape(str(session.get("stop_reason", "")))}</span>
       </div>
     </section>
 
     <section class="card-grid">
-      <article class="metric-card">
-        <div class="metric-label">Baseline</div>
-        <div class="metric-value">{fmt_mb(baseline_mb)}</div>
-        <div class="metric-note">Median of the first {fmt_seconds(baseline_window_seconds)}</div>
-      </article>
-      <article class="metric-card">
-        <div class="metric-label">Peak</div>
-        <div class="metric-value">{fmt_mb(peak_mb)}</div>
-        <div class="metric-note">At {fmt_timecode(peak_time_seconds)} ({fmt_delta_mb(peak_delta)} vs baseline)</div>
-      </article>
-      <article class="metric-card">
-        <div class="metric-label">Settled</div>
-        <div class="metric-value">{fmt_mb(settled_mb)}</div>
-        <div class="metric-note">Median of the last {fmt_seconds(settled_window_seconds)}</div>
-      </article>
-      <article class="metric-card">
-        <div class="metric-label">Final sample</div>
-        <div class="metric-value">{fmt_mb(final_mb)}</div>
-        <div class="metric-note">{fmt_delta_mb(final_delta)} vs baseline</div>
-      </article>
-      <article class="metric-card">
-        <div class="metric-label">Plateau delta</div>
-        <div class="metric-value">{fmt_delta_mb(baseline_delta)}</div>
-        <div class="metric-note">Settled minus baseline</div>
-      </article>
-      <article class="metric-card">
-        <div class="metric-label">Tail slope</div>
-        <div class="metric-value">{tail_slope:+.1f} MB/min</div>
-        <div class="metric-note">Linear trend over the last {fmt_seconds(tail_window_seconds)}</div>
-      </article>
+      {metric_cards_html}
     </section>
 
     <section class="panel chart-panel">
       <div class="chart-header">
         <div>
-          <h2>RSS Timeline</h2>
+          <h2>Total Memory Timeline</h2>
           <p class="footer-note">Use the numbered markers to map the chart to the manual test steps below.</p>
         </div>
         <div class="chart-legend">
-          <span class="legend-item legend-rss">RSS</span>
+          <span class="legend-item legend-rss">Total RSS</span>
+          {'<span class="legend-item legend-root">Root process</span>' if show_root_breakout else ''}
           <span class="legend-item legend-baseline">Baseline</span>
           <span class="legend-item legend-settled">Settled</span>
           <span class="legend-item legend-target">Target plateau</span>
@@ -808,7 +987,7 @@ def dashboard_html(
               <th>Label</th>
               <th>Time</th>
               <th>Source</th>
-              <th>RSS nearby</th>
+              <th>Total RSS nearby</th>
             </tr>
           </thead>
           <tbody>
@@ -819,6 +998,8 @@ def dashboard_html(
     </section>
 
     {notes_html}
+    {disk_guard_html}
+    {process_tree_html}
 
     <section class="panel">
       <h2>Session Metadata</h2>

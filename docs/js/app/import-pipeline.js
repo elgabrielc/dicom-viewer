@@ -22,6 +22,15 @@
     const MAX_UID_SEGMENT_LENGTH = 64;
     const UID_SANITIZE_PATTERN = /[^a-zA-Z0-9.]/g;
     const UNKNOWN_UID_PLACEHOLDER = 'unknown';
+    const IMPORT_HEADER_READ_SIZES = Object.freeze([
+        64 * 1024,
+        256 * 1024
+    ]);
+    const IMPORT_TRUNCATION_ERROR_PATTERNS = [
+        'buffer overrun',
+        'attempt to read past end of buffer',
+        'missing required meta header attribute 0002,0010'
+    ];
 
     // =====================================================================
     // HELPERS
@@ -37,6 +46,14 @@
             meta?.studyInstanceUid ||
             meta?.seriesInstanceUid ||
             meta?.sopClassUid ||
+            meta?.sopInstanceUid
+        );
+    }
+
+    function hasImportDestinationMetadata(meta) {
+        return !!(
+            meta?.studyInstanceUid &&
+            meta?.seriesInstanceUid &&
             meta?.sopInstanceUid
         );
     }
@@ -66,6 +83,121 @@
      */
     function yieldToEventLoop() {
         return new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    function normalizeBinaryResponse(bytes) {
+        if (bytes instanceof Uint8Array) {
+            return bytes;
+        }
+        if (bytes instanceof ArrayBuffer) {
+            return new Uint8Array(bytes);
+        }
+        if (bytes?.buffer instanceof ArrayBuffer && typeof bytes.byteLength === 'number') {
+            return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
+        }
+        if (Array.isArray(bytes)) {
+            return Uint8Array.from(bytes);
+        }
+        if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
+            return normalizeBinaryResponse(bytes.data);
+        }
+        return null;
+    }
+
+    function getImportParseErrorMessage(error) {
+        if (!error) return '';
+        if (typeof error === 'string') return error;
+        if (typeof error.message === 'string' && error.message) return error.message;
+        if (typeof error.exception === 'string' && error.exception) return error.exception;
+        return String(error);
+    }
+
+    function hasDicomPreamble(bytes) {
+        return !!(
+            bytes &&
+            bytes.byteLength >= 132 &&
+            bytes[128] === 0x44 &&
+            bytes[129] === 0x49 &&
+            bytes[130] === 0x43 &&
+            bytes[131] === 0x4d
+        );
+    }
+
+    function shouldExpandImportHeaderRead(parseResult, headerBytes, requestedBytes) {
+        if (!headerBytes || headerBytes.byteLength < requestedBytes) return false;
+
+        if (parseResult?.meta) {
+            return hasLikelyDicomMetadata(parseResult.meta) && !hasImportDestinationMetadata(parseResult.meta);
+        }
+
+        if (hasDicomPreamble(headerBytes)) {
+            return true;
+        }
+
+        const message = getImportParseErrorMessage(parseResult?.error).toLowerCase();
+        return IMPORT_TRUNCATION_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
+    }
+
+    async function readImportHeader(path, maxBytes) {
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke !== 'function') {
+            return null;
+        }
+
+        try {
+            const bytes = await invoke('read_scan_header', { path, maxBytes });
+            return normalizeBinaryResponse(bytes);
+        } catch {
+            return null;
+        }
+    }
+
+    async function readImportMetadata(fs, filePath) {
+        for (let stageIndex = 0; stageIndex < IMPORT_HEADER_READ_SIZES.length; stageIndex += 1) {
+            const requestedBytes = IMPORT_HEADER_READ_SIZES[stageIndex];
+            const headerBytes = await readImportHeader(filePath, requestedBytes);
+            if (!headerBytes) {
+                break;
+            }
+
+            const headerResult = await parseDicomMetadataDetailed(headerBytes);
+            if (headerResult?.meta) {
+                if (
+                    shouldExpandImportHeaderRead(headerResult, headerBytes, requestedBytes) &&
+                    stageIndex < IMPORT_HEADER_READ_SIZES.length - 1
+                ) {
+                    continue;
+                }
+                return headerResult;
+            }
+
+            if (headerBytes.byteLength < requestedBytes) {
+                return headerResult;
+            }
+
+            if (shouldExpandImportHeaderRead(headerResult, headerBytes, requestedBytes)) {
+                if (stageIndex < IMPORT_HEADER_READ_SIZES.length - 1) {
+                    continue;
+                }
+                break;
+            }
+
+            return headerResult;
+        }
+
+        const buffer = await fs.readFile(filePath);
+        return parseDicomMetadataDetailed(buffer);
+    }
+
+    async function getImportSourceSize(fs, fileEntry) {
+        const manifestSize = Number(fileEntry?.size);
+        if (Number.isFinite(manifestSize) && manifestSize >= 0) {
+            return manifestSize;
+        }
+
+        const stat = await fs.stat(fileEntry?.path || '');
+        const statSize = Number(stat?.size ?? stat?.len);
+        return Number.isFinite(statSize) ? statSize : -1;
     }
 
     /**
@@ -207,11 +339,18 @@
         }
 
         // Normalize manifest entries to a flat list of file paths
-        const filePaths = manifestEntries
-            .map(entry => (typeof entry?.path === 'string' ? entry.path : ''))
-            .filter(Boolean);
+        const fileEntries = manifestEntries
+            .map((entry) => ({
+                path: typeof entry?.path === 'string' ? entry.path : '',
+                name: typeof entry?.name === 'string' && entry.name ? entry.name : '',
+                rootPath: typeof entry?.rootPath === 'string'
+                    ? entry.rootPath
+                    : (typeof entry?.root_path === 'string' ? entry.root_path : ''),
+                size: Number.isFinite(Number(entry?.size)) ? Number(entry.size) : null
+            }))
+            .filter((entry) => entry.path);
 
-        stats.discovered = filePaths.length;
+        stats.discovered = fileEntries.length;
         stats.phase = 'importing';
         emitProgress(onProgress, stats, '', true);
 
@@ -223,10 +362,11 @@
         const claimedDestinations = new Set();
 
         async function processNextFile() {
-            while (fileIndex < filePaths.length) {
+            while (fileIndex < fileEntries.length) {
                 // Grab the next file atomically
                 const currentIndex = fileIndex++;
-                const filePath = filePaths[currentIndex];
+                const fileEntry = fileEntries[currentIndex];
+                const filePath = fileEntry.path;
 
                 // Check for abort before each file
                 if (signal?.aborted) {
@@ -234,7 +374,7 @@
                 }
 
                 try {
-                    await processOneFile(fs, libraryRoot, filePath, stats, studies, claimedDestinations);
+                    await processOneFile(fs, libraryRoot, fileEntry, stats, studies, claimedDestinations);
                 } catch (error) {
                     if (error.name === 'AbortError') throw error;
                     stats.errors++;
@@ -252,7 +392,7 @@
         }
 
         // Launch worker pool (up to IMPORT_CONCURRENCY parallel workers)
-        const workerCount = Math.min(IMPORT_CONCURRENCY, filePaths.length);
+        const workerCount = Math.min(IMPORT_CONCURRENCY, fileEntries.length);
         const workers = Array.from({ length: workerCount }, () => processNextFile());
         await Promise.all(workers);
 
@@ -274,12 +414,9 @@
     /**
      * Process a single file: read, parse, deduplicate, and copy.
      */
-    async function processOneFile(fs, libraryRoot, filePath, stats, studies, claimedDestinations) {
-        // Read the entire file (we need the full buffer for copying anyway)
-        const buffer = await fs.readFile(filePath);
-
-        // Parse DICOM metadata from the buffer
-        const result = await parseDicomMetadataDetailed(buffer);
+    async function processOneFile(fs, libraryRoot, fileEntry, stats, studies, claimedDestinations) {
+        const filePath = fileEntry.path;
+        const result = await readImportMetadata(fs, filePath);
         const meta = result?.meta;
 
         // Validate: is this actually a DICOM file with meaningful metadata?
@@ -311,7 +448,7 @@
             // Compare sizes to distinguish true duplicate from UID collision
             try {
                 const destStat = await fs.stat(destPath);
-                const sourceSize = buffer.byteLength || buffer.length;
+                const sourceSize = await getImportSourceSize(fs, fileEntry);
                 const destSize = destStat?.size ?? destStat?.len ?? -1;
 
                 if (sourceSize === destSize) {
@@ -326,6 +463,9 @@
             }
             return;
         }
+
+        // Only pull the full file bytes across the bridge when we actually need to copy.
+        const buffer = await fs.readFile(filePath);
 
         // Create parent directories and write the file
         const parentDir = getParentDir(destPath);

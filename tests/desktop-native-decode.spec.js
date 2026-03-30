@@ -30,6 +30,36 @@ async function installMockDesktopDecode(page, options = {}) {
         );
         const invokeCalls = [];
         const binaryResponseMode = opts.binaryResponseMode || 'data-object';
+        const combinedMetadata = {
+            rows: metadata.rows,
+            cols: metadata.cols,
+            bitsAllocated: metadata.bitsAllocated,
+            pixelRepresentation: metadata.pixelRepresentation,
+            samplesPerPixel: metadata.samplesPerPixel,
+            planarConfiguration: metadata.planarConfiguration,
+            photometricInterpretation: metadata.photometricInterpretation,
+            windowCenter: metadata.windowCenter,
+            windowWidth: metadata.windowWidth,
+            rescaleSlope: metadata.rescaleSlope,
+            rescaleIntercept: metadata.rescaleIntercept,
+            pixelDataLength: metadata.pixelDataLength
+        };
+
+        function createCombinedDecodePayload() {
+            const decodeId = metadata.decodeId;
+            const frame = decodedFrames.get(decodeId);
+            if (!frame) {
+                throw new Error(`Decoded frame not found: ${decodeId}`);
+            }
+
+            const metadataBytes = new TextEncoder().encode(JSON.stringify(combinedMetadata));
+            const pixelBytes = new Uint8Array(frame);
+            const payload = new Uint8Array(4 + metadataBytes.byteLength + pixelBytes.byteLength);
+            new DataView(payload.buffer).setUint32(0, metadataBytes.byteLength, true);
+            payload.set(metadataBytes, 4);
+            payload.set(pixelBytes, 4 + metadataBytes.byteLength);
+            return payload;
+        }
 
         window.__desktopDecodeInvokeCalls = invokeCalls;
 
@@ -61,6 +91,25 @@ async function installMockDesktopDecode(page, options = {}) {
                         return args.handler;
                     case 'plugin:event|unlisten':
                         return null;
+                    case 'decode_frame_with_pixels': {
+                        if (opts.decodeFrameError) {
+                            throw opts.decodeFrameError;
+                        }
+                        const payload = createCombinedDecodePayload();
+                        if (binaryResponseMode === 'uint8array') {
+                            return payload;
+                        }
+                        if (binaryResponseMode === 'arraybuffer') {
+                            return payload.buffer;
+                        }
+                        if (binaryResponseMode === 'data-object') {
+                            return { data: Array.from(payload) };
+                        }
+                        if (binaryResponseMode === 'invalid-object') {
+                            return { bogus: [1, 2, 3] };
+                        }
+                        throw new Error(`Unhandled binaryResponseMode: ${binaryResponseMode}`);
+                    }
                     case 'decode_frame':
                         if (opts.decodeFrameError) {
                             throw opts.decodeFrameError;
@@ -111,7 +160,6 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
         const decoded = await window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/MR2_J2KI.dcm', 3);
         return {
             metadata: {
-                decodeId: decoded.decodeId,
                 rows: decoded.rows,
                 cols: decoded.cols,
                 bitsAllocated: decoded.bitsAllocated,
@@ -120,13 +168,12 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
             pixelDataType: decoded.pixelData.constructor.name,
             pixelSamples: Array.from(decoded.pixelData),
             invokeCalls: window.__desktopDecodeInvokeCalls
-                .filter(call => !call.cmd.startsWith('plugin:'))
+                .filter(call => call.cmd === 'decode_frame_with_pixels')
                 .map(call => ({ cmd: call.cmd, args: call.args }))
         };
     });
 
     expect(result.metadata).toEqual({
-        decodeId: 'decode-1',
         rows: 2,
         cols: 1,
         bitsAllocated: 16,
@@ -136,16 +183,10 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
     expect(result.pixelSamples).toEqual([0x1234, 0x5678]);
     expect(result.invokeCalls).toEqual([
         {
-            cmd: 'decode_frame',
+            cmd: 'decode_frame_with_pixels',
             args: {
                 path: '/mock/study/MR2_J2KI.dcm',
                 frameIndex: 3
-            }
-        },
-        {
-            cmd: 'take_decoded_frame',
-            args: {
-                decodeId: 'decode-1'
             }
         }
     ]);
@@ -170,6 +211,114 @@ test('desktop decode bridge preserves signed sample types', async ({ page }) => 
 
     expect(result.pixelDataType).toBe('Int16Array');
     expect(result.pixelSamples).toEqual([-2, -32768]);
+});
+
+test('desktop decode bridge keeps waiters attached to the correct frame request', async ({ page }) => {
+    await installMockDesktopDecode(page);
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate(async () => {
+        const originalInvoke = window.__TAURI__.core.invoke;
+        const invokeCalls = [];
+        const pending = [];
+
+        function buildPayload(sample) {
+            const metadata = {
+                rows: 1,
+                cols: 1,
+                bitsAllocated: 16,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                planarConfiguration: 0,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 128,
+                windowWidth: 256,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                pixelDataLength: 2
+            };
+            const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
+            const pixelBytes = new Uint8Array(2);
+            new DataView(pixelBytes.buffer).setUint16(0, sample, true);
+            const payload = new Uint8Array(4 + metadataBytes.byteLength + pixelBytes.byteLength);
+            new DataView(payload.buffer).setUint32(0, metadataBytes.byteLength, true);
+            payload.set(metadataBytes, 4);
+            payload.set(pixelBytes, 4 + metadataBytes.byteLength);
+            return payload;
+        }
+
+        window.__TAURI__.core.invoke = (cmd, args) => {
+            if (cmd !== 'decode_frame_with_pixels') {
+                return originalInvoke(cmd, args);
+            }
+
+            invokeCalls.push({ cmd, args });
+            return new Promise((resolve) => {
+                pending.push({
+                    path: args.path,
+                    frameIndex: args.frameIndex,
+                    resolve
+                });
+            });
+        };
+
+        const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        try {
+            const frameA = window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/frame-a.dcm', 0);
+            await tick();
+            const frameB = window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/frame-b.dcm', 1);
+            const frameC = window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/frame-c.dcm', 2);
+            await tick();
+
+            pending.find((entry) => entry.path.endsWith('frame-a.dcm')).resolve(buildPayload(0x1111));
+            await tick();
+            await tick();
+
+            pending.find((entry) => entry.path.endsWith('frame-b.dcm')).resolve(buildPayload(0x2222));
+            await tick();
+            await tick();
+
+            pending.find((entry) => entry.path.endsWith('frame-c.dcm')).resolve(buildPayload(0x3333));
+
+            const [decodedA, decodedB, decodedC] = await Promise.all([frameA, frameB, frameC]);
+            return {
+                invokeCalls,
+                pixelSamples: [
+                    decodedA.pixelData[0],
+                    decodedB.pixelData[0],
+                    decodedC.pixelData[0]
+                ]
+            };
+        } finally {
+            window.__TAURI__.core.invoke = originalInvoke;
+        }
+    });
+
+    expect(result.invokeCalls).toEqual([
+        {
+            cmd: 'decode_frame_with_pixels',
+            args: {
+                path: '/mock/study/frame-a.dcm',
+                frameIndex: 0
+            }
+        },
+        {
+            cmd: 'decode_frame_with_pixels',
+            args: {
+                path: '/mock/study/frame-b.dcm',
+                frameIndex: 1
+            }
+        },
+        {
+            cmd: 'decode_frame_with_pixels',
+            args: {
+                path: '/mock/study/frame-c.dcm',
+                frameIndex: 2
+            }
+        }
+    ]);
+    expect(result.pixelSamples).toEqual([0x1111, 0x2222, 0x3333]);
 });
 
 test('desktop decode bridge surfaces a runtime-ready error when invoke is unavailable', async ({ page }) => {
