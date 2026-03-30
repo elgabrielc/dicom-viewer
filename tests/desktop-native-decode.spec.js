@@ -168,7 +168,7 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
             pixelDataType: decoded.pixelData.constructor.name,
             pixelSamples: Array.from(decoded.pixelData),
             invokeCalls: window.__desktopDecodeInvokeCalls
-                .filter(call => !call.cmd.startsWith('plugin:'))
+                .filter(call => call.cmd === 'decode_frame_with_pixels')
                 .map(call => ({ cmd: call.cmd, args: call.args }))
         };
     });

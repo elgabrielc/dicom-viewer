@@ -102,7 +102,11 @@
             pixelRepresentation,
             'Unsupported Bits Allocated value from native decode'
         );
-        return new PixelArrayType(bytes.buffer, bytes.byteOffset, sampleCount).slice();
+        const bytesPerElement = PixelArrayType.BYTES_PER_ELEMENT || 1;
+        const alignedBytes = bytes.byteOffset % bytesPerElement === 0
+            ? bytes
+            : Uint8Array.from(bytes);
+        return new PixelArrayType(alignedBytes.buffer, alignedBytes.byteOffset, sampleCount).slice();
     }
 
     function findQueuedNativeDecodeRequest(path, frameIndex) {

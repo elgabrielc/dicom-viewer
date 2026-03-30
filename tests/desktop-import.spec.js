@@ -235,6 +235,9 @@ async function installMockDesktop(page, options = {}) {
                             path: normalized,
                             maxBytes: Number(args.maxBytes) || 0
                         });
+                        if (Object.prototype.hasOwnProperty.call(state.readFileErrors, normalized)) {
+                            throw new Error(state.readFileErrors[normalized]);
+                        }
                         const bytes = state.headerReadBytes[normalized] || state.readFileBytes[normalized];
                         if (bytes) {
                             return Uint8Array.from(bytes.slice(0, Math.max(0, Number(args.maxBytes) || 0)));

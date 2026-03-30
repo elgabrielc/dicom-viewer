@@ -2086,9 +2086,12 @@ test.describe('Desktop library scanning', () => {
                 seriesInstanceUid: 'series-1',
                 slices: [slice]
             };
-            app.state.currentSliceIndex = 0;
+            // Start "between" slices so loadSlice still renders the cached target instead of
+            // short-circuiting the already-current fast path.
+            app.state.currentSliceIndex = -1;
             app.state.windowLevel = { center: null, width: null };
             app.state.baseWindowLevel = { center: null, width: null };
+            app.state.windowLevelAnchor = { center: null, width: null };
             app.state.pixelSpacing = null;
             const originalReadFile = window.__TAURI__.fs.readFile;
             const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
