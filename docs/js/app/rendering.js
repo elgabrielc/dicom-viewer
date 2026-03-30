@@ -3,7 +3,7 @@
     const config = window.CONFIG;
     const { state } = app;
     const { canvas, ctx } = app.dom;
-    const { getString, getNumber, getPixelDataArrayType } = app.utils;
+    const { getString, getNumber, getPixelDataArrayType, createStagedError } = app.utils;
     const {
         isCompressed,
         isJpegLossless,
@@ -214,7 +214,14 @@
         if (value === null || value === undefined) {
             return null;
         }
-        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        if (typeof value === 'number' || typeof value === 'boolean') {
+            return value;
+        }
+        if (typeof value === 'string') {
+            // Redact absolute paths to filename only (may contain patient names in directory structure)
+            if (value.startsWith('/') && value.includes('/', 1)) {
+                return '.../' + value.split('/').pop();
+            }
             return value;
         }
         if (Array.isArray(value)) {

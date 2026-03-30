@@ -253,8 +253,9 @@ pub async fn decode_frame<R: Runtime>(
     frame_index: u32,
     store: State<'_, DecodeStore>,
     debug_settings: State<'_, DebugSettings>,
+    allowed: State<'_, crate::path_util::AllowedPaths>,
 ) -> DecodeResult<DecodeFrameMetadata> {
-    let scoped_path = crate::path_util::resolve_canonical_path(&path, "decode")
+    let scoped_path = crate::path_util::resolve_within_scope(&path, "decode", &allowed)
         .map_err(|msg| DecodeError::new("decode", msg))?;
     let cache_paths = resolve_cache_paths(&app)?;
     let native_decode_debug = debug_settings.native_decode_debug;
@@ -288,8 +289,9 @@ pub async fn decode_frame_with_pixels<R: Runtime>(
     path: String,
     frame_index: u32,
     debug_settings: State<'_, DebugSettings>,
+    allowed: State<'_, crate::path_util::AllowedPaths>,
 ) -> DecodeResult<Response> {
-    let scoped_path = crate::path_util::resolve_canonical_path(&path, "decode")
+    let scoped_path = crate::path_util::resolve_within_scope(&path, "decode", &allowed)
         .map_err(|msg| DecodeError::new("decode", msg))?;
     let cache_paths = resolve_cache_paths(&app)?;
     let native_decode_debug = debug_settings.native_decode_debug;
@@ -320,8 +322,9 @@ pub async fn read_scan_header<R: Runtime>(
     _app: AppHandle<R>,
     path: String,
     max_bytes: usize,
+    allowed: State<'_, crate::path_util::AllowedPaths>,
 ) -> DecodeResult<Response> {
-    let scoped_path = crate::path_util::resolve_canonical_path(&path, "scan-header")
+    let scoped_path = crate::path_util::resolve_within_scope(&path, "scan-header", &allowed)
         .map_err(|msg| DecodeError::new("scan-header", msg))?;
     let bytes = tokio::task::spawn_blocking(move || read_scan_header_impl(&scoped_path, max_bytes))
         .await
