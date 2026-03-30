@@ -2970,7 +2970,7 @@ test.describe('Desktop library scanning', () => {
         const result = await page.evaluate(async () => {
             const app = window.DicomViewerApp;
             await app.rendering.emitDesktopDecodeTrace('trace-smoke', {
-                path: '/tmp/trace.dcm',
+                path: '.../trace.dcm',
                 frameIndex: 7,
                 note: 'forced-mode-smoke'
             });
@@ -2994,7 +2994,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.calls[0]).toMatchObject({
             seq: 1,
             event: 'trace-smoke',
-            path: '/tmp/trace.dcm',
+            path: '.../trace.dcm',
             frameIndex: 7,
             note: 'forced-mode-smoke'
         });

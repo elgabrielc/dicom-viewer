@@ -8,22 +8,30 @@ mod secure_store;
 use serde::Serialize;
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
-    AppHandle, Emitter, Manager, Runtime,
+    AppHandle, Emitter, Manager, Runtime, State,
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 #[tauri::command]
-fn reveal_in_finder(path: String) -> Result<(), String> {
-    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-    if meta.is_file() {
+fn reveal_in_finder(
+    path: String,
+    allowed: State<'_, path_util::AllowedPaths>,
+) -> Result<(), String> {
+    let canonical =
+        crate::path_util::resolve_canonical_path(&path, "reveal")?;
+    if !allowed.is_within_scope(&canonical) {
+        return Err("reveal: path is outside allowed scope".into());
+    }
+    let meta = std::fs::metadata(&canonical).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
         std::process::Command::new("open")
-            .arg("-R")
-            .arg(&path)
+            .arg(&canonical)
             .spawn()
             .map_err(|e| e.to_string())?;
     } else {
         std::process::Command::new("open")
-            .arg(&path)
+            .arg("-R")
+            .arg(&canonical)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -262,10 +270,28 @@ fn main() {
 
     tauri::Builder::default()
         .manage(decode::DecodeStore::default())
+        .manage(path_util::AllowedPaths::default())
         .manage(debug_settings)
         .setup(|app| {
             let menu = build_menu(app)?;
             app.set_menu(menu)?;
+
+            // Register $APPDATA as an always-allowed root so desktop
+            // persistence (decode cache, database, etc.) works without
+            // the user explicitly selecting it via a file dialog.
+            let allowed = app.state::<path_util::AllowedPaths>();
+            if let Ok(app_data) = app.path().app_data_dir() {
+                if let Ok(canonical) = app_data.canonicalize() {
+                    allowed.add_root(canonical);
+                } else {
+                    // App data dir may not exist yet on first launch
+                    let _ = std::fs::create_dir_all(&app_data);
+                    if let Ok(canonical) = app_data.canonicalize() {
+                        allowed.add_root(canonical);
+                    }
+                }
+            }
+
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())

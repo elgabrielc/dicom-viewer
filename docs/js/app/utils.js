@@ -74,7 +74,7 @@
          * Handles Uint8Array, ArrayBuffer, typed array views, plain arrays,
          * and {data: ...} wrappers. Returns null if none match.
          */
-        normalizeBinaryResponse(bytes) {
+        normalizeBinaryResponse(bytes, depth = 0) {
             if (bytes instanceof Uint8Array) {
                 return bytes;
             }
@@ -87,8 +87,8 @@
             if (Array.isArray(bytes)) {
                 return Uint8Array.from(bytes);
             }
-            if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
-                return utils.normalizeBinaryResponse(bytes.data);
+            if (depth < 3 && bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
+                return utils.normalizeBinaryResponse(bytes.data, depth + 1);
             }
             return null;
         },

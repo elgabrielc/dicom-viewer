@@ -253,8 +253,9 @@ pub async fn decode_frame<R: Runtime>(
     frame_index: u32,
     store: State<'_, DecodeStore>,
     debug_settings: State<'_, DebugSettings>,
+    allowed: State<'_, crate::path_util::AllowedPaths>,
 ) -> DecodeResult<DecodeFrameMetadata> {
-    let scoped_path = crate::path_util::resolve_canonical_path(&path, "decode")
+    let scoped_path = crate::path_util::resolve_within_scope(&path, "decode", &allowed)
         .map_err(|msg| DecodeError::new("decode", msg))?;
     let cache_paths = resolve_cache_paths(&app)?;
     let native_decode_debug = debug_settings.native_decode_debug;
@@ -288,8 +289,9 @@ pub async fn decode_frame_with_pixels<R: Runtime>(
     path: String,
     frame_index: u32,
     debug_settings: State<'_, DebugSettings>,
+    allowed: State<'_, crate::path_util::AllowedPaths>,
 ) -> DecodeResult<Response> {
-    let scoped_path = crate::path_util::resolve_canonical_path(&path, "decode")
+    let scoped_path = crate::path_util::resolve_within_scope(&path, "decode", &allowed)
         .map_err(|msg| DecodeError::new("decode", msg))?;
     let cache_paths = resolve_cache_paths(&app)?;
     let native_decode_debug = debug_settings.native_decode_debug;
@@ -320,8 +322,9 @@ pub async fn read_scan_header<R: Runtime>(
     _app: AppHandle<R>,
     path: String,
     max_bytes: usize,
+    allowed: State<'_, crate::path_util::AllowedPaths>,
 ) -> DecodeResult<Response> {
-    let scoped_path = crate::path_util::resolve_canonical_path(&path, "scan-header")
+    let scoped_path = crate::path_util::resolve_within_scope(&path, "scan-header", &allowed)
         .map_err(|msg| DecodeError::new("scan-header", msg))?;
     let bytes = tokio::task::spawn_blocking(move || read_scan_header_impl(&scoped_path, max_bytes))
         .await
@@ -400,7 +403,7 @@ fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>>
     let file = fs::File::open(path).map_err(|error| {
         DecodeError::new(
             "scan-header",
-            format!("Failed to open DICOM file {}: {error}", path.display()),
+            format!("Failed to open DICOM file: {error}"),
         )
     })?;
     let mut bytes = Vec::with_capacity(capped_max_bytes);
@@ -409,7 +412,7 @@ fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>>
         .map_err(|error| {
             DecodeError::new(
                 "scan-header",
-                format!("Failed to read scan header from {}: {error}", path.display()),
+                format!("Failed to read scan header: {error}"),
             )
         })?;
     Ok(bytes)
@@ -450,7 +453,7 @@ fn decode_frame_impl_with_cache(
     let object = open_file(path).map_err(|error| {
         DecodeError::new(
             "decode",
-            format!("Failed to open DICOM file {}: {error}", path.display()),
+            format!("Failed to open DICOM file: {error}"),
         )
     })?;
 
@@ -852,7 +855,7 @@ fn decode_frame_impl(path: &Path, frame_index: u32) -> DecodeResult<DecodedFrame
     let object = open_file(path).map_err(|error| {
         DecodeError::new(
             "decode",
-            format!("Failed to open DICOM file {}: {error}", path.display()),
+            format!("Failed to open DICOM file: {error}"),
         )
     })?;
     decode_frame_from_object(path, &object, frame_index)

@@ -19,11 +19,16 @@ pub struct ScanManifestEntry {
 pub async fn read_scan_manifest(
     roots: Vec<String>,
     max_depth: usize,
+    allowed: tauri::State<'_, crate::path_util::AllowedPaths>,
 ) -> Result<Vec<ScanManifestEntry>, String> {
     let scoped_roots = roots
         .iter()
-        .map(|root| crate::path_util::resolve_canonical_path(root, "scan-manifest"))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|root| {
+            let canonical = crate::path_util::resolve_canonical_path(root, "scan-manifest")?;
+            allowed.add_root(canonical.clone());
+            Ok(canonical)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
 
     tokio::task::spawn_blocking(move || read_scan_manifest_impl(&scoped_roots, max_depth))
         .await
