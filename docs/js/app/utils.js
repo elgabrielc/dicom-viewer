@@ -68,6 +68,43 @@
                 return pixelRepresentation === 1 ? Int32Array : Uint32Array;
             }
             throw new Error(`${errorPrefix}: ${bitsAllocated}`);
+        },
+        /**
+         * Normalize a binary response into a Uint8Array.
+         * Handles Uint8Array, ArrayBuffer, typed array views, plain arrays,
+         * and {data: ...} wrappers. Returns null if none match.
+         */
+        normalizeBinaryResponse(bytes) {
+            if (bytes instanceof Uint8Array) {
+                return bytes;
+            }
+            if (bytes instanceof ArrayBuffer) {
+                return new Uint8Array(bytes);
+            }
+            if (bytes?.buffer instanceof ArrayBuffer && typeof bytes.byteLength === 'number') {
+                return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
+            }
+            if (Array.isArray(bytes)) {
+                return Uint8Array.from(bytes);
+            }
+            if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
+                return utils.normalizeBinaryResponse(bytes.data);
+            }
+            return null;
+        },
+        /**
+         * Minimal DICOM metadata plausibility check.
+         * Returns true if the metadata object contains at least one recognized
+         * DICOM UID or transfer syntax field.
+         */
+        hasLikelyDicomMetadata(meta) {
+            return !!(
+                meta?.transferSyntax ||
+                meta?.studyInstanceUid ||
+                meta?.seriesInstanceUid ||
+                meta?.sopClassUid ||
+                meta?.sopInstanceUid
+            );
         }
     };
 

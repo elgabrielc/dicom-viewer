@@ -964,6 +964,47 @@
         return finalizeDecodedImage(decoded, hasWindowLevel);
     }
 
+    /**
+     * Attempt a single decode call, catching any thrown exception.
+     *
+     * Returns { result, error } -- on success (no throw), result is the
+     * decoded image (which may itself carry a soft `.error` flag); on hard
+     * failure, error is the caught exception.  No trace events are emitted
+     * here; callers decide which trace shape to use based on the outcome.
+     *
+     * @param {Function} decoderFn - async () => decoded image
+     */
+    async function attemptDecode(decoderFn) {
+        try {
+            const decoded = await decoderFn();
+            return { result: decoded, error: null };
+        } catch (error) {
+            return { result: null, error };
+        }
+    }
+
+    /** Emit a decode-result trace for a decoded image (success or soft error). */
+    function traceDecodeResult(traceOutcome, decoderLabel, decoded) {
+        traceOutcome('decode-result', {
+            outcome: decoded?.error ? 'error' : 'success',
+            decoder: decoderLabel,
+            stage: decoded?.stage || null,
+            rows: decoded?.rows || null,
+            cols: decoded?.cols || null
+        });
+    }
+
+    /** Emit a decode-result trace for a fallback error object. */
+    function traceFallbackError(traceOutcome, decoderLabel, fallback) {
+        traceOutcome('decode-result', {
+            outcome: 'error',
+            decoder: decoderLabel,
+            stage: fallback.stage,
+            errorMessage: fallback.errorMessage,
+            errorDetails: fallback.errorDetails
+        });
+    }
+
     async function decodeWithFallback(dataSet, frameIndex = 0, slice = null) {
         const transferSyntax = getString(dataSet, 'x00020010');
         const modality = getString(dataSet, 'x00080060');
@@ -995,6 +1036,7 @@
 
         traceOutcome('decode-route');
 
+        // --- Forced native mode ---
         if (forcedDecodeMode === 'native') {
             if (!nativeEligible) {
                 const fallback = buildFallbackDecodeError(
@@ -1002,135 +1044,88 @@
                     null,
                     createStagedError('decode', 'Forced native decode is unavailable for this slice source.')
                 );
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: 'native',
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
+                traceFallbackError(traceOutcome, 'native', fallback);
                 return fallback;
             }
 
-            try {
-                const decoded = await decodeNative(dataSet, slice.source.path, frameIndex);
-                traceOutcome('decode-result', {
-                    outcome: decoded?.error ? 'error' : 'success',
-                    decoder: 'native',
-                    stage: decoded?.stage || null,
-                    rows: decoded?.rows || null,
-                    cols: decoded?.cols || null
-                });
-                return decoded;
-            } catch (error) {
-                const fallback = buildFallbackDecodeError(dataSet, null, error);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: 'native',
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
-            }
-        }
-
-        if (forcedDecodeMode === 'js') {
-            try {
-                const decoded = await decodeDicom(dataSet, frameIndex);
-                const result = decoded || buildFallbackDecodeError(dataSet, null, null);
-                traceOutcome('decode-result', {
-                    outcome: result?.error ? 'error' : 'success',
-                    decoder: jsDecoderKind,
-                    stage: result?.stage || null,
-                    rows: result?.rows || null,
-                    cols: result?.cols || null
-                });
+            const { result, error } = await attemptDecode(
+                () => decodeNative(dataSet, slice.source.path, frameIndex)
+            );
+            if (result) {
+                traceDecodeResult(traceOutcome, 'native', result);
                 return result;
-            } catch (jsError) {
-                const fallback = buildFallbackDecodeError(dataSet, jsError, null);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: jsDecoderKind,
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
             }
+            const fallback = buildFallbackDecodeError(dataSet, null, error);
+            traceFallbackError(traceOutcome, 'native', fallback);
+            return fallback;
         }
 
+        // --- Forced JS mode ---
+        if (forcedDecodeMode === 'js') {
+            const { result: decoded, error } = await attemptDecode(
+                () => decodeDicom(dataSet, frameIndex)
+            );
+            if (!error) {
+                // Decode returned (possibly null); mirror original which
+                // fell through to `decoded || buildFallbackDecodeError()`
+                // and traced with rows/cols shape, not errorMessage shape.
+                const result = decoded || buildFallbackDecodeError(dataSet, null, null);
+                traceDecodeResult(traceOutcome, jsDecoderKind, result);
+                return result;
+            }
+            const fallback = buildFallbackDecodeError(dataSet, error, null);
+            traceFallbackError(traceOutcome, jsDecoderKind, fallback);
+            return fallback;
+        }
+
+        // --- Native-first route ---
         if (route === 'native-first' && nativeEligible) {
-            try {
-                const decoded = await decodeNative(dataSet, slice.source.path, frameIndex);
-                traceOutcome('decode-result', {
-                    outcome: decoded?.error ? 'error' : 'success',
-                    decoder: 'native',
-                    stage: decoded?.stage || null,
-                    rows: decoded?.rows || null,
-                    cols: decoded?.cols || null
-                });
-                return decoded;
-            } catch (error) {
-                nativeError = error;
-                console.warn('Native decode failed, falling back to JS:', error);
-                traceOutcome('decode-fallback', {
-                    from: 'native',
-                    to: jsDecoderKind,
-                    nativeErrorStage: getDecodeFailureStage(error),
-                    nativeErrorMessage: getDecodeFailureMessage(error)
-                });
+            const { result: nativeDecoded, error } = await attemptDecode(
+                () => decodeNative(dataSet, slice.source.path, frameIndex)
+            );
+            if (nativeDecoded) {
+                traceDecodeResult(traceOutcome, 'native', nativeDecoded);
+                return nativeDecoded;
             }
 
-            try {
-                const decoded = await decodeDicom(dataSet, frameIndex);
-                if (decoded && !decoded.error) {
-                    traceOutcome('decode-result', {
-                        outcome: 'success',
-                        decoder: jsDecoderKind,
-                        stage: decoded.stage || null,
-                        rows: decoded.rows || null,
-                        cols: decoded.cols || null
-                    });
-                    return decoded;
-                }
-                const fallback = buildFallbackDecodeError(dataSet, decoded, nativeError);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: jsDecoderKind,
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
-            } catch (jsError) {
-                const fallback = buildFallbackDecodeError(dataSet, jsError, nativeError);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: jsDecoderKind,
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
+            // Native failed -- fall back to JS
+            nativeError = error;
+            console.warn('Native decode failed, falling back to JS:', error);
+            traceOutcome('decode-fallback', {
+                from: 'native',
+                to: jsDecoderKind,
+                nativeErrorStage: getDecodeFailureStage(error),
+                nativeErrorMessage: getDecodeFailureMessage(error)
+            });
+
+            const { result: jsDecoded, error: jsError } = await attemptDecode(
+                () => decodeDicom(dataSet, frameIndex)
+            );
+            if (jsDecoded && !jsDecoded.error) {
+                traceDecodeResult(traceOutcome, jsDecoderKind, jsDecoded);
+                return jsDecoded;
             }
+
+            // JS also failed (or returned a soft error)
+            const fallback = buildFallbackDecodeError(dataSet, jsError || jsDecoded, nativeError);
+            traceFallbackError(traceOutcome, jsDecoderKind, fallback);
+            return fallback;
         }
 
-        try {
-            const decoded = await decodeDicom(dataSet, frameIndex);
-            if (decoded && !decoded.error) {
-                traceOutcome('decode-result', {
-                    outcome: 'success',
-                    decoder: jsDecoderKind,
-                    stage: decoded.stage || null,
-                    rows: decoded.rows || null,
-                    cols: decoded.cols || null
-                });
-                return decoded;
-            }
+        // --- JS-first route (default) ---
+        const { result: jsDecoded, error: jsError } = await attemptDecode(
+            () => decodeDicom(dataSet, frameIndex)
+        );
 
+        if (jsDecoded && !jsDecoded.error) {
+            traceDecodeResult(traceOutcome, jsDecoderKind, jsDecoded);
+            return jsDecoded;
+        }
+
+        // JS decode returned without throwing (result may be null or soft error)
+        if (!jsError) {
             if (!nativeEligible) {
-                const fallback = decoded || buildFallbackDecodeError(dataSet, null, null);
+                const fallback = jsDecoded || buildFallbackDecodeError(dataSet, null, null);
                 traceOutcome('decode-result', {
                     outcome: fallback?.error ? 'error' : 'success',
                     decoder: jsDecoderKind,
@@ -1141,74 +1136,47 @@
                 return fallback;
             }
 
-            try {
-                traceOutcome('decode-fallback', {
-                    from: jsDecoderKind,
-                    to: 'native',
-                    jsErrorStage: decoded?.stage || null,
-                    jsErrorMessage: decoded?.errorDetails || decoded?.errorMessage || null
-                });
-                const nativeDecoded = await decodeNative(dataSet, slice.source.path, frameIndex);
-                traceOutcome('decode-result', {
-                    outcome: nativeDecoded?.error ? 'error' : 'success',
-                    decoder: 'native',
-                    stage: nativeDecoded?.stage || null,
-                    rows: nativeDecoded?.rows || null,
-                    cols: nativeDecoded?.cols || null
-                });
+            traceOutcome('decode-fallback', {
+                from: jsDecoderKind,
+                to: 'native',
+                jsErrorStage: jsDecoded?.stage || null,
+                jsErrorMessage: jsDecoded?.errorDetails || jsDecoded?.errorMessage || null
+            });
+            const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(
+                () => decodeNative(dataSet, slice.source.path, frameIndex)
+            );
+            if (nativeDecoded) {
+                traceDecodeResult(traceOutcome, 'native', nativeDecoded);
                 return nativeDecoded;
-            } catch (error) {
-                const fallback = buildFallbackDecodeError(dataSet, decoded, error);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: 'native',
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
             }
-        } catch (jsError) {
-            if (!nativeEligible) {
-                const fallback = buildFallbackDecodeError(dataSet, jsError, null);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: jsDecoderKind,
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
-            }
-
-            try {
-                traceOutcome('decode-fallback', {
-                    from: jsDecoderKind,
-                    to: 'native',
-                    jsErrorStage: getDecodeFailureStage(jsError),
-                    jsErrorMessage: getDecodeFailureMessage(jsError)
-                });
-                const nativeDecoded = await decodeNative(dataSet, slice.source.path, frameIndex);
-                traceOutcome('decode-result', {
-                    outcome: nativeDecoded?.error ? 'error' : 'success',
-                    decoder: 'native',
-                    stage: nativeDecoded?.stage || null,
-                    rows: nativeDecoded?.rows || null,
-                    cols: nativeDecoded?.cols || null
-                });
-                return nativeDecoded;
-            } catch (nativeFallbackError) {
-                const fallback = buildFallbackDecodeError(dataSet, jsError, nativeFallbackError);
-                traceOutcome('decode-result', {
-                    outcome: 'error',
-                    decoder: 'native',
-                    stage: fallback.stage,
-                    errorMessage: fallback.errorMessage,
-                    errorDetails: fallback.errorDetails
-                });
-                return fallback;
-            }
+            const fallback = buildFallbackDecodeError(dataSet, jsDecoded, nativeFallbackError);
+            traceFallbackError(traceOutcome, 'native', fallback);
+            return fallback;
         }
+
+        // JS decode threw an exception
+        if (!nativeEligible) {
+            const fallback = buildFallbackDecodeError(dataSet, jsError, null);
+            traceFallbackError(traceOutcome, jsDecoderKind, fallback);
+            return fallback;
+        }
+
+        traceOutcome('decode-fallback', {
+            from: jsDecoderKind,
+            to: 'native',
+            jsErrorStage: getDecodeFailureStage(jsError),
+            jsErrorMessage: getDecodeFailureMessage(jsError)
+        });
+        const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(
+            () => decodeNative(dataSet, slice.source.path, frameIndex)
+        );
+        if (nativeDecoded) {
+            traceDecodeResult(traceOutcome, 'native', nativeDecoded);
+            return nativeDecoded;
+        }
+        const fallback = buildFallbackDecodeError(dataSet, jsError, nativeFallbackError);
+        traceFallbackError(traceOutcome, 'native', fallback);
+        return fallback;
     }
 
     async function decodeDesktopPathWithHeader(dataSet, frameIndex = 0, slice = null) {

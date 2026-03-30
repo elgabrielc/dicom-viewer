@@ -19,28 +19,16 @@
     }
 
     function normalizeBinaryResponse(bytes) {
-        // Unlike import header probing, the decode bridge cannot recover from an absent or malformed
-        // payload here. Treat unexpected shapes as a hard error so callers never consume partial pixels.
-        if (bytes instanceof Uint8Array) {
-            return bytes;
+        // The decode bridge cannot recover from an absent or malformed payload.
+        // Delegate to the shared lenient helper, then throw on null.
+        const normalized = app.utils.normalizeBinaryResponse(bytes);
+        if (!normalized) {
+            throw createStagedError(
+                'pixel-conversion',
+                `Unexpected decoded frame payload shape: ${describeBinaryPayload(bytes)}`,
+            );
         }
-        if (bytes instanceof ArrayBuffer) {
-            return new Uint8Array(bytes);
-        }
-        if (bytes?.buffer instanceof ArrayBuffer && typeof bytes.byteLength === 'number') {
-            return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
-        }
-        if (Array.isArray(bytes)) {
-            return Uint8Array.from(bytes);
-        }
-        if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
-            return normalizeBinaryResponse(bytes.data);
-        }
-
-        throw createStagedError(
-            'pixel-conversion',
-            `Unexpected decoded frame payload shape: ${describeBinaryPayload(bytes)}`,
-        );
+        return normalized;
     }
 
     function parseDecodedFrameWithPixelsResponse(payload) {
