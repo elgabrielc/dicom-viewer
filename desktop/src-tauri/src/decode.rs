@@ -403,7 +403,7 @@ fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>>
     let file = fs::File::open(path).map_err(|error| {
         DecodeError::new(
             "scan-header",
-            format!("Failed to open DICOM file {}: {error}", path.display()),
+            format!("Failed to open DICOM file: {error}"),
         )
     })?;
     let mut bytes = Vec::with_capacity(capped_max_bytes);
@@ -412,7 +412,7 @@ fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>>
         .map_err(|error| {
             DecodeError::new(
                 "scan-header",
-                format!("Failed to read scan header from {}: {error}", path.display()),
+                format!("Failed to read scan header: {error}"),
             )
         })?;
     Ok(bytes)
@@ -453,7 +453,7 @@ fn decode_frame_impl_with_cache(
     let object = open_file(path).map_err(|error| {
         DecodeError::new(
             "decode",
-            format!("Failed to open DICOM file {}: {error}", path.display()),
+            format!("Failed to open DICOM file: {error}"),
         )
     })?;
 
@@ -855,7 +855,7 @@ fn decode_frame_impl(path: &Path, frame_index: u32) -> DecodeResult<DecodedFrame
     let object = open_file(path).map_err(|error| {
         DecodeError::new(
             "decode",
-            format!("Failed to open DICOM file {}: {error}", path.display()),
+            format!("Failed to open DICOM file: {error}"),
         )
     })?;
     decode_frame_from_object(path, &object, frame_index)

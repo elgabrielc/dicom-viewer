@@ -22,23 +22,19 @@ fn reveal_in_finder(
     if !allowed.is_within_scope(&canonical) {
         return Err("reveal: path is outside allowed scope".into());
     }
-    // Always use -R to reveal in Finder, never open/launch
-    std::process::Command::new("open")
-        .arg("-R")
-        .arg(&canonical)
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-fn add_allowed_root(
-    path: String,
-    allowed: State<'_, path_util::AllowedPaths>,
-) -> Result<(), String> {
-    let canonical =
-        crate::path_util::resolve_canonical_path(&path, "add-root")?;
-    allowed.add_root(canonical);
+    let meta = std::fs::metadata(&canonical).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        std::process::Command::new("open")
+            .arg(&canonical)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    } else {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&canonical)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -319,8 +315,7 @@ fn main() {
             secure_store::load_secure_auth_state,
             secure_store::store_secure_auth_state,
             secure_store::clear_secure_auth_state,
-            reveal_in_finder,
-            add_allowed_root
+            reveal_in_finder
         ])
         .on_menu_event(|app, event| match event.id().as_ref() {
             MENU_OPEN_FOLDER => emit_menu_event(app, EVENT_OPEN_FOLDER),

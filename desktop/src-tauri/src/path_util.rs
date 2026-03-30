@@ -3,6 +3,12 @@
 use std::path::PathBuf;
 use std::sync::RwLock;
 
+/// Strip a path to its filename for use in error messages (avoids leaking
+/// directory structure that may contain patient names or usernames).
+pub fn redact_path(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
 /// Validate that a path is non-empty and absolute, then canonicalize it.
 pub fn resolve_canonical_path(path: &str, stage: &str) -> Result<PathBuf, String> {
     let requested_path = PathBuf::from(path);
@@ -10,11 +16,11 @@ pub fn resolve_canonical_path(path: &str, stage: &str) -> Result<PathBuf, String
         return Err(format!("{stage}: path is empty"));
     }
     if !requested_path.is_absolute() {
-        return Err(format!("{stage}: path must be absolute: {path}"));
+        return Err(format!("{stage}: path must be absolute: {}", redact_path(path)));
     }
     requested_path
         .canonicalize()
-        .map_err(|error| format!("{stage}: failed to access {path}: {error}"))
+        .map_err(|error| format!("{stage}: failed to access {}: {error}", redact_path(path)))
 }
 
 /// Thread-safe set of filesystem roots that the user has authorized.
@@ -57,7 +63,7 @@ pub fn resolve_within_scope(
 ) -> Result<PathBuf, String> {
     let canonical = resolve_canonical_path(path, stage)?;
     if !allowed.is_within_scope(&canonical) {
-        return Err(format!("{stage}: path is outside allowed scope: {path}"));
+        return Err(format!("{stage}: path is outside allowed scope: {}", redact_path(path)));
     }
     Ok(canonical)
 }
