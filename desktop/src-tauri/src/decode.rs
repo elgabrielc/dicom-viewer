@@ -390,27 +390,10 @@ fn resolve_cache_paths<R: Runtime>(app: &AppHandle<R>) -> DecodeResult<DecodeCac
 fn resolve_canonical_path(
     path: &str,
     stage: &str,
-    path_label: &str,
+    _path_label: &str,
 ) -> DecodeResult<PathBuf> {
-    let requested_path = PathBuf::from(path);
-    if requested_path.as_os_str().is_empty() {
-        return Err(DecodeError::new(stage, format!("{path_label} is empty.")));
-    }
-    if !requested_path.is_absolute() {
-        return Err(DecodeError::new(
-            stage,
-            format!("{path_label} must be absolute: {path}"),
-        ));
-    }
-
-    let canonical_path = requested_path.canonicalize().map_err(|error| {
-        DecodeError::new(
-            stage,
-            format!("Failed to access scoped file {path}: {error}"),
-        )
-    })?;
-
-    Ok(canonical_path)
+    crate::path_util::resolve_canonical_path(path, stage)
+        .map_err(|msg| DecodeError::new(stage, msg))
 }
 
 fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>> {

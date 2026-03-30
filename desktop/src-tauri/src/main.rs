@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod decode;
+mod path_util;
 mod scan;
 mod secure_store;
 

@@ -22,31 +22,12 @@ pub async fn read_scan_manifest(
 ) -> Result<Vec<ScanManifestEntry>, String> {
     let scoped_roots = roots
         .iter()
-        .map(|root| resolve_canonical_path(root, "scan-manifest"))
+        .map(|root| crate::path_util::resolve_canonical_path(root, "scan-manifest"))
         .collect::<Result<Vec<_>, _>>()?;
 
     tokio::task::spawn_blocking(move || read_scan_manifest_impl(&scoped_roots, max_depth))
         .await
         .map_err(|error| format!("Native scan manifest worker failed to join: {error}"))?
-}
-
-fn resolve_canonical_path(
-    path: &str,
-    stage: &str,
-) -> Result<PathBuf, String> {
-    let requested_path = PathBuf::from(path);
-    if requested_path.as_os_str().is_empty() {
-        return Err(format!("{stage}: path is empty"));
-    }
-    if !requested_path.is_absolute() {
-        return Err(format!("{stage}: path must be absolute: {path}"));
-    }
-
-    let canonical_path = requested_path
-        .canonicalize()
-        .map_err(|error| format!("{stage}: failed to access {path}: {error}"))?;
-
-    Ok(canonical_path)
 }
 
 fn read_scan_manifest_impl(
