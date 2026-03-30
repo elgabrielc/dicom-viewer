@@ -267,24 +267,7 @@
         return joinPathSegments(parent, child);
     }
 
-    function normalizeBinaryResponse(bytes) {
-        if (bytes instanceof Uint8Array) {
-            return bytes;
-        }
-        if (bytes instanceof ArrayBuffer) {
-            return new Uint8Array(bytes);
-        }
-        if (bytes?.buffer instanceof ArrayBuffer && typeof bytes.byteLength === 'number') {
-            return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
-        }
-        if (Array.isArray(bytes)) {
-            return Uint8Array.from(bytes);
-        }
-        if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
-            return normalizeBinaryResponse(bytes.data);
-        }
-        return null;
-    }
+    const normalizeBinaryResponse = app.utils.normalizeBinaryResponse;
 
     async function readDesktopScanHeader(path, maxBytes = DESKTOP_SCAN_HEADER_BYTES) {
         const invoke = window.__TAURI__?.core?.invoke;
@@ -374,15 +357,7 @@
         'missing required meta header attribute 0002,0010'
     ];
 
-    function hasLikelyDicomMetadata(meta) {
-        return !!(
-            meta?.transferSyntax ||
-            meta?.studyInstanceUid ||
-            meta?.seriesInstanceUid ||
-            meta?.sopClassUid ||
-            meta?.sopInstanceUid
-        );
-    }
+    const hasLikelyDicomMetadata = app.utils.hasLikelyDicomMetadata;
 
     function shouldExpandDesktopScanHeaderRead(parseResult, headerBytes, requestedBytes) {
         if (!headerBytes || headerBytes.byteLength < requestedBytes) return false;

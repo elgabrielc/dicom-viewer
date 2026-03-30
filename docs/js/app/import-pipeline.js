@@ -36,19 +36,7 @@
     // HELPERS
     // =====================================================================
 
-    /**
-     * Minimal DICOM metadata plausibility check.
-     * Duplicated from sources.js (private there) per contract.
-     */
-    function hasLikelyDicomMetadata(meta) {
-        return !!(
-            meta?.transferSyntax ||
-            meta?.studyInstanceUid ||
-            meta?.seriesInstanceUid ||
-            meta?.sopClassUid ||
-            meta?.sopInstanceUid
-        );
-    }
+    const hasLikelyDicomMetadata = app.utils.hasLikelyDicomMetadata;
 
     function hasImportDestinationMetadata(meta) {
         return !!(
@@ -85,24 +73,7 @@
         return new Promise(resolve => setTimeout(resolve, 0));
     }
 
-    function normalizeBinaryResponse(bytes) {
-        if (bytes instanceof Uint8Array) {
-            return bytes;
-        }
-        if (bytes instanceof ArrayBuffer) {
-            return new Uint8Array(bytes);
-        }
-        if (bytes?.buffer instanceof ArrayBuffer && typeof bytes.byteLength === 'number') {
-            return new Uint8Array(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
-        }
-        if (Array.isArray(bytes)) {
-            return Uint8Array.from(bytes);
-        }
-        if (bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
-            return normalizeBinaryResponse(bytes.data);
-        }
-        return null;
-    }
+    const normalizeBinaryResponse = app.utils.normalizeBinaryResponse;
 
     function getImportParseErrorMessage(error) {
         if (!error) return '';
