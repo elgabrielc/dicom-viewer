@@ -40,6 +40,36 @@ Branch: `codex/tauri-desktop-app` | Score: 6/10
 
 ---
 
+## PR #54: Stabilize desktop XA scrubbing and diagnostics (2026-03-30)
+
+Branch: `codex/desktop-memory-fix` | Score: 6/10
+
+Reviewer note: the claimed `createStagedError` scope bug was a false alarm and is not
+tracked below because `desktop-decode.js` already destructured it from `app.utils`.
+
+### Important
+
+| ID | Finding | File(s) | Status |
+|----|---------|---------|--------|
+| 54-1 | `queueNativeDecodeWithPixels` merged waiters for different frames, so callers waiting for frame A could receive frame B pixels | desktop-decode.js:160-174 | Resolved (0fcff6b) |
+| 54-2 | W/L reset heuristic compared against the latest frame defaults instead of the user's original override anchor, which could silently drop or preserve the wrong override while scrubbing XA series | rendering.js:280-313, rendering.js:1238-1263, state.js:56-80, tools.js:389-399 | Resolved (0fcff6b) |
+
+### Suggestions
+
+| ID | Finding | File(s) | Status |
+|----|---------|---------|--------|
+| 54-3 | Import staged header reads stopped after `SOPInstanceUID` even though destination-path construction also needs Study and Series UIDs | import-pipeline.js:126-189 | Resolved (0fcff6b) |
+| 54-4 | `INCOMPATIBLE_WINDOW_WIDTH_RATIO = 4` was undocumented magic | rendering.js:40 | Resolved (0fcff6b) |
+| 54-5 | `normalizeBinaryResponse` behaved differently between import probing and desktop decode without explaining why | import-pipeline.js:88-105, desktop-decode.js:21-44 | Resolved (0fcff6b) |
+
+### Follow-up CI Regression
+
+| ID | Finding | File(s) | Status |
+|----|---------|---------|--------|
+| 54-6 | `coercePixelData` assumed the combined native decode payload was aligned for 16-bit typed arrays, which broke Playwright CI on signed/unsigned desktop decode tests | desktop-decode.js:83-109 | Resolved (50a4565) |
+
+---
+
 ## PR #15: Frontend extraction refactor (2026-03-08)
 
 Branch: `codex/frontend-extraction-refactor-pr` | Score: 7/10
@@ -63,4 +93,4 @@ Branch: `codex/frontend-extraction-refactor-pr` | Score: 7/10
 
 ---
 
-*Last updated: 2026-03-09*
+*Last updated: 2026-03-30*

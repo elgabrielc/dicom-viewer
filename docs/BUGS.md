@@ -12,6 +12,195 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-008: Desktop native decode bridge crashed on unaligned typed-array payloads
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | High |
+| **Found** | 2026-03-30 |
+| **Resolved** | 2026-03-30 |
+| **Commit** | 50a4565 |
+
+**How Encountered:**
+PR #54 failed the Playwright validation job on `tests/desktop-native-decode.spec.js`
+with `RangeError: start offset of Uint16Array should be a multiple of 2` and the
+same error for `Int16Array`. The failure reproduced in both the unsigned and signed
+desktop decode bridge tests.
+
+**Root Cause:**
+`decode_frame_with_pixels` returns a binary payload shaped as:
+
+1. 4-byte little-endian JSON header length
+2. JSON metadata bytes
+3. raw pixel bytes
+
+The frontend split out the pixel payload with `bytes.subarray(pixelOffset)` and then
+constructed `Uint16Array`/`Int16Array` directly over that view. If the JSON header
+length was odd, `pixelOffset` could be odd too, which violates typed-array alignment
+requirements for 16-bit sample arrays.
+
+**Solution:**
+- Updated `docs/js/app/desktop-decode.js` so `coercePixelData(...)` copies the pixel
+  bytes into a fresh aligned `Uint8Array` only when the incoming `byteOffset` is not
+  compatible with the target typed-array element size.
+- Kept the fast path for already aligned payloads.
+
+**Why This Solution:**
+Alternatives considered:
+- *Pad the native payload* - Rejected; the binary protocol is otherwise correct and
+  changing it would add unnecessary churn across the Rust/JS boundary.
+- *Always copy pixel bytes* - Rejected; simpler, but it adds avoidable overhead on
+  the common aligned case.
+
+Chose conditional realignment because it fixes the crash without changing the bridge
+contract or imposing a universal copy penalty.
+
+**Prevention:**
+- Playwright coverage now explicitly exercises both unsigned and signed 16-bit decode
+  payloads through the combined binary response path.
+- The desktop decode bridge test no longer assumes that `decode_frame_with_pixels`
+  is the only startup-time `invoke` call, so unrelated desktop debug plumbing will
+  not mask payload coercion regressions.
+
+**Files Changed:**
+- `docs/js/app/desktop-decode.js`
+- `tests/desktop-native-decode.spec.js`
+
+---
+
+### BUG-007: Desktop XA scrubbing could apply stale W/L overrides across mixed-domain frames
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | High |
+| **Found** | 2026-03-29 |
+| **Resolved** | 2026-03-30 |
+| **PR** | #54 |
+
+**How Encountered:**
+During desktop validation on a multi-frame XA study, aggressive slice scrubbing and
+W/L drag could drive the image nearly black while the viewer continued to report a
+valid slice number and modality. The issue showed up most clearly on XA series that
+mixed larger 12/16-bit frames with smaller 8-bit frames.
+
+**Root Cause:**
+The viewer carried a user W/L override forward while scrubbing, but it did not keep a
+stable notion of which slice defaults that override was anchored to. Two bad outcomes
+followed:
+
+1. A W/L override created on a 12/16-bit XA frame could be applied to a later 8-bit
+   frame with a very different default W/L domain, making the image appear almost
+   black.
+2. Because `baseWindowLevel` was also being updated every frame, the reset heuristic
+   compared the current frame against the immediately previous frame instead of the
+   original override anchor.
+
+**Solution:**
+- Split the viewer state into:
+  - `baseWindowLevel`: the current slice defaults for HUD/reset display
+  - `windowLevelAnchor`: the slice defaults the active user override is anchored to
+- Updated `renderPixels(...)` to clear a stale W/L override automatically when the
+  next slice crosses into an obviously incompatible display domain.
+- Added targeted desktop library tests covering both:
+  - clearing a 12-bit XA override on an incompatible 8-bit frame
+  - preserving an override across compatible XA frames
+
+**Why This Solution:**
+Alternatives considered:
+- *Reset W/L on every scrub* - Rejected; this would make real user W/L adjustments
+  feel broken for normal same-domain scrubbing.
+- *Never reset automatically* - Rejected; it preserves user intent only until mixed
+  bit-depth XA series produce unusable images.
+
+Chose a frozen override anchor plus domain-shift reset because it preserves normal
+W/L behavior while still protecting the viewer from clearly incompatible carryover.
+
+**Prevention:**
+- Added regression coverage for mixed-domain XA scrubbing behavior.
+- Documented the `INCOMPATIBLE_WINDOW_WIDTH_RATIO` heuristic in `rendering.js`.
+- Frontend decode trace logging remains available for desktop repros so future
+  scrub/W/L regressions can be attributed quickly.
+
+**Files Changed:**
+- `docs/js/app/rendering.js`
+- `docs/js/app/state.js`
+- `docs/js/app/tools.js`
+- `tests/desktop-library.spec.js`
+
+---
+
+### BUG-006: Desktop import could exhaust memory by fully reading duplicate and invalid files
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | Critical |
+| **Found** | 2026-03-29 |
+| **Resolved** | 2026-03-30 |
+| **PR** | #54 |
+
+**How Encountered:**
+The Tauri desktop app reached roughly 14-16 GB of memory while importing a large
+real-world folder. The failure was easiest to reproduce on import runs dominated by
+duplicates, invalid files, and collision checks, where macOS eventually surfaced the
+"system has run out of application memory" dialog.
+
+**Root Cause:**
+The desktop import pipeline parsed metadata by pulling full files across the Tauri
+bridge too early:
+
+1. Duplicate and invalid files still paid the cost of `fs.readFile(...)` before the
+   pipeline knew whether they should be skipped.
+2. Destination-path derivation depended on UIDs, but the staged header-read logic
+   stopped as soon as `SOPInstanceUID` was present instead of waiting for
+   `StudyInstanceUID`, `SeriesInstanceUID`, and `SOPInstanceUID`.
+3. Size checks for existing destination paths sometimes required extra source reads
+   instead of using the scan manifest's size metadata.
+
+This created very large transient raw buffers during import-heavy runs even when the
+final outcome was "skip", "invalid", or "collision".
+
+**Solution:**
+- Added header-first metadata probing with `read_scan_header` and staged reads before
+  full-file import.
+- Continued staged header expansion until all destination UIDs needed by
+  `buildDestinationPath(...)` were available.
+- Used manifest/source size metadata for duplicate-vs-collision checks where
+  possible.
+- Delayed the full `fs.readFile(...)` bridge transfer until the pipeline had
+  confirmed that the file was a valid, new DICOM that actually needed to be copied.
+- Added reusable desktop memory capture/report/session tooling so the team can
+  validate memory plateaus with real studies instead of relying on anecdotal reports.
+
+**Why This Solution:**
+Alternatives considered:
+- *Only shrink the viewer cache* - Rejected; it improved steady-state viewing memory
+  but did not address import runs that never needed to decode images at all.
+- *Raise cache limits or rely on GC* - Rejected; the problem was unnecessary bridge
+  traffic and raw-buffer allocation, not just cache retention.
+
+Chose staged header reads plus delayed full-file copies because that removes the
+largest avoidable allocations at the source and makes duplicate-heavy imports cheap.
+
+**Prevention:**
+- Added Playwright coverage proving that duplicates and invalid files do not trigger
+  full file reads.
+- Kept the desktop memory dashboard and one-command capture session in-repo to make
+  future memory regressions measurable.
+- Added import header coverage ensuring staged reads continue until Study, Series,
+  and SOP UIDs are all available.
+
+**Files Changed:**
+- `docs/js/app/import-pipeline.js`
+- `scripts/desktop-memory-capture.py`
+- `scripts/desktop-memory-report.py`
+- `scripts/desktop-memory-session.sh`
+- `tests/desktop-import.spec.js`
+
+---
+
 ### BUG-005: Multi-agent cloud sync build dropped 460 lines of desktop code due to stale branch
 
 | Field | Value |
