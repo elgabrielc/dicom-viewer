@@ -254,7 +254,8 @@ pub async fn decode_frame<R: Runtime>(
     store: State<'_, DecodeStore>,
     debug_settings: State<'_, DebugSettings>,
 ) -> DecodeResult<DecodeFrameMetadata> {
-    let scoped_path = resolve_canonical_path(&path, "decode", "Decode path")?;
+    let scoped_path = crate::path_util::resolve_canonical_path(&path, "decode")
+        .map_err(|msg| DecodeError::new("decode", msg))?;
     let cache_paths = resolve_cache_paths(&app)?;
     let native_decode_debug = debug_settings.native_decode_debug;
     let started_at = Instant::now();
@@ -288,7 +289,8 @@ pub async fn decode_frame_with_pixels<R: Runtime>(
     frame_index: u32,
     debug_settings: State<'_, DebugSettings>,
 ) -> DecodeResult<Response> {
-    let scoped_path = resolve_canonical_path(&path, "decode", "Decode path")?;
+    let scoped_path = crate::path_util::resolve_canonical_path(&path, "decode")
+        .map_err(|msg| DecodeError::new("decode", msg))?;
     let cache_paths = resolve_cache_paths(&app)?;
     let native_decode_debug = debug_settings.native_decode_debug;
     let started_at = Instant::now();
@@ -319,7 +321,8 @@ pub async fn read_scan_header<R: Runtime>(
     path: String,
     max_bytes: usize,
 ) -> DecodeResult<Response> {
-    let scoped_path = resolve_canonical_path(&path, "scan-header", "Scan header path")?;
+    let scoped_path = crate::path_util::resolve_canonical_path(&path, "scan-header")
+        .map_err(|msg| DecodeError::new("scan-header", msg))?;
     let bytes = tokio::task::spawn_blocking(move || read_scan_header_impl(&scoped_path, max_bytes))
         .await
         .map_err(|error| {
@@ -387,14 +390,6 @@ fn resolve_cache_paths<R: Runtime>(app: &AppHandle<R>) -> DecodeResult<DecodeCac
     Ok(cache_paths)
 }
 
-fn resolve_canonical_path(
-    path: &str,
-    stage: &str,
-    _path_label: &str,
-) -> DecodeResult<PathBuf> {
-    crate::path_util::resolve_canonical_path(path, stage)
-        .map_err(|msg| DecodeError::new(stage, msg))
-}
 
 fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>> {
     let capped_max_bytes = max_bytes.min(MAX_SCAN_HEADER_BYTES);
