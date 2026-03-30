@@ -171,16 +171,17 @@
         const isStale = () => generation !== loadGeneration
             || (requestId !== null && requestId !== activeLoadRequestId)
             || (series && state.currentSeries !== series);
+        const traceCtx = { purpose, generation, path, series };
 
         if (sharedPathDataSets.has(path)) {
             const cached = sharedPathDataSets.get(path);
             sharedPathDataSets.delete(path);
             sharedPathDataSets.set(path, cached);
-            traceViewerDecode('shared-dataset-hit', slice, null, { purpose, generation, path, series });
+            traceViewerDecode('shared-dataset-hit', slice, null, traceCtx);
             return cached;
         }
 
-        traceViewerDecode('shared-dataset-miss', slice, null, { purpose, generation, path, series });
+        traceViewerDecode('shared-dataset-miss', slice, null, traceCtx);
         const dataSetPromise = (async () => {
             const buf = await readSliceBuffer(slice, purpose);
             if (isStale()) return null;
@@ -196,7 +197,7 @@
         try {
             const dataSet = await dataSetPromise;
             if (!dataSet || isStale()) {
-                traceViewerDecode('shared-dataset-stale', slice, null, { purpose, generation, path, series });
+                traceViewerDecode('shared-dataset-stale', slice, null, traceCtx);
                 if (sharedPathDataSets.get(path) === dataSetPromise) {
                     sharedPathDataSets.delete(path);
                 }
@@ -204,14 +205,11 @@
             }
 
             rememberSharedPathDataSet(path, Promise.resolve(dataSet));
-            traceViewerDecode('shared-dataset-store', slice, null, { purpose, generation, path, series });
+            traceViewerDecode('shared-dataset-store', slice, null, traceCtx);
             return dataSet;
         } catch (error) {
             traceViewerDecode('shared-dataset-error', slice, null, {
-                purpose,
-                generation,
-                path,
-                series,
+                ...traceCtx,
                 errorMessage: error?.message || String(error)
             });
             if (sharedPathDataSets.get(path) === dataSetPromise) {
@@ -230,26 +228,21 @@
             return null;
         }
         const cacheKey = getSliceCacheKey(slice, index);
+        const traceCtx = { cacheKey, purpose, generation, requestId, series };
         if (cacheKey && state.sliceCache.has(cacheKey)) {
-            traceViewerDecode('slice-cache-hit', slice, index, { cacheKey, purpose, generation, requestId, series });
+            traceViewerDecode('slice-cache-hit', slice, index, traceCtx);
             return state.sliceCache.get(cacheKey);
         }
 
         if (cacheKey && inFlightLoads.has(cacheKey)) {
-            traceViewerDecode('slice-inflight-join', slice, index, { cacheKey, purpose, generation, requestId, series });
+            traceViewerDecode('slice-inflight-join', slice, index, traceCtx);
             return inFlightLoads.get(cacheKey);
         }
 
         const loadPromise = (async () => {
             const decodeMode = getActiveDecodeMode();
             if (canUseDesktopHeaderDecode(slice)) {
-                traceViewerDecode('header-decode-attempt', slice, index, {
-                    cacheKey,
-                    purpose,
-                    generation,
-                    requestId,
-                    series
-                });
+                traceViewerDecode('header-decode-attempt', slice, index, traceCtx);
                 const headerDataSet = await app.sources.readDesktopRenderHeaderDataSet(slice);
                 if (isStale()) return null;
 
@@ -262,11 +255,7 @@
                         );
                         if (isStale()) return null;
                         traceViewerDecode('header-decode-success', slice, index, {
-                            cacheKey,
-                            purpose,
-                            generation,
-                            requestId,
-                            series,
+                            ...traceCtx,
                             rows: decoded?.rows || null,
                             cols: decoded?.cols || null,
                             decodeError: !!decoded?.error
@@ -274,11 +263,7 @@
                         if (decoded && !decoded.error && cacheKey) {
                             state.sliceCache.set(cacheKey, decoded);
                             traceViewerDecode('slice-cache-store', slice, index, {
-                                cacheKey,
-                                purpose,
-                                generation,
-                                requestId,
-                                series,
+                                ...traceCtx,
                                 rows: decoded.rows,
                                 cols: decoded.cols,
                                 cachedKind: 'decoded'
@@ -287,11 +272,7 @@
                         return decoded || null;
                     } catch (error) {
                         traceViewerDecode('header-decode-fallback', slice, index, {
-                            cacheKey,
-                            purpose,
-                            generation,
-                            requestId,
-                            series,
+                            ...traceCtx,
                             errorMessage: error?.message || String(error)
                         });
                         if (decodeMode === 'native') {
@@ -303,22 +284,10 @@
                         );
                     }
                 } else if (decodeMode === 'native') {
-                    traceViewerDecode('header-decode-header-miss', slice, index, {
-                        cacheKey,
-                        purpose,
-                        generation,
-                        requestId,
-                        series
-                    });
+                    traceViewerDecode('header-decode-header-miss', slice, index, traceCtx);
                     throw new Error(`Forced native decode could not read the DICOM header for ${slice?.source?.path || 'slice'}.`);
                 } else {
-                    traceViewerDecode('header-decode-skip-to-js', slice, index, {
-                        cacheKey,
-                        purpose,
-                        generation,
-                        requestId,
-                        series
-                    });
+                    traceViewerDecode('header-decode-skip-to-js', slice, index, traceCtx);
                 }
             }
 
@@ -328,22 +297,10 @@
 
             let dataSet;
             if (shouldReuseSharedPathDataSet(slice, series)) {
-                traceViewerDecode('js-source-shared-dataset', slice, index, {
-                    cacheKey,
-                    purpose,
-                    generation,
-                    requestId,
-                    series
-                });
+                traceViewerDecode('js-source-shared-dataset', slice, index, traceCtx);
                 dataSet = await getSharedPathDataSet(slice, purpose, generation, { requestId, series });
             } else {
-                traceViewerDecode('js-source-full-read', slice, index, {
-                    cacheKey,
-                    purpose,
-                    generation,
-                    requestId,
-                    series
-                });
+                traceViewerDecode('js-source-full-read', slice, index, traceCtx);
                 const buf = await readSliceBuffer(slice, purpose);
                 if (isStale()) return null;
 
@@ -361,22 +318,14 @@
             if (decoded && !decoded.error && cacheKey) {
                 state.sliceCache.set(cacheKey, decoded);
                 traceViewerDecode('slice-cache-store', slice, index, {
-                    cacheKey,
-                    purpose,
-                    generation,
-                    requestId,
-                    series,
+                    ...traceCtx,
                     rows: decoded.rows,
                     cols: decoded.cols,
                     cachedKind: 'decoded'
                 });
             } else {
                 traceViewerDecode('slice-decode-not-cached', slice, index, {
-                    cacheKey,
-                    purpose,
-                    generation,
-                    requestId,
-                    series,
+                    ...traceCtx,
                     decodeError: !!decoded?.error
                 });
             }
@@ -547,10 +496,11 @@
         state.currentSliceIndex = index;
         updateSliceInfo();
         imageLoading.style.display = 'block';
+        const traceCtx = { generation, requestId, series };
 
         try {
             const slice = slices[index];
-            traceViewerDecode('slice-load-start', slice, index, { generation, requestId, series });
+            traceViewerDecode('slice-load-start', slice, index, traceCtx);
             let decoded = await getDecodedSlice(slice, index, 'load', generation, { requestId, series });
             if (!decoded && !isLoadStale(generation, requestId, series)) {
                 decoded = await getDecodedSlice(slice, index, 'load', generation, { requestId, series });
@@ -564,9 +514,7 @@
                 : null;
             const info = renderDecodedSlice(decoded, wlOverride);
             traceViewerDecode('slice-load-rendered', slice, index, {
-                generation,
-                requestId,
-                series,
+                ...traceCtx,
                 renderError: !!info?.error,
                 isBlank: !!info?.isBlank,
                 rows: info?.rows || decoded?.rows || null,
@@ -582,9 +530,7 @@
         } catch (e) {
             console.error('Error loading slice:', e);
             traceViewerDecode('slice-load-exception', slices[index], index, {
-                generation,
-                requestId,
-                series,
+                ...traceCtx,
                 errorMessage: e?.message || String(e)
             });
             if (!isLoadStale(generation, requestId, series)) {
