@@ -7,7 +7,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
         LazyLock, Mutex,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use dicom_core::Tag;
@@ -17,6 +17,8 @@ use dicom_pixeldata::{DecodedPixelData, PixelDecoder};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{ipc::Response, AppHandle, Manager, Runtime, State};
+
+use crate::DebugSettings;
 
 const DECODE_TIMEOUT_SECS: u64 = 30;
 const MAX_DECODE_STORE_ENTRIES: usize = 8;
@@ -31,6 +33,7 @@ type DecodeResult<T> = Result<T, DecodeError>;
 
 static PENDING_CACHE_TOUCHES: LazyLock<Mutex<HashMap<String, u128>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static DECODE_CACHE_IO_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -64,6 +67,42 @@ pub struct DecodeFrameMetadata {
     pub rescale_slope: Option<f64>,
     pub rescale_intercept: Option<f64>,
     pub pixel_data_length: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct DecodeFrameBinaryHeader {
+    rows: u16,
+    cols: u16,
+    bits_allocated: u16,
+    pixel_representation: u16,
+    samples_per_pixel: u16,
+    planar_configuration: u16,
+    photometric_interpretation: String,
+    window_center: Option<f64>,
+    window_width: Option<f64>,
+    rescale_slope: Option<f64>,
+    rescale_intercept: Option<f64>,
+    pixel_data_length: usize,
+}
+
+impl From<DecodedFrameMetadata> for DecodeFrameBinaryHeader {
+    fn from(metadata: DecodedFrameMetadata) -> Self {
+        Self {
+            rows: metadata.rows,
+            cols: metadata.cols,
+            bits_allocated: metadata.bits_allocated,
+            pixel_representation: metadata.pixel_representation,
+            samples_per_pixel: metadata.samples_per_pixel,
+            planar_configuration: metadata.planar_configuration,
+            photometric_interpretation: metadata.photometric_interpretation,
+            window_center: metadata.window_center,
+            window_width: metadata.window_width,
+            rescale_slope: metadata.rescale_slope,
+            rescale_intercept: metadata.rescale_intercept,
+            pixel_data_length: metadata.pixel_data_length,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -155,6 +194,14 @@ impl DecodeStore {
             .pixels_by_id
             .len()
     }
+
+    fn pending_count_live(&self) -> usize {
+        self.entries
+            .lock()
+            .expect("decode store poisoned")
+            .pixels_by_id
+            .len()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -205,12 +252,65 @@ pub async fn decode_frame<R: Runtime>(
     path: String,
     frame_index: u32,
     store: State<'_, DecodeStore>,
+    debug_settings: State<'_, DebugSettings>,
 ) -> DecodeResult<DecodeFrameMetadata> {
     let scoped_path = resolve_canonical_path(&path, "decode", "Decode path")?;
     let cache_paths = resolve_cache_paths(&app)?;
-    let decode_result = run_decode_with_timeout(scoped_path, frame_index, cache_paths).await?;
+    let native_decode_debug = debug_settings.native_decode_debug;
+    let started_at = Instant::now();
+    let decode_result = run_decode_with_timeout(
+        scoped_path.clone(),
+        frame_index,
+        cache_paths,
+        native_decode_debug,
+    )
+    .await?;
+    let pixel_data_length = decode_result.metadata.pixel_data_length;
     let decode_id = store.insert(decode_result.pixel_bytes);
+    if native_decode_debug {
+        eprintln!(
+            "[native-decode] response path={} frame={} decode_id={} pixel_bytes={} store_pending={} elapsed_ms={}",
+            scoped_path.display(),
+            frame_index,
+            decode_id,
+            pixel_data_length,
+            store.pending_count_live(),
+            started_at.elapsed().as_millis()
+        );
+    }
     Ok(decode_result.metadata.into_response(decode_id))
+}
+
+#[tauri::command]
+pub async fn decode_frame_with_pixels<R: Runtime>(
+    app: AppHandle<R>,
+    path: String,
+    frame_index: u32,
+    debug_settings: State<'_, DebugSettings>,
+) -> DecodeResult<Response> {
+    let scoped_path = resolve_canonical_path(&path, "decode", "Decode path")?;
+    let cache_paths = resolve_cache_paths(&app)?;
+    let native_decode_debug = debug_settings.native_decode_debug;
+    let started_at = Instant::now();
+    let decoded_frame = run_decode_with_timeout(
+        scoped_path.clone(),
+        frame_index,
+        cache_paths,
+        native_decode_debug,
+    )
+    .await?;
+    let pixel_data_length = decoded_frame.metadata.pixel_data_length;
+    let response = build_decode_frame_with_pixels_response(decoded_frame)?;
+    if native_decode_debug {
+        eprintln!(
+            "[native-decode] response-with-pixels path={} frame={} pixel_bytes={} elapsed_ms={}",
+            scoped_path.display(),
+            frame_index,
+            pixel_data_length,
+            started_at.elapsed().as_millis()
+        );
+    }
+    Ok(response)
 }
 
 #[tauri::command]
@@ -246,9 +346,11 @@ async fn run_decode_with_timeout(
     path: PathBuf,
     frame_index: u32,
     cache_paths: DecodeCachePaths,
+    native_decode_debug: bool,
 ) -> DecodeResult<DecodedFrame> {
-    let decode_task =
-        tokio::task::spawn_blocking(move || decode_frame_impl_with_cache(&path, frame_index, &cache_paths));
+    let decode_task = tokio::task::spawn_blocking(move || {
+        decode_frame_impl_with_cache(&path, frame_index, &cache_paths, native_decode_debug)
+    });
 
     match tokio::time::timeout(Duration::from_secs(DECODE_TIMEOUT_SECS), decode_task).await {
         Ok(Ok(result)) => result,
@@ -335,11 +437,38 @@ fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>>
     Ok(bytes)
 }
 
+fn build_decode_frame_with_pixels_response(decoded_frame: DecodedFrame) -> DecodeResult<Response> {
+    let DecodedFrame {
+        metadata,
+        mut pixel_bytes,
+    } = decoded_frame;
+    let metadata_json = serde_json::to_vec(&DecodeFrameBinaryHeader::from(metadata)).map_err(|error| {
+        DecodeError::new(
+            "pixel-transfer",
+            format!("Failed to serialize decoded frame metadata: {error}"),
+        )
+    })?;
+    let metadata_length = u32::try_from(metadata_json.len()).map_err(|_| {
+        DecodeError::new(
+            "pixel-transfer",
+            "Decoded frame metadata header exceeded the desktop binary response size limit.",
+        )
+    })?;
+
+    let mut payload = Vec::with_capacity(4 + metadata_json.len() + pixel_bytes.len());
+    payload.extend_from_slice(&metadata_length.to_le_bytes());
+    payload.extend_from_slice(&metadata_json);
+    payload.append(&mut pixel_bytes);
+    Ok(Response::new(payload))
+}
+
 fn decode_frame_impl_with_cache(
     path: &Path,
     frame_index: u32,
     cache_paths: &DecodeCachePaths,
+    native_decode_debug: bool,
 ) -> DecodeResult<DecodedFrame> {
+    let started_at = Instant::now();
     let object = open_file(path).map_err(|error| {
         DecodeError::new(
             "decode",
@@ -356,7 +485,24 @@ fn decode_frame_impl_with_cache(
     };
 
     if let Some(cache_key) = cache_key.as_deref() {
-        if let Some(cached_frame) = read_cached_frame(cache_paths, cache_key) {
+        let cached_frame = {
+            let _cache_guard = DECODE_CACHE_IO_LOCK
+                .lock()
+                .expect("decode cache I/O lock poisoned");
+            read_cached_frame(cache_paths, cache_key)
+        };
+        if let Some(cached_frame) = cached_frame {
+            if native_decode_debug {
+                eprintln!(
+                    "[native-decode] cache-hit path={} frame={} pixel_bytes={} rows={} cols={} elapsed_ms={}",
+                    path.display(),
+                    frame_index,
+                    cached_frame.metadata.pixel_data_length,
+                    cached_frame.metadata.rows,
+                    cached_frame.metadata.cols,
+                    started_at.elapsed().as_millis()
+                );
+            }
             return Ok(cached_frame);
         }
     }
@@ -364,9 +510,27 @@ fn decode_frame_impl_with_cache(
     let decoded_frame = decode_frame_from_object(path, &object, frame_index)?;
 
     if let Some(cache_key) = cache_key.as_deref() {
-        if let Err(error) = write_cached_frame(cache_paths, cache_key, &decoded_frame) {
+        let cache_write_result = {
+            let _cache_guard = DECODE_CACHE_IO_LOCK
+                .lock()
+                .expect("decode cache I/O lock poisoned");
+            write_cached_frame(cache_paths, cache_key, &decoded_frame)
+        };
+        if let Err(error) = cache_write_result {
             eprintln!("Skipping decode cache write for {}: {}", path.display(), error);
         }
+    }
+
+    if native_decode_debug {
+        eprintln!(
+            "[native-decode] cache-miss path={} frame={} pixel_bytes={} rows={} cols={} elapsed_ms={}",
+            path.display(),
+            frame_index,
+            decoded_frame.metadata.pixel_data_length,
+            decoded_frame.metadata.rows,
+            decoded_frame.metadata.cols,
+            started_at.elapsed().as_millis()
+        );
     }
 
     Ok(decoded_frame)
@@ -929,10 +1093,10 @@ mod tests {
 
     #[test]
     fn decode_frame_impl_with_cache_uses_cached_pixels_after_first_decode() {
-        let fixture = fixture_path("test-data/mri-samples/MR2_J2KI.dcm");
+        let fixture = fixture_path("test-fixtures/MR2_J2KI.dcm");
         let cache_paths = test_cache_paths("decode-cache-hit");
 
-        let first = decode_frame_impl_with_cache(&fixture, 0, &cache_paths)
+        let first = decode_frame_impl_with_cache(&fixture, 0, &cache_paths, false)
             .expect("first decode should populate cache");
         let object = open_file(&fixture).expect("fixture should be readable");
         let cache_key =
@@ -941,11 +1105,39 @@ mod tests {
         let cached_bytes = vec![7; first.metadata.pixel_data_length];
         fs::write(&entry_paths.pixel_bytes, &cached_bytes).expect("cached payload should be rewritable");
 
-        let second = decode_frame_impl_with_cache(&fixture, 0, &cache_paths)
+        let second = decode_frame_impl_with_cache(&fixture, 0, &cache_paths, false)
             .expect("second decode should reuse cached payload");
 
         assert_eq!(second.pixel_bytes, cached_bytes);
         assert_eq!(second.metadata, first.metadata);
+
+        let _ = fs::remove_dir_all(&cache_paths.dir);
+    }
+
+    #[test]
+    fn decode_frame_impl_with_cache_tolerates_concurrent_writers() {
+        let fixture = fixture_path("test-fixtures/MR2_J2KI.dcm");
+        let cache_paths = test_cache_paths("decode-cache-concurrent");
+
+        let mut workers = Vec::new();
+        for _ in 0..4 {
+            let fixture = fixture.clone();
+            let cache_paths = cache_paths.clone();
+            workers.push(std::thread::spawn(move || {
+                decode_frame_impl_with_cache(&fixture, 0, &cache_paths, false)
+            }));
+        }
+
+        let mut pixel_lengths = Vec::new();
+        for worker in workers {
+            let decoded = worker
+                .join()
+                .expect("decode worker thread should complete")
+                .expect("concurrent cache decode should succeed");
+            pixel_lengths.push(decoded.metadata.pixel_data_length);
+        }
+
+        assert!(pixel_lengths.iter().all(|length| *length == pixel_lengths[0]));
 
         let _ = fs::remove_dir_all(&cache_paths.dir);
     }
@@ -1006,7 +1198,7 @@ mod tests {
 
     #[test]
     fn decode_frame_impl_decodes_real_jpeg2000_fixture() {
-        let fixture = fixture_path("test-data/mri-samples/MR2_J2KI.dcm");
+        let fixture = fixture_path("test-fixtures/MR2_J2KI.dcm");
         let decoded = decode_frame_impl(&fixture, 0).expect("fixture should decode");
 
         assert_eq!(decoded.metadata.rows, 1024);

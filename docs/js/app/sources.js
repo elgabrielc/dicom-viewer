@@ -4,6 +4,7 @@
     const {
         parseDicomMetadata,
         parseDicomMetadataDetailed,
+        parseDicomHeaderDataSet,
         isRenderableImageMetadata
     } = app.dicom;
     const DESKTOP_MAX_SCAN_DEPTH = 20;
@@ -297,6 +298,30 @@
         } catch {
             return null;
         }
+    }
+
+    async function readDesktopRenderHeaderDataSet(slice) {
+        const path = slice?.source?.path;
+        if (!path) {
+            return null;
+        }
+
+        for (const requestedBytes of DESKTOP_SCAN_HEADER_READ_SIZES) {
+            const headerBytes = await readDesktopScanHeader(path, requestedBytes);
+            if (!headerBytes) {
+                return null;
+            }
+
+            try {
+                return await parseDicomHeaderDataSet(headerBytes);
+            } catch (error) {
+                if (headerBytes.byteLength < requestedBytes) {
+                    return null;
+                }
+            }
+        }
+
+        return null;
     }
 
     async function parseDesktopScanBuffer(buffer, stats) {
@@ -1449,6 +1474,7 @@
         processFiles,
         processFilesFromSources,
         readSliceBuffer,
+        readDesktopRenderHeaderDataSet,
         normalizeStudiesPayload,
         loadStudiesFromApi,
         expandFrameSlices,

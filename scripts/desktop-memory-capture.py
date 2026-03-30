@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import defaultdict
 from typing import Any
 
 
@@ -262,7 +263,7 @@ def ensure_free_space(
 
 def resolve_process(pid: int | None, process_name: str) -> tuple[int, str]:
     if pid is not None:
-        snapshot = sample_process(pid)
+        snapshot = sample_root_process(pid)
         if snapshot is None:
             raise SystemExit(f"Process with PID {pid} is not running.")
         return pid, snapshot["command"]
@@ -297,23 +298,105 @@ def resolve_process(pid: int | None, process_name: str) -> tuple[int, str]:
     return candidates[0]
 
 
-def sample_process(pid: int) -> dict[str, Any] | None:
-    result = run_command(["ps", "-o", "rss=,vsz=,%cpu=,etime=,comm=", "-p", str(pid)])
+def parse_ps_row(parts: list[str]) -> dict[str, Any] | None:
+    if len(parts) < 7:
+        return None
+
+    return {
+        "pid": int(parts[0]),
+        "ppid": int(parts[1]),
+        "rss_kb": int(parts[2]),
+        "vsz_kb": int(parts[3]),
+        "cpu_percent": float(parts[4]),
+        "elapsed": parts[5],
+        "command": parts[6],
+    }
+
+
+def sample_root_process(pid: int) -> dict[str, Any] | None:
+    result = run_command(["ps", "-o", "pid=,ppid=,rss=,vsz=,%cpu=,etime=,comm=", "-p", str(pid)])
     output = result.stdout.strip()
     if result.returncode != 0 or not output:
         return None
 
-    parts = output.split(None, 4)
-    if len(parts) < 5:
+    parts = output.split(None, 6)
+    return parse_ps_row(parts)
+
+
+def sample_process_tree(root_pid: int) -> dict[str, Any] | None:
+    result = run_command(["ps", "-axo", "pid=,ppid=,rss=,vsz=,%cpu=,etime=,comm="])
+    output = result.stdout
+    if result.returncode != 0 or not output.strip():
         return None
 
+    processes: dict[int, dict[str, Any]] = {}
+    children: dict[int, list[int]] = defaultdict(list)
+
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 6)
+        snapshot = parse_ps_row(parts)
+        if snapshot is None:
+            continue
+        pid = int(snapshot["pid"])
+        processes[pid] = snapshot
+        children[int(snapshot["ppid"])].append(pid)
+
+    if root_pid not in processes:
+        return None
+
+    stack = [root_pid]
+    seen: set[int] = set()
+    tree: list[dict[str, Any]] = []
+    while stack:
+        pid = stack.pop()
+        if pid in seen or pid not in processes:
+            continue
+        seen.add(pid)
+        tree.append(processes[pid])
+        stack.extend(children.get(pid, []))
+
+    root = processes[root_pid]
+    root_rss_kb = int(root["rss_kb"])
+    root_vsz_kb = int(root["vsz_kb"])
+    root_cpu_percent = float(root["cpu_percent"])
+    tree_rss_kb = sum(int(process["rss_kb"]) for process in tree)
+    tree_vsz_kb = sum(int(process["vsz_kb"]) for process in tree)
+    tree_cpu_percent = sum(float(process["cpu_percent"]) for process in tree)
+    top_processes = sorted(tree, key=lambda process: int(process["rss_kb"]), reverse=True)[:5]
+
     return {
-        "rss_kb": int(parts[0]),
-        "vsz_kb": int(parts[1]),
-        "cpu_percent": float(parts[2]),
-        "elapsed": parts[3],
-        "command": parts[4],
+        "rss_kb": tree_rss_kb,
+        "vsz_kb": tree_vsz_kb,
+        "cpu_percent": round(tree_cpu_percent, 1),
+        "elapsed": root["elapsed"],
+        "command": root["command"],
+        "root_pid": root_pid,
+        "process_count": len(tree),
+        "root_rss_kb": root_rss_kb,
+        "root_vsz_kb": root_vsz_kb,
+        "root_cpu_percent": root_cpu_percent,
+        "tree_rss_kb": tree_rss_kb,
+        "tree_vsz_kb": tree_vsz_kb,
+        "tree_cpu_percent": round(tree_cpu_percent, 1),
+        "helper_rss_kb": max(0, tree_rss_kb - root_rss_kb),
+        "helper_vsz_kb": max(0, tree_vsz_kb - root_vsz_kb),
+        "top_processes": [
+            {
+                "pid": int(process["pid"]),
+                "rss_kb": int(process["rss_kb"]),
+                "ppid": int(process["ppid"]),
+                "command": str(process["command"]),
+            }
+            for process in top_processes
+        ],
     }
+
+
+def sample_process(pid: int) -> dict[str, Any] | None:
+    return sample_process_tree(pid)
 
 
 def checkpoint_path_for(output_path: pathlib.Path) -> pathlib.Path:
@@ -371,6 +454,7 @@ def build_session_metadata(
         "pid": pid,
         "process_name": process_name,
         "resolved_command": resolved_command,
+        "sample_scope": "process-tree",
         "interval_seconds": args.interval,
         "duration_seconds": args.duration,
         "notes": args.notes,

@@ -27,6 +27,11 @@
         throw new Error('Unsupported DICOM metadata source');
     }
 
+    async function parseDicomHeaderDataSet(input) {
+        const byteArray = await toDicomByteArray(input);
+        return dicomParser.parseDicom(byteArray, { untilTag: 'x7fe00010' });
+    }
+
     function getMetadataNumber(dataSet, tag, fallback = 0) {
         const stringValue = getNumber(dataSet, tag, Number.NaN);
         if (Number.isFinite(stringValue)) {
@@ -898,6 +903,7 @@
     app.dicom = {
         parseDicomMetadata,
         parseDicomMetadataDetailed,
+        parseDicomHeaderDataSet,
         parseDicomDirectory,
         parseDicomDirectoryDetailed,
         toDicomByteArray,

@@ -126,6 +126,8 @@ async function installMockDesktop(page, options = {}) {
             readFileFailures[normalizePath(path)] = Number(value || 0);
         }
 
+        window.__frontendDecodeTraceCalls = [];
+
         window.__TAURI__ = {
             core: {
                 async invoke(cmd, args) {
@@ -137,6 +139,18 @@ async function installMockDesktop(page, options = {}) {
                     }
                     if (cmd === 'read_scan_manifest') {
                         return options.nativeScanManifest || null;
+                    }
+                    if (cmd === 'get_debug_settings') {
+                        return options.debugSettings || {
+                            decodeMode: 'auto',
+                            preloadMode: 'auto',
+                            frontendDecodeTrace: false,
+                            nativeDecodeDebug: false
+                        };
+                    }
+                    if (cmd === 'log_frontend_decode_event') {
+                        window.__frontendDecodeTraceCalls.push(args?.message || '');
+                        return null;
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
@@ -1425,6 +1439,141 @@ test.describe('Desktop library scanning', () => {
         expect(result.alphaChannel).toEqual([255, 255, 255, 255]);
     });
 
+    test('renderPixels clears an incompatible W/L override when scrubbing into a different XA display domain', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const { state, rendering } = window.DicomViewerApp;
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+
+            const decoded12BitXa = {
+                pixelData: new Uint16Array([0, 1024, 2048, 4095]),
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 16,
+                bitsStored: 12,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                planarConfiguration: 0,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 2048,
+                windowWidth: 4096,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'XA',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: null,
+                pixelSpacing: null,
+                skipWindowLevel: false,
+                isBlank: false
+            };
+            const decoded8BitXa = {
+                pixelData: new Uint8Array([0, 128, 192, 255]),
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 8,
+                bitsStored: 8,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                planarConfiguration: 0,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 128,
+                windowWidth: 171,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'XA',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: null,
+                pixelSpacing: null,
+                skipWindowLevel: false,
+                isBlank: false
+            };
+
+            state.baseWindowLevel = { center: null, width: null };
+            state.windowLevel = { center: null, width: null };
+            state.pixelSpacing = null;
+
+            rendering.renderPixels(decoded12BitXa);
+            state.windowLevel = { center: 1928, width: 4694 };
+            const info = rendering.renderPixels(decoded8BitXa, state.windowLevel);
+            const firstChannel = Array.from(ctx.getImageData(0, 0, 2, 2).data)
+                .filter((_, index) => index % 4 === 0);
+
+            return {
+                info,
+                firstChannel,
+                baseWindowLevel: state.baseWindowLevel,
+                windowLevel: state.windowLevel
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            wc: 128,
+            ww: 171
+        });
+        expect(result.firstChannel).toEqual([0, 128, 223, 255]);
+        expect(result.baseWindowLevel).toEqual({ center: 128, width: 171 });
+        expect(result.windowLevel).toEqual({ center: null, width: null });
+    });
+
+    test('renderPixels preserves a compatible W/L override across same-domain XA slices', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const { state, rendering } = window.DicomViewerApp;
+
+            const decodedA = {
+                pixelData: new Uint16Array([0, 1024, 2048, 4095]),
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 16,
+                bitsStored: 12,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                planarConfiguration: 0,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 2048,
+                windowWidth: 4096,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'XA',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: null,
+                pixelSpacing: null,
+                skipWindowLevel: false,
+                isBlank: false
+            };
+            const decodedB = {
+                ...decodedA,
+                pixelData: new Uint16Array([4095, 2048, 1024, 0])
+            };
+
+            state.baseWindowLevel = { center: null, width: null };
+            state.windowLevel = { center: null, width: null };
+            state.pixelSpacing = null;
+
+            rendering.renderPixels(decodedA);
+            state.windowLevel = { center: 1928, width: 4694 };
+            const info = rendering.renderPixels(decodedB, state.windowLevel);
+
+            return {
+                info,
+                baseWindowLevel: state.baseWindowLevel,
+                windowLevel: state.windowLevel
+            };
+        });
+
+        expect(result.info).toMatchObject({
+            wc: 1928,
+            ww: 4694
+        });
+        expect(result.baseWindowLevel).toEqual({ center: 2048, width: 4096 });
+        expect(result.windowLevel).toEqual({ center: 1928, width: 4694 });
+    });
+
     test('renderPixels normalizes RGB samples using Bits Stored instead of container size', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
@@ -2001,6 +2150,615 @@ test.describe('Desktop library scanning', () => {
         });
     });
 
+    test('viewer loadSlice uses desktop header decode before full file reads', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const slice = {
+                frameIndex: 0,
+                sliceLocation: 9.87,
+                sopInstanceUid: '1.2.826.0.1.3680043.2.1127.1',
+                source: {
+                    kind: 'path',
+                    path: '/library/native-header-success.dcm'
+                }
+            };
+            const cacheKey = app.sources.getSliceCacheKey(slice, 0);
+            let readFileCalls = 0;
+            let headerCalls = 0;
+            let nativeDecodeCalls = 0;
+
+            const originalReadFile = window.__TAURI__.fs.readFile;
+            const originalReadHeader = app.sources.readDesktopRenderHeaderDataSet;
+            const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-header'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-header',
+                slices: [slice]
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            app.state.sliceCache.clear();
+
+            window.__TAURI__.fs.readFile = async () => {
+                readFileCalls += 1;
+                return Uint8Array.from([1, 2, 3, 4]);
+            };
+            app.sources.readDesktopRenderHeaderDataSet = async () => {
+                headerCalls += 1;
+                return {
+                    string(tag) {
+                        const values = {
+                            x00020010: '1.2.840.10008.1.2.1',
+                            x00080060: 'CT',
+                            x00280004: 'MONOCHROME2',
+                            x00280030: '0.5\\0.25',
+                            x00281053: '1',
+                            x00281052: '-1024'
+                        };
+                        return values[tag] || '';
+                    },
+                    uint16(tag) {
+                        const values = {
+                            x00280101: 16
+                        };
+                        return values[tag] || 0;
+                    }
+                };
+            };
+            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+                nativeDecodeCalls += 1;
+                return {
+                    rows: 1,
+                    cols: 2,
+                    bitsAllocated: 16,
+                    bitsStored: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 40,
+                    windowWidth: 400,
+                    rescaleSlope: 1,
+                    rescaleIntercept: -1024,
+                    pixelData: new Uint16Array([1100, 1500])
+                };
+            };
+
+            try {
+                await app.viewer.loadSlice(0);
+            } finally {
+                window.__TAURI__.fs.readFile = originalReadFile;
+                app.sources.readDesktopRenderHeaderDataSet = originalReadHeader;
+                app.desktopDecode.decodeFrameWithPixels = originalNativeDecode;
+            }
+
+            const cached = app.state.sliceCache.get(cacheKey);
+            return {
+                readFileCalls,
+                headerCalls,
+                nativeDecodeCalls,
+                pixelSpacing: app.state.pixelSpacing,
+                metadataText: document.getElementById('metadataContent').textContent,
+                cachedSummary: {
+                    hasPixelData: ArrayBuffer.isView(cached?.pixelData),
+                    hasByteArray: !!cached?.byteArray,
+                    hasElements: !!cached?.elements
+                }
+            };
+        });
+
+        expect(result.readFileCalls).toBe(0);
+        expect(result.headerCalls).toBe(1);
+        expect(result.nativeDecodeCalls).toBe(1);
+        expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
+        expect(result.metadataText).toContain('CT');
+        expect(result.metadataText).toContain('2 x 1');
+        expect(result.cachedSummary).toEqual({
+            hasPixelData: true,
+            hasByteArray: false,
+            hasElements: false
+        });
+    });
+
+    test('viewer loadSlice coalesces rapid requests to the latest slice', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const paths = [
+                '/tmp/rapid-load-0.dcm',
+                '/tmp/rapid-load-1.dcm',
+                '/tmp/rapid-load-2.dcm'
+            ];
+            const slices = paths.map((path, index) => ({
+                source: { kind: 'path', path },
+                sopInstanceUid: `1.2.826.0.1.3680043.2.1125.${index}`
+            }));
+            const readResolvers = new Map();
+            const readCalls = [];
+            const decodeCalls = [];
+            const originalReadFile = window.__TAURI__.fs.readFile;
+            const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
+            const originalDicomParser = window.dicomParser;
+
+            const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+            const waitFor = async (predicate, message) => {
+                for (let attempt = 0; attempt < 40; attempt += 1) {
+                    if (predicate()) return;
+                    await tick();
+                }
+                throw new Error(message);
+            };
+
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-rapid'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-rapid',
+                slices
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            app.state.sliceCache.clear();
+
+            window.__TAURI__.fs.readFile = async (path) => new Promise(resolve => {
+                readCalls.push(path);
+                readResolvers.set(path, () => resolve(Uint8Array.from([1, 2, 3, 4])));
+            });
+            window.dicomParser = {
+                ...originalDicomParser,
+                parseDicom() {
+                    return {
+                        string(tag) {
+                            const values = {
+                                x00020010: '1.2.840.10008.1.2.4.90',
+                                x00080060: 'RF',
+                                x00280004: 'MONOCHROME2'
+                            };
+                            return values[tag] || '';
+                        },
+                        uint16(tag) {
+                            const values = {
+                                x00280101: 16
+                            };
+                            return values[tag] || 0;
+                        }
+                    };
+                }
+            };
+            app.desktopDecode.decodeFrameWithPixels = async (path) => {
+                decodeCalls.push(path);
+                const intensity = path.endsWith('0.dcm') ? 32 : path.endsWith('1.dcm') ? 96 : 224;
+                return {
+                    rows: 1,
+                    cols: 1,
+                    bitsAllocated: 16,
+                    bitsStored: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 128,
+                    windowWidth: 256,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelData: new Uint16Array([intensity])
+                };
+            };
+
+            try {
+                const firstLoad = app.viewer.loadSlice(0);
+                const skippedLoad = app.viewer.loadSlice(1);
+                const latestLoad = app.viewer.loadSlice(2);
+
+                await waitFor(() => readResolvers.has(paths[2]), 'Latest slice read did not start.');
+                readResolvers.get(paths[2])();
+
+                await Promise.all([firstLoad, skippedLoad, latestLoad]);
+            } finally {
+                window.__TAURI__.fs.readFile = originalReadFile;
+                app.desktopDecode.decodeFrameWithPixels = originalNativeDecode;
+                window.dicomParser = originalDicomParser;
+            }
+
+            const canvas = document.getElementById('imageCanvas');
+            const renderedPixel = canvas.getContext('2d').getImageData(0, 0, 1, 1).data[0];
+
+            return {
+                readCalls,
+                decodeCalls,
+                currentSliceIndex: app.state.currentSliceIndex,
+                renderedPixel
+            };
+        });
+
+        expect(result.readCalls[0]).toBe('/tmp/rapid-load-2.dcm');
+        expect(result.decodeCalls).toEqual([
+            '/tmp/rapid-load-2.dcm'
+        ]);
+        expect(result.currentSliceIndex).toBe(2);
+    });
+
+    test('viewer preloads stop decoding after a newer request supersedes them', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const paths = [
+                '/tmp/preload-stop-0.dcm',
+                '/tmp/preload-stop-1.dcm',
+                '/tmp/preload-stop-2.dcm'
+            ];
+            const slices = paths.map((path, index) => ({
+                source: { kind: 'path', path },
+                sopInstanceUid: `1.2.826.0.1.3680043.2.1126.${index}`
+            }));
+            const readResolvers = new Map();
+            const readCalls = [];
+            const decodeCalls = [];
+            const originalReadFile = window.__TAURI__.fs.readFile;
+            const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
+            const originalDicomParser = window.dicomParser;
+
+            const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+            const waitFor = async (predicate, message) => {
+                for (let attempt = 0; attempt < 40; attempt += 1) {
+                    if (predicate()) return;
+                    await tick();
+                }
+                throw new Error(message);
+            };
+
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-preload'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-preload',
+                slices
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            app.state.sliceCache.clear();
+
+            window.__TAURI__.fs.readFile = async (path) => new Promise(resolve => {
+                readCalls.push(path);
+                readResolvers.set(path, () => resolve(Uint8Array.from([5, 6, 7, 8])));
+            });
+            window.dicomParser = {
+                ...originalDicomParser,
+                parseDicom() {
+                    return {
+                        string(tag) {
+                            const values = {
+                                x00020010: '1.2.840.10008.1.2.4.90',
+                                x00080060: 'RF',
+                                x00280004: 'MONOCHROME2'
+                            };
+                            return values[tag] || '';
+                        },
+                        uint16(tag) {
+                            const values = {
+                                x00280101: 16
+                            };
+                            return values[tag] || 0;
+                        }
+                    };
+                }
+            };
+            app.desktopDecode.decodeFrameWithPixels = async (path) => {
+                decodeCalls.push(path);
+                const intensity = path.endsWith('0.dcm') ? 48 : path.endsWith('1.dcm') ? 128 : 208;
+                return {
+                    rows: 1,
+                    cols: 1,
+                    bitsAllocated: 16,
+                    bitsStored: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 128,
+                    windowWidth: 256,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelData: new Uint16Array([intensity])
+                };
+            };
+
+            try {
+                const initialLoad = app.viewer.loadSlice(0);
+                await waitFor(() => readResolvers.has(paths[0]), 'Initial slice read did not start.');
+                readResolvers.get(paths[0])();
+                await initialLoad;
+
+                await waitFor(() => readResolvers.has(paths[1]), 'Preload read did not start.');
+                const latestLoad = app.viewer.loadSlice(2);
+
+                readResolvers.get(paths[1])();
+                await waitFor(() => readResolvers.has(paths[2]), 'Latest slice read did not start.');
+                readResolvers.get(paths[2])();
+
+                await latestLoad;
+            } finally {
+                window.__TAURI__.fs.readFile = originalReadFile;
+                app.desktopDecode.decodeFrameWithPixels = originalNativeDecode;
+                window.dicomParser = originalDicomParser;
+            }
+
+            const canvas = document.getElementById('imageCanvas');
+            const renderedPixel = canvas.getContext('2d').getImageData(0, 0, 1, 1).data[0];
+
+            return {
+                readCalls,
+                decodeCalls,
+                currentSliceIndex: app.state.currentSliceIndex,
+                renderedPixel
+            };
+        });
+
+        expect(result.readCalls.slice(0, 3)).toEqual([
+            '/tmp/preload-stop-0.dcm',
+            '/tmp/preload-stop-1.dcm',
+            '/tmp/preload-stop-2.dcm'
+        ]);
+        expect(result.decodeCalls).toEqual([
+            '/tmp/preload-stop-0.dcm',
+            '/tmp/preload-stop-2.dcm'
+        ]);
+        expect(result.currentSliceIndex).toBe(2);
+    });
+
+    test('viewer reuses one parsed dataset while scrubbing frames from the same source file', async ({ page }) => {
+        await installMockDesktop(page, {
+            debugSettings: {
+                decodeMode: 'js',
+                preloadMode: 'off',
+                nativeDecodeDebug: false
+            }
+        });
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const sharedPath = '/tmp/multiframe-shared.dcm';
+            const slices = [
+                {
+                    source: { kind: 'path', path: sharedPath },
+                    frameIndex: 0,
+                    sopInstanceUid: '1.2.826.0.1.3680043.2.1128.0'
+                },
+                {
+                    source: { kind: 'path', path: sharedPath },
+                    frameIndex: 1,
+                    sopInstanceUid: '1.2.826.0.1.3680043.2.1128.1'
+                }
+            ];
+            const readCalls = [];
+            let parseCalls = 0;
+            const originalReadFile = window.__TAURI__.fs.readFile;
+            const originalDicomParser = window.dicomParser;
+
+            const frameBytes = new Uint8Array([
+                0x10, 0x00,
+                0x80, 0x00
+            ]);
+
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-multiframe'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-multiframe',
+                slices
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            app.state.sliceCache.clear();
+
+            window.__TAURI__.fs.readFile = async (path) => {
+                readCalls.push(path);
+                return frameBytes;
+            };
+            window.dicomParser = {
+                ...originalDicomParser,
+                parseDicom() {
+                    parseCalls += 1;
+                    const byteArray = new Uint8Array([
+                        0x10, 0x00,
+                        0x80, 0x00
+                    ]);
+                    return {
+                        byteArray,
+                        elements: {
+                            x7fe00010: {
+                                dataOffset: 0,
+                                length: 4
+                            }
+                        },
+                        string(tag) {
+                            const values = {
+                                x00020010: '1.2.840.10008.1.2.1',
+                                x00080060: 'XA',
+                                x00280004: 'MONOCHROME2'
+                            };
+                            return values[tag] || '';
+                        },
+                        uint16(tag) {
+                            const values = {
+                                x00280008: 2,
+                                x00280010: 1,
+                                x00280011: 1,
+                                x00280100: 16,
+                                x00280101: 16,
+                                x00280103: 0,
+                                x00280002: 1
+                            };
+                            return values[tag] || 0;
+                        }
+                    };
+                }
+            };
+
+            try {
+                await app.viewer.loadSlice(0);
+                await app.viewer.loadSlice(1);
+            } finally {
+                window.__TAURI__.fs.readFile = originalReadFile;
+                window.dicomParser = originalDicomParser;
+            }
+
+            return {
+                readCalls,
+                parseCalls,
+                currentSliceIndex: app.state.currentSliceIndex
+            };
+        });
+
+        expect(result.readCalls).toEqual([
+            '/tmp/multiframe-shared.dcm'
+        ]);
+        expect(result.parseCalls).toBe(1);
+        expect(result.currentSliceIndex).toBe(1);
+    });
+
+    test('viewer preload mode off disables nearby slice preloads', async ({ page }) => {
+        await installMockDesktop(page, {
+            debugSettings: {
+                decodeMode: 'auto',
+                preloadMode: 'off',
+                nativeDecodeDebug: false
+            }
+        });
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const paths = [
+                '/tmp/preload-off-0.dcm',
+                '/tmp/preload-off-1.dcm'
+            ];
+            const slices = paths.map((path, index) => ({
+                source: { kind: 'path', path },
+                sopInstanceUid: `1.2.826.0.1.3680043.2.1127.${index}`
+            }));
+            const readResolvers = new Map();
+            const readCalls = [];
+            const decodeCalls = [];
+            const originalReadFile = window.__TAURI__.fs.readFile;
+            const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
+            const originalDicomParser = window.dicomParser;
+
+            const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+            const waitFor = async (predicate, message) => {
+                for (let attempt = 0; attempt < 40; attempt += 1) {
+                    if (predicate()) return;
+                    await tick();
+                }
+                throw new Error(message);
+            };
+
+            app.state.currentStudy = {
+                studyInstanceUid: 'study-preload-off'
+            };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-preload-off',
+                slices
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.windowLevel = { center: null, width: null };
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.pixelSpacing = null;
+            app.state.sliceCache.clear();
+
+            window.__TAURI__.fs.readFile = async (path) => new Promise(resolve => {
+                readCalls.push(path);
+                readResolvers.set(path, () => resolve(Uint8Array.from([9, 10, 11, 12])));
+            });
+            window.dicomParser = {
+                ...originalDicomParser,
+                parseDicom() {
+                    return {
+                        string(tag) {
+                            const values = {
+                                x00020010: '1.2.840.10008.1.2.4.90',
+                                x00080060: 'RF',
+                                x00280004: 'MONOCHROME2'
+                            };
+                            return values[tag] || '';
+                        },
+                        uint16(tag) {
+                            const values = {
+                                x00280101: 16
+                            };
+                            return values[tag] || 0;
+                        }
+                    };
+                }
+            };
+            app.desktopDecode.decodeFrameWithPixels = async (path) => {
+                decodeCalls.push(path);
+                return {
+                    rows: 1,
+                    cols: 1,
+                    bitsAllocated: 16,
+                    bitsStored: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 128,
+                    windowWidth: 256,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelData: new Uint16Array([path.endsWith('0.dcm') ? 72 : 144])
+                };
+            };
+
+            try {
+                const initialLoad = app.viewer.loadSlice(0);
+                await waitFor(() => readResolvers.has(paths[0]), 'Initial slice read did not start.');
+                readResolvers.get(paths[0])();
+                await initialLoad;
+                await tick();
+                await tick();
+            } finally {
+                window.__TAURI__.fs.readFile = originalReadFile;
+                app.desktopDecode.decodeFrameWithPixels = originalNativeDecode;
+                window.dicomParser = originalDicomParser;
+            }
+
+            return {
+                preloadMode: app.rendering.getActivePreloadMode(),
+                preloadEnabled: app.rendering.isViewerPreloadEnabled(),
+                readCalls,
+                decodeCalls
+            };
+        });
+
+        expect(result.preloadMode).toBe('off');
+        expect(result.preloadEnabled).toBe(false);
+        expect(result.readCalls).toEqual([
+            '/tmp/preload-off-0.dcm'
+        ]);
+        expect(result.decodeCalls).toEqual([
+            '/tmp/preload-off-0.dcm'
+        ]);
+    });
+
     test('decodeWithFallback uses native-first routing for JPEG 2000 RF desktop slices', async ({ page }) => {
         const consoleMessages = [];
         page.on('console', (message) => {
@@ -2077,6 +2835,242 @@ test.describe('Desktop library scanning', () => {
         expect(result.modality).toBe('RF');
         expect(result.transferSyntax).toBe('1.2.840.10008.1.2.4.90');
         expect(consoleMessages.some((message) => message.includes('No pixel data element found'))).toBe(false);
+    });
+
+    test('decodeWithFallback uses native-first routing for uncompressed multi-frame XA desktop slices', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const nativeCalls = [];
+            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+                nativeCalls.push({ path, frameIndex });
+                return {
+                    rows: 2,
+                    cols: 2,
+                    bitsAllocated: 16,
+                    pixelRepresentation: 0,
+                    samplesPerPixel: 1,
+                    planarConfiguration: 0,
+                    photometricInterpretation: 'MONOCHROME2',
+                    windowCenter: 150,
+                    windowWidth: 300,
+                    rescaleSlope: 1,
+                    rescaleIntercept: 0,
+                    pixelDataLength: 8,
+                    pixelData: new Uint16Array([100, 200, 300, 400])
+                };
+            };
+
+            const dataSet = {
+                elements: {},
+                string(tag) {
+                    const values = {
+                        x00020010: '1.2.840.10008.1.2.1',
+                        x00080060: 'XA',
+                        x00280004: 'MONOCHROME2'
+                    };
+                    return values[tag] || '';
+                },
+                uint16(tag) {
+                    if (tag === 'x00280101') {
+                        return 16;
+                    }
+                    return 0;
+                },
+                intString(tag) {
+                    if (tag === 'x00280008') {
+                        return 37;
+                    }
+                    return undefined;
+                }
+            };
+
+            const slice = {
+                frameIndex: 12,
+                source: {
+                    kind: 'path',
+                    path: '/risk/xa-multiframe.dcm'
+                }
+            };
+
+            const decoded = await app.rendering.decodeWithFallback(dataSet, 12, slice);
+
+            return {
+                defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'XA'),
+                effectiveRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'XA', slice, { frameCount: 37 }),
+                nativeCalls,
+                pixelValues: Array.from(decoded.pixelData)
+            };
+        });
+
+        expect(result.defaultRoute).toBe('js-first');
+        expect(result.effectiveRoute).toBe('native-first');
+        expect(result.nativeCalls).toEqual([
+            {
+                path: '/risk/xa-multiframe.dcm',
+                frameIndex: 12
+            }
+        ]);
+        expect(result.pixelValues).toEqual([100, 200, 300, 400]);
+    });
+
+    test('desktop debug settings can force JS decode routing', async ({ page }) => {
+        await installMockDesktop(page, {
+            debugSettings: {
+                decodeMode: 'js',
+                preloadMode: 'auto',
+                nativeDecodeDebug: false
+            }
+        });
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const app = window.DicomViewerApp;
+            return {
+                mode: app.rendering.getActiveDecodeMode(),
+                preloadMode: app.rendering.getActivePreloadMode(),
+                riskyRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
+                defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT')
+            };
+        });
+
+        expect(result).toEqual({
+            mode: 'js',
+            preloadMode: 'auto',
+            riskyRoute: 'js-first',
+            defaultRoute: 'js-first'
+        });
+    });
+
+    test('desktop debug settings can force native decode routing', async ({ page }) => {
+        await installMockDesktop(page, {
+            debugSettings: {
+                decodeMode: 'native',
+                preloadMode: 'auto',
+                nativeDecodeDebug: true
+            }
+        });
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const app = window.DicomViewerApp;
+            return {
+                mode: app.rendering.getActiveDecodeMode(),
+                preloadMode: app.rendering.getActivePreloadMode(),
+                riskyRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
+                defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT'),
+                nativeDecodeDebug: !!window.__DICOM_VIEWER_DEBUG__?.nativeDecodeDebug
+            };
+        });
+
+        expect(result).toEqual({
+            mode: 'native',
+            preloadMode: 'auto',
+            riskyRoute: 'native-first',
+            defaultRoute: 'native-first',
+            nativeDecodeDebug: true
+        });
+    });
+
+    test('desktop frontend decode trace emits events even when decode and preload are forced', async ({ page }) => {
+        await installMockDesktop(page, {
+            debugSettings: {
+                decodeMode: 'js',
+                preloadMode: 'off',
+                frontendDecodeTrace: true,
+                nativeDecodeDebug: false
+            }
+        });
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            await app.rendering.emitDesktopDecodeTrace('trace-smoke', {
+                path: '/tmp/trace.dcm',
+                frameIndex: 7,
+                note: 'forced-mode-smoke'
+            });
+
+            return {
+                debug: {
+                    decodeMode: window.__DICOM_VIEWER_DEBUG__?.decodeMode,
+                    preloadMode: window.__DICOM_VIEWER_DEBUG__?.preloadMode,
+                    frontendDecodeTrace: !!window.__DICOM_VIEWER_DEBUG__?.frontendDecodeTrace
+                },
+                calls: window.__frontendDecodeTraceCalls.map((message) => JSON.parse(message))
+            };
+        });
+
+        expect(result.debug).toEqual({
+            decodeMode: 'js',
+            preloadMode: 'off',
+            frontendDecodeTrace: true
+        });
+        expect(result.calls).toHaveLength(1);
+        expect(result.calls[0]).toMatchObject({
+            seq: 1,
+            event: 'trace-smoke',
+            path: '/tmp/trace.dcm',
+            frameIndex: 7,
+            note: 'forced-mode-smoke'
+        });
+    });
+
+    test('renderPixels reuses the same ImageData buffer for same-sized renders', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const app = window.DicomViewerApp;
+            const canvas = document.getElementById('imageCanvas');
+            const ctx = canvas.getContext('2d');
+            const originalCreateImageData = ctx.createImageData.bind(ctx);
+            let createCalls = 0;
+
+            ctx.createImageData = (...args) => {
+                createCalls += 1;
+                return originalCreateImageData(...args);
+            };
+
+            const decodedA = {
+                pixelData: new Uint16Array([0, 1024, 2048, 4095]),
+                rows: 2,
+                cols: 2,
+                bitsAllocated: 16,
+                bitsStored: 12,
+                pixelRepresentation: 0,
+                samplesPerPixel: 1,
+                planarConfiguration: 0,
+                photometricInterpretation: 'MONOCHROME2',
+                windowCenter: 2048,
+                windowWidth: 4096,
+                rescaleSlope: 1,
+                rescaleIntercept: 0,
+                modality: 'XA',
+                transferSyntax: '1.2.840.10008.1.2.1',
+                mrMetadata: null,
+                pixelSpacing: null,
+                skipWindowLevel: false
+            };
+            const decodedB = {
+                ...decodedA,
+                pixelData: new Uint16Array([4095, 2048, 1024, 0])
+            };
+
+            app.state.baseWindowLevel = { center: null, width: null };
+            app.state.windowLevel = { center: null, width: null };
+            app.rendering.renderPixels(decodedA);
+            app.rendering.renderPixels(decodedB);
+
+            ctx.createImageData = originalCreateImageData;
+            return {
+                createCalls
+            };
+        });
+
+        expect(result.createCalls).toBe(1);
     });
 
     test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {

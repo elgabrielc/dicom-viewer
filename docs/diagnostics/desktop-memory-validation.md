@@ -35,6 +35,15 @@ If you want the dashboard to open automatically when the run finishes:
 npm run desktop:memory:session -- --open-report
 ```
 
+If you want to compare decode paths directly, the session wrapper also supports forced decode modes:
+
+```bash
+npm run desktop:memory:session -- --decode-mode js --notes "forced JS decode"
+npm run desktop:memory:session -- --decode-mode native --decode-debug --notes "forced native decode"
+```
+
+`--decode-debug` adds verbose native decode timing and cache logs to [latest-launch.log](/Users/gabriel/ai-worktrees/dicom-viewer/codex-desktop-memory-fix/artifacts/desktop-memory/latest-launch.log).
+
 You can still type marker labels into the terminal while the session is running.
 
 ## 2. Manual launch and capture

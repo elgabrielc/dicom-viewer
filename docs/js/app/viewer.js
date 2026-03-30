@@ -19,6 +19,10 @@
     const { toDicomByteArray } = app.dicom;
     const {
         decodeWithFallback,
+        decodeDesktopPathWithHeader,
+        emitDesktopDecodeTrace,
+        getActiveDecodeMode,
+        isViewerPreloadEnabled,
         renderDecodeError,
         renderPixels
     } = app.rendering;
@@ -29,14 +33,45 @@
     } = app.tools;
 
     const VIEWER_PRELOAD_RADIUS = config?.deploymentMode === 'desktop' ? 1 : 3;
+    const MAX_SHARED_PATH_DATASETS = 1;
     let loadGeneration = 0;
     let activeLoadRequestId = 0;
     const inFlightLoads = new Map();
+    const sharedPathDataSets = new Map();
+    let foregroundLoadTask = null;
+    let pendingForegroundLoad = null;
+    let preloadTask = null;
+    let pendingPreloads = [];
+    let preloadContext = null;
+
+    function resolveQueuedLoad(request, value = null) {
+        if (typeof request?.resolve === 'function') {
+            request.resolve(value);
+            request.resolve = null;
+        }
+    }
+
+    function clearPendingForegroundLoad() {
+        resolveQueuedLoad(pendingForegroundLoad, null);
+        pendingForegroundLoad = null;
+    }
+
+    function clearPendingPreloads() {
+        pendingPreloads = [];
+        preloadContext = null;
+    }
+
+    function clearSharedPathDataSets() {
+        sharedPathDataSets.clear();
+    }
 
     function beginLoadGeneration() {
         loadGeneration += 1;
         activeLoadRequestId += 1;
         inFlightLoads.clear();
+        clearSharedPathDataSets();
+        clearPendingForegroundLoad();
+        clearPendingPreloads();
     }
 
     function isLoadStale(generation, requestId, series) {
@@ -63,35 +98,287 @@
         return renderPixels(decoded, wlOverride);
     }
 
-    async function getDecodedSlice(slice, index, purpose, generation, options = {}) {
+    function getSliceTraceDetails(slice, index = null, extra = {}) {
+        const { series = null, ...rest } = extra;
+        return {
+            path: slice?.source?.path || null,
+            sourceKind: slice?.source?.kind || null,
+            frameIndex: slice?.frameIndex || 0,
+            sliceIndex: Number.isInteger(index) ? index : null,
+            seriesInstanceUid: series?.seriesInstanceUid || state.currentSeries?.seriesInstanceUid || null,
+            ...rest
+        };
+    }
+
+    function traceViewerDecode(event, slice, index = null, extra = {}) {
+        void emitDesktopDecodeTrace(event, getSliceTraceDetails(slice, index, extra));
+    }
+
+    function canUseDesktopHeaderDecode(slice) {
+        return config?.deploymentMode === 'desktop' &&
+            slice?.source?.kind === 'path' &&
+            getActiveDecodeMode() !== 'js' &&
+            typeof app.sources.readDesktopRenderHeaderDataSet === 'function' &&
+            typeof decodeDesktopPathWithHeader === 'function';
+    }
+
+    function shouldReuseSharedPathDataSet(slice, series) {
+        if (slice?.source?.kind !== 'path') {
+            return false;
+        }
+
+        if ((slice?.frameIndex || 0) > 0) {
+            return true;
+        }
+
+        const sourcePath = slice?.source?.path;
+        if (!sourcePath || !Array.isArray(series?.slices)) {
+            return false;
+        }
+
+        return series.slices.some((candidate) =>
+            candidate !== slice &&
+            candidate?.source?.kind === 'path' &&
+            candidate.source.path === sourcePath
+        );
+    }
+
+    function rememberSharedPathDataSet(path, entry) {
+        if (!path) {
+            return entry;
+        }
+
+        if (sharedPathDataSets.has(path)) {
+            sharedPathDataSets.delete(path);
+        }
+        sharedPathDataSets.set(path, entry);
+
+        while (sharedPathDataSets.size > MAX_SHARED_PATH_DATASETS) {
+            const oldest = sharedPathDataSets.keys().next().value;
+            sharedPathDataSets.delete(oldest);
+        }
+
+        return entry;
+    }
+
+    async function getSharedPathDataSet(slice, purpose, generation, options = {}) {
+        const path = slice?.source?.path;
+        if (!path) {
+            return null;
+        }
+
         const { requestId = null, series = null } = options;
         const isStale = () => generation !== loadGeneration
             || (requestId !== null && requestId !== activeLoadRequestId)
             || (series && state.currentSeries !== series);
-        const cacheKey = getSliceCacheKey(slice, index);
-        if (cacheKey && state.sliceCache.has(cacheKey)) {
-            return state.sliceCache.get(cacheKey);
+
+        if (sharedPathDataSets.has(path)) {
+            const cached = sharedPathDataSets.get(path);
+            sharedPathDataSets.delete(path);
+            sharedPathDataSets.set(path, cached);
+            traceViewerDecode('shared-dataset-hit', slice, null, { purpose, generation, path, series });
+            return cached;
         }
 
-        if (cacheKey && inFlightLoads.has(cacheKey)) {
-            return inFlightLoads.get(cacheKey);
-        }
-
-        const loadPromise = (async () => {
+        traceViewerDecode('shared-dataset-miss', slice, null, { purpose, generation, path, series });
+        const dataSetPromise = (async () => {
             const buf = await readSliceBuffer(slice, purpose);
             if (isStale()) return null;
 
             const byteArray = await toDicomByteArray(buf);
             if (isStale()) return null;
 
-            const dataSet = dicomParser.parseDicom(byteArray);
+            return dicomParser.parseDicom(byteArray);
+        })();
+
+        rememberSharedPathDataSet(path, dataSetPromise);
+
+        try {
+            const dataSet = await dataSetPromise;
+            if (!dataSet || isStale()) {
+                traceViewerDecode('shared-dataset-stale', slice, null, { purpose, generation, path, series });
+                if (sharedPathDataSets.get(path) === dataSetPromise) {
+                    sharedPathDataSets.delete(path);
+                }
+                return null;
+            }
+
+            rememberSharedPathDataSet(path, Promise.resolve(dataSet));
+            traceViewerDecode('shared-dataset-store', slice, null, { purpose, generation, path, series });
+            return dataSet;
+        } catch (error) {
+            traceViewerDecode('shared-dataset-error', slice, null, {
+                purpose,
+                generation,
+                path,
+                series,
+                errorMessage: error?.message || String(error)
+            });
+            if (sharedPathDataSets.get(path) === dataSetPromise) {
+                sharedPathDataSets.delete(path);
+            }
+            throw error;
+        }
+    }
+
+    async function getDecodedSlice(slice, index, purpose, generation, options = {}) {
+        const { requestId = null, series = null } = options;
+        const isStale = () => generation !== loadGeneration
+            || (requestId !== null && requestId !== activeLoadRequestId)
+            || (series && state.currentSeries !== series);
+        if (isStale()) {
+            return null;
+        }
+        const cacheKey = getSliceCacheKey(slice, index);
+        if (cacheKey && state.sliceCache.has(cacheKey)) {
+            traceViewerDecode('slice-cache-hit', slice, index, { cacheKey, purpose, generation, requestId, series });
+            return state.sliceCache.get(cacheKey);
+        }
+
+        if (cacheKey && inFlightLoads.has(cacheKey)) {
+            traceViewerDecode('slice-inflight-join', slice, index, { cacheKey, purpose, generation, requestId, series });
+            return inFlightLoads.get(cacheKey);
+        }
+
+        const loadPromise = (async () => {
+            const decodeMode = getActiveDecodeMode();
+            if (canUseDesktopHeaderDecode(slice)) {
+                traceViewerDecode('header-decode-attempt', slice, index, {
+                    cacheKey,
+                    purpose,
+                    generation,
+                    requestId,
+                    series
+                });
+                const headerDataSet = await app.sources.readDesktopRenderHeaderDataSet(slice);
+                if (isStale()) return null;
+
+                if (headerDataSet) {
+                    try {
+                        const decoded = await decodeDesktopPathWithHeader(
+                            headerDataSet,
+                            slice.frameIndex || 0,
+                            slice
+                        );
+                        if (isStale()) return null;
+                        traceViewerDecode('header-decode-success', slice, index, {
+                            cacheKey,
+                            purpose,
+                            generation,
+                            requestId,
+                            series,
+                            rows: decoded?.rows || null,
+                            cols: decoded?.cols || null,
+                            decodeError: !!decoded?.error
+                        });
+                        if (decoded && !decoded.error && cacheKey) {
+                            state.sliceCache.set(cacheKey, decoded);
+                            traceViewerDecode('slice-cache-store', slice, index, {
+                                cacheKey,
+                                purpose,
+                                generation,
+                                requestId,
+                                series,
+                                rows: decoded.rows,
+                                cols: decoded.cols,
+                                cachedKind: 'decoded'
+                            });
+                        }
+                        return decoded || null;
+                    } catch (error) {
+                        traceViewerDecode('header-decode-fallback', slice, index, {
+                            cacheKey,
+                            purpose,
+                            generation,
+                            requestId,
+                            series,
+                            errorMessage: error?.message || String(error)
+                        });
+                        if (decodeMode === 'native') {
+                            throw error;
+                        }
+                        console.warn(
+                            `Desktop header decode fell back to full file read for ${slice?.source?.path || 'slice'}:`,
+                            error
+                        );
+                    }
+                } else if (decodeMode === 'native') {
+                    traceViewerDecode('header-decode-header-miss', slice, index, {
+                        cacheKey,
+                        purpose,
+                        generation,
+                        requestId,
+                        series
+                    });
+                    throw new Error(`Forced native decode could not read the DICOM header for ${slice?.source?.path || 'slice'}.`);
+                } else {
+                    traceViewerDecode('header-decode-skip-to-js', slice, index, {
+                        cacheKey,
+                        purpose,
+                        generation,
+                        requestId,
+                        series
+                    });
+                }
+            }
+
+            if (decodeMode === 'native') {
+                throw new Error(`Forced native decode did not complete for ${slice?.source?.path || 'slice'}.`);
+            }
+
+            let dataSet;
+            if (shouldReuseSharedPathDataSet(slice, series)) {
+                traceViewerDecode('js-source-shared-dataset', slice, index, {
+                    cacheKey,
+                    purpose,
+                    generation,
+                    requestId,
+                    series
+                });
+                dataSet = await getSharedPathDataSet(slice, purpose, generation, { requestId, series });
+            } else {
+                traceViewerDecode('js-source-full-read', slice, index, {
+                    cacheKey,
+                    purpose,
+                    generation,
+                    requestId,
+                    series
+                });
+                const buf = await readSliceBuffer(slice, purpose);
+                if (isStale()) return null;
+
+                const byteArray = await toDicomByteArray(buf);
+                if (isStale()) return null;
+
+                dataSet = dicomParser.parseDicom(byteArray);
+            }
             if (isStale()) return null;
+            if (!dataSet) return null;
 
             const decoded = await decodeWithFallback(dataSet, slice.frameIndex || 0, slice);
             if (isStale()) return null;
 
             if (decoded && !decoded.error && cacheKey) {
                 state.sliceCache.set(cacheKey, decoded);
+                traceViewerDecode('slice-cache-store', slice, index, {
+                    cacheKey,
+                    purpose,
+                    generation,
+                    requestId,
+                    series,
+                    rows: decoded.rows,
+                    cols: decoded.cols,
+                    cachedKind: 'decoded'
+                });
+            } else {
+                traceViewerDecode('slice-decode-not-cached', slice, index, {
+                    cacheKey,
+                    purpose,
+                    generation,
+                    requestId,
+                    series,
+                    decodeError: !!decoded?.error
+                });
             }
 
             return decoded || null;
@@ -109,11 +396,68 @@
         return loadPromise;
     }
 
+    function shouldPausePreloads(generation, requestId, series) {
+        return isLoadStale(generation, requestId, series) || !!pendingForegroundLoad;
+    }
+
+    async function drainPendingPreloads() {
+        if (!isViewerPreloadEnabled()) {
+            clearPendingPreloads();
+            return null;
+        }
+
+        if (preloadTask || !preloadContext) {
+            return preloadTask;
+        }
+
+        preloadTask = (async () => {
+            while (preloadContext && pendingPreloads.length > 0) {
+                const { generation, requestId, series } = preloadContext;
+                if (shouldPausePreloads(generation, requestId, series)) {
+                    break;
+                }
+
+                const nextPreload = pendingPreloads.shift();
+                if (!nextPreload) {
+                    break;
+                }
+
+                try {
+                    await getDecodedSlice(
+                        nextPreload.slice,
+                        nextPreload.index,
+                        'preload',
+                        generation,
+                        { requestId, series }
+                    );
+                } catch {}
+            }
+        })().finally(() => {
+            preloadTask = null;
+            if (!preloadContext || pendingPreloads.length === 0) {
+                return;
+            }
+
+            const { generation, requestId, series } = preloadContext;
+            if (!shouldPausePreloads(generation, requestId, series)) {
+                void drainPendingPreloads();
+            }
+        });
+
+        return preloadTask;
+    }
+
     function preloadNearbySlices(slices, index, generation, requestId, series) {
+        if (!isViewerPreloadEnabled()) {
+            clearPendingPreloads();
+            return;
+        }
+
         if (isLoadStale(generation, requestId, series)) {
             return;
         }
 
+        const preloadEntries = [];
         for (let i = index - VIEWER_PRELOAD_RADIUS; i <= index + VIEWER_PRELOAD_RADIUS; i++) {
             if (i < 0 || i >= slices.length) continue;
 
@@ -123,8 +467,17 @@
                 continue;
             }
 
-            getDecodedSlice(preloadSlice, i, 'preload', generation).catch(() => {});
+            preloadEntries.push({
+                slice: preloadSlice,
+                index: i
+            });
         }
+
+        pendingPreloads = preloadEntries;
+        preloadContext = preloadEntries.length > 0
+            ? { generation, requestId, series }
+            : null;
+        void drainPendingPreloads();
     }
 
     function updateSliceMetadata(info, slice, index, totalSlices) {
@@ -184,20 +537,20 @@
         }
     }
 
-    async function loadSlice(index) {
-        if (!state.currentSeries) return;
-        const series = state.currentSeries;
+    async function performSliceLoad(request) {
+        const { index, generation, requestId, series } = request;
+        if (!series || state.currentSeries !== series) return;
         const slices = series.slices;
         if (index < 0 || index >= slices.length) return;
-        const generation = loadGeneration;
-        const requestId = ++activeLoadRequestId;
 
+        clearPendingPreloads();
         state.currentSliceIndex = index;
         updateSliceInfo();
         imageLoading.style.display = 'block';
 
         try {
             const slice = slices[index];
+            traceViewerDecode('slice-load-start', slice, index, { generation, requestId, series });
             let decoded = await getDecodedSlice(slice, index, 'load', generation, { requestId, series });
             if (!decoded && !isLoadStale(generation, requestId, series)) {
                 decoded = await getDecodedSlice(slice, index, 'load', generation, { requestId, series });
@@ -210,6 +563,15 @@
                 ? state.windowLevel
                 : null;
             const info = renderDecodedSlice(decoded, wlOverride);
+            traceViewerDecode('slice-load-rendered', slice, index, {
+                generation,
+                requestId,
+                series,
+                renderError: !!info?.error,
+                isBlank: !!info?.isBlank,
+                rows: info?.rows || decoded?.rows || null,
+                cols: info?.cols || decoded?.cols || null
+            });
 
             updateWLDisplay();
             updateSliceMetadata(info, slice, index, slices.length);
@@ -219,6 +581,12 @@
             preloadNearbySlices(slices, index, generation, requestId, series);
         } catch (e) {
             console.error('Error loading slice:', e);
+            traceViewerDecode('slice-load-exception', slices[index], index, {
+                generation,
+                requestId,
+                series,
+                errorMessage: e?.message || String(e)
+            });
             if (!isLoadStale(generation, requestId, series)) {
                 const errorInfo = renderDecodedSlice(
                     {
@@ -235,6 +603,107 @@
                 imageLoading.style.display = 'none';
             }
         }
+    }
+
+    async function drainForegroundLoads() {
+        if (foregroundLoadTask) {
+            return foregroundLoadTask;
+        }
+
+        foregroundLoadTask = (async () => {
+            while (pendingForegroundLoad) {
+                const request = pendingForegroundLoad;
+                pendingForegroundLoad = null;
+                try {
+                    await performSliceLoad(request);
+                } finally {
+                    resolveQueuedLoad(request, null);
+                }
+            }
+        })().finally(() => {
+            foregroundLoadTask = null;
+            if (pendingForegroundLoad) {
+                void drainForegroundLoads();
+            }
+        });
+
+        return foregroundLoadTask;
+    }
+
+    async function loadSlice(index) {
+        if (!state.currentSeries) return null;
+        const series = state.currentSeries;
+        const slices = series.slices;
+        if (index < 0 || index >= slices.length) return null;
+        const targetSlice = slices[index];
+        const targetCacheKey = getSliceCacheKey(targetSlice, index);
+        const currentSlice = slices[state.currentSliceIndex];
+        const currentCacheKey = currentSlice
+            ? getSliceCacheKey(currentSlice, state.currentSliceIndex)
+            : null;
+
+        if (
+            state.isDragging &&
+            state.currentTool === 'wl' &&
+            currentSlice &&
+            currentCacheKey &&
+            state.sliceCache.has(currentCacheKey)
+        ) {
+            traceViewerDecode('slice-load-blocked-during-wl-drag', currentSlice, state.currentSliceIndex, {
+                requestedIndex: index,
+                requestedCacheKey: targetCacheKey,
+                currentCacheKey,
+                series
+            });
+            return null;
+        }
+
+        if (index === state.currentSliceIndex && targetCacheKey && state.sliceCache.has(targetCacheKey)) {
+            traceViewerDecode('slice-load-skip-cached-current', targetSlice, index, {
+                cacheKey: targetCacheKey,
+                series
+            });
+            imageLoading.style.display = 'none';
+            return null;
+        }
+
+        if (targetCacheKey && inFlightLoads.has(targetCacheKey)) {
+            traceViewerDecode('slice-load-join-inflight', targetSlice, index, {
+                cacheKey: targetCacheKey,
+                series
+            });
+            return inFlightLoads.get(targetCacheKey);
+        }
+
+        state.currentSliceIndex = index;
+        updateSliceInfo();
+        imageLoading.style.display = 'block';
+        clearPendingPreloads();
+
+        if (pendingForegroundLoad && pendingForegroundLoad.index === index && pendingForegroundLoad.series === series) {
+            return pendingForegroundLoad.promise;
+        }
+
+        clearPendingForegroundLoad();
+
+        const generation = loadGeneration;
+        const requestId = ++activeLoadRequestId;
+        let resolveRequest;
+        const request = {
+            index,
+            generation,
+            requestId,
+            series,
+            promise: new Promise((resolve) => {
+                resolveRequest = resolve;
+            }),
+            resolve: resolveRequest
+        };
+
+        traceViewerDecode('slice-load-queued', targetSlice, index, { generation, requestId, series });
+        pendingForegroundLoad = request;
+        void drainForegroundLoads();
+        return request.promise;
     }
 
     function updateSliceInfo() {

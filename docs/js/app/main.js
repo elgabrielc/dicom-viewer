@@ -60,6 +60,55 @@
     const searchParams = new URLSearchParams(window.location.search);
     const isTestMode = searchParams.has('test');
     const noLib = searchParams.has('nolib');
+    const DESKTOP_SCRUB_DEBOUNCE_MS = config?.deploymentMode === 'desktop' ? 75 : 0;
+    let pendingSliderLoadIndex = null;
+    let pendingSliderLoadTimer = null;
+
+    await app.rendering?.hydrateDebugSettings?.();
+
+    function clearPendingSliderLoad() {
+        pendingSliderLoadIndex = null;
+        if (pendingSliderLoadTimer) {
+            clearTimeout(pendingSliderLoadTimer);
+            pendingSliderLoadTimer = null;
+        }
+    }
+
+    function flushPendingSliderLoad() {
+        if (!Number.isInteger(pendingSliderLoadIndex)) {
+            clearPendingSliderLoad();
+            return null;
+        }
+
+        const index = pendingSliderLoadIndex;
+        clearPendingSliderLoad();
+        return loadSlice(index);
+    }
+
+    function loadSliceNow(index) {
+        clearPendingSliderLoad();
+        return loadSlice(index);
+    }
+
+    function scheduleSliderLoad(index) {
+        if (!Number.isInteger(index)) {
+            return null;
+        }
+
+        if (DESKTOP_SCRUB_DEBOUNCE_MS <= 0) {
+            return loadSliceNow(index);
+        }
+
+        pendingSliderLoadIndex = index;
+        if (pendingSliderLoadTimer) {
+            clearTimeout(pendingSliderLoadTimer);
+        }
+        pendingSliderLoadTimer = setTimeout(() => {
+            pendingSliderLoadTimer = null;
+            void flushPendingSliderLoad();
+        }, DESKTOP_SCRUB_DEBOUNCE_MS);
+        return null;
+    }
 
     function abortLibraryLoad() {
         if (state.libraryAbort) {
@@ -408,17 +457,24 @@
 
     backBtn.onclick = e => {
         e.preventDefault();
+        clearPendingSliderLoad();
         closeViewer();
     };
-    slider.oninput = () => loadSlice(parseInt(slider.value, 10));
+    slider.oninput = () => {
+        scheduleSliderLoad(parseInt(slider.value, 10));
+    };
+    slider.onchange = () => {
+        pendingSliderLoadIndex = parseInt(slider.value, 10);
+        void flushPendingSliderLoad();
+    };
     prevBtn.onclick = () => {
         if (state.currentSliceIndex > 0) {
-            loadSlice(state.currentSliceIndex - 1);
+            loadSliceNow(state.currentSliceIndex - 1);
         }
     };
     nextBtn.onclick = () => {
         if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1) {
-            loadSlice(state.currentSliceIndex + 1);
+            loadSliceNow(state.currentSliceIndex + 1);
         }
     };
 
@@ -476,17 +532,18 @@
         if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (state.currentSliceIndex > 0) {
-                loadSlice(state.currentSliceIndex - 1);
+                loadSliceNow(state.currentSliceIndex - 1);
             }
         } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
             e.preventDefault();
             if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1) {
-                loadSlice(state.currentSliceIndex + 1);
+                loadSliceNow(state.currentSliceIndex + 1);
             }
         } else if (e.key === 'Escape') {
             if ($('reportViewer').style.display !== 'none') {
                 closeReportViewer();
             } else {
+                clearPendingSliderLoad();
                 closeViewer();
             }
         }
@@ -517,10 +574,10 @@
 
         if (e.deltaY > 0) {
             if (state.currentSeries && state.currentSliceIndex < state.currentSeries.slices.length - 1) {
-                loadSlice(state.currentSliceIndex + 1);
+                loadSliceNow(state.currentSliceIndex + 1);
             }
         } else if (state.currentSliceIndex > 0) {
-            loadSlice(state.currentSliceIndex - 1);
+            loadSliceNow(state.currentSliceIndex - 1);
         }
     });
 

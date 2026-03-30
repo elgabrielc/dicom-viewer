@@ -1,6 +1,8 @@
 (() => {
     const app = window.DicomViewerApp = window.DicomViewerApp || {};
     const { createStagedError, normalizeStagedError, getPixelDataArrayType } = app.utils;
+    let activeQueuedNativeDecode = null;
+    let pendingQueuedNativeDecode = null;
 
     function describeBinaryPayload(payload) {
         if (payload === null) {
@@ -38,6 +40,43 @@
         );
     }
 
+    function parseDecodedFrameWithPixelsResponse(payload) {
+        const bytes = normalizeBinaryResponse(payload);
+        if (bytes.byteLength < 4) {
+            throw createStagedError(
+                'pixel-transfer',
+                'Native decode payload was too short to include a metadata header.'
+            );
+        }
+
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const metadataLength = view.getUint32(0, true);
+        const metadataOffset = 4;
+        const pixelOffset = metadataOffset + metadataLength;
+        if (metadataLength === 0 || pixelOffset > bytes.byteLength) {
+            throw createStagedError(
+                'pixel-transfer',
+                `Native decode payload declared an invalid metadata header length: ${metadataLength}.`
+            );
+        }
+
+        let metadata;
+        try {
+            const metadataJson = new TextDecoder().decode(bytes.subarray(metadataOffset, pixelOffset));
+            metadata = JSON.parse(metadataJson);
+        } catch (error) {
+            throw createStagedError(
+                'pixel-transfer',
+                `Failed to parse native decoded frame metadata: ${error?.message || error}`
+            );
+        }
+
+        return {
+            metadata,
+            pixelBytes: bytes.subarray(pixelOffset)
+        };
+    }
+
     function coercePixelData(bytes, bitsAllocated, pixelRepresentation) {
         if (!Number.isFinite(bitsAllocated) || bitsAllocated <= 0 || bitsAllocated % 8 !== 0) {
             throw createStagedError(
@@ -61,6 +100,67 @@
             'Unsupported Bits Allocated value from native decode'
         );
         return new PixelArrayType(bytes.buffer, bytes.byteOffset, sampleCount).slice();
+    }
+
+    function drainQueuedNativeDecodes(runtime) {
+        if (activeQueuedNativeDecode) {
+            return activeQueuedNativeDecode;
+        }
+
+        activeQueuedNativeDecode = (async () => {
+            while (pendingQueuedNativeDecode) {
+                const request = pendingQueuedNativeDecode;
+                pendingQueuedNativeDecode = null;
+
+                try {
+                    const payload = await runtime.core.invoke('decode_frame_with_pixels', {
+                        path: request.path,
+                        frameIndex: request.frameIndex
+                    });
+                    for (const waiter of request.waiters) {
+                        waiter.resolve(payload);
+                    }
+                } catch (error) {
+                    const normalizedError = normalizeStagedError(error, 'decode');
+                    for (const waiter of request.waiters) {
+                        waiter.reject(normalizedError);
+                    }
+                }
+            }
+        })().finally(() => {
+            activeQueuedNativeDecode = null;
+            if (pendingQueuedNativeDecode) {
+                void drainQueuedNativeDecodes(runtime);
+            }
+        });
+
+        return activeQueuedNativeDecode;
+    }
+
+    function queueNativeDecodeWithPixels(runtime, path, frameIndex = 0) {
+        return new Promise((resolve, reject) => {
+            const nextRequest = {
+                path,
+                frameIndex,
+                waiters: [{ resolve, reject }]
+            };
+
+            if (
+                pendingQueuedNativeDecode &&
+                pendingQueuedNativeDecode.path === path &&
+                pendingQueuedNativeDecode.frameIndex === frameIndex
+            ) {
+                pendingQueuedNativeDecode.waiters.push({ resolve, reject });
+                return;
+            }
+
+            if (pendingQueuedNativeDecode) {
+                nextRequest.waiters.push(...pendingQueuedNativeDecode.waiters);
+            }
+
+            pendingQueuedNativeDecode = nextRequest;
+            void drainQueuedNativeDecodes(runtime);
+        });
     }
 
     const DesktopDecode = {
@@ -93,11 +193,8 @@
         },
 
         async decodeFrameWithPixels(path, frameIndex = 0) {
-            const metadata = await this.decodeFrame(path, frameIndex);
-            if (!metadata?.decodeId) {
-                throw createStagedError('pixel-transfer', 'Native decode response did not include a decodeId.');
-            }
-            const pixelBytes = await this.takeDecodedFrame(metadata.decodeId);
+            const payload = await queueNativeDecodeWithPixels(this.getRuntime(), path, frameIndex);
+            const { metadata, pixelBytes } = parseDecodedFrameWithPixelsResponse(payload);
             if (Number.isFinite(metadata.pixelDataLength) && metadata.pixelDataLength !== pixelBytes.byteLength) {
                 throw createStagedError(
                     'pixel-conversion',

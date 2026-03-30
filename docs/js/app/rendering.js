@@ -25,6 +25,280 @@
         ['1.2.840.10008.1.2.4.90', new Set(['RF', 'XA'])],
         ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])]
     ]);
+    const DEBUG_DECODE_MODE_STORAGE_KEY = 'dicom-viewer-debug-decode-mode';
+    const DEBUG_PRELOAD_MODE_STORAGE_KEY = 'dicom-viewer-debug-preload-mode';
+    let desktopDebugSettings = {
+        loaded: false,
+        decodeMode: 'auto',
+        preloadMode: 'auto',
+        frontendDecodeTrace: false,
+        nativeDecodeDebug: false
+    };
+    const INCOMPATIBLE_WINDOW_WIDTH_RATIO = 4;
+    let reusableRenderImageData = null;
+    let frontendDecodeTraceSequence = 0;
+
+    function normalizeDecodeMode(value) {
+        if (typeof value !== 'string') {
+            return 'auto';
+        }
+
+        switch (value.toLowerCase()) {
+            case 'js':
+            case 'native':
+            case 'auto':
+                return value.toLowerCase();
+            default:
+                return 'auto';
+        }
+    }
+
+    function normalizePreloadMode(value) {
+        if (typeof value !== 'string') {
+            return 'auto';
+        }
+
+        switch (value.toLowerCase()) {
+            case 'on':
+            case 'off':
+            case 'auto':
+                return value.toLowerCase();
+            default:
+                return 'auto';
+        }
+    }
+
+    function getStoredDecodeMode() {
+        try {
+            return normalizeDecodeMode(localStorage.getItem(DEBUG_DECODE_MODE_STORAGE_KEY));
+        } catch {
+            return 'auto';
+        }
+    }
+
+    function getStoredPreloadMode() {
+        try {
+            return normalizePreloadMode(localStorage.getItem(DEBUG_PRELOAD_MODE_STORAGE_KEY));
+        } catch {
+            return 'auto';
+        }
+    }
+
+    function getQueryDecodeMode() {
+        try {
+            return normalizeDecodeMode(new URLSearchParams(window.location.search).get('decodeMode'));
+        } catch {
+            return 'auto';
+        }
+    }
+
+    function getQueryPreloadMode() {
+        try {
+            return normalizePreloadMode(new URLSearchParams(window.location.search).get('preloadMode'));
+        } catch {
+            return 'auto';
+        }
+    }
+
+    function getRuntimeDebugSettings() {
+        const runtimeSettings = window.__DICOM_VIEWER_DEBUG__ || {};
+        return {
+            decodeMode: normalizeDecodeMode(runtimeSettings.decodeMode),
+            preloadMode: normalizePreloadMode(runtimeSettings.preloadMode),
+            frontendDecodeTrace: !!runtimeSettings.frontendDecodeTrace,
+            nativeDecodeDebug: !!runtimeSettings.nativeDecodeDebug
+        };
+    }
+
+    async function hydrateDebugSettings() {
+        const runtimeSettings = getRuntimeDebugSettings();
+        let decodeMode = getQueryDecodeMode();
+        let preloadMode = getQueryPreloadMode();
+        let frontendDecodeTrace = runtimeSettings.frontendDecodeTrace;
+        let nativeDecodeDebug = runtimeSettings.nativeDecodeDebug;
+        let nativeDecodeMode = 'auto';
+        let nativePreloadMode = 'auto';
+
+        if (config.deploymentMode === 'desktop') {
+            const invoke = window.__TAURI__?.core?.invoke;
+            if (typeof invoke === 'function') {
+                try {
+                    const nativeSettings = await invoke('get_debug_settings');
+                    nativeDecodeMode = normalizeDecodeMode(nativeSettings?.decodeMode);
+                    nativePreloadMode = normalizePreloadMode(nativeSettings?.preloadMode);
+                    frontendDecodeTrace = frontendDecodeTrace || !!nativeSettings?.frontendDecodeTrace;
+                    nativeDecodeDebug = nativeDecodeDebug || !!nativeSettings?.nativeDecodeDebug;
+                } catch (error) {
+                    console.warn('Failed to load desktop debug settings:', error);
+                }
+            }
+        }
+
+        if (decodeMode === 'auto') {
+            decodeMode = nativeDecodeMode;
+        }
+        if (preloadMode === 'auto') {
+            preloadMode = nativePreloadMode;
+        }
+
+        if (decodeMode === 'auto') {
+            decodeMode = runtimeSettings.decodeMode;
+        }
+        if (preloadMode === 'auto') {
+            preloadMode = runtimeSettings.preloadMode;
+        }
+
+        if (decodeMode === 'auto') {
+            decodeMode = getStoredDecodeMode();
+        }
+        if (preloadMode === 'auto') {
+            preloadMode = getStoredPreloadMode();
+        }
+
+        desktopDebugSettings = {
+            loaded: true,
+            decodeMode,
+            preloadMode,
+            frontendDecodeTrace,
+            nativeDecodeDebug
+        };
+        window.__DICOM_VIEWER_DEBUG__ = {
+            ...(window.__DICOM_VIEWER_DEBUG__ || {}),
+            ...desktopDebugSettings
+        };
+        return desktopDebugSettings;
+    }
+
+    function getActiveDecodeMode() {
+        const runtimeSettings = getRuntimeDebugSettings();
+        if (runtimeSettings.decodeMode !== 'auto') {
+            return runtimeSettings.decodeMode;
+        }
+        if (desktopDebugSettings.decodeMode !== 'auto') {
+            return desktopDebugSettings.decodeMode;
+        }
+        const queryMode = getQueryDecodeMode();
+        if (queryMode !== 'auto') {
+            return queryMode;
+        }
+        return getStoredDecodeMode();
+    }
+
+    function getActivePreloadMode() {
+        const runtimeSettings = getRuntimeDebugSettings();
+        if (runtimeSettings.preloadMode !== 'auto') {
+            return runtimeSettings.preloadMode;
+        }
+        if (desktopDebugSettings.preloadMode !== 'auto') {
+            return desktopDebugSettings.preloadMode;
+        }
+        const queryMode = getQueryPreloadMode();
+        if (queryMode !== 'auto') {
+            return queryMode;
+        }
+        return getStoredPreloadMode();
+    }
+
+    function isViewerPreloadEnabled() {
+        return getActivePreloadMode() !== 'off';
+    }
+
+    function isFrontendDecodeTraceEnabled() {
+        return !!(getRuntimeDebugSettings().frontendDecodeTrace || desktopDebugSettings.frontendDecodeTrace);
+    }
+
+    function normalizeTraceValue(value) {
+        if (value === null || value === undefined) {
+            return null;
+        }
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            return value;
+        }
+        if (Array.isArray(value)) {
+            return value.map(normalizeTraceValue);
+        }
+        if (typeof value === 'object') {
+            return Object.fromEntries(
+                Object.entries(value)
+                    .map(([key, entryValue]) => [key, normalizeTraceValue(entryValue)])
+                    .filter(([, entryValue]) => entryValue !== undefined)
+            );
+        }
+        return String(value);
+    }
+
+    async function emitDesktopDecodeTrace(event, details = {}) {
+        if (!isFrontendDecodeTraceEnabled() || config.deploymentMode !== 'desktop') {
+            return;
+        }
+
+        const invoke = window.__TAURI__?.core?.invoke;
+        if (typeof invoke !== 'function') {
+            return;
+        }
+
+        frontendDecodeTraceSequence += 1;
+        const payload = {
+            seq: frontendDecodeTraceSequence,
+            event,
+            ...normalizeTraceValue(details)
+        };
+
+        try {
+            await invoke('log_frontend_decode_event', {
+                message: JSON.stringify(payload)
+            });
+        } catch (error) {
+            console.warn('Failed to emit frontend decode trace:', error);
+        }
+    }
+
+    function getReusableRenderImageData(cols, rows) {
+        if (
+            !reusableRenderImageData ||
+            reusableRenderImageData.width !== cols ||
+            reusableRenderImageData.height !== rows
+        ) {
+            reusableRenderImageData = ctx.createImageData(cols, rows);
+        }
+        return reusableRenderImageData;
+    }
+
+    function hasWindowLevel(windowLevel) {
+        return Number.isFinite(windowLevel?.center) &&
+            Number.isFinite(windowLevel?.width) &&
+            windowLevel.width > 0;
+    }
+
+    function shouldResetWindowLevelOverride(decoded, wlOverride) {
+        if (!hasWindowLevel(wlOverride)) {
+            return false;
+        }
+
+        const previousBaseWidth = Number(state.baseWindowLevel.width);
+        const nextBaseWidth = Number(decoded.windowWidth);
+        if (
+            !Number.isFinite(previousBaseWidth) ||
+            previousBaseWidth <= 0 ||
+            !Number.isFinite(nextBaseWidth) ||
+            nextBaseWidth <= 0
+        ) {
+            return false;
+        }
+
+        const widthRatio = Math.max(previousBaseWidth, nextBaseWidth) / Math.min(previousBaseWidth, nextBaseWidth);
+        if (widthRatio > INCOMPATIBLE_WINDOW_WIDTH_RATIO) {
+            return true;
+        }
+
+        const previousBaseCenter = Number(state.baseWindowLevel.center);
+        const nextBaseCenter = Number(decoded.windowCenter);
+        if (!Number.isFinite(previousBaseCenter) || !Number.isFinite(nextBaseCenter)) {
+            return false;
+        }
+
+        return Math.abs(previousBaseCenter - nextBaseCenter) > Math.max(previousBaseWidth, nextBaseWidth);
+    }
 
     function getUncompressedFramePixelData(
         dataSet,
@@ -334,12 +608,44 @@
             typeof app.desktopDecode?.decodeFrameWithPixels === 'function';
     }
 
-    function getDecodeRoute(transferSyntax, modality) {
+    function shouldPreferNativeDesktopPathDecode(slice, modality, frameCount = 1) {
+        return canUseNativeDecode(slice) &&
+            frameCount > 1 &&
+            (modality === 'XA' || modality === 'RF');
+    }
+
+    function getDecodeRoute(transferSyntax, modality, slice = null, options = {}) {
+        const forcedDecodeMode = getActiveDecodeMode();
+        if (forcedDecodeMode === 'native') {
+            return 'native-first';
+        }
+        if (forcedDecodeMode === 'js') {
+            return 'js-first';
+        }
+        if (shouldPreferNativeDesktopPathDecode(slice, modality, options.frameCount)) {
+            return 'native-first';
+        }
         const riskyModalities = HIGH_RISK_SYNTAXES.get(transferSyntax);
         if (riskyModalities?.has(modality)) {
             return 'native-first';
         }
         return 'js-first';
+    }
+
+    function getJsDecoderKind(transferSyntax) {
+        if (isJpeg2000(transferSyntax)) {
+            return 'jpeg2000-worker';
+        }
+        if (isJpegLossless(transferSyntax)) {
+            return 'jpeg-lossless';
+        }
+        if (isJpegBaseline(transferSyntax)) {
+            return 'jpeg-baseline';
+        }
+        if (isCompressed(transferSyntax)) {
+            return 'unsupported-compressed';
+        }
+        return 'uncompressed-js';
     }
 
     function renderDecodeError(errorInfo, options = {}) {
@@ -649,60 +955,264 @@
     async function decodeWithFallback(dataSet, frameIndex = 0, slice = null) {
         const transferSyntax = getString(dataSet, 'x00020010');
         const modality = getString(dataSet, 'x00080060');
-        const route = getDecodeRoute(transferSyntax, modality);
         const nativeEligible = canUseNativeDecode(slice);
+        const forcedDecodeMode = getActiveDecodeMode();
+        const jsDecoderKind = getJsDecoderKind(transferSyntax);
+        const slicePath = slice?.source?.path || null;
+        const frameCount = getNumberOfFrames(dataSet);
+        const route = getDecodeRoute(transferSyntax, modality, slice, { frameCount });
         let nativeError = null;
+
+        const traceBase = {
+            path: slicePath,
+            frameIndex,
+            frameCount,
+            transferSyntax,
+            modality,
+            route,
+            forcedDecodeMode,
+            nativeEligible,
+            jsDecoderKind
+        };
+        const traceOutcome = (event, extra = {}) => {
+            void emitDesktopDecodeTrace(event, {
+                ...traceBase,
+                ...extra
+            });
+        };
+
+        traceOutcome('decode-route');
+
+        if (forcedDecodeMode === 'native') {
+            if (!nativeEligible) {
+                const fallback = buildFallbackDecodeError(
+                    dataSet,
+                    null,
+                    createStagedError('decode', 'Forced native decode is unavailable for this slice source.')
+                );
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: 'native',
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
+            }
+
+            try {
+                const decoded = await decodeNative(dataSet, slice.source.path, frameIndex);
+                traceOutcome('decode-result', {
+                    outcome: decoded?.error ? 'error' : 'success',
+                    decoder: 'native',
+                    stage: decoded?.stage || null,
+                    rows: decoded?.rows || null,
+                    cols: decoded?.cols || null
+                });
+                return decoded;
+            } catch (error) {
+                const fallback = buildFallbackDecodeError(dataSet, null, error);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: 'native',
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
+            }
+        }
+
+        if (forcedDecodeMode === 'js') {
+            try {
+                const decoded = await decodeDicom(dataSet, frameIndex);
+                const result = decoded || buildFallbackDecodeError(dataSet, null, null);
+                traceOutcome('decode-result', {
+                    outcome: result?.error ? 'error' : 'success',
+                    decoder: jsDecoderKind,
+                    stage: result?.stage || null,
+                    rows: result?.rows || null,
+                    cols: result?.cols || null
+                });
+                return result;
+            } catch (jsError) {
+                const fallback = buildFallbackDecodeError(dataSet, jsError, null);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: jsDecoderKind,
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
+            }
+        }
 
         if (route === 'native-first' && nativeEligible) {
             try {
-                return await decodeNative(dataSet, slice.source.path, frameIndex);
+                const decoded = await decodeNative(dataSet, slice.source.path, frameIndex);
+                traceOutcome('decode-result', {
+                    outcome: decoded?.error ? 'error' : 'success',
+                    decoder: 'native',
+                    stage: decoded?.stage || null,
+                    rows: decoded?.rows || null,
+                    cols: decoded?.cols || null
+                });
+                return decoded;
             } catch (error) {
                 nativeError = error;
                 console.warn('Native decode failed, falling back to JS:', error);
+                traceOutcome('decode-fallback', {
+                    from: 'native',
+                    to: jsDecoderKind,
+                    nativeErrorStage: getDecodeFailureStage(error),
+                    nativeErrorMessage: getDecodeFailureMessage(error)
+                });
             }
 
             try {
                 const decoded = await decodeDicom(dataSet, frameIndex);
                 if (decoded && !decoded.error) {
+                    traceOutcome('decode-result', {
+                        outcome: 'success',
+                        decoder: jsDecoderKind,
+                        stage: decoded.stage || null,
+                        rows: decoded.rows || null,
+                        cols: decoded.cols || null
+                    });
                     return decoded;
                 }
-                return buildFallbackDecodeError(dataSet, decoded, nativeError);
+                const fallback = buildFallbackDecodeError(dataSet, decoded, nativeError);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: jsDecoderKind,
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
             } catch (jsError) {
-                return buildFallbackDecodeError(dataSet, jsError, nativeError);
+                const fallback = buildFallbackDecodeError(dataSet, jsError, nativeError);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: jsDecoderKind,
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
             }
         }
 
         try {
             const decoded = await decodeDicom(dataSet, frameIndex);
             if (decoded && !decoded.error) {
+                traceOutcome('decode-result', {
+                    outcome: 'success',
+                    decoder: jsDecoderKind,
+                    stage: decoded.stage || null,
+                    rows: decoded.rows || null,
+                    cols: decoded.cols || null
+                });
                 return decoded;
             }
 
             if (!nativeEligible) {
-                return decoded || buildFallbackDecodeError(dataSet, null, null);
+                const fallback = decoded || buildFallbackDecodeError(dataSet, null, null);
+                traceOutcome('decode-result', {
+                    outcome: fallback?.error ? 'error' : 'success',
+                    decoder: jsDecoderKind,
+                    stage: fallback?.stage || null,
+                    errorMessage: fallback?.errorMessage || null,
+                    errorDetails: fallback?.errorDetails || null
+                });
+                return fallback;
             }
 
             try {
-                return await decodeNative(dataSet, slice.source.path, frameIndex);
+                traceOutcome('decode-fallback', {
+                    from: jsDecoderKind,
+                    to: 'native',
+                    jsErrorStage: decoded?.stage || null,
+                    jsErrorMessage: decoded?.errorDetails || decoded?.errorMessage || null
+                });
+                const nativeDecoded = await decodeNative(dataSet, slice.source.path, frameIndex);
+                traceOutcome('decode-result', {
+                    outcome: nativeDecoded?.error ? 'error' : 'success',
+                    decoder: 'native',
+                    stage: nativeDecoded?.stage || null,
+                    rows: nativeDecoded?.rows || null,
+                    cols: nativeDecoded?.cols || null
+                });
+                return nativeDecoded;
             } catch (error) {
-                return buildFallbackDecodeError(dataSet, decoded, error);
+                const fallback = buildFallbackDecodeError(dataSet, decoded, error);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: 'native',
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
             }
         } catch (jsError) {
             if (!nativeEligible) {
-                return buildFallbackDecodeError(dataSet, jsError, null);
+                const fallback = buildFallbackDecodeError(dataSet, jsError, null);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: jsDecoderKind,
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
             }
 
             try {
-                return await decodeNative(dataSet, slice.source.path, frameIndex);
+                traceOutcome('decode-fallback', {
+                    from: jsDecoderKind,
+                    to: 'native',
+                    jsErrorStage: getDecodeFailureStage(jsError),
+                    jsErrorMessage: getDecodeFailureMessage(jsError)
+                });
+                const nativeDecoded = await decodeNative(dataSet, slice.source.path, frameIndex);
+                traceOutcome('decode-result', {
+                    outcome: nativeDecoded?.error ? 'error' : 'success',
+                    decoder: 'native',
+                    stage: nativeDecoded?.stage || null,
+                    rows: nativeDecoded?.rows || null,
+                    cols: nativeDecoded?.cols || null
+                });
+                return nativeDecoded;
             } catch (nativeFallbackError) {
-                return buildFallbackDecodeError(dataSet, jsError, nativeFallbackError);
+                const fallback = buildFallbackDecodeError(dataSet, jsError, nativeFallbackError);
+                traceOutcome('decode-result', {
+                    outcome: 'error',
+                    decoder: 'native',
+                    stage: fallback.stage,
+                    errorMessage: fallback.errorMessage,
+                    errorDetails: fallback.errorDetails
+                });
+                return fallback;
             }
         }
+    }
+
+    async function decodeDesktopPathWithHeader(dataSet, frameIndex = 0, slice = null) {
+        if (!canUseNativeDecode(slice)) {
+            const error = new Error('Desktop path-backed native decode is unavailable for this slice.');
+            error.stage = 'decode';
+            throw error;
+        }
+
+        return decodeNative(dataSet, slice.source.path, frameIndex);
     }
 
     function renderPixels(decoded, wlOverride = null) {
         let windowCenter = decoded.windowCenter;
         let windowWidth = decoded.windowWidth;
+        let effectiveWindowLevelOverride = wlOverride;
 
         state.pixelSpacing = decoded.pixelSpacing || null;
         app.tools.updateCalibrationWarning();
@@ -713,23 +1223,43 @@
             return buildRenderInfo(decoded, windowCenter, windowWidth, { isBlank: true });
         }
 
-        // Store base W/L values for reset (only on first render, not re-renders)
-        if (state.baseWindowLevel.center === null) {
-            state.baseWindowLevel = { center: windowCenter, width: windowWidth };
+        if (shouldResetWindowLevelOverride(decoded, wlOverride)) {
+            void emitDesktopDecodeTrace('wl-override-reset', {
+                previousBaseCenter: state.baseWindowLevel.center,
+                previousBaseWidth: state.baseWindowLevel.width,
+                requestedCenter: wlOverride?.center ?? null,
+                requestedWidth: wlOverride?.width ?? null,
+                nextBaseCenter: decoded.windowCenter,
+                nextBaseWidth: decoded.windowWidth,
+                rows: decoded.rows,
+                cols: decoded.cols,
+                bitsAllocated: decoded.bitsAllocated,
+                bitsStored: decoded.bitsStored,
+                modality: decoded.modality,
+                transferSyntax: decoded.transferSyntax
+            });
+            state.windowLevel = { center: null, width: null };
+            effectiveWindowLevelOverride = null;
         }
+
+        // Track the current slice defaults so reset and the W/L HUD stay aligned while scrubbing.
+        state.baseWindowLevel = { center: windowCenter, width: windowWidth };
 
         // Apply W/L override if provided (from user drag adjustment)
-        if (wlOverride && wlOverride.center !== null && wlOverride.width !== null) {
-            windowCenter = wlOverride.center;
-            windowWidth = wlOverride.width;
+        if (hasWindowLevel(effectiveWindowLevelOverride)) {
+            windowCenter = effectiveWindowLevelOverride.center;
+            windowWidth = effectiveWindowLevelOverride.width;
         }
 
-        // Set canvas size to match image dimensions
-        canvas.width = decoded.cols;
-        canvas.height = decoded.rows;
+        // Avoid reallocating the canvas backing store for every same-sized slice.
+        if (canvas.width !== decoded.cols || canvas.height !== decoded.rows) {
+            canvas.width = decoded.cols;
+            canvas.height = decoded.rows;
+            reusableRenderImageData = null;
+        }
 
-        // Create image data buffer for canvas
-        const imageData = ctx.createImageData(decoded.cols, decoded.rows);
+        // Reuse the RGBA output buffer across same-sized renders to reduce churn during scrub.
+        const imageData = getReusableRenderImageData(decoded.cols, decoded.rows);
         const outputPixels = imageData.data;
 
         // Calculate window/level range (min/max displayable values)
@@ -821,10 +1351,16 @@
 
     app.rendering = {
         displayError,
+        hydrateDebugSettings,
         decodeDicom,
         decodeNative,
         decodeWithFallback,
+        decodeDesktopPathWithHeader,
+        emitDesktopDecodeTrace,
+        getActiveDecodeMode,
+        getActivePreloadMode,
         getDecodeRoute,
+        isViewerPreloadEnabled,
         renderDecodeError,
         renderPixels,
         renderDicom

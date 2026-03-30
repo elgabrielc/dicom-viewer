@@ -206,11 +206,14 @@ async function installMockDesktop(page, options = {}) {
         window.__importMockState = {
             mkdirCalls: [],
             writeFileCalls: [],
+            readFileCalls: [],
+            headerReadCalls: [],
             existsResults: Object.assign({}, opts.existsOverrides || {}),
             statResults: Object.assign({}, opts.statOverrides || {}),
             readFileBytes: Object.assign({}, opts.readFileBytes || {}),
             manifestEntries: opts.manifestEntries || [],
-            readFileErrors: Object.assign({}, opts.readFileErrors || {})
+            readFileErrors: Object.assign({}, opts.readFileErrors || {}),
+            headerReadBytes: Object.assign({}, opts.headerReadBytes || {})
         };
 
         window.__TAURI__ = {
@@ -224,6 +227,19 @@ async function installMockDesktop(page, options = {}) {
                     }
                     if (cmd === 'read_scan_manifest') {
                         return window.__importMockState.manifestEntries;
+                    }
+                    if (cmd === 'read_scan_header') {
+                        const normalized = normalizePath(args.path);
+                        const state = window.__importMockState;
+                        state.headerReadCalls.push({
+                            path: normalized,
+                            maxBytes: Number(args.maxBytes) || 0
+                        });
+                        const bytes = state.headerReadBytes[normalized] || state.readFileBytes[normalized];
+                        if (bytes) {
+                            return Uint8Array.from(bytes.slice(0, Math.max(0, Number(args.maxBytes) || 0)));
+                        }
+                        return Uint8Array.from([]);
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
                 }
@@ -252,6 +268,7 @@ async function installMockDesktop(page, options = {}) {
                 async readFile(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
+                    state.readFileCalls.push(normalized);
                     if (Object.prototype.hasOwnProperty.call(state.readFileErrors, normalized)) {
                         throw new Error(state.readFileErrors[normalized]);
                     }
@@ -525,6 +542,48 @@ test.describe('Desktop import pipeline', () => {
         expect(result.collisions).toBe(0);
     });
 
+    test('importFromPaths: dedup avoids full file reads when header metadata is sufficient', async ({ page }) => {
+        const dicomBytes = buildSyntheticDicomBytes({
+            studyInstanceUid: '1.2.study.headerdup',
+            seriesInstanceUid: '1.2.series.headerdup',
+            sopInstanceUid: '1.2.sop.headerdup'
+        });
+
+        const destPath = `${LIBRARY_ROOT}/1.2.study.headerdup/1.2.series.headerdup/1.2.sop.headerdup.dcm`;
+
+        await installMockDesktop(page, {
+            manifestEntries: [
+                { path: '/source/header-dup.dcm', name: 'header-dup.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+            ],
+            readFileBytes: {
+                '/source/header-dup.dcm': dicomBytes
+            },
+            existsOverrides: {
+                [destPath]: true
+            },
+            statOverrides: {
+                [destPath]: { size: dicomBytes.length }
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const pipeline = window.DicomViewerApp.importPipeline;
+            const importResult = await pipeline.importFromPaths(['/source']);
+            return {
+                importResult,
+                readFileCalls: window.__importMockState.readFileCalls.slice(),
+                headerReadCalls: window.__importMockState.headerReadCalls.slice()
+            };
+        });
+
+        expect(result.importResult.skipped).toBe(1);
+        expect(result.headerReadCalls).toHaveLength(1);
+        expect(result.readFileCalls).toHaveLength(0);
+    });
+
     // -----------------------------------------------------------------------
     // importFromPaths: size mismatch collision
     // -----------------------------------------------------------------------
@@ -597,6 +656,36 @@ test.describe('Desktop import pipeline', () => {
         expect(result.imported).toBe(0);
         expect(result.invalid).toBe(2);
         expect(result.errors).toBe(0);
+    });
+
+    test('importFromPaths: invalid files do not trigger full file reads', async ({ page }) => {
+        const junkBytes = Array.from({ length: 64 }, (_, index) => index);
+
+        await installMockDesktop(page, {
+            manifestEntries: [
+                { path: '/source/not-dicom.bin', name: 'not-dicom.bin', rootPath: '/source', size: junkBytes.length, modifiedMs: 1000 }
+            ],
+            readFileBytes: {
+                '/source/not-dicom.bin': junkBytes
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const pipeline = window.DicomViewerApp.importPipeline;
+            const importResult = await pipeline.importFromPaths(['/source']);
+            return {
+                importResult,
+                readFileCalls: window.__importMockState.readFileCalls.slice(),
+                headerReadCalls: window.__importMockState.headerReadCalls.slice()
+            };
+        });
+
+        expect(result.importResult.invalid).toBe(1);
+        expect(result.headerReadCalls).toHaveLength(1);
+        expect(result.readFileCalls).toHaveLength(0);
     });
 
     // -----------------------------------------------------------------------

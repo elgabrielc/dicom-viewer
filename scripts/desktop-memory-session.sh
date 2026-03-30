@@ -10,16 +10,17 @@ DEFAULT_HTML_PATH="${ARTIFACT_DIR}/latest.html"
 DEFAULT_MIN_FREE_MB="${DICOM_MEMORY_MIN_FREE_MB:-1024}"
 LAUNCH_TIMEOUT_SECONDS="${DICOM_MEMORY_LAUNCH_TIMEOUT_SECONDS:-300}"
 DESKTOP_BINARY_PATTERN="${DICOM_MEMORY_PROCESS_PATTERN:-src-tauri/target/debug/dicom-viewer-desktop}"
-LAUNCH_COMMAND="${DICOM_MEMORY_LAUNCH_COMMAND:-npm run desktop:launch}"
+DESKTOP_PROCESS_NAME="${DICOM_MEMORY_PROCESS_NAME:-dicom-viewer-desktop}"
 REBUILDABLE_TARGET_PATH="${REPO_ROOT}/desktop/src-tauri/target"
 
 LAUNCH_PID=""
 OPEN_REPORT=0
+LAUNCH_ARGS=()
 CAPTURE_ARGS=()
 
 usage() {
   cat <<EOF
-Usage: npm run desktop:memory:session -- [capture options]
+Usage: npm run desktop:memory:session -- [wrapper options] [capture options]
 
 Launch the desktop app, wait for the Tauri process, and start RSS capture automatically.
 
@@ -27,9 +28,17 @@ Examples:
   npm run desktop:memory:session
   npm run desktop:memory:session -- --notes "rapid scrub run"
   npm run desktop:memory:session -- --open-report
+  npm run desktop:memory:session -- --decode-mode js --notes "forced JS repro"
+  npm run desktop:memory:session -- --decode-mode native --decode-debug --notes "forced native repro"
+  npm run desktop:memory:session -- --decode-trace --notes "trace scrub repro"
+  npm run desktop:memory:session -- --preload-mode off --notes "viewer preload off repro"
 
 Wrapper options:
   --open-report   Open the generated HTML dashboard when the run finishes.
+  --decode-mode   Set desktop decode experiment mode: auto, js, or native.
+  --preload-mode Set viewer preload experiment mode: auto, on, or off.
+  --decode-trace Enable frontend viewer decode tracing in the desktop launch log.
+  --decode-debug  Enable verbose native decode logging in the launch log.
   --help          Show this help message.
 
 All other arguments are passed through to scripts/desktop-memory-capture.py.
@@ -67,6 +76,14 @@ ensure_launch_headroom() {
 }
 
 desktop_pid() {
+  local pid=""
+
+  pid="$(pgrep -x "${DESKTOP_PROCESS_NAME}" | head -n 1 || true)"
+  if [[ -n "${pid}" ]]; then
+    printf '%s\n' "${pid}"
+    return 0
+  fi
+
   pgrep -f "${DESKTOP_BINARY_PATTERN}" | head -n 1 || true
 }
 
@@ -123,6 +140,46 @@ while [[ $# -gt 0 ]]; do
       OPEN_REPORT=1
       shift
       ;;
+    --decode-mode)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --decode-mode (expected: auto, js, or native)." >&2
+        exit 1
+      fi
+      case "$2" in
+        auto|js|native)
+          LAUNCH_ARGS+=("--decode-mode" "$2")
+          shift 2
+          ;;
+        *)
+          echo "Unsupported --decode-mode value: $2 (expected: auto, js, or native)." >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    --decode-debug)
+      LAUNCH_ARGS+=("--decode-debug")
+      shift
+      ;;
+    --decode-trace)
+      LAUNCH_ARGS+=("--decode-trace")
+      shift
+      ;;
+    --preload-mode)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --preload-mode (expected: auto, on, or off)." >&2
+        exit 1
+      fi
+      case "$2" in
+        auto|on|off)
+          LAUNCH_ARGS+=("--preload-mode" "$2")
+          shift 2
+          ;;
+        *)
+          echo "Unsupported --preload-mode value: $2 (expected: auto, on, or off)." >&2
+          exit 1
+          ;;
+      esac
+      ;;
     --help)
       usage
       exit 0
@@ -146,8 +203,12 @@ ensure_launch_headroom
 echo "Starting desktop app..."
 echo "Launch log: ${LAUNCH_LOG_PATH}"
 (
-  cd "${REPO_ROOT}"
-  /bin/zsh -lc "${LAUNCH_COMMAND}"
+  cd "${REPO_ROOT}/desktop"
+  launch_cmd=(npm run dev:desktop)
+  if (( ${#LAUNCH_ARGS[@]} > 0 )); then
+    launch_cmd+=(-- "${LAUNCH_ARGS[@]}")
+  fi
+  "${launch_cmd[@]}"
 ) >"${LAUNCH_LOG_PATH}" 2>&1 &
 LAUNCH_PID="$!"
 

@@ -4,6 +4,7 @@ mod decode;
 mod scan;
 mod secure_store;
 
+use serde::Serialize;
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, Runtime,
@@ -37,6 +38,92 @@ const EVENT_SHOW_LIBRARY: &str = "desktop://show-library-in-finder";
 const EVENT_CHECK_UPDATES: &str = "desktop://check-for-updates";
 const EVENT_OPEN_HELP: &str = "desktop://open-help";
 const DESKTOP_DB_URL: &str = "sqlite:viewer.db";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DebugSettings {
+    pub decode_mode: String,
+    pub preload_mode: String,
+    pub frontend_decode_trace: bool,
+    pub native_decode_debug: bool,
+}
+
+impl Default for DebugSettings {
+    fn default() -> Self {
+        Self {
+            decode_mode: "auto".into(),
+            preload_mode: "auto".into(),
+            frontend_decode_trace: false,
+            native_decode_debug: false,
+        }
+    }
+}
+
+fn parse_debug_settings() -> DebugSettings {
+    let mut settings = DebugSettings::default();
+    let args: Vec<String> = std::env::args().collect();
+    let mut index = 1;
+
+    while index < args.len() {
+        match args[index].as_str() {
+            "--decode-mode" => {
+                if let Some(value) = args.get(index + 1) {
+                    match value.as_str() {
+                        "auto" | "js" | "native" => {
+                            settings.decode_mode = value.clone();
+                            index += 1;
+                        }
+                        other => {
+                            eprintln!(
+                                "[desktop-debug] ignoring unsupported decode mode argument: {other}"
+                            );
+                        }
+                    }
+                }
+            }
+            "--preload-mode" => {
+                if let Some(value) = args.get(index + 1) {
+                    match value.as_str() {
+                        "auto" | "on" | "off" => {
+                            settings.preload_mode = value.clone();
+                            index += 1;
+                        }
+                        other => {
+                            eprintln!(
+                                "[desktop-debug] ignoring unsupported preload mode argument: {other}"
+                            );
+                        }
+                    }
+                }
+            }
+            "--decode-debug" | "--native-decode-debug" => {
+                settings.native_decode_debug = true;
+            }
+            "--decode-trace" | "--frontend-decode-trace" => {
+                settings.frontend_decode_trace = true;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+
+    settings
+}
+
+#[tauri::command]
+fn get_debug_settings(settings: tauri::State<'_, DebugSettings>) -> DebugSettings {
+    settings.inner().clone()
+}
+
+#[tauri::command]
+fn log_frontend_decode_event(
+    settings: tauri::State<'_, DebugSettings>,
+    message: String,
+) {
+    if settings.frontend_decode_trace {
+        eprintln!("[frontend-decode] {message}");
+    }
+}
 
 fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
     let package_info = manager.package_info();
@@ -157,8 +244,24 @@ fn desktop_db_migrations() -> Vec<Migration> {
 }
 
 fn main() {
+    let debug_settings = parse_debug_settings();
+    if debug_settings.decode_mode != "auto"
+        || debug_settings.preload_mode != "auto"
+        || debug_settings.frontend_decode_trace
+        || debug_settings.native_decode_debug
+    {
+        eprintln!(
+            "[desktop-debug] decode_mode={} preload_mode={} frontend_decode_trace={} native_decode_debug={}",
+            debug_settings.decode_mode,
+            debug_settings.preload_mode,
+            debug_settings.frontend_decode_trace,
+            debug_settings.native_decode_debug
+        );
+    }
+
     tauri::Builder::default()
         .manage(decode::DecodeStore::default())
+        .manage(debug_settings)
         .setup(|app| {
             let menu = build_menu(app)?;
             app.set_menu(menu)?;
@@ -175,7 +278,10 @@ fn main() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            get_debug_settings,
+            log_frontend_decode_event,
             decode::decode_frame,
+            decode::decode_frame_with_pixels,
             decode::take_decoded_frame,
             decode::read_scan_header,
             scan::read_scan_manifest,
