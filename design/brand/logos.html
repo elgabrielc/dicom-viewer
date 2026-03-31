@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divergent Health — Logo Explorations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Copyright (c) 2026 Divergent Health Technologies -->
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #FFF8F3;
+            --card: #FFFFFF;
+            --card-border: #F2F0E2;
+            --text: #3D3A36;
+            --text-dim: #6B6660;
+            --text-muted: #A09B8F;
+            --accent: #F08C00;
+            --accent-dark: #D67D00;
+            --sans: 'Inter', system-ui, sans-serif;
+            --serif: 'Lora', Georgia, serif;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            font-weight: 300;
+            line-height: 1.7;
+            padding: 4rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .header h1 {
+            font-size: 0.78rem;
+            font-weight: 500;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 1rem;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            max-width: 560px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-size: 0.72rem;
+            font-weight: 500;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            text-align: center;
+            margin: 5rem auto 3rem;
+            max-width: 1100px;
+            border-top: 1px solid var(--card-border);
+            padding-top: 3rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(240, 140, 0, 0.25);
+            box-shadow: 0 4px 20px rgba(61, 58, 54, 0.08);
+        }
+
+        .card .logo-area {
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+
+        .card h2 {
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .card p {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* Wider cards for the lockups */
+        .lockup-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2rem;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .lockup-card {
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            padding: 2.5rem 3rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .lockup-card:hover {
+            border-color: rgba(240, 140, 0, 0.25);
+        }
+
+        .lockup-content {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .lockup-brand {
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .lockup-brand .tld {
+            color: var(--accent);
+            text-transform: none;
+            font-family: var(--serif);
+            font-style: italic;
+            font-weight: 700;
+        }
+
+        .lockup-label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+        }
+
+        /* Dark vs light preview toggle */
+        .variant-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .variant-card {
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            padding: 3rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .variant-card:hover {
+            border-color: rgba(240, 140, 0, 0.25);
+        }
+
+        .variant-card.dark {
+            background: var(--card);
+        }
+
+        .variant-card.light {
+            background: #FFF8F3;
+        }
+
+        .variant-card.light .lockup-brand {
+            color: #3D3A36;
+        }
+
+        .variant-card.light .lockup-brand .tld {
+            color: #D67D00;
+        }
+
+        .variant-label {
+            text-align: center;
+            margin-top: 0.6rem;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            letter-spacing: 0.06em;
+        }
+
+        @media (max-width: 600px) {
+            .variant-row {
+                grid-template-columns: 1fr;
+            }
+            .lockup-brand {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Logo Explorations</h1>
+        <p>Based on the hand sketches: a horizontal path that diverges, an upward arrow suggesting better outcomes, and a pulse/heartbeat element.</p>
+    </div>
+
+    <!-- ===== MARKS (standalone icons) ===== -->
+    <div class="grid">
+
+        <!-- A. Path Diverge — directly from sketch 2 -->
+        <div class="card">
+            <div class="logo-area">
+                <svg viewBox="0 0 100 80" width="120" height="96" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Horizontal path -->
+                    <line x1="8" y1="50" x2="58" y2="50" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <!-- Continues straight with arrow -->
+                    <line x1="58" y1="50" x2="88" y2="50" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <polyline points="82,44 90,50 82,56" stroke="#F08C00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <!-- Diverging upward arrow -->
+                    <line x1="58" y1="50" x2="82" y2="18" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <polyline points="74,16 84,16 82,26" stroke="#F08C00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <h2>A. Path Diverge</h2>
+            <p>Direct translation of sketch 2. A horizontal path that continues straight while a second path breaks upward. The expected vs. the different.</p>
+        </div>
+
+        <!-- B. Ascending Break — cleaner, more abstract -->
+        <div class="card">
+            <div class="logo-area">
+                <svg viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Horizontal base -->
+                    <line x1="10" y1="56" x2="44" y2="56" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <!-- Arrow breaking upward -->
+                    <line x1="44" y1="56" x2="68" y2="22" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <polyline points="60,20 70,20 68,30" stroke="#F08C00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <h2>B. Ascending Break</h2>
+            <p>Simplified: a single path that changes direction upward. No "expected" path shown — just the break toward something better. Minimal, bold.</p>
+        </div>
+
+        <!-- C. Pulse Diverge — from sketch 1 (heartbeat + divergence) -->
+        <div class="card">
+            <div class="logo-area">
+                <svg viewBox="0 0 120 80" width="144" height="96" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Pulse/heartbeat line -->
+                    <path d="M8 48 L32 48 L40 28 L50 64 L58 48 L68 48" stroke="#F08C00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <!-- Diverges into two paths after the pulse -->
+                    <line x1="68" y1="48" x2="108" y2="48" stroke="#F08C00" stroke-width="2.5" stroke-linecap="round"/>
+                    <polyline points="102,42 110,48 102,54" stroke="#F08C00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="68" y1="48" x2="96" y2="18" stroke="#F08C00" stroke-width="2.5" stroke-linecap="round"/>
+                    <polyline points="88,16 98,16 96,26" stroke="#F08C00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <h2>C. Pulse Diverge</h2>
+            <p>From sketch 1. A heartbeat pulse that reaches a divergence point — one path continues flat, the other breaks upward. Health signal meets different outcome.</p>
+        </div>
+
+        <!-- D. Growth Arrow — from sketch 1 (the single upward arrow) -->
+        <div class="card">
+            <div class="logo-area">
+                <svg viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Upward diagonal arrow -->
+                    <line x1="16" y1="66" x2="64" y2="18" stroke="#F08C00" stroke-width="3" stroke-linecap="round"/>
+                    <polyline points="52,16 66,16 64,30" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <h2>D. Growth Arrow</h2>
+            <p>The simplest read from sketch 1. A single bold arrow rising upward. Pure trajectory — no complexity, just direction. Works as a favicon and app icon.</p>
+        </div>
+
+        <!-- E. Fork with stem — from sketch 3 -->
+        <div class="card">
+            <div class="logo-area">
+                <svg viewBox="0 0 80 80" width="80" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Vertical stem -->
+                    <line x1="40" y1="72" x2="40" y2="40" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <!-- Left diverge -->
+                    <line x1="40" y1="40" x2="18" y2="14" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <polyline points="16,24 16,12 28,14" stroke="#F08C00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <!-- Right diverge (more upward = growth) -->
+                    <line x1="40" y1="40" x2="64" y2="12" stroke="#F08C00" stroke-width="2.8" stroke-linecap="round"/>
+                    <polyline points="56,10 66,10 64,22" stroke="#F08C00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <h2>E. Arrow Fork</h2>
+            <p>From sketch 3. A vertical stem splits into two arrowed paths. Closest to the classic "divergent" symbol. Both paths lead somewhere — they just differ.</p>
+        </div>
+
+        <!-- F. Parallel Diverge — from sketch 2 (double line with arrow) -->
+        <div class="card">
+            <div class="logo-area">
+                <svg viewBox="0 0 100 80" width="120" height="96" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Double horizontal lines (like sketch 2's track) -->
+                    <line x1="10" y1="46" x2="56" y2="46" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="10" y1="54" x2="56" y2="54" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <!-- Bottom continues straight -->
+                    <line x1="56" y1="54" x2="86" y2="54" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="80,49 88,54 80,59" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <!-- Top breaks upward -->
+                    <line x1="56" y1="46" x2="80" y2="18" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="72,16 82,16 80,26" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <h2>F. Track Diverge</h2>
+            <p>Double rail from sketch 2. Two parallel lines travel together, then one breaks upward. Reads as "we were on the same track, then we diverged."</p>
+        </div>
+
+    </div>
+
+    <!-- ===== LOCKUPS (mark + brand text) ===== -->
+    <h3 class="section-title">Lockup Previews — Mark + Brand</h3>
+
+    <div class="lockup-grid">
+
+        <!-- Lockup A: Path Diverge -->
+        <div class="lockup-card">
+            <div class="lockup-content">
+                <svg viewBox="0 0 50 40" width="50" height="40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="4" y1="26" x2="28" y2="26" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="28" y1="26" x2="46" y2="26" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="41,22 47,26 41,30" stroke="#F08C00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="28" y1="26" x2="42" y2="8" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="36,6 44,6 42,14" stroke="#F08C00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <span class="lockup-label">A. Path Diverge</span>
+        </div>
+
+        <!-- Lockup B: Ascending Break -->
+        <div class="lockup-card">
+            <div class="lockup-content">
+                <svg viewBox="0 0 40 40" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="4" y1="30" x2="20" y2="30" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="20" y1="30" x2="36" y2="10" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="30,8 38,8 36,18" stroke="#F08C00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <span class="lockup-label">B. Ascending Break</span>
+        </div>
+
+        <!-- Lockup C: Pulse Diverge -->
+        <div class="lockup-card">
+            <div class="lockup-content">
+                <svg viewBox="0 0 64 40" width="60" height="38" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 24 L16 24 L21 12 L27 34 L32 24 L38 24" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="38" y1="24" x2="56" y2="24" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round"/>
+                    <polyline points="51,20 57,24 51,28" stroke="#F08C00" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="38" y1="24" x2="52" y2="8" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round"/>
+                    <polyline points="46,6 54,6 52,14" stroke="#F08C00" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <span class="lockup-label">C. Pulse Diverge</span>
+        </div>
+
+        <!-- Lockup D: Growth Arrow -->
+        <div class="lockup-card">
+            <div class="lockup-content">
+                <svg viewBox="0 0 36 36" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="6" y1="30" x2="30" y2="6" stroke="#F08C00" stroke-width="2.2" stroke-linecap="round"/>
+                    <polyline points="22,4 32,4 30,14" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <span class="lockup-label">D. Growth Arrow</span>
+        </div>
+
+        <!-- Lockup E: Arrow Fork -->
+        <div class="lockup-card">
+            <div class="lockup-content">
+                <svg viewBox="0 0 40 40" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="20" y1="36" x2="20" y2="20" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="20" y1="20" x2="8" y2="6" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="7,14 7,5 15,6" stroke="#F08C00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="20" y1="20" x2="34" y2="5" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="27,4 35,4 34,12" stroke="#F08C00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <span class="lockup-label">E. Arrow Fork</span>
+        </div>
+
+    </div>
+
+    <!-- ===== DARK VS LIGHT ===== -->
+    <h3 class="section-title">Dark / Light Comparison — Top 2 Candidates</h3>
+
+    <div class="variant-row" style="margin-bottom: 2rem">
+        <div>
+            <div class="variant-card dark">
+                <svg viewBox="0 0 50 40" width="44" height="35" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="4" y1="26" x2="28" y2="26" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="28" y1="26" x2="46" y2="26" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="41,22 47,26 41,30" stroke="#F08C00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="28" y1="26" x2="42" y2="8" stroke="#F08C00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="36,6 44,6 42,14" stroke="#F08C00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <p class="variant-label">A. Path Diverge — Dark</p>
+        </div>
+        <div>
+            <div class="variant-card light">
+                <svg viewBox="0 0 50 40" width="44" height="35" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="4" y1="26" x2="28" y2="26" stroke="#D67D00" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="28" y1="26" x2="46" y2="26" stroke="#D67D00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="41,22 47,26 41,30" stroke="#D67D00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="28" y1="26" x2="42" y2="8" stroke="#D67D00" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="36,6 44,6 42,14" stroke="#D67D00" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <p class="variant-label">A. Path Diverge — Light</p>
+        </div>
+    </div>
+
+    <div class="variant-row">
+        <div>
+            <div class="variant-card dark">
+                <svg viewBox="0 0 64 40" width="54" height="34" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 24 L16 24 L21 12 L27 34 L32 24 L38 24" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="38" y1="24" x2="56" y2="24" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round"/>
+                    <polyline points="51,20 57,24 51,28" stroke="#F08C00" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="38" y1="24" x2="52" y2="8" stroke="#F08C00" stroke-width="1.8" stroke-linecap="round"/>
+                    <polyline points="46,6 54,6 52,14" stroke="#F08C00" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <p class="variant-label">C. Pulse Diverge — Dark</p>
+        </div>
+        <div>
+            <div class="variant-card light">
+                <svg viewBox="0 0 64 40" width="54" height="34" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 24 L16 24 L21 12 L27 34 L32 24 L38 24" stroke="#D67D00" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="38" y1="24" x2="56" y2="24" stroke="#D67D00" stroke-width="1.8" stroke-linecap="round"/>
+                    <polyline points="51,20 57,24 51,28" stroke="#D67D00" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <line x1="38" y1="24" x2="52" y2="8" stroke="#D67D00" stroke-width="1.8" stroke-linecap="round"/>
+                    <polyline points="46,6 54,6 52,14" stroke="#D67D00" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+                <span class="lockup-brand">DIVERGENT<span class="tld">.health</span></span>
+            </div>
+            <p class="variant-label">C. Pulse Diverge — Light</p>
+        </div>
+    </div>
+
+</body>
+</html>

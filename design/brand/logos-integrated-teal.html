@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divergent Health — Integrated Logo Treatments</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+    <!-- Copyright (c) 2026 Divergent Health Technologies -->
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #0a0f1a;
+            --card: #0f1520;
+            --card-border: #1a2235;
+            --text: #e4e0db;
+            --text-dim: #8892a4;
+            --text-muted: #4a5568;
+            --accent: #4a9e8e;
+            --accent-dark: #3a8878;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+            font-weight: 300;
+            line-height: 1.7;
+            padding: 4rem 2rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .header { text-align: center; margin-bottom: 4rem; }
+        .header h1 {
+            font-size: 0.78rem; font-weight: 500; letter-spacing: 0.28em;
+            text-transform: uppercase; color: var(--text-dim); margin-bottom: 1rem;
+        }
+        .header p { color: var(--text-muted); font-size: 0.9rem; max-width: 480px; margin: 0 auto; }
+
+        .treatments { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem; }
+
+        .treatment {
+            background: var(--card); border: 1px solid var(--card-border); border-radius: 4px;
+            padding: 4rem; transition: border-color 0.3s ease; overflow: visible;
+        }
+        .treatment:hover { border-color: rgba(74, 158, 142, 0.3); }
+        .treatment svg { display: block; overflow: visible; }
+
+        .treatment-label { font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.06em; margin-top: 2.5rem; }
+        .treatment-desc { font-size: 0.78rem; color: var(--text-muted); margin-top: 0.3rem; line-height: 1.5; }
+
+        .section-title {
+            font-size: 0.72rem; font-weight: 500; letter-spacing: 0.22em;
+            text-transform: uppercase; color: var(--text-muted); text-align: center;
+            max-width: 900px; margin: 4rem auto 2.5rem;
+            border-top: 1px solid var(--card-border); padding-top: 3rem;
+        }
+
+        .comp-row {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;
+            max-width: 900px; margin: 0 auto 1.5rem;
+        }
+        .comp-card {
+            border: 1px solid var(--card-border); border-radius: 4px;
+            padding: 3.5rem 2.5rem; display: flex; align-items: center; justify-content: center;
+            overflow: visible;
+        }
+        .comp-card.dark { background: var(--card); }
+        .comp-card.light { background: #f5f3ef; }
+        .comp-card svg { overflow: visible; }
+        .comp-label { text-align: center; font-size: 0.68rem; color: var(--text-muted); margin-bottom: 2.5rem; }
+
+        @media (max-width: 700px) {
+            .treatment { padding: 2.5rem 1.5rem; }
+            .comp-row { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Integrated Treatments</h1>
+        <p>Arrow underlines the text, diverges past the end. Arrows never cross the text.</p>
+    </div>
+
+    <div class="treatments">
+
+        <!-- A. Path Diverge — line under text, forks AFTER .health -->
+        <div class="treatment">
+            <svg viewBox="0 -2 560 80" width="560" height="80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="32" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#e4e0db">DIVERGENT</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">health</text>
+
+                <!-- Line under full text -->
+                <line x1="0" y1="52" x2="400" y2="52" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Continues straight right with arrowhead -->
+                <line x1="400" y1="52" x2="470" y2="52" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="462,46 472,52 462,58" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <!-- Breaks upward with arrowhead -->
+                <line x1="400" y1="52" x2="450" y2="4" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="442,0 454,0 450,12" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+            <p class="treatment-label">A. Path Diverge</p>
+            <p class="treatment-desc">Line runs under the full name. Forks after ".health" — one arrow continues right, one breaks upward.</p>
+        </div>
+
+        <!-- B. Ascending Break — line under text, breaks up AFTER .health -->
+        <div class="treatment">
+            <svg viewBox="0 -2 540 78" width="540" height="78" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="32" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#e4e0db">DIVERGENT</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">health</text>
+
+                <!-- Line under full text, breaks upward after -->
+                <line x1="0" y1="52" x2="400" y2="52" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="400" y1="52" x2="455" y2="4" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                <polyline points="447,0 459,0 455,12" stroke="#4a9e8e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+            <p class="treatment-label">B. Ascending Break</p>
+            <p class="treatment-desc">Line under the full name, breaks upward past ".health". No second path — just the change in direction.</p>
+        </div>
+
+        <!-- F. Track Diverge — double rail under text, splits AFTER .health -->
+        <div class="treatment">
+            <svg viewBox="0 -2 560 82" width="560" height="82" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="30" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#e4e0db">DIVERGENT</text>
+                <text x="280" y="30" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">health</text>
+
+                <!-- Double rail under full text -->
+                <line x1="0" y1="48" x2="400" y2="48" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <line x1="0" y1="56" x2="400" y2="56" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <!-- Bottom continues straight -->
+                <line x1="400" y1="56" x2="470" y2="56" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="462,51 472,56 462,61" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <!-- Top breaks upward -->
+                <line x1="400" y1="48" x2="450" y2="4" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="442,0 454,0 450,12" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+            <p class="treatment-label">F. Track Diverge</p>
+            <p class="treatment-desc">Double rail under the full name. Past ".health", one track continues right, the other breaks upward.</p>
+        </div>
+
+    </div>
+
+    <!-- ===== STACKED LAYOUTS ===== -->
+    <p class="section-title">Stacked — Arrow Splits the Words</p>
+
+    <div class="treatments">
+
+        <!-- Stacked A: Path Diverge -->
+        <div class="treatment">
+            <div style="display: flex; align-items: center; gap: 3rem;">
+                <div style="flex-shrink: 0;">
+                    <div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 600; font-size: 2rem; letter-spacing: 0.05em; text-transform: uppercase; color: #e4e0db;">DIVERGENT</div>
+                    <div style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 2rem; color: #4a9e8e; padding-left: 1rem;">HEALTH</div>
+                </div>
+                <div style="flex-shrink: 0;">
+                    <svg viewBox="0 0 70 70" width="56" height="56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="4" y1="40" x2="35" y2="40" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                        <line x1="35" y1="40" x2="62" y2="40" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                        <polyline points="55,34 64,40 55,46" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <line x1="35" y1="40" x2="60" y2="10" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                        <polyline points="52,6 64,6 60,18" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    </svg>
+                </div>
+                <div style="flex-shrink: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 400; font-size: 1.2rem; letter-spacing: 0.15em; color: #8892a4; text-transform: uppercase; align-self: center;">TECHNOLOGIES</div>
+            </div>
+            <div style="margin-top: 1.2rem;">
+                <svg viewBox="0 0 700 12" width="100%" height="12" fill="none" preserveAspectRatio="xMinYMid" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="0" y1="6" x2="690" y2="6" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="682,0 692,6 682,12" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <p class="treatment-label">Stacked A — Path Diverge Between Blocks</p>
+            <p class="treatment-desc">From sketch 3. Two-line stack on the left, Path Diverge fork in the middle, "TECHNOLOGIES" on the right.</p>
+        </div>
+
+        <!-- Stacked B: Arrow Fork (Y-shape) -->
+        <div class="treatment">
+            <div style="display: flex; align-items: center; gap: 3rem;">
+                <div style="flex-shrink: 0;">
+                    <div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 600; font-size: 2rem; letter-spacing: 0.05em; text-transform: uppercase; color: #e4e0db;">DIVERGENT</div>
+                    <div style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 2rem; color: #4a9e8e; padding-left: 1rem;">HEALTH</div>
+                </div>
+                <div style="flex-shrink: 0;">
+                    <svg viewBox="0 0 60 80" width="48" height="64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="30" y1="76" x2="30" y2="40" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                        <line x1="30" y1="40" x2="55" y2="40" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                        <polyline points="48,34 57,40 48,46" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                        <line x1="30" y1="40" x2="52" y2="10" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                        <polyline points="44,6 56,6 52,18" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    </svg>
+                </div>
+                <div style="flex-shrink: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 400; font-size: 1.2rem; letter-spacing: 0.15em; color: #8892a4; text-transform: uppercase; align-self: center;">TECHNOLOGIES</div>
+            </div>
+            <div style="margin-top: 1.2rem;">
+                <svg viewBox="0 0 700 12" width="100%" height="12" fill="none" preserveAspectRatio="xMinYMid" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="0" y1="6" x2="690" y2="6" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="682,0 692,6 682,12" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <p class="treatment-label">Stacked B — Arrow Fork Between Blocks</p>
+            <p class="treatment-desc">Vertical stem rises from baseline, forks into two arrows. Closest to sketch 3.</p>
+        </div>
+
+        <!-- Stacked C: Ascending Break + double track -->
+        <div class="treatment">
+            <div style="display: flex; align-items: center; gap: 3rem;">
+                <div style="flex-shrink: 0;">
+                    <div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 600; font-size: 2rem; letter-spacing: 0.05em; text-transform: uppercase; color: #e4e0db;">DIVERGENT</div>
+                    <div style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 2rem; color: #4a9e8e; padding-left: 1rem;">HEALTH</div>
+                </div>
+                <div style="flex-shrink: 0;">
+                    <svg viewBox="0 0 60 60" width="48" height="48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="4" y1="40" x2="25" y2="40" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                        <line x1="25" y1="40" x2="52" y2="8" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                        <polyline points="44,4 56,4 52,16" stroke="#4a9e8e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    </svg>
+                </div>
+                <div style="flex-shrink: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 400; font-size: 1.2rem; letter-spacing: 0.15em; color: #8892a4; text-transform: uppercase; align-self: center;">TECHNOLOGIES</div>
+            </div>
+            <div style="margin-top: 1.2rem;">
+                <svg viewBox="0 0 700 16" width="100%" height="16" fill="none" preserveAspectRatio="xMinYMid" xmlns="http://www.w3.org/2000/svg">
+                    <line x1="0" y1="4" x2="690" y2="4" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                    <line x1="0" y1="12" x2="690" y2="12" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                    <polyline points="682,-2 692,4 682,10" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    <polyline points="682,6 692,12 682,18" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+            </div>
+            <p class="treatment-label">Stacked C — Ascending Break + Track Diverge Base</p>
+            <p class="treatment-desc">Ascending Break between the blocks, double Track Diverge rail underneath.</p>
+        </div>
+
+        <!-- Stacked D: Minimal -->
+        <div class="treatment">
+            <div style="display: flex; align-items: center; gap: 3rem;">
+                <div style="flex-shrink: 0;">
+                    <div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 600; font-size: 2rem; letter-spacing: 0.05em; text-transform: uppercase; color: #e4e0db;">DIVERGENT</div>
+                    <div style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 2rem; color: #4a9e8e; padding-left: 1rem;">HEALTH</div>
+                </div>
+                <div style="flex-shrink: 0;">
+                    <svg viewBox="0 0 50 70" width="40" height="56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="6" y1="66" x2="42" y2="8" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                        <polyline points="34,4 46,4 42,16" stroke="#4a9e8e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                    </svg>
+                </div>
+                <div style="flex-shrink: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-weight: 400; font-size: 1.2rem; letter-spacing: 0.15em; color: #8892a4; text-transform: uppercase; align-self: center;">TECHNOLOGIES</div>
+            </div>
+            <p class="treatment-label">Stacked D — Ascending Divider Only</p>
+            <p class="treatment-desc">Most minimal. A single ascending arrow divides the two blocks. No baseline.</p>
+        </div>
+
+    </div>
+
+    <!-- Dark / Light -->
+    <p class="section-title">Dark / Light</p>
+
+    <!-- A -->
+    <div class="comp-row">
+        <div class="comp-card dark">
+            <svg viewBox="0 -2 560 80" width="380" height="54" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="32" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#e4e0db">DIVERGENT</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">health</text>
+                <line x1="0" y1="52" x2="400" y2="52" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="400" y1="52" x2="470" y2="52" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="462,46 472,52 462,58" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <line x1="400" y1="52" x2="450" y2="4" stroke="#4a9e8e" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="442,0 454,0 450,12" stroke="#4a9e8e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+        <div class="comp-card light">
+            <svg viewBox="0 -2 560 80" width="380" height="54" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="32" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#1a1a1a">DIVERGENT</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#3a8878">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#3a8878">health</text>
+                <line x1="0" y1="52" x2="400" y2="52" stroke="#3a8878" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="400" y1="52" x2="470" y2="52" stroke="#3a8878" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="462,46 472,52 462,58" stroke="#3a8878" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <line x1="400" y1="52" x2="450" y2="4" stroke="#3a8878" stroke-width="2.5" stroke-linecap="round"/>
+                <polyline points="442,0 454,0 450,12" stroke="#3a8878" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+    </div>
+    <p class="comp-label">A. Path Diverge</p>
+
+    <!-- B -->
+    <div class="comp-row">
+        <div class="comp-card dark">
+            <svg viewBox="0 -2 540 78" width="370" height="53" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="32" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#e4e0db">DIVERGENT</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">health</text>
+                <line x1="0" y1="52" x2="400" y2="52" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="400" y1="52" x2="455" y2="4" stroke="#4a9e8e" stroke-width="2.8" stroke-linecap="round"/>
+                <polyline points="447,0 459,0 455,12" stroke="#4a9e8e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+        <div class="comp-card light">
+            <svg viewBox="0 -2 540 78" width="370" height="53" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="32" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#1a1a1a">DIVERGENT</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#3a8878">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#3a8878">health</text>
+                <line x1="0" y1="52" x2="400" y2="52" stroke="#3a8878" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="400" y1="52" x2="455" y2="4" stroke="#3a8878" stroke-width="2.8" stroke-linecap="round"/>
+                <polyline points="447,0 459,0 455,12" stroke="#3a8878" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+    </div>
+    <p class="comp-label">B. Ascending Break</p>
+
+    <!-- F -->
+    <div class="comp-row">
+        <div class="comp-card dark">
+            <svg viewBox="0 -2 560 82" width="380" height="56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="30" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#e4e0db">DIVERGENT</text>
+                <text x="280" y="30" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#4a9e8e">health</text>
+                <line x1="0" y1="48" x2="400" y2="48" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <line x1="0" y1="56" x2="400" y2="56" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <line x1="400" y1="56" x2="470" y2="56" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="462,51 472,56 462,61" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <line x1="400" y1="48" x2="450" y2="4" stroke="#4a9e8e" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="442,0 454,0 450,12" stroke="#4a9e8e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+        <div class="comp-card light">
+            <svg viewBox="0 -2 560 82" width="380" height="56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="30" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="600" font-size="32" letter-spacing="1.5" fill="#1a1a1a">DIVERGENT</text>
+                <text x="280" y="30" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#3a8878">.</text>
+                <text x="280" y="32" font-family="'Instrument Serif', Georgia, serif" font-style="italic" font-size="32" fill="#3a8878">health</text>
+                <line x1="0" y1="48" x2="400" y2="48" stroke="#3a8878" stroke-width="2" stroke-linecap="round"/>
+                <line x1="0" y1="56" x2="400" y2="56" stroke="#3a8878" stroke-width="2" stroke-linecap="round"/>
+                <line x1="400" y1="56" x2="470" y2="56" stroke="#3a8878" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="462,51 472,56 462,61" stroke="#3a8878" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <line x1="400" y1="48" x2="450" y2="4" stroke="#3a8878" stroke-width="2" stroke-linecap="round"/>
+                <polyline points="442,0 454,0 450,12" stroke="#3a8878" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+        </div>
+    </div>
+    <p class="comp-label">F. Track Diverge</p>
+
+    <script>
+    function makeSvgEl(tag, attrs) {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+        return el;
+    }
+
+    document.fonts.ready.then(() => {
+
+        // === SINGLE-LINE LAYOUTS ===
+        document.querySelectorAll('svg').forEach(svg => {
+            const texts = svg.querySelectorAll('text');
+            if (texts.length < 3) return;
+
+            const divergentEl = texts[0]; // DIVERGENT
+            const healthEl = texts[1];    // .health
+
+            // Measure DIVERGENT width
+            const dWidth = divergentEl.getComputedTextLength();
+            const gap = 12; // total space between DIVERGENT and health
+
+            // 3 text elements: DIVERGENT, dot, health
+            const dotEl = texts[1];
+            const actualHealthEl = texts[2];
+
+            // Measure dot width and center it in the gap
+            const dotWidth = dotEl.getComputedTextLength();
+            const dotX = dWidth + (gap - dotWidth) / 2;
+            dotEl.setAttribute('x', dotX);
+            actualHealthEl.setAttribute('x', dWidth + gap);
+
+            // Measure health width
+            const hWidth = actualHealthEl.getComputedTextLength();
+            const textEnd = dWidth + gap + hWidth;
+            const forkX = textEnd + 12; // small breathing room after text
+
+            // Find and reposition all arrow lines and polylines
+            const lines = svg.querySelectorAll('line');
+            const polylines = svg.querySelectorAll('polyline');
+
+            // Determine treatment type by counting lines
+            // A (Path Diverge): 3 lines (underline, straight arrow, upward arrow)
+            // B (Ascending Break): 2 lines (underline, upward arrow)
+            // F (Track Diverge): 5 lines (2 rails, bottom continues, top breaks up + we count)
+
+            const arrowLines = Array.from(lines);
+
+            if (arrowLines.length === 3) {
+                // A. Path Diverge
+                // Line 0: underline (0 to fork)
+                arrowLines[0].setAttribute('x2', forkX);
+                // Line 1: straight arrow (fork to fork+70)
+                arrowLines[1].setAttribute('x1', forkX);
+                arrowLines[1].setAttribute('x2', forkX + 70);
+                // Line 2: upward arrow (fork to fork+50, y=4)
+                arrowLines[2].setAttribute('x1', forkX);
+                arrowLines[2].setAttribute('x2', forkX + 50);
+
+                // Polyline 0: straight arrowhead
+                const sa = forkX + 70;
+                polylines[0].setAttribute('points', `${sa-10},46 ${sa},52 ${sa-10},58`);
+                // Polyline 1: upward arrowhead
+                const ua = forkX + 50;
+                polylines[1].setAttribute('points', `${ua-8},0 ${ua+4},0 ${ua},12`);
+
+            } else if (arrowLines.length === 2) {
+                // B. Ascending Break
+                // Line 0: underline (0 to fork)
+                arrowLines[0].setAttribute('x2', forkX);
+                // Line 1: upward (fork to fork+55, y=4)
+                arrowLines[1].setAttribute('x1', forkX);
+                arrowLines[1].setAttribute('x2', forkX + 55);
+
+                // Polyline 0: upward arrowhead
+                const ua = forkX + 55;
+                polylines[0].setAttribute('points', `${ua-8},0 ${ua+4},0 ${ua},12`);
+
+            } else if (arrowLines.length === 5) {
+                // F. Track Diverge
+                // Line 0: top rail (0 to fork)
+                arrowLines[0].setAttribute('x2', forkX);
+                // Line 1: bottom rail (0 to fork)
+                arrowLines[1].setAttribute('x2', forkX);
+                // Line 2: bottom continues (fork to fork+70)
+                arrowLines[2].setAttribute('x1', forkX);
+                arrowLines[2].setAttribute('x2', forkX + 70);
+                // Line 3: top breaks up (fork to fork+50, y=4)
+                // but wait, line 3 might be the polyline... let me check
+                // Actually lines 3 and 4 if there are 5 lines
+                arrowLines[3].setAttribute('x1', forkX);
+                arrowLines[3].setAttribute('x2', forkX + 50);
+
+                // Polyline 0: straight arrowhead
+                const sa = forkX + 70;
+                polylines[0].setAttribute('points', `${sa-10},51 ${sa},56 ${sa-10},61`);
+                // Polyline 1: upward arrowhead
+                const ua = forkX + 50;
+                polylines[1].setAttribute('points', `${ua-8},0 ${ua+4},0 ${ua},12`);
+            }
+        });
+    });
+    </script>
+</body>
+</html>

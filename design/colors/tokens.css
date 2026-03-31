@@ -1,0 +1,121 @@
+/* ============================================
+   Divergent Health — Design Tokens
+   Generated from the design system
+   ============================================ */
+
+:root {
+  /* --- Neutrals --- */
+  --color-white:        #FFFFFF;
+  --color-light:        #FFF8F3;
+  --color-dawn:         #F2F0E2;
+  --color-sand:         #E5E0D4;
+  --color-stone:        #C4BFB3;
+  --color-drift:        #A09B8F;
+  --color-ash:          #6B6660;
+  --color-charcoal:     #3D3A36;
+  --color-night:        #1E1C1A;
+
+  /* --- Sage (Green Family) --- */
+  --color-sage-50:      #F2F5EF;
+  --color-sage-100:     #DDE5D6;
+  --color-sage-200:     #B8CAAB;
+  --color-sage-300:     #98B185;
+  --color-sage-400:     #7A9966;
+  --color-sage-500:     #6D7B38;
+  --color-sage-600:     #506544;
+  --color-sage-700:     #3E4F35;
+  --color-sage-800:     #2C3926;
+  --color-sage-900:     #1A2318;
+
+  /* --- Tangerine (Orange Family) --- */
+  --color-amber-50:     #FFF4E6;
+  --color-amber-100:    #FEE2B8;
+  --color-amber-200:    #FBC477;
+  --color-amber-300:    #F5A83A;
+  --color-amber-400:    #F08C00;
+  --color-amber-500:    #D67D00;
+  --color-amber-600:    #B26800;
+  --color-amber-700:    #864E00;
+  --color-amber-800:    #5C3600;
+  --color-amber-900:    #332000;
+
+  /* --- Semantic: Backgrounds --- */
+  --color-bg-primary:    var(--color-light);
+  --color-bg-secondary:  var(--color-dawn);
+  --color-bg-surface:    var(--color-white);
+  --color-bg-muted:      var(--color-sand);
+
+  /* --- Semantic: Text --- */
+  --color-text-primary:   var(--color-charcoal);
+  --color-text-secondary: var(--color-ash);
+  --color-text-muted:     var(--color-drift);
+  --color-text-inverse:   var(--color-light);
+
+  /* --- Semantic: Interactive --- */
+  --color-accent:         var(--color-amber-400);
+  --color-accent-hover:   var(--color-amber-500);
+  --color-accent-subtle:  var(--color-amber-50);
+  --color-success:        var(--color-sage-400);
+  --color-success-subtle: var(--color-sage-50);
+
+  /* --- Semantic: Borders --- */
+  --color-border:         var(--color-sand);
+  --color-border-subtle:  var(--color-dawn);
+
+  /* --- Viewer (Dark Mode) --- */
+  --color-viewer-bg:       #161E17;
+  --color-viewer-panel:    #1C261E;
+  --color-viewer-header:   #0F160F;
+  --color-viewer-text:     #EEEEEE;
+  --color-viewer-accent:   var(--color-amber-400);
+
+  /* --- Typography --- */
+  --font-sans:  'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Lora', Georgia, 'Times New Roman', serif;
+  --font-mono:  'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+
+  --text-xs:    0.75rem;
+  --text-sm:    0.875rem;
+  --text-base:  1rem;
+  --text-lg:    1.125rem;
+  --text-xl:    1.25rem;
+  --text-2xl:   1.5rem;
+  --text-3xl:   1.875rem;
+  --text-4xl:   2.25rem;
+
+  --leading-tight:  1.25;
+  --leading-normal: 1.5;
+  --leading-loose:  1.75;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semi:   600;
+  --weight-bold:   700;
+
+  /* --- Spacing (4px base) --- */
+  --space-1:   0.25rem;
+  --space-2:   0.5rem;
+  --space-3:   0.75rem;
+  --space-4:   1rem;
+  --space-5:   1.25rem;
+  --space-6:   1.5rem;
+  --space-8:   2rem;
+  --space-10:  2.5rem;
+  --space-12:  3rem;
+  --space-16:  4rem;
+
+  /* --- Radii --- */
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+  --radius-xl:   16px;
+  --radius-full: 9999px;
+
+  /* --- Shadows --- */
+  --shadow-sm:  0 1px 2px rgba(30, 28, 26, 0.05);
+  --shadow-md:  0 2px 8px rgba(30, 28, 26, 0.08);
+  --shadow-lg:  0 4px 16px rgba(30, 28, 26, 0.10);
+
+  /* --- Transitions --- */
+  --ease-default: 200ms ease;
+}

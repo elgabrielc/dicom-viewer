@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myradone — "mr1" Disambiguating the 1</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800;900&family=DM+Serif+Display&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #FFF8F3; color: #3D3A36; font-family: 'Inter', sans-serif; padding: 3rem 2rem 6rem; }
+
+  .page-header { max-width: 1200px; margin: 0 auto 2rem; }
+  .page-header h1 { font-family: 'Lora', serif; font-weight: 700; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .page-header p { font-size: 0.875rem; color: #A09B8F; max-width: 600px; line-height: 1.5; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2rem; max-width: 1200px; margin: 0 auto;
+  }
+
+  .card {
+    background: #FFF; border-radius: 12px; padding: 2.5rem 2rem 2rem;
+    display: flex; flex-direction: column; align-items: center;
+    box-shadow: 0 1px 3px rgba(61,58,54,0.04); border: 1px solid #F2F0E2;
+    transition: box-shadow 0.2s ease;
+  }
+  .card:hover { box-shadow: 0 4px 20px rgba(61,58,54,0.08); }
+
+  .card-label {
+    font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #C4BFB3; margin-bottom: 1.5rem;
+  }
+
+  .icon-row { display: flex; align-items: flex-end; gap: 1rem; margin-bottom: 1.25rem; }
+
+  .icon {
+    border-radius: 22%; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .icon-lg { width: 128px; height: 128px; }
+  .icon-md { width: 64px; height: 64px; }
+  .icon-sm { width: 32px; height: 32px; }
+
+  .desc { font-size: 0.75rem; color: #A09B8F; text-align: center; line-height: 1.4; max-width: 240px; }
+
+  .bg-warm { background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%); }
+  .bg-amber { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+  .bg-white { background: #FFFFFF; border: 1px solid #F2F0E2; }
+
+  /* Dock */
+  .dock-section { max-width: 1200px; margin: 3rem auto 0; }
+  .dock-label { font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: #C4BFB3; text-align: center; margin-bottom: 1rem; }
+  .dock {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: rgba(30,28,26,0.06); backdrop-filter: blur(20px);
+    padding: 6px 12px; border-radius: 18px; border: 1px solid rgba(30,28,26,0.04);
+    max-width: fit-content; margin: 0 auto;
+  }
+  .di { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+  .dock-ph { width: 52px; height: 52px; border-radius: 12px; background: rgba(30,28,26,0.05); }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>"mr1" -- Making the 1 Unmistakable</h1>
+  <p>The problem: Lora's "1" can read as lowercase "l" at small sizes. Strategies: different font for the 1, color contrast, size difference, seriffed numeral fonts, or explicit styling to force a serifed/flagged 1.</p>
+</div>
+
+<div class="grid">
+
+  <!-- 1. Color split: "1" in amber, rest charcoal (existing favorite, baseline) -->
+  <div class="card">
+    <div class="card-label">Baseline: color split</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Current favorite. The "1" can look like "l" at 32px.</div>
+  </div>
+
+  <!-- 2. Inter "1" (has a flag/serif on the 1) -->
+  <div class="card">
+    <div class="card-label">Lora "mr" + Inter "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Inter's "1" has a clear horizontal base. Reads as a numeral.</div>
+  </div>
+
+  <!-- 3. Bigger "1" -->
+  <div class="card">
+    <div class="card-label">Oversized "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm" style="align-items:baseline;padding-top:1.8rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:2.5rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3.8rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm" style="align-items:baseline;padding-top:0.9rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.25rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.9rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm" style="align-items:baseline;padding-top:0.45rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.625rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.95rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Scale difference makes it obvious it's a number, not a letter.</div>
+  </div>
+
+  <!-- 4. Playfair Display "1" (old-style numeral with strong flag) -->
+  <div class="card">
+    <div class="card-label">Lora "mr" + Playfair "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Playfair's "1" has a strong flag and base serif. Unmistakable.</div>
+  </div>
+
+  <!-- 5. DM Serif Display "1" -->
+  <div class="card">
+    <div class="card-label">Lora "mr" + DM Serif "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'DM Serif Display',serif;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'DM Serif Display',serif;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'DM Serif Display',serif;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">DM Serif has a distinctly different "1" shape. More formal.</div>
+  </div>
+
+  <!-- 6. Underline on "1" -->
+  <div class="card">
+    <div class="card-label">Underlined "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#F08C00;text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:3px;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:2px;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#F08C00;text-decoration:underline;text-underline-offset:1px;text-decoration-thickness:1.5px;">1</span></div>
+    </div>
+    <div class="desc">Underline adds a base, signals "this is a numeral."</div>
+  </div>
+
+  <!-- 7. All Inter (sans-serif 1 is naturally clearer) -->
+  <div class="card">
+    <div class="card-label">All Inter, charcoal/amber</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Inter's "1" is distinct from "l" at all sizes. Safe choice.</div>
+  </div>
+
+  <!-- 8. Same treatments on amber gradient -->
+  <div class="card">
+    <div class="card-label">Amber, Inter white "mr1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:3rem;color:#FFF;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#FFF;">1</span></div>
+      <div class="icon icon-md bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.5rem;color:#FFF;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#FFF;">1</span></div>
+      <div class="icon icon-sm bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:0.75rem;color:#FFF;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#FFF;">1</span></div>
+    </div>
+    <div class="desc">All Inter on amber. Clean and unambiguous.</div>
+  </div>
+
+  <!-- 9. Amber, Lora "mr" + Playfair "1" white -->
+  <div class="card">
+    <div class="card-label">Amber, Lora + Playfair "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#FFF;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:3rem;color:#FFF;">1</span></div>
+      <div class="icon icon-md bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#FFF;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.5rem;color:#FFF;">1</span></div>
+      <div class="icon icon-sm bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#FFF;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:0.75rem;color:#FFF;">1</span></div>
+    </div>
+    <div class="desc">Serif warmth of Lora, but Playfair's distinct "1".</div>
+  </div>
+
+  <!-- 10. Amber, oversized "1" -->
+  <div class="card">
+    <div class="card-label">Amber, oversized "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber" style="align-items:baseline;padding-top:1.8rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:2.5rem;color:rgba(255,255,255,0.7);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3.8rem;color:#FFF;">1</span></div>
+      <div class="icon icon-md bg-amber" style="align-items:baseline;padding-top:0.9rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.25rem;color:rgba(255,255,255,0.7);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.9rem;color:#FFF;">1</span></div>
+      <div class="icon icon-sm bg-amber" style="align-items:baseline;padding-top:0.45rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.625rem;color:rgba(255,255,255,0.7);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.95rem;color:#FFF;">1</span></div>
+    </div>
+    <div class="desc">Size difference + dimmed "mr" = obvious numeral.</div>
+  </div>
+
+  <!-- 11. Warm, Lora "mr" + Inter oversized "1" -->
+  <div class="card">
+    <div class="card-label">Warm, Lora + big Inter "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm" style="align-items:baseline;padding-top:1.8rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:2.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3.8rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm" style="align-items:baseline;padding-top:0.9rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.25rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.9rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm" style="align-items:baseline;padding-top:0.45rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.625rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.95rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Best of both: Lora warmth + Inter's clear numeral. Size hierarchy.</div>
+  </div>
+
+  <!-- 12. White bg, all Inter -->
+  <div class="card">
+    <div class="card-label">White, all Inter charcoal/amber</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Cleanest read at all sizes. No ambiguity.</div>
+  </div>
+
+</div>
+
+<!-- Dock preview -->
+<div class="dock-section">
+  <div class="dock-label">Dock Preview -- Top Candidates at 52px</div>
+  <div class="dock">
+    <div class="dock-ph"></div>
+    <div class="di bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.2rem;color:#F08C00;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-warm" style="align-items:baseline;padding-top:0.7rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:1rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.2rem;color:#FFF;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.2rem;color:#FFF;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#FFF;">mr</span><span style="font-family:'Playfair Display',serif;font-weight:900;font-size:1.2rem;color:#FFF;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-warm" style="align-items:baseline;padding-top:0.7rem;"><span style="font-family:'Lora',serif;font-weight:700;font-size:1rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.2rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.2rem;color:#F08C00;">1</span></div>
+    <div class="dock-ph"></div>
+  </div>
+</div>
+
+</body>
+</html>

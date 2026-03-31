@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myradone — Logo Explorations</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&family=DM+Serif+Display&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --color-light:     #FFF8F3;
+    --color-dawn:      #F2F0E2;
+    --color-sand:      #E5E0D4;
+    --color-stone:     #C4BFB3;
+    --color-drift:     #A09B8F;
+    --color-ash:       #6B6660;
+    --color-charcoal:  #3D3A36;
+    --color-night:     #1E1C1A;
+    --color-sage-300:  #98B185;
+    --color-sage-400:  #7A9966;
+    --color-sage-500:  #6D7B38;
+    --color-sage-600:  #506544;
+    --color-emerald:   #2D9B54;
+    --color-amber:     #F08C00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--color-light);
+    color: var(--color-charcoal);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+  }
+
+  .page-header {
+    padding: 3rem 2rem 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .page-header h1 {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--color-charcoal);
+    margin-bottom: 0.25rem;
+  }
+
+  .page-header p {
+    font-size: 0.875rem;
+    color: var(--color-drift);
+    max-width: 540px;
+    line-height: 1.5;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem 2rem 4rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 3rem 2.5rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 260px;
+    box-shadow: 0 1px 3px rgba(61, 58, 54, 0.04);
+    border: 1px solid var(--color-dawn);
+    position: relative;
+    transition: box-shadow 0.2s ease;
+  }
+
+  .card:hover {
+    box-shadow: 0 4px 20px rgba(61, 58, 54, 0.08);
+  }
+
+  .card-label {
+    position: absolute;
+    top: 1rem;
+    left: 1.25rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-stone);
+  }
+
+  .card-number {
+    position: absolute;
+    top: 0.875rem;
+    right: 1.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-sand);
+    font-family: 'Inter', sans-serif;
+  }
+
+  .subtitle {
+    margin-top: 0.75rem;
+    font-size: 0.9375rem;
+    color: var(--color-drift);
+    letter-spacing: 0.01em;
+    font-weight: 400;
+  }
+
+  .subtitle-serif {
+    font-family: 'Lora', serif;
+    font-style: italic;
+  }
+
+  /* --- Variant 1: Current (all lowercase serif) --- */
+  .v1-logo {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 3.25rem;
+    color: var(--color-charcoal);
+  }
+
+  /* --- Variant 2: myRadOne camelCase --- */
+  .v2-logo {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 3.25rem;
+    color: var(--color-charcoal);
+  }
+  .v2-logo .rad {
+    color: var(--color-amber);
+  }
+  .v2-logo .one {
+    color: var(--color-amber);
+  }
+
+  /* --- Variant 3: myRadONE --- */
+  .v3-logo {
+    font-family: 'Lora', serif;
+    font-size: 3.25rem;
+    color: var(--color-charcoal);
+  }
+  .v3-logo .my {
+    font-weight: 400;
+  }
+  .v3-logo .rad {
+    font-weight: 700;
+    color: var(--color-charcoal);
+  }
+  .v3-logo .one {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--color-amber);
+  }
+
+  /* --- Variant 4: myrad.one with dot --- */
+  .v4-logo {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 3.25rem;
+    color: var(--color-charcoal);
+  }
+  .v4-logo .dot {
+    color: var(--color-amber);
+    margin: 0 -0.05em;
+  }
+  .v4-logo .one {
+    color: var(--color-amber);
+  }
+
+  /* --- Variant 5: MYRADONE all caps spaced --- */
+  .v5-logo {
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
+    font-size: 2.5rem;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--color-charcoal);
+  }
+
+  /* --- Variant 6: Three-color split --- */
+  .v6-logo {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 3.25rem;
+  }
+  .v6-logo .my {
+    color: var(--color-drift);
+  }
+  .v6-logo .rad {
+    color: var(--color-charcoal);
+  }
+  .v6-logo .one {
+    color: var(--color-amber);
+  }
+
+  /* --- Variant 7: Mixed fonts (serif + sans) --- */
+  .v7-logo {
+    font-size: 3.25rem;
+  }
+  .v7-logo .my {
+    font-family: 'Lora', serif;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--color-ash);
+  }
+  .v7-logo .rad {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: var(--color-charcoal);
+    text-transform: uppercase;
+    font-size: 0.85em;
+    letter-spacing: 0.02em;
+  }
+  .v7-logo .one {
+    font-family: 'Lora', serif;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--color-ash);
+  }
+
+  /* --- Variant 8: Weight contrast --- */
+  .v8-logo {
+    font-family: 'Inter', sans-serif;
+    font-size: 3rem;
+  }
+  .v8-logo .my {
+    font-weight: 300;
+    color: var(--color-drift);
+  }
+  .v8-logo .rad {
+    font-weight: 700;
+    color: var(--color-charcoal);
+    letter-spacing: -0.01em;
+  }
+  .v8-logo .one {
+    font-weight: 300;
+    color: var(--color-drift);
+  }
+
+  /* --- Variant 9: ONE on pill badge --- */
+  .v9-logo {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 3.25rem;
+    color: var(--color-charcoal);
+    display: flex;
+    align-items: center;
+    gap: 0.15em;
+  }
+  .v9-logo .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 0.45em;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #FFFFFF;
+    background: var(--color-amber);
+    padding: 0.2em 0.55em;
+    border-radius: 6px;
+    position: relative;
+    top: -0.05em;
+  }
+
+  /* --- Variant 10: myRadONE bold sans with green ONE --- */
+  .v10-logo {
+    font-family: 'Inter', sans-serif;
+    font-size: 3rem;
+    display: flex;
+    align-items: baseline;
+  }
+  .v10-logo .my {
+    font-weight: 400;
+    color: var(--color-ash);
+  }
+  .v10-logo .rad {
+    font-weight: 600;
+    color: var(--color-charcoal);
+  }
+  .v10-logo .one {
+    font-weight: 800;
+    color: var(--color-amber);
+    letter-spacing: 0.02em;
+  }
+
+  /* --- Variant 11: Playfair Display, elegant --- */
+  .v11-logo {
+    font-family: 'Playfair Display', serif;
+    font-weight: 800;
+    font-size: 3.5rem;
+    color: var(--color-charcoal);
+    letter-spacing: -0.02em;
+  }
+  .v11-logo .one {
+    color: var(--color-amber);
+  }
+
+  /* --- Variant 12: myRadONE with underline accent --- */
+  .v12-logo {
+    font-family: 'Lora', serif;
+    font-size: 3.25rem;
+    color: var(--color-charcoal);
+    position: relative;
+  }
+  .v12-logo .my {
+    font-weight: 400;
+    color: var(--color-ash);
+  }
+  .v12-logo .rad {
+    font-weight: 700;
+  }
+  .v12-logo .one-wrap {
+    position: relative;
+    display: inline-block;
+  }
+  .v12-logo .one-wrap .one {
+    font-weight: 700;
+    color: var(--color-amber);
+  }
+  .v12-logo .one-wrap::after {
+    content: '';
+    position: absolute;
+    bottom: 0.05em;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--color-emerald);
+    border-radius: 2px;
+    opacity: 0.5;
+  }
+
+  /* --- Dark variant preview --- */
+  .card-dark {
+    background: #161E17;
+    border-color: #1C261E;
+  }
+
+  .card-dark .card-label,
+  .card-dark .card-number {
+    color: rgba(255,255,255,0.25);
+  }
+
+  .card-dark .subtitle {
+    color: rgba(255,255,255,0.4);
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Logo Explorations</h1>
+  <p>Wordmark treatments for the myradone medical imaging library. Exploring capitalization, color splits, font mixing, and emphasis.</p>
+</div>
+
+<div class="grid">
+
+  <!-- 1. Current: all lowercase -->
+  <div class="card">
+    <span class="card-label">Current</span>
+    <span class="card-number">01</span>
+    <div class="v1-logo">myradone</div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 2. myRadOne camelCase, color split -->
+  <div class="card">
+    <span class="card-label">CamelCase + color split</span>
+    <span class="card-number">02</span>
+    <div class="v2-logo">my<span class="rad">Rad</span><span class="one">One</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 3. myRadONE mixed fonts -->
+  <div class="card">
+    <span class="card-label">Mixed fonts + bold ONE</span>
+    <span class="card-number">03</span>
+    <div class="v3-logo"><span class="my">my</span><span class="rad">Rad</span><span class="one">ONE</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 4. myrad.one -->
+  <div class="card">
+    <span class="card-label">Dot separator</span>
+    <span class="card-number">04</span>
+    <div class="v4-logo">myrad<span class="dot">.</span><span class="one">one</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 5. MYRADONE all caps light -->
+  <div class="card">
+    <span class="card-label">All caps, light weight</span>
+    <span class="card-number">05</span>
+    <div class="v5-logo">myradone</div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 6. Three-color split -->
+  <div class="card">
+    <span class="card-label">Three-color split</span>
+    <span class="card-number">06</span>
+    <div class="v6-logo"><span class="my">my</span><span class="rad">rad</span><span class="one">one</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 7. Mixed serif + sans -->
+  <div class="card">
+    <span class="card-label">Italic serif + bold sans</span>
+    <span class="card-number">07</span>
+    <div class="v7-logo"><span class="my">my</span><span class="rad">RAD</span><span class="one">one</span></div>
+    <div class="subtitle subtitle-serif">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 8. Weight contrast (Inter) -->
+  <div class="card">
+    <span class="card-label">Weight contrast, sans-serif</span>
+    <span class="card-number">08</span>
+    <div class="v8-logo"><span class="my">my</span><span class="rad">rad</span><span class="one">one</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 9. myrad + ONE pill -->
+  <div class="card">
+    <span class="card-label">Pill badge</span>
+    <span class="card-number">09</span>
+    <div class="v9-logo">myrad<span class="pill">ONE</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 10. myRadONE sans-serif, green emphasis -->
+  <div class="card">
+    <span class="card-label">Sans-serif, green emphasis</span>
+    <span class="card-number">10</span>
+    <div class="v10-logo"><span class="my">my</span><span class="rad">Rad</span><span class="one">ONE</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 11. Playfair Display -->
+  <div class="card">
+    <span class="card-label">Playfair Display, heavy</span>
+    <span class="card-number">11</span>
+    <div class="v11-logo">myRad<span class="one">ONE</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 12. Underline accent on ONE -->
+  <div class="card">
+    <span class="card-label">Underline accent</span>
+    <span class="card-number">12</span>
+    <div class="v12-logo"><span class="my">my</span><span class="rad">Rad</span><span class="one-wrap"><span class="one">ONE</span></span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 3 on dark background -->
+  <div class="card card-dark">
+    <span class="card-label">Variant 03 on viewer dark</span>
+    <span class="card-number">13</span>
+    <div class="v3-logo"><span class="my" style="color:rgba(255,255,255,0.6)">my</span><span class="rad" style="color:#F5A83A">Rad</span><span class="one" style="color:#F08C00">ONE</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+  <!-- 11 on dark background -->
+  <div class="card card-dark">
+    <span class="card-label">Variant 11 on viewer dark</span>
+    <span class="card-number">14</span>
+    <div class="v11-logo" style="color:rgba(255,255,255,0.9)">myRad<span class="one" style="color:#F08C00">ONE</span></div>
+    <div class="subtitle">ONE place for all your medical imaging</div>
+  </div>
+
+</div>
+
+</body>
+</html>
