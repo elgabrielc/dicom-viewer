@@ -14,6 +14,8 @@
     const DESKTOP_PATH_QUEUE_LOW_WATER_MARK = 256;
     const DESKTOP_PATH_READ_ATTEMPTS = 3;
     const DESKTOP_PATH_READ_RETRY_DELAY_MS = 50;
+    const DESKTOP_DESKTOP_LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
+    const DESKTOP_MAX_CONCURRENT_LARGE_READS = 2;
     const DESKTOP_SCAN_HEADER_BYTES = 256 * 1024;
     const DESKTOP_SCAN_HEADER_READ_SIZES = Object.freeze([
         64 * 1024,
@@ -542,6 +544,7 @@
                 cached.meta = JSON.parse(cached.metaJson);
                 cached.metaJson = null;
             } catch {
+                cached.metaJson = null;
                 return null;
             }
         }
@@ -1068,21 +1071,19 @@
 
         // Gate for large-file full-read fallbacks to avoid concurrent multi-MB reads
         let activeLargeReads = 0;
-        const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
-        const MAX_LARGE_READS = 2;
         const largeReadWaiters = [];
 
         async function acquireLargeReadSlot(size) {
-            if (size <= LARGE_FILE_THRESHOLD) return;
-            while (activeLargeReads >= MAX_LARGE_READS) {
+            if (size <= DESKTOP_LARGE_FILE_THRESHOLD) return;
+            while (activeLargeReads >= DESKTOP_MAX_CONCURRENT_LARGE_READS) {
                 await new Promise(r => largeReadWaiters.push(r));
             }
             activeLargeReads++;
         }
 
         function releaseLargeReadSlot(size) {
-            if (size <= LARGE_FILE_THRESHOLD) return;
-            activeLargeReads--;
+            if (size <= DESKTOP_LARGE_FILE_THRESHOLD) return;
+            activeLargeReads = Math.max(0, activeLargeReads - 1);
             if (largeReadWaiters.length) largeReadWaiters.shift()();
         }
         let scanError = null;
@@ -1252,13 +1253,13 @@
                         await waitForQueueCapacity();
                     }
                 }
-                manifestEntries.length = 0;
             } catch (error) {
                 scanError = error;
                 wakeQueuedWorkers();
                 wakeQueueDrainWaiters();
                 throw error;
             } finally {
+                manifestEntries.length = 0;
                 walkingComplete = true;
                 wakeQueuedWorkers();
             }
