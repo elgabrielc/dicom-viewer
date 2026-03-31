@@ -26,7 +26,7 @@
                 this._map.delete(key);
             }
             this._map.set(key, value);
-            while (this._map.size > this._maxSize) {
+            if (this._map.size > this._maxSize) {
                 const oldest = this._map.keys().next().value;
                 this._map.delete(oldest);
             }

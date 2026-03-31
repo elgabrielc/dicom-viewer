@@ -219,8 +219,8 @@
         }
         if (typeof value === 'string') {
             // Redact absolute paths to filename only (may contain patient names in directory structure)
-            if (value.startsWith('/') && value.includes('/', 1)) {
-                return '.../' + value.split('/').pop();
+            if ((value.startsWith('/') && value.includes('/', 1)) || /^[A-Z]:\\/.test(value)) {
+                return '.../' + value.split(/[\\/]/).pop();
             }
             return value;
         }
@@ -1012,6 +1012,25 @@
         });
     }
 
+    async function tryNativeFallback(dataSet, slice, frameIndex, jsFailure, jsStage, jsMessage, traceOutcome, jsDecoderKind) {
+        traceOutcome('decode-fallback', {
+            from: jsDecoderKind,
+            to: 'native',
+            jsErrorStage: jsStage,
+            jsErrorMessage: jsMessage
+        });
+        const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(
+            () => decodeNative(dataSet, slice.source.path, frameIndex)
+        );
+        if (nativeDecoded) {
+            traceDecodeResult(traceOutcome, 'native', nativeDecoded);
+            return nativeDecoded;
+        }
+        const fallback = buildFallbackDecodeError(dataSet, jsFailure, nativeFallbackError);
+        traceFallbackError(traceOutcome, 'native', fallback);
+        return fallback;
+    }
+
     async function decodeWithFallback(dataSet, frameIndex = 0, slice = null) {
         const transferSyntax = getString(dataSet, 'x00020010');
         const modality = getString(dataSet, 'x00080060');
@@ -1143,22 +1162,12 @@
                 return fallback;
             }
 
-            traceOutcome('decode-fallback', {
-                from: jsDecoderKind,
-                to: 'native',
-                jsErrorStage: jsDecoded?.stage || null,
-                jsErrorMessage: jsDecoded?.errorDetails || jsDecoded?.errorMessage || null
-            });
-            const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(
-                () => decodeNative(dataSet, slice.source.path, frameIndex)
+            return tryNativeFallback(
+                dataSet, slice, frameIndex, jsDecoded,
+                jsDecoded?.stage || null,
+                jsDecoded?.errorDetails || jsDecoded?.errorMessage || null,
+                traceOutcome, jsDecoderKind
             );
-            if (nativeDecoded) {
-                traceDecodeResult(traceOutcome, 'native', nativeDecoded);
-                return nativeDecoded;
-            }
-            const fallback = buildFallbackDecodeError(dataSet, jsDecoded, nativeFallbackError);
-            traceFallbackError(traceOutcome, 'native', fallback);
-            return fallback;
         }
 
         // JS decode threw an exception
@@ -1168,22 +1177,12 @@
             return fallback;
         }
 
-        traceOutcome('decode-fallback', {
-            from: jsDecoderKind,
-            to: 'native',
-            jsErrorStage: getDecodeFailureStage(jsError),
-            jsErrorMessage: getDecodeFailureMessage(jsError)
-        });
-        const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(
-            () => decodeNative(dataSet, slice.source.path, frameIndex)
+        return tryNativeFallback(
+            dataSet, slice, frameIndex, jsError,
+            getDecodeFailureStage(jsError),
+            getDecodeFailureMessage(jsError),
+            traceOutcome, jsDecoderKind
         );
-        if (nativeDecoded) {
-            traceDecodeResult(traceOutcome, 'native', nativeDecoded);
-            return nativeDecoded;
-        }
-        const fallback = buildFallbackDecodeError(dataSet, jsError, nativeFallbackError);
-        traceFallbackError(traceOutcome, 'native', fallback);
-        return fallback;
     }
 
     async function decodeDesktopPathWithHeader(dataSet, frameIndex = 0, slice = null) {

@@ -144,20 +144,10 @@
     }
 
     function rememberSharedPathDataSet(path, entry) {
-        if (!path) {
-            return entry;
-        }
-
-        if (sharedPathDataSets.has(path)) {
-            sharedPathDataSets.delete(path);
-        }
+        if (!path) return entry;
+        // MAX_SHARED_PATH_DATASETS is 1, so just keep the latest
+        sharedPathDataSets.clear();
         sharedPathDataSets.set(path, entry);
-
-        while (sharedPathDataSets.size > MAX_SHARED_PATH_DATASETS) {
-            const oldest = sharedPathDataSets.keys().next().value;
-            sharedPathDataSets.delete(oldest);
-        }
-
         return entry;
     }
 
@@ -706,10 +696,6 @@
         }
     }
 
-    function openViewerWithSeries(studyUid, seriesUid) {
-        openViewer(studyUid, seriesUid);
-    }
-
     function closeViewer() {
         beginLoadGeneration();
         viewerView.style.display = 'none';
@@ -729,7 +715,6 @@
         closeViewer,
         loadSlice,
         openViewer,
-        openViewerWithSeries,
         selectSeries
     };
 })();
