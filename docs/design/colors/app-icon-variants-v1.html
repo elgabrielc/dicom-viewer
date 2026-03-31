@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myradone — App Icon Explorations</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --color-light:     #FFF8F3;
+    --color-dawn:      #F2F0E2;
+    --color-sand:      #E5E0D4;
+    --color-stone:     #C4BFB3;
+    --color-drift:     #A09B8F;
+    --color-ash:       #6B6660;
+    --color-charcoal:  #3D3A36;
+    --color-night:     #1E1C1A;
+    --color-amber:     #F08C00;
+    --color-amber-300: #F5A83A;
+    --color-amber-500: #D67D00;
+    --color-amber-600: #B26800;
+    --color-amber-700: #864E00;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--color-light);
+    color: var(--color-charcoal);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 3rem 2rem 6rem;
+  }
+
+  .page-header {
+    max-width: 1200px;
+    margin: 0 auto 2rem;
+  }
+
+  .page-header h1 {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    color: var(--color-charcoal);
+    margin-bottom: 0.25rem;
+  }
+
+  .page-header p {
+    font-size: 0.875rem;
+    color: var(--color-drift);
+    max-width: 540px;
+    line-height: 1.5;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 2.5rem 2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(61, 58, 54, 0.04);
+    border: 1px solid var(--color-dawn);
+    transition: box-shadow 0.2s ease;
+  }
+
+  .card:hover {
+    box-shadow: 0 4px 20px rgba(61, 58, 54, 0.08);
+  }
+
+  .card-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-stone);
+    margin-bottom: 1.5rem;
+  }
+
+  .icon-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  /* macOS-style rounded rect with squircle approximation */
+  .icon {
+    border-radius: 22%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    /* subtle macOS-like shadow */
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.12),
+      0 1px 2px rgba(0,0,0,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.1);
+  }
+
+  .icon-lg { width: 128px; height: 128px; }
+  .icon-md { width: 64px; height: 64px; }
+  .icon-sm { width: 32px; height: 32px; }
+
+  .desc {
+    font-size: 0.75rem;
+    color: var(--color-drift);
+    text-align: center;
+    line-height: 1.4;
+    max-width: 220px;
+  }
+
+  /* --- Dock preview --- */
+  .dock-section {
+    max-width: 1200px;
+    margin: 3rem auto 0;
+  }
+
+  .dock-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-stone);
+    text-align: center;
+    margin-bottom: 1rem;
+  }
+
+  .dock {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(30, 28, 26, 0.08);
+    backdrop-filter: blur(20px);
+    padding: 6px 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(30, 28, 26, 0.06);
+    max-width: fit-content;
+    margin: 0 auto;
+  }
+
+  .dock .icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+  }
+
+  .dock-placeholder {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    background: rgba(30, 28, 26, 0.06);
+  }
+
+  /* ========================================
+     ICON STYLES
+     ======================================== */
+
+  /* 1. Warm gradient bg, charcoal "m1" */
+  .icon-v1 {
+    background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%);
+  }
+  .icon-v1 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-charcoal);
+  }
+  .icon-v1 .mark span {
+    color: var(--color-amber);
+  }
+  .icon-lg.icon-v1 .mark { font-size: 3.2rem; }
+  .icon-md.icon-v1 .mark { font-size: 1.6rem; }
+  .icon-sm.icon-v1 .mark { font-size: 0.8rem; }
+
+  /* 2. Amber gradient bg, white "m" */
+  .icon-v2 {
+    background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%);
+  }
+  .icon-v2 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: #FFFFFF;
+  }
+  .icon-lg.icon-v2 .mark { font-size: 4.5rem; }
+  .icon-md.icon-v2 .mark { font-size: 2.25rem; }
+  .icon-sm.icon-v2 .mark { font-size: 1.1rem; }
+
+  /* 3. Charcoal bg, amber "m1" */
+  .icon-v3 {
+    background: linear-gradient(145deg, #4A4540 0%, #3D3A36 50%, #2E2B28 100%);
+  }
+  .icon-v3 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-amber);
+  }
+  .icon-lg.icon-v3 .mark { font-size: 3.2rem; }
+  .icon-md.icon-v3 .mark { font-size: 1.6rem; }
+  .icon-sm.icon-v3 .mark { font-size: 0.8rem; }
+
+  /* 4. Amber bg, charcoal medical cross / "m" */
+  .icon-v4 {
+    background: linear-gradient(145deg, #F5A83A 0%, #F08C00 100%);
+  }
+  .icon-v4 .mark {
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    color: var(--color-charcoal);
+    letter-spacing: -0.02em;
+  }
+  .icon-lg.icon-v4 .mark { font-size: 4rem; }
+  .icon-md.icon-v4 .mark { font-size: 2rem; }
+  .icon-sm.icon-v4 .mark { font-size: 1rem; }
+
+  /* 5. Dark emerald bg (viewer), amber mark */
+  .icon-v5 {
+    background: linear-gradient(145deg, #1C261E 0%, #0F1E14 100%);
+  }
+  .icon-v5 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-amber);
+  }
+  .icon-lg.icon-v5 .mark { font-size: 3.2rem; }
+  .icon-md.icon-v5 .mark { font-size: 1.6rem; }
+  .icon-sm.icon-v5 .mark { font-size: 0.8rem; }
+
+  /* 6. White bg, amber wordmark */
+  .icon-v6 {
+    background: #FFFFFF;
+    border: 1px solid var(--color-dawn);
+  }
+  .icon-v6 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-charcoal);
+    letter-spacing: -0.03em;
+  }
+  .icon-v6 .mark span {
+    font-style: italic;
+    color: var(--color-amber);
+  }
+  .icon-lg.icon-v6 .mark { font-size: 2rem; }
+  .icon-md.icon-v6 .mark { font-size: 1rem; }
+  .icon-sm.icon-v6 .mark { font-size: 0.5rem; }
+
+  /* 7. Amber gradient, white SVG diverge mark */
+  .icon-v7 {
+    background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%);
+  }
+
+  /* 8. Charcoal bg, amber SVG diverge mark */
+  .icon-v8 {
+    background: linear-gradient(145deg, #4A4540 0%, #3D3A36 50%, #2E2B28 100%);
+  }
+
+  /* 9. Warm bg, amber "1" large */
+  .icon-v9 {
+    background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%);
+  }
+  .icon-v9 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-amber);
+  }
+  .icon-lg.icon-v9 .mark { font-size: 5rem; }
+  .icon-md.icon-v9 .mark { font-size: 2.5rem; }
+  .icon-sm.icon-v9 .mark { font-size: 1.25rem; }
+
+  /* 10. Amber gradient, white italic "one" */
+  .icon-v10 {
+    background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%);
+  }
+  .icon-v10 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-style: italic;
+    color: #FFFFFF;
+  }
+  .icon-lg.icon-v10 .mark { font-size: 2.8rem; }
+  .icon-md.icon-v10 .mark { font-size: 1.4rem; }
+  .icon-sm.icon-v10 .mark { font-size: 0.7rem; }
+
+  /* 11. Charcoal bg, stacked "my" over "rad" over "one" */
+  .icon-v11 {
+    background: linear-gradient(145deg, #4A4540 0%, #3D3A36 50%, #2E2B28 100%);
+  }
+  .icon-v11 .mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 0.95;
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-dawn);
+  }
+  .icon-v11 .mark .accent { color: var(--color-amber); }
+  .icon-lg.icon-v11 .mark { font-size: 1.65rem; }
+  .icon-md.icon-v11 .mark { font-size: 0.82rem; }
+  .icon-sm.icon-v11 .mark { font-size: 0.42rem; }
+
+  /* 12. Night bg, amber ring + "m" */
+  .icon-v12 {
+    background: var(--color-night);
+  }
+  .icon-v12 .ring {
+    width: 65%;
+    height: 65%;
+    border: 3px solid var(--color-amber);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .icon-v12 .mark {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    color: var(--color-amber);
+  }
+  .icon-lg .ring { border-width: 3px; }
+  .icon-md .ring { border-width: 2px; }
+  .icon-sm .ring { border-width: 1.5px; }
+  .icon-lg.icon-v12 .mark { font-size: 2.8rem; }
+  .icon-md.icon-v12 .mark { font-size: 1.4rem; }
+  .icon-sm.icon-v12 .mark { font-size: 0.7rem; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>App Icon Explorations</h1>
+  <p>macOS dock icon for myradone. Shown at 128, 64, and 32px. Icons need to read clearly at small sizes and feel at home next to native macOS apps.</p>
+</div>
+
+<div class="grid">
+
+  <!-- 1. Warm bg, "m1" charcoal + amber -->
+  <div class="card">
+    <div class="card-label">Warm bg, "m1" lettermark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v1"><span class="mark">m<span>1</span></span></div>
+      <div class="icon icon-md icon-v1"><span class="mark">m<span>1</span></span></div>
+      <div class="icon icon-sm icon-v1"><span class="mark">m<span>1</span></span></div>
+    </div>
+    <div class="desc">"m" for myrad, "1" for one. Warm background matches the library view.</div>
+  </div>
+
+  <!-- 2. Amber gradient, white "m" -->
+  <div class="card">
+    <div class="card-label">Amber gradient, white "m"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v2"><span class="mark">m</span></div>
+      <div class="icon icon-md icon-v2"><span class="mark">m</span></div>
+      <div class="icon icon-sm icon-v2"><span class="mark">m</span></div>
+    </div>
+    <div class="desc">Bold amber presence. Single letter. Stands out in the dock like Music or Maps.</div>
+  </div>
+
+  <!-- 3. Charcoal bg, amber "m1" -->
+  <div class="card">
+    <div class="card-label">Charcoal bg, amber "m1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v3"><span class="mark">m1</span></div>
+      <div class="icon icon-md icon-v3"><span class="mark">m1</span></div>
+      <div class="icon icon-sm icon-v3"><span class="mark">m1</span></div>
+    </div>
+    <div class="desc">Dark and professional. Reads as a tool, not a toy.</div>
+  </div>
+
+  <!-- 4. Amber bg, charcoal "M" sans-serif -->
+  <div class="card">
+    <div class="card-label">Amber bg, bold sans "M"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v4"><span class="mark">M</span></div>
+      <div class="icon icon-md icon-v4"><span class="mark">M</span></div>
+      <div class="icon icon-sm icon-v4"><span class="mark">M</span></div>
+    </div>
+    <div class="desc">Capital M in Inter Black. Punchy, no ambiguity at any size.</div>
+  </div>
+
+  <!-- 5. Dark emerald, amber mark -->
+  <div class="card">
+    <div class="card-label">Viewer dark, amber mark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v5"><span class="mark">m1</span></div>
+      <div class="icon icon-md icon-v5"><span class="mark">m1</span></div>
+      <div class="icon icon-sm icon-v5"><span class="mark">m1</span></div>
+    </div>
+    <div class="desc">Uses the viewer's emerald-dark background. Medical imaging feel.</div>
+  </div>
+
+  <!-- 6. White bg, "myradone" micro wordmark -->
+  <div class="card">
+    <div class="card-label">White, micro wordmark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v6"><span class="mark">myrad<span>one</span></span></div>
+      <div class="icon icon-md icon-v6"><span class="mark">myrad<span>one</span></span></div>
+      <div class="icon icon-sm icon-v6"><span class="mark">myrad<span>one</span></span></div>
+    </div>
+    <div class="desc">Full wordmark. Legible at 128, might blur at 32. Clean and literal.</div>
+  </div>
+
+  <!-- 7. Amber gradient, diverge SVG mark -->
+  <div class="card">
+    <div class="card-label">Amber gradient, diverge mark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v7">
+        <svg viewBox="0 0 80 80" width="72" height="72" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="58,46 68,52 58,58" stroke="#FFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="54,20 64,20 62,30" stroke="#FFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-md icon-v7">
+        <svg viewBox="0 0 80 80" width="36" height="36" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="5" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="5" stroke-linecap="round"/>
+          <polyline points="58,46 68,52 58,58" stroke="#FFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="5" stroke-linecap="round"/>
+          <polyline points="54,20 64,20 62,30" stroke="#FFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-sm icon-v7">
+        <svg viewBox="0 0 80 80" width="18" height="18" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="desc">Divergent Health path-diverge mark on amber. Ties to the parent brand.</div>
+  </div>
+
+  <!-- 8. Charcoal bg, amber diverge SVG -->
+  <div class="card">
+    <div class="card-label">Charcoal, amber diverge mark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v8">
+        <svg viewBox="0 0 80 80" width="72" height="72" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#F08C00" stroke-width="4" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#F08C00" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="58,46 68,52 58,58" stroke="#F08C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#F08C00" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="54,20 64,20 62,30" stroke="#F08C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-md icon-v8">
+        <svg viewBox="0 0 80 80" width="36" height="36" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#F08C00" stroke-width="5" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#F08C00" stroke-width="5" stroke-linecap="round"/>
+          <polyline points="58,46 68,52 58,58" stroke="#F08C00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#F08C00" stroke-width="5" stroke-linecap="round"/>
+          <polyline points="54,20 64,20 62,30" stroke="#F08C00" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-sm icon-v8">
+        <svg viewBox="0 0 80 80" width="18" height="18" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#F08C00" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#F08C00" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#F08C00" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="desc">Same diverge mark but on charcoal. More serious, less playful.</div>
+  </div>
+
+  <!-- 9. Warm bg, large "1" -->
+  <div class="card">
+    <div class="card-label">Warm bg, bold amber "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v9"><span class="mark">1</span></div>
+      <div class="icon icon-md icon-v9"><span class="mark">1</span></div>
+      <div class="icon icon-sm icon-v9"><span class="mark">1</span></div>
+    </div>
+    <div class="desc">"ONE" distilled to its purest form. The "1" is the brand promise.</div>
+  </div>
+
+  <!-- 10. Amber gradient, italic "one" -->
+  <div class="card">
+    <div class="card-label">Amber gradient, italic "one"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v10"><span class="mark">one</span></div>
+      <div class="icon icon-md icon-v10"><span class="mark">one</span></div>
+      <div class="icon icon-sm icon-v10"><span class="mark">one</span></div>
+    </div>
+    <div class="desc">Italic serif "one" on amber. Warm, confident, recognizable.</div>
+  </div>
+
+  <!-- 11. Charcoal, stacked wordmark -->
+  <div class="card">
+    <div class="card-label">Charcoal, stacked wordmark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v11">
+        <span class="mark"><span>my</span><span>rad</span><span class="accent">one</span></span>
+      </div>
+      <div class="icon icon-md icon-v11">
+        <span class="mark"><span>my</span><span>rad</span><span class="accent">one</span></span>
+      </div>
+      <div class="icon icon-sm icon-v11">
+        <span class="mark"><span>my</span><span>rad</span><span class="accent">one</span></span>
+      </div>
+    </div>
+    <div class="desc">Full brand stacked vertically. Amber "one" anchors it. Compact at small sizes.</div>
+  </div>
+
+  <!-- 12. Night bg, amber ring + "m" -->
+  <div class="card">
+    <div class="card-label">Night bg, amber ring + "m"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-v12"><div class="ring"><span class="mark">m</span></div></div>
+      <div class="icon icon-md icon-v12"><div class="ring"><span class="mark">m</span></div></div>
+      <div class="icon icon-sm icon-v12"><div class="ring"><span class="mark">m</span></div></div>
+    </div>
+    <div class="desc">Ring evokes a medical/diagnostic feel. Minimal, distinguished.</div>
+  </div>
+
+</div>
+
+<!-- Dock preview -->
+<div class="dock-section">
+  <div class="dock-label">Dock Preview (52px)</div>
+  <div class="dock">
+    <div class="dock-placeholder"></div>
+    <div class="dock-placeholder"></div>
+    <div class="icon icon-v2" style="width:52px;height:52px;border-radius:12px;font-size:1.8rem;"><span class="mark" style="font-family:'Lora',serif;font-weight:700;color:#FFF;">m</span></div>
+    <div class="dock-placeholder"></div>
+    <div class="icon icon-v3" style="width:52px;height:52px;border-radius:12px;"><span class="mark" style="font-family:'Lora',serif;font-weight:700;color:#F08C00;font-size:1.4rem;">m1</span></div>
+    <div class="dock-placeholder"></div>
+    <div class="icon icon-v7" style="width:52px;height:52px;border-radius:12px;">
+      <svg viewBox="0 0 80 80" width="30" height="30" fill="none">
+        <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="6" stroke-linecap="round"/>
+        <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="6" stroke-linecap="round"/>
+        <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="6" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="dock-placeholder"></div>
+    <div class="icon icon-v9" style="width:52px;height:52px;border-radius:12px;"><span class="mark" style="font-family:'Lora',serif;font-weight:700;color:#F08C00;font-size:2rem;">1</span></div>
+    <div class="dock-placeholder"></div>
+    <div class="icon icon-v10" style="width:52px;height:52px;border-radius:12px;"><span class="mark" style="font-family:'Lora',serif;font-weight:700;font-style:italic;color:#FFF;font-size:1.2rem;">one</span></div>
+    <div class="dock-placeholder"></div>
+    <div class="dock-placeholder"></div>
+  </div>
+</div>
+
+</body>
+</html>

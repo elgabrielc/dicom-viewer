@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divergent Health — Brand Archive</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Copyright (c) 2026 Divergent Health Technologies -->
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #FFF8F3;
+            --nav-bg: #FFFFFF;
+            --border: #F2F0E2;
+            --text: #3D3A36;
+            --text-dim: #6B6660;
+            --text-muted: #A09B8F;
+            --accent: #F08C00;
+            --sans: 'Inter', system-ui, sans-serif;
+        }
+
+        html, body {
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top bar */
+        .archive-header {
+            background: var(--nav-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 1.2rem 2rem 0;
+            flex-shrink: 0;
+        }
+
+        .archive-title {
+            display: flex;
+            align-items: baseline;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .archive-title h1 {
+            font-size: 0.72rem;
+            font-weight: 500;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+        }
+
+        .archive-title span {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+        }
+
+        .tab {
+            padding: 0.7rem 1.5rem;
+            font-family: var(--sans);
+            font-size: 0.75rem;
+            font-weight: 400;
+            letter-spacing: 0.03em;
+            color: var(--text-muted);
+            background: none;
+            border: 1px solid transparent;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            top: 1px;
+        }
+
+        .tab:hover {
+            color: var(--text-dim);
+        }
+
+        .tab.active {
+            color: var(--text);
+            background: var(--bg);
+            border-color: var(--border);
+        }
+
+        .tab .tab-date {
+            display: block;
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        .tab .tab-rejected {
+            display: inline-block;
+            font-size: 0.55rem;
+            color: #B26800;
+            background: rgba(240, 140, 0, 0.1);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            margin-left: 0.3rem;
+            vertical-align: middle;
+        }
+
+        /* Section switcher */
+        .section-switcher {
+            display: flex;
+            gap: 0;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-btn {
+            padding: 0.5rem 1.2rem;
+            font-family: var(--sans);
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            background: none;
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .section-btn:first-child { border-radius: 4px 0 0 4px; }
+        .section-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+
+        .section-btn.active {
+            color: var(--text);
+            background: var(--border);
+        }
+
+        .tabs-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .tabs {
+            min-width: max-content;
+        }
+
+        /* Context bar below tabs */
+        .context-bar {
+            background: var(--nav-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 0.8rem 2rem;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            flex-shrink: 0;
+            min-height: 2.5rem;
+        }
+
+        /* Iframe container */
+        .frame-container {
+            flex: 1;
+            position: relative;
+        }
+
+        .frame-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: var(--bg);
+        }
+
+        /* Keyboard hint */
+        .key-hint {
+            position: fixed;
+            bottom: 1rem;
+            right: 1.5rem;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            letter-spacing: 0.04em;
+            opacity: 0.6;
+        }
+
+        .key-hint kbd {
+            display: inline-block;
+            padding: 0.15rem 0.4rem;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            font-family: var(--sans);
+            font-size: 0.6rem;
+            margin: 0 0.1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="archive-header">
+        <div class="archive-title">
+            <h1>Brand Archive</h1>
+            <span>Divergent Health Technologies</span>
+        </div>
+        <div class="section-switcher">
+            <button class="section-btn active" data-section="current">Current</button>
+            <button class="section-btn" data-section="history">Full History</button>
+        </div>
+        <div class="tabs-container">
+            <div class="tabs" id="tabs"></div>
+        </div>
+    </div>
+
+    <div class="context-bar" id="context"></div>
+
+    <div class="frame-container">
+        <iframe id="viewer" sandbox="allow-same-origin allow-scripts"></iframe>
+    </div>
+
+    <div class="key-hint">
+        <kbd>&larr;</kbd> <kbd>&rarr;</kbd> to navigate
+    </div>
+
+    <script>
+    const sections = {
+        current: [
+            { label: 'Landing Page', date: '2026-03-27 v1', context: 'Divergent Health landing. Copy: "We think differently / So your health outcomes can be different too." Scan-line animation, amber accent, serif italic tagline.', file: 'landing.html' },
+            { label: 'Standalone Marks', date: '2026-03-31 v2', context: 'Six standalone mark concepts (A-F). Path Diverge, Ascending Break, Pulse Diverge, Growth Arrow, Arrow Fork, Track Diverge. Updated to amber/warm design system.', file: 'logos.html' },
+            { label: 'Integrated Treatments', date: '2026-03-31 v2', context: 'DIVERGENT.health with arrow underlines forking past the text. Updated to amber/warm design system.', file: 'logos-integrated.html' },
+            { label: 'Design System (Emerald)', date: '2026-03-28', context: 'Full design system tokens: neutrals, emerald greens, amber oranges, semantic colors, typography (Lora/Inter), spacing, radii, shadows.', file: '../colors/design-system-emerald.html' },
+            { label: 'myradone Logos', date: '2026-03-31 v2', context: 'Wordmark explorations: 12 variants. Capitalization, color splits, font mixing (Lora/Inter), weight contrast, pill badges. Amber accent.', file: '../colors/logo-variants-v2.html' },
+            { label: '"one" Capitalization', date: '2026-03-31 v3', context: 'Italic "one" variants: one, One, ONE, onE, oNe. Lora bold italic amber on warm and dark backgrounds.', file: '../colors/logo-variants-v3.html' },
+            { label: 'App Icons (Light)', date: '2026-03-31 v2', context: 'App icons, light backgrounds only. Lettermarks (m, m1, M), wordmarks, diverge SVG, numeral "1". Warm cream and amber gradients. Dock preview.', file: '../colors/app-icon-variants-v2.html' },
+            { label: '"mr1" Icons', date: '2026-03-31', context: '"mr1" lettermark: 12 variants across Lora/Inter, warm/amber/white backgrounds, color splits, italic, stacked, three-tone. Dock preview.', file: '../colors/app-icon-mr1.html' },
+            { label: '"mr1" Numeral Fix', date: '2026-03-31', context: 'Making "1" not look like "l". Inter, Playfair, DM Serif, oversized 1, underline, mixed fonts, size hierarchy. Dock preview.', file: '../colors/app-icon-mr1-v2.html' }
+        ],
+        history: [
+            { label: 'Landing Page', date: '2026-03-27', context: 'Original Divergent Health landing page. Dark theme, teal accent. First design artifact.', file: 'landing.html' },
+            { label: 'Standalone Marks (teal)', date: '2026-03-27', context: 'Original mark concepts in teal (#4a9e8e) on dark blue-black background. Jakarta Sans + Instrument Serif. Pre-rebrand.', file: 'logos-teal.html', note: 'Superseded by amber' },
+            { label: 'Integrated Treatments (teal)', date: '2026-03-27', context: 'Original integrated lockups in teal on dark background. Pre-rebrand. Seven iterations (v7) before color system change.', file: 'logos-integrated-teal.html', note: 'Superseded by amber' },
+            { label: 'Design System (Emerald)', date: '2026-03-28', context: 'Emerald variant of design system. Vibrant greens (#2D9B54). Selected as the green family for the design system.', file: '../colors/design-system-emerald.html' },
+            { label: 'Design System (Sage)', date: '2026-03-29', context: 'Sage variant. Muted greens (#7A9966). Warmer, more natural. Rejected in favor of emerald.', file: '../colors/design-system-sage.html', note: 'Rejected: chose emerald' },
+            { label: 'myradone Logos v1 (green)', date: '2026-03-29', context: 'First wordmark explorations. 14 variants using emerald/sage green accents. Included dark backgrounds. Pre-orange decision.', file: '../colors/logo-variants-v1-green.html', note: 'Rejected: wrong accent color' },
+            { label: 'myradone Logos v2 (amber)', date: '2026-03-31', context: 'Wordmark explorations updated to amber accent. 12 variants. Capitalization, color splits, font mixing, weight contrast, pill badges.', file: '../colors/logo-variants-v2.html' },
+            { label: '"one" Capitalization', date: '2026-03-31', context: 'Focused exploration of italic "one" capitalization after user liked variant 06 (lowercase italic). Six variants + dark previews.', file: '../colors/logo-variants-v3.html' },
+            { label: 'App Icons v1 (dark+light)', date: '2026-03-31', context: 'First icon exploration. 12 variants including dark backgrounds (charcoal, emerald-dark, night). Rejected: user said no dark backgrounds.', file: '../colors/app-icon-variants-v1.html', note: 'Rejected: dark backgrounds' },
+            { label: 'App Icons v2 (light only)', date: '2026-03-31', context: 'Icons restricted to light backgrounds. Warm cream, amber gradient, white. Lettermarks, wordmarks, diverge SVG. User selected "mr1" direction.', file: '../colors/app-icon-variants-v2.html' },
+            { label: '"mr1" Icons v1', date: '2026-03-31', context: '"mr1" lettermark: 12 variants. User liked warm Lora, amber gradient, all-amber-on-cream, and Inter variants. Noted "1" looks like "l" problem.', file: '../colors/app-icon-mr1.html' },
+            { label: '"mr1" Icons v2 (numeral fix)', date: '2026-03-31', context: 'Disambiguation round. Different fonts for "1" (Inter, Playfair, DM Serif), oversized 1, underline, mixed fonts. Current exploration.', file: '../colors/app-icon-mr1-v2.html' }
+        ]
+    };
+
+    let activeSection = 'current';
+    let currentPage = 0;
+    const tabsContainer = document.getElementById('tabs');
+    const viewer = document.getElementById('viewer');
+    const contextBar = document.getElementById('context');
+    const sectionBtns = document.querySelectorAll('.section-btn');
+
+    function renderTabs() {
+        const pages = sections[activeSection];
+        tabsContainer.innerHTML = '';
+        pages.forEach((page, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'tab' + (i === currentPage ? ' active' : '');
+            btn.dataset.page = i;
+            let html = page.label;
+            if (page.note) html += '<span class="tab-rejected">' + page.note + '</span>';
+            html += '<span class="tab-date">' + page.date + '</span>';
+            btn.innerHTML = html;
+            btn.addEventListener('click', () => showPage(i));
+            tabsContainer.appendChild(btn);
+        });
+    }
+
+    function showPage(index) {
+        const pages = sections[activeSection];
+        currentPage = Math.max(0, Math.min(index, pages.length - 1));
+        const page = pages[currentPage];
+        contextBar.textContent = page.context;
+        viewer.src = page.file;
+        tabsContainer.querySelectorAll('.tab').forEach((tab, i) => {
+            tab.classList.toggle('active', i === currentPage);
+        });
+    }
+
+    function switchSection(section) {
+        activeSection = section;
+        currentPage = 0;
+        sectionBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.section === section));
+        renderTabs();
+        showPage(0);
+    }
+
+    sectionBtns.forEach(btn => {
+        btn.addEventListener('click', () => switchSection(btn.dataset.section));
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (document.activeElement === viewer) return;
+        const pages = sections[activeSection];
+        if (e.key === 'ArrowRight' && currentPage < pages.length - 1) showPage(currentPage + 1);
+        else if (e.key === 'ArrowLeft' && currentPage > 0) showPage(currentPage - 1);
+    });
+
+    renderTabs();
+    showPage(0);
+    </script>
+
+</body>
+</html>

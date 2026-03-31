@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myradone — "mr1" Icon Variants</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #FFF8F3; color: #3D3A36; font-family: 'Inter', sans-serif; padding: 3rem 2rem 6rem; }
+
+  .page-header { max-width: 1200px; margin: 0 auto 2rem; }
+  .page-header h1 { font-family: 'Lora', serif; font-weight: 700; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .page-header p { font-size: 0.875rem; color: #A09B8F; max-width: 540px; line-height: 1.5; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2rem; max-width: 1200px; margin: 0 auto;
+  }
+
+  .card {
+    background: #FFF; border-radius: 12px; padding: 2.5rem 2rem 2rem;
+    display: flex; flex-direction: column; align-items: center;
+    box-shadow: 0 1px 3px rgba(61,58,54,0.04); border: 1px solid #F2F0E2;
+    transition: box-shadow 0.2s ease;
+  }
+  .card:hover { box-shadow: 0 4px 20px rgba(61,58,54,0.08); }
+
+  .card-label {
+    font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #C4BFB3; margin-bottom: 1.5rem;
+  }
+
+  .icon-row { display: flex; align-items: flex-end; gap: 1rem; margin-bottom: 1.25rem; }
+
+  .icon {
+    border-radius: 22%; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .icon-lg { width: 128px; height: 128px; }
+  .icon-md { width: 64px; height: 64px; }
+  .icon-sm { width: 32px; height: 32px; }
+
+  .desc { font-size: 0.75rem; color: #A09B8F; text-align: center; line-height: 1.4; max-width: 220px; }
+
+  /* Backgrounds */
+  .bg-warm { background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%); }
+  .bg-amber { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+  .bg-white { background: #FFFFFF; border: 1px solid #F2F0E2; }
+
+  /* Dock */
+  .dock-section { max-width: 1200px; margin: 3rem auto 0; }
+  .dock-label { font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: #C4BFB3; text-align: center; margin-bottom: 1rem; }
+  .dock {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: rgba(30,28,26,0.06); backdrop-filter: blur(20px);
+    padding: 6px 12px; border-radius: 18px; border: 1px solid rgba(30,28,26,0.04);
+    max-width: fit-content; margin: 0 auto;
+  }
+  .di { width: 52px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+  .dock-ph { width: 52px; height: 52px; border-radius: 12px; background: rgba(30,28,26,0.05); }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>"mr1" Icon Variants</h1>
+  <p>myrad + one = mr1. Light backgrounds only. Exploring font, weight, color splits, and sizing.</p>
+</div>
+
+<div class="grid">
+
+  <!-- 1. Warm bg, Lora, charcoal "mr" + amber "1" -->
+  <div class="card">
+    <div class="card-label">Warm, Lora "mr" + amber "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Direct parallel to "m1" but with the "r" for rad.</div>
+  </div>
+
+  <!-- 2. Amber gradient, white "mr1" -->
+  <div class="card">
+    <div class="card-label">Amber gradient, white "mr1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#FFF;">mr1</span></div>
+      <div class="icon icon-md bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#FFF;">mr1</span></div>
+      <div class="icon icon-sm bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#FFF;">mr1</span></div>
+    </div>
+    <div class="desc">All white on amber. Unified, bold.</div>
+  </div>
+
+  <!-- 3. White bg, all amber "mr1" -->
+  <div class="card">
+    <div class="card-label">White bg, amber "mr1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-white"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#F08C00;">mr1</span></div>
+      <div class="icon icon-md bg-white"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;">mr1</span></div>
+      <div class="icon icon-sm bg-white"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#F08C00;">mr1</span></div>
+    </div>
+    <div class="desc">Clean, minimal. Amber on white.</div>
+  </div>
+
+  <!-- 4. Warm bg, Inter sans, charcoal "mr" + amber "1" -->
+  <div class="card">
+    <div class="card-label">Warm, Inter "mr" + amber "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Sans-serif. Cleaner, more geometric.</div>
+  </div>
+
+  <!-- 5. Amber gradient, white Inter "MR1" caps -->
+  <div class="card">
+    <div class="card-label">Amber, Inter caps "MR1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:2.6rem;color:#FFF;letter-spacing:0.02em;">MR1</span></div>
+      <div class="icon icon-md bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.3rem;color:#FFF;letter-spacing:0.02em;">MR1</span></div>
+      <div class="icon icon-sm bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.65rem;color:#FFF;letter-spacing:0.02em;">MR1</span></div>
+    </div>
+    <div class="desc">All caps, punchy. Reads like a model number.</div>
+  </div>
+
+  <!-- 6. Warm bg, Lora, all amber -->
+  <div class="card">
+    <div class="card-label">Warm bg, all amber Lora</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#F08C00;">mr1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;">mr1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#F08C00;">mr1</span></div>
+    </div>
+    <div class="desc">All amber on warm cream. Soft, approachable.</div>
+  </div>
+
+  <!-- 7. Warm bg, "m" charcoal, "r" muted, "1" amber -->
+  <div class="card">
+    <div class="card-label">Three-tone: charcoal/ash/amber</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">m</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#A09B8F;">r</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">m</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#A09B8F;">r</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">m</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#A09B8F;">r</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Each letter gets its own shade. "1" pops.</div>
+  </div>
+
+  <!-- 8. Amber gradient, white Lora italic "mr1" -->
+  <div class="card">
+    <div class="card-label">Amber, white italic "mr1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-style:italic;font-size:3rem;color:#FFF;">mr1</span></div>
+      <div class="icon icon-md bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-style:italic;font-size:1.5rem;color:#FFF;">mr1</span></div>
+      <div class="icon icon-sm bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-style:italic;font-size:0.75rem;color:#FFF;">mr1</span></div>
+    </div>
+    <div class="desc">Italic adds energy and forward motion.</div>
+  </div>
+
+  <!-- 9. Warm bg, large "1", small "mr" above -->
+  <div class="card">
+    <div class="card-label">Warm, stacked "mr" over "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm" style="flex-direction:column;line-height:0.85;">
+        <span style="font-family:'Inter',sans-serif;font-weight:500;font-size:1.1rem;color:#6B6660;letter-spacing:0.08em;">mr</span>
+        <span style="font-family:'Lora',serif;font-weight:700;font-size:4rem;color:#F08C00;">1</span>
+      </div>
+      <div class="icon icon-md bg-warm" style="flex-direction:column;line-height:0.85;">
+        <span style="font-family:'Inter',sans-serif;font-weight:500;font-size:0.55rem;color:#6B6660;letter-spacing:0.08em;">mr</span>
+        <span style="font-family:'Lora',serif;font-weight:700;font-size:2rem;color:#F08C00;">1</span>
+      </div>
+      <div class="icon icon-sm bg-warm" style="flex-direction:column;line-height:0.85;">
+        <span style="font-family:'Inter',sans-serif;font-weight:500;font-size:0.28rem;color:#6B6660;letter-spacing:0.08em;">mr</span>
+        <span style="font-family:'Lora',serif;font-weight:700;font-size:1rem;color:#F08C00;">1</span>
+      </div>
+    </div>
+    <div class="desc">"1" dominates, "mr" is context. Hierarchy.</div>
+  </div>
+
+  <!-- 10. White bg, charcoal "mr" + amber "1", Inter -->
+  <div class="card">
+    <div class="card-label">White, Inter charcoal/amber</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-white"><span style="font-family:'Inter',sans-serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Clean white, sans-serif split.</div>
+  </div>
+
+  <!-- 11. Amber, "mr" lighter, "1" white bold -->
+  <div class="card">
+    <div class="card-label">Amber, "mr" cream + "1" white</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:rgba(255,255,255,0.6);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#FFF;">1</span></div>
+      <div class="icon icon-md bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:rgba(255,255,255,0.6);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#FFF;">1</span></div>
+      <div class="icon icon-sm bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:rgba(255,255,255,0.6);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#FFF;">1</span></div>
+    </div>
+    <div class="desc">"mr" fades back, "1" stands out. Emphasis on ONE.</div>
+  </div>
+
+  <!-- 12. Warm bg, mixed fonts: Lora "mr" + Inter "1" -->
+  <div class="card">
+    <div class="card-label">Warm, Lora "mr" + Inter "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:3rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:3rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-md bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.5rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.5rem;color:#F08C00;">1</span></div>
+      <div class="icon icon-sm bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:0.75rem;color:#3D3A36;">mr</span><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:0.75rem;color:#F08C00;">1</span></div>
+    </div>
+    <div class="desc">Serif + sans mix. "1" feels different, intentional.</div>
+  </div>
+
+</div>
+
+<!-- Dock preview -->
+<div class="dock-section">
+  <div class="dock-label">Dock Preview</div>
+  <div class="dock">
+    <div class="dock-ph"></div>
+    <div class="di bg-warm"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#3D3A36;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#F08C00;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#FFF;">mr1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-amber"><span style="font-family:'Inter',sans-serif;font-weight:800;font-size:1.1rem;color:#FFF;letter-spacing:0.02em;">MR1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-warm" style="flex-direction:column;line-height:0.85;"><span style="font-family:'Inter',sans-serif;font-weight:500;font-size:0.45rem;color:#6B6660;letter-spacing:0.08em;">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.7rem;color:#F08C00;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-amber"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:rgba(255,255,255,0.6);">mr</span><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#FFF;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di bg-white"><span style="font-family:'Lora',serif;font-weight:700;font-size:1.2rem;color:#F08C00;">mr1</span></div>
+    <div class="dock-ph"></div>
+  </div>
+</div>
+
+</body>
+</html>

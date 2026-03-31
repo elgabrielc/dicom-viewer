@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myradone — App Icon v2 (Light Only)</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #FFF8F3;
+    color: #3D3A36;
+    font-family: 'Inter', sans-serif;
+    padding: 3rem 2rem 6rem;
+  }
+
+  .page-header {
+    max-width: 1200px;
+    margin: 0 auto 2rem;
+  }
+
+  .page-header h1 {
+    font-family: 'Lora', serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .page-header p {
+    font-size: 0.875rem;
+    color: #A09B8F;
+    max-width: 540px;
+    line-height: 1.5;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 2.5rem 2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(61, 58, 54, 0.04);
+    border: 1px solid #F2F0E2;
+    transition: box-shadow 0.2s ease;
+  }
+
+  .card:hover {
+    box-shadow: 0 4px 20px rgba(61, 58, 54, 0.08);
+  }
+
+  .card-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #C4BFB3;
+    margin-bottom: 1.5rem;
+  }
+
+  .icon-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .icon {
+    border-radius: 22%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      0 2px 8px rgba(0,0,0,0.1),
+      0 1px 2px rgba(0,0,0,0.06);
+  }
+
+  .icon-lg { width: 128px; height: 128px; }
+  .icon-md { width: 64px; height: 64px; }
+  .icon-sm { width: 32px; height: 32px; }
+
+  .desc {
+    font-size: 0.75rem;
+    color: #A09B8F;
+    text-align: center;
+    line-height: 1.4;
+    max-width: 220px;
+  }
+
+  /* ==========================================
+     ALL LIGHT BACKGROUND VARIANTS
+     ========================================== */
+
+  /* -- A. Warm cream bg, charcoal "m" + amber "1" -- */
+  .icon-a { background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%); }
+  .icon-a .m { font-family: 'Lora', serif; font-weight: 700; color: #3D3A36; }
+  .icon-a .n { font-family: 'Lora', serif; font-weight: 700; color: #F08C00; }
+  .icon-lg.icon-a .m { font-size: 3.2rem; }  .icon-lg.icon-a .n { font-size: 3.2rem; }
+  .icon-md.icon-a .m { font-size: 1.6rem; }  .icon-md.icon-a .n { font-size: 1.6rem; }
+  .icon-sm.icon-a .m { font-size: 0.8rem; }  .icon-sm.icon-a .n { font-size: 0.8rem; }
+
+  /* -- B. Amber gradient, white "m" -- */
+  .icon-b { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+  .icon-b .m { font-family: 'Lora', serif; font-weight: 700; color: #FFFFFF; }
+  .icon-lg.icon-b .m { font-size: 4.5rem; }
+  .icon-md.icon-b .m { font-size: 2.25rem; }
+  .icon-sm.icon-b .m { font-size: 1.1rem; }
+
+  /* -- C. Amber gradient, white "m1" -- */
+  .icon-c { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+  .icon-c .m { font-family: 'Lora', serif; font-weight: 700; color: #FFFFFF; }
+  .icon-lg.icon-c .m { font-size: 3.2rem; }
+  .icon-md.icon-c .m { font-size: 1.6rem; }
+  .icon-sm.icon-c .m { font-size: 0.8rem; }
+
+  /* -- D. White bg, amber "m" -- */
+  .icon-d { background: #FFFFFF; border: 1px solid #F2F0E2; }
+  .icon-d .m { font-family: 'Lora', serif; font-weight: 700; color: #F08C00; }
+  .icon-lg.icon-d .m { font-size: 4.5rem; }
+  .icon-md.icon-d .m { font-size: 2.25rem; }
+  .icon-sm.icon-d .m { font-size: 1.1rem; }
+
+  /* -- E. White bg, charcoal "m" + amber "1" -- */
+  .icon-e { background: #FFFFFF; border: 1px solid #F2F0E2; }
+  .icon-e .m { font-family: 'Lora', serif; font-weight: 700; color: #3D3A36; }
+  .icon-e .n { font-family: 'Lora', serif; font-weight: 700; color: #F08C00; }
+  .icon-lg.icon-e .m { font-size: 3.2rem; }  .icon-lg.icon-e .n { font-size: 3.2rem; }
+  .icon-md.icon-e .m { font-size: 1.6rem; }  .icon-md.icon-e .n { font-size: 1.6rem; }
+  .icon-sm.icon-e .m { font-size: 0.8rem; }  .icon-sm.icon-e .n { font-size: 0.8rem; }
+
+  /* -- F. Amber gradient, white "M" Inter bold -- */
+  .icon-f { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+  .icon-f .m { font-family: 'Inter', sans-serif; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em; }
+  .icon-lg.icon-f .m { font-size: 4rem; }
+  .icon-md.icon-f .m { font-size: 2rem; }
+  .icon-sm.icon-f .m { font-size: 1rem; }
+
+  /* -- G. Warm bg, amber "m" serif -- */
+  .icon-g { background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%); }
+  .icon-g .m { font-family: 'Lora', serif; font-weight: 700; color: #F08C00; }
+  .icon-lg.icon-g .m { font-size: 4.5rem; }
+  .icon-md.icon-g .m { font-size: 2.25rem; }
+  .icon-sm.icon-g .m { font-size: 1.1rem; }
+
+  /* -- H. Amber gradient, cream "1" large -- */
+  .icon-h { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+  .icon-h .m { font-family: 'Lora', serif; font-weight: 700; color: rgba(255,255,255,0.95); }
+  .icon-lg.icon-h .m { font-size: 5rem; }
+  .icon-md.icon-h .m { font-size: 2.5rem; }
+  .icon-sm.icon-h .m { font-size: 1.25rem; }
+
+  /* -- I. Warm bg, amber italic "one" -- */
+  .icon-i { background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%); }
+  .icon-i .m { font-family: 'Lora', serif; font-weight: 700; font-style: italic; color: #F08C00; }
+  .icon-lg.icon-i .m { font-size: 2.8rem; }
+  .icon-md.icon-i .m { font-size: 1.4rem; }
+  .icon-sm.icon-i .m { font-size: 0.7rem; }
+
+  /* -- J. Amber gradient, white diverge SVG -- */
+  .icon-j { background: linear-gradient(145deg, #F5A83A 0%, #F08C00 50%, #D67D00 100%); }
+
+  /* -- K. White bg, amber diverge SVG -- */
+  .icon-k { background: #FFFFFF; border: 1px solid #F2F0E2; }
+
+  /* -- L. Warm bg, Inter bold "m1" -- */
+  .icon-l { background: linear-gradient(135deg, #FFF8F3 0%, #F2F0E2 100%); }
+  .icon-l .m { font-family: 'Inter', sans-serif; font-weight: 700; color: #3D3A36; }
+  .icon-l .n { font-family: 'Inter', sans-serif; font-weight: 800; color: #F08C00; }
+  .icon-lg.icon-l .m { font-size: 3rem; }  .icon-lg.icon-l .n { font-size: 3rem; }
+  .icon-md.icon-l .m { font-size: 1.5rem; }  .icon-md.icon-l .n { font-size: 1.5rem; }
+  .icon-sm.icon-l .m { font-size: 0.75rem; }  .icon-sm.icon-l .n { font-size: 0.75rem; }
+
+  /* Dock strip */
+  .dock-section { max-width: 1200px; margin: 3rem auto 0; }
+  .dock-label {
+    font-size: 0.6875rem; font-weight: 500; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #C4BFB3; text-align: center; margin-bottom: 1rem;
+  }
+  .dock {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    background: rgba(30, 28, 26, 0.06); backdrop-filter: blur(20px);
+    padding: 6px 12px; border-radius: 18px; border: 1px solid rgba(30, 28, 26, 0.04);
+    max-width: fit-content; margin: 0 auto;
+  }
+  .dock .di {
+    width: 52px; height: 52px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  }
+  .dock-ph { width: 52px; height: 52px; border-radius: 12px; background: rgba(30, 28, 26, 0.05); }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>App Icon Explorations v2</h1>
+  <p>Light backgrounds only. Warm cream or amber gradient. Exploring lettermarks, numerals, wordmarks, and the diverge symbol.</p>
+</div>
+
+<div class="grid">
+
+  <!-- A -->
+  <div class="card">
+    <div class="card-label">Warm bg, Lora "m1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-a"><span class="m">m</span><span class="n">1</span></div>
+      <div class="icon icon-md icon-a"><span class="m">m</span><span class="n">1</span></div>
+      <div class="icon icon-sm icon-a"><span class="m">m</span><span class="n">1</span></div>
+    </div>
+    <div class="desc">Charcoal "m" + amber "1". Warm and readable.</div>
+  </div>
+
+  <!-- B -->
+  <div class="card">
+    <div class="card-label">Amber gradient, white "m"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-b"><span class="m">m</span></div>
+      <div class="icon icon-md icon-b"><span class="m">m</span></div>
+      <div class="icon icon-sm icon-b"><span class="m">m</span></div>
+    </div>
+    <div class="desc">Bold single letter on amber. High dock visibility.</div>
+  </div>
+
+  <!-- C -->
+  <div class="card">
+    <div class="card-label">Amber gradient, white "m1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-c"><span class="m">m1</span></div>
+      <div class="icon icon-md icon-c"><span class="m">m1</span></div>
+      <div class="icon icon-sm icon-c"><span class="m">m1</span></div>
+    </div>
+    <div class="desc">Both letters white on amber. Unified, strong.</div>
+  </div>
+
+  <!-- D -->
+  <div class="card">
+    <div class="card-label">White bg, amber "m"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-d"><span class="m">m</span></div>
+      <div class="icon icon-md icon-d"><span class="m">m</span></div>
+      <div class="icon icon-sm icon-d"><span class="m">m</span></div>
+    </div>
+    <div class="desc">Clean white, amber letter. Light and airy like Apple Notes.</div>
+  </div>
+
+  <!-- E -->
+  <div class="card">
+    <div class="card-label">White bg, "m1" split</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-e"><span class="m">m</span><span class="n">1</span></div>
+      <div class="icon icon-md icon-e"><span class="m">m</span><span class="n">1</span></div>
+      <div class="icon icon-sm icon-e"><span class="m">m</span><span class="n">1</span></div>
+    </div>
+    <div class="desc">Crisp white, charcoal + amber. Minimal border.</div>
+  </div>
+
+  <!-- F -->
+  <div class="card">
+    <div class="card-label">Amber gradient, Inter "M"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-f"><span class="m">M</span></div>
+      <div class="icon icon-md icon-f"><span class="m">M</span></div>
+      <div class="icon icon-sm icon-f"><span class="m">M</span></div>
+    </div>
+    <div class="desc">Capital M in sans-serif. Geometric, modern.</div>
+  </div>
+
+  <!-- G -->
+  <div class="card">
+    <div class="card-label">Warm bg, amber "m" serif</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-g"><span class="m">m</span></div>
+      <div class="icon icon-md icon-g"><span class="m">m</span></div>
+      <div class="icon icon-sm icon-g"><span class="m">m</span></div>
+    </div>
+    <div class="desc">Amber on cream. Soft, warm, approachable.</div>
+  </div>
+
+  <!-- H -->
+  <div class="card">
+    <div class="card-label">Amber gradient, large "1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-h"><span class="m">1</span></div>
+      <div class="icon icon-md icon-h"><span class="m">1</span></div>
+      <div class="icon icon-sm icon-h"><span class="m">1</span></div>
+    </div>
+    <div class="desc">The "ONE" promise. Bold numeral, impossible to miss.</div>
+  </div>
+
+  <!-- I -->
+  <div class="card">
+    <div class="card-label">Warm bg, italic "one"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-i"><span class="m">one</span></div>
+      <div class="icon icon-md icon-i"><span class="m">one</span></div>
+      <div class="icon icon-sm icon-i"><span class="m">one</span></div>
+    </div>
+    <div class="desc">Italic serif "one" on cream. Elegant, branded.</div>
+  </div>
+
+  <!-- J -->
+  <div class="card">
+    <div class="card-label">Amber, white diverge mark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-j">
+        <svg viewBox="0 0 80 80" width="72" height="72" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="58,46 68,52 58,58" stroke="#FFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="54,20 64,20 62,30" stroke="#FFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-md icon-j">
+        <svg viewBox="0 0 80 80" width="36" height="36" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="5.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-sm icon-j">
+        <svg viewBox="0 0 80 80" width="18" height="18" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="desc">Divergent Health mark. Ties to parent brand.</div>
+  </div>
+
+  <!-- K -->
+  <div class="card">
+    <div class="card-label">White bg, amber diverge mark</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-k">
+        <svg viewBox="0 0 80 80" width="72" height="72" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#F08C00" stroke-width="4" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#F08C00" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="58,46 68,52 58,58" stroke="#F08C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#F08C00" stroke-width="4" stroke-linecap="round"/>
+          <polyline points="54,20 64,20 62,30" stroke="#F08C00" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-md icon-k">
+        <svg viewBox="0 0 80 80" width="36" height="36" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#F08C00" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#F08C00" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#F08C00" stroke-width="5.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="icon icon-sm icon-k">
+        <svg viewBox="0 0 80 80" width="18" height="18" fill="none">
+          <line x1="14" y1="52" x2="40" y2="52" stroke="#F08C00" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="66" y2="52" stroke="#F08C00" stroke-width="7" stroke-linecap="round"/>
+          <line x1="40" y1="52" x2="62" y2="22" stroke="#F08C00" stroke-width="7" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="desc">Diverge mark on white. Light, clean.</div>
+  </div>
+
+  <!-- L -->
+  <div class="card">
+    <div class="card-label">Warm bg, Inter "m1"</div>
+    <div class="icon-row">
+      <div class="icon icon-lg icon-l"><span class="m">m</span><span class="n">1</span></div>
+      <div class="icon icon-md icon-l"><span class="m">m</span><span class="n">1</span></div>
+      <div class="icon icon-sm icon-l"><span class="m">m</span><span class="n">1</span></div>
+    </div>
+    <div class="desc">Sans-serif variant. Cleaner, more geometric.</div>
+  </div>
+
+</div>
+
+<!-- Dock preview -->
+<div class="dock-section">
+  <div class="dock-label">Dock Preview</div>
+  <div class="dock">
+    <div class="dock-ph"></div>
+    <div class="di icon-a" style="background:linear-gradient(135deg,#FFF8F3,#F2F0E2);"><span style="font-family:'Lora',serif;font-weight:700;color:#3D3A36;font-size:1.3rem;">m</span><span style="font-family:'Lora',serif;font-weight:700;color:#F08C00;font-size:1.3rem;">1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di" style="background:linear-gradient(145deg,#F5A83A,#F08C00,#D67D00);"><span style="font-family:'Lora',serif;font-weight:700;color:#FFF;font-size:1.8rem;">m</span></div>
+    <div class="dock-ph"></div>
+    <div class="di" style="background:linear-gradient(145deg,#F5A83A,#F08C00,#D67D00);"><span style="font-family:'Lora',serif;font-weight:700;color:#FFF;font-size:1.3rem;">m1</span></div>
+    <div class="dock-ph"></div>
+    <div class="di" style="background:#FFF;border:1px solid #F2F0E2;"><span style="font-family:'Lora',serif;font-weight:700;color:#F08C00;font-size:1.8rem;">m</span></div>
+    <div class="dock-ph"></div>
+    <div class="di" style="background:linear-gradient(145deg,#F5A83A,#F08C00,#D67D00);">
+      <svg viewBox="0 0 80 80" width="28" height="28" fill="none"><line x1="14" y1="52" x2="40" y2="52" stroke="#FFF" stroke-width="6" stroke-linecap="round"/><line x1="40" y1="52" x2="66" y2="52" stroke="#FFF" stroke-width="6" stroke-linecap="round"/><line x1="40" y1="52" x2="62" y2="22" stroke="#FFF" stroke-width="6" stroke-linecap="round"/></svg>
+    </div>
+    <div class="dock-ph"></div>
+    <div class="di" style="background:linear-gradient(135deg,#FFF8F3,#F2F0E2);"><span style="font-family:'Lora',serif;font-weight:700;color:#F08C00;font-size:1.8rem;">m</span></div>
+    <div class="dock-ph"></div>
+  </div>
+</div>
+
+</body>
+</html>
