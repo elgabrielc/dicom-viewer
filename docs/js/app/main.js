@@ -333,6 +333,8 @@
                 }
                 await displayStudies();
 
+                state.studies = {};
+
                 const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
                     ? 'Refreshing managed library...'
                     : 'Loading managed library...';
@@ -355,6 +357,8 @@
                     setLibraryFolderMessage('Loading saved library folder...', 'info');
                 }
                 await displayStudies();
+
+                state.studies = {};
 
                 const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
                     ? 'Refreshing saved library folder...'

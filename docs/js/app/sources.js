@@ -377,7 +377,8 @@
         return DESKTOP_SCAN_TRUNCATION_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
     }
 
-    async function readDesktopScanMetadata(source, stats) {
+    async function readDesktopScanMetadata(source, stats, options = {}) {
+        const { largeReadGate = null, fileSize = null } = options;
         const shouldTimeReads = typeof stats.readFileMs === 'number';
         for (let stageIndex = 0; stageIndex < DESKTOP_SCAN_HEADER_READ_SIZES.length; stageIndex += 1) {
             const requestedBytes = DESKTOP_SCAN_HEADER_READ_SIZES[stageIndex];
@@ -394,6 +395,13 @@
             incrementDesktopScanCounter(stats, 'headerReadCount');
             const headerResult = await parseDesktopScanBuffer(headerBytes, stats);
             if (headerResult.meta) {
+                if (shouldExpandDesktopScanHeaderRead(headerResult, headerBytes, requestedBytes)) {
+                    if (stageIndex < DESKTOP_SCAN_HEADER_READ_SIZES.length - 1) {
+                        continue;
+                    }
+                    incrementDesktopScanCounter(stats, 'headerFallbackCount');
+                    break;
+                }
                 incrementDesktopScanCounter(stats, 'headerHitCount');
                 return headerResult.meta;
             }
@@ -415,18 +423,29 @@
             return headerResult.meta;
         }
 
-        let buffer;
-        const fullReadStartedAt = shouldTimeReads ? performance.now() : 0;
-        try {
-            buffer = await readSliceBuffer({ source }, 'scan');
-        } finally {
-            const fullReadDeltaMs = shouldTimeReads ? performance.now() - fullReadStartedAt : 0;
-            addDesktopScanTiming(stats, 'readFileMs', fullReadDeltaMs);
-            addDesktopScanTiming(stats, 'fullReadMs', fullReadDeltaMs);
+        const effectiveSize = Number.isFinite(fileSize) ? fileSize : (source.size || 0);
+        if (largeReadGate) {
+            await largeReadGate.acquireLargeReadSlot(effectiveSize);
         }
+        let buffer;
+        try {
+            const fullReadStartedAt = shouldTimeReads ? performance.now() : 0;
+            try {
+                buffer = await readSliceBuffer({ source }, 'scan');
+            } finally {
+                const fullReadDeltaMs = shouldTimeReads ? performance.now() - fullReadStartedAt : 0;
+                addDesktopScanTiming(stats, 'readFileMs', fullReadDeltaMs);
+                addDesktopScanTiming(stats, 'fullReadMs', fullReadDeltaMs);
+            }
 
-        const fullResult = await parseDesktopScanBuffer(buffer, stats);
-        return fullResult.meta;
+            const fullResult = await parseDesktopScanBuffer(buffer, stats);
+            buffer = null;
+            return fullResult.meta;
+        } finally {
+            if (largeReadGate) {
+                largeReadGate.releaseLargeReadSlot(effectiveSize);
+            }
+        }
     }
 
     async function readDesktopScanManifest(paths, maxDepth) {
@@ -470,20 +489,12 @@
             const cache = new Map();
             for (const row of rows || []) {
                 if (!row?.path) continue;
-                let meta = null;
-                if (row.renderable && typeof row.meta_json === 'string' && row.meta_json) {
-                    try {
-                        meta = JSON.parse(row.meta_json);
-                    } catch (error) {
-                        console.warn('Desktop scan cache entry contained invalid metadata JSON:', error);
-                        continue;
-                    }
-                }
                 cache.set(row.path, {
                     size: Number.isFinite(Number(row.size)) ? Number(row.size) : null,
                     modifiedMs: Number.isFinite(Number(row.modified_ms)) ? Number(row.modified_ms) : null,
                     renderable: !!row.renderable,
-                    meta
+                    metaJson: (row.renderable && typeof row.meta_json === 'string' && row.meta_json) ? row.meta_json : null,
+                    meta: null
                 });
             }
             return cache;
@@ -525,6 +536,16 @@
         if (cached.modifiedMs !== modifiedMs) {
             return null;
         }
+
+        if (cached.metaJson && !cached.meta) {
+            try {
+                cached.meta = JSON.parse(cached.metaJson);
+                cached.metaJson = null;
+            } catch {
+                return null;
+            }
+        }
+
         return cached;
     }
 
@@ -725,7 +746,7 @@
         return finalizeStudies(studies);
     }
 
-    async function processDesktopPathFile(fileEntry, studies, stats, onProgress, cacheUpdates = null) {
+    async function processDesktopPathFile(fileEntry, studies, stats, onProgress, cacheUpdates = null, largeReadGate = null) {
         const { name, source } = fileEntry;
         let meta = null;
         let renderable = false;
@@ -734,7 +755,7 @@
             if (shouldSkipDesktopScanPathEntry(name)) {
                 return;
             }
-            meta = await readDesktopScanMetadata(source, stats);
+            meta = await readDesktopScanMetadata(source, stats, { largeReadGate, fileSize: fileEntry.size });
             shouldCache = true;
             renderable = isRenderableImageMetadata(meta);
             if (!renderable) return;
@@ -1044,6 +1065,26 @@
         const stack = [];
         const yieldIfNeeded = createYieldController();
         let walkingComplete = false;
+
+        // Gate for large-file full-read fallbacks to avoid concurrent multi-MB reads
+        let activeLargeReads = 0;
+        const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
+        const MAX_LARGE_READS = 2;
+        const largeReadWaiters = [];
+
+        async function acquireLargeReadSlot(size) {
+            if (size <= LARGE_FILE_THRESHOLD) return;
+            while (activeLargeReads >= MAX_LARGE_READS) {
+                await new Promise(r => largeReadWaiters.push(r));
+            }
+            activeLargeReads++;
+        }
+
+        function releaseLargeReadSlot(size) {
+            if (size <= LARGE_FILE_THRESHOLD) return;
+            activeLargeReads--;
+            if (largeReadWaiters.length) largeReadWaiters.shift()();
+        }
         let scanError = null;
         const queueWaiters = [];
         const queueDrainedWaiters = [];
@@ -1115,11 +1156,13 @@
             }
         }
 
+        const largeReadGate = { acquireLargeReadSlot, releaseLargeReadSlot };
+
         async function workerLoop() {
             while (!scanError) {
                 const fileEntry = await takePendingFile();
                 if (!fileEntry) return;
-                await processDesktopPathFile(fileEntry, studies, stats, onProgress, cacheUpdates);
+                await processDesktopPathFile(fileEntry, studies, stats, onProgress, cacheUpdates, largeReadGate);
                 await yieldIfNeeded();
             }
         }
@@ -1209,6 +1252,7 @@
                         await waitForQueueCapacity();
                     }
                 }
+                manifestEntries.length = 0;
             } catch (error) {
                 scanError = error;
                 wakeQueuedWorkers();
