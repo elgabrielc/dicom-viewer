@@ -36,7 +36,7 @@
     const {
         closeViewer,
         loadSlice,
-        openViewerWithSeries
+        openViewer
     } = app.viewer;
     const {
         loadDroppedStudies,
@@ -229,7 +229,7 @@
             console.log(
                 `Auto-opening test series ${selection.seriesUid} from study ${selection.studyUid} (${selection.sliceCount} slices)`
             );
-            openViewerWithSeries(selection.studyUid, selection.seriesUid);
+            openViewer(selection.studyUid, selection.seriesUid);
 
             const maxSkip = 50;
             for (let i = 0; i < maxSkip && state.currentSeries; i++) {

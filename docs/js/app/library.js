@@ -658,7 +658,7 @@
             row.onclick = e => {
                 if (e.target.closest('.comment-toggle')) return;
                 const item = row.closest('.series-dropdown-item');
-                viewer.openViewerWithSeries(item.dataset.studyUid, item.dataset.seriesUid);
+                viewer.openViewer(item.dataset.studyUid, item.dataset.seriesUid);
             };
         });
 
