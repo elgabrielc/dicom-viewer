@@ -64,10 +64,43 @@ const CALIBRATION_WARNING_SELECTOR = '#calibrationWarning';
 async function waitForViewerReady(page) {
     await page.waitForSelector(CANVAS_SELECTOR, { state: 'visible', timeout: 30000 });
     await page.waitForFunction(() => {
+        const appState = window.DicomViewerApp?.state;
         const wlDisplay = document.querySelector('#wlDisplay');
-        return wlDisplay && wlDisplay.textContent && wlDisplay.textContent.includes('C:');
+        const sliceInfo = document.querySelector('#sliceInfo');
+        const imageLoading = document.querySelector('#imageLoading');
+        const sliceText = sliceInfo?.textContent || '';
+        const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
+        const ready = Boolean(
+            appState?.currentStudy
+            && appState?.currentSeries
+            && appState?.baseWindowLevel?.center !== null
+            && appState?.baseWindowLevel?.width !== null
+            &&
+            wlDisplay?.textContent?.includes('C:')
+            && wlDisplay.textContent.includes('W:')
+            && /^\d+\s*\/\s*\d+$/.test(sliceText)
+            && loadingHidden
+        );
+        if (!ready) {
+            window.__dicomViewerReadyStableState = null;
+            return false;
+        }
+        const stableKey = [
+            appState.currentStudy.studyInstanceUid,
+            appState.currentSeries.seriesInstanceUid,
+            appState.currentSliceIndex,
+            appState.baseWindowLevel.center,
+            appState.baseWindowLevel.width,
+            wlDisplay.textContent,
+            sliceText
+        ].join('|');
+        const previous = window.__dicomViewerReadyStableState;
+        if (!previous || previous.key !== stableKey) {
+            window.__dicomViewerReadyStableState = { key: stableKey, since: Date.now() };
+            return false;
+        }
+        return Date.now() - previous.since >= 100;
     }, { timeout: 30000 });
-    await page.waitForTimeout(500);
 }
 
 async function getSliceInfo(page) {
@@ -82,9 +115,15 @@ async function getSliceInfo(page) {
 async function waitForSliceCurrent(page, expectedCurrent, timeout = 10000) {
     await page.waitForFunction(
         ({ selector, expected }) => {
+            const appState = window.DicomViewerApp?.state;
+            const imageLoading = document.querySelector('#imageLoading');
             const text = document.querySelector(selector)?.textContent || '';
             const match = text.match(/(\d+)\s*\/\s*(\d+)/);
-            return Boolean(match) && Number(match[1]) === expected;
+            const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
+            return Boolean(match)
+                && Number(match[1]) === expected
+                && appState?.currentSliceIndex === expected - 1
+                && loadingHidden;
         },
         { selector: SLICE_INFO_SELECTOR, expected: expectedCurrent },
         { timeout }

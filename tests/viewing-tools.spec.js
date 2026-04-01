@@ -22,14 +22,45 @@ async function waitForViewerReady(page) {
   // Wait for canvas to be visible
   await page.waitForSelector(CANVAS_SELECTOR, { state: 'visible', timeout: 30000 });
 
-  // Wait for W/L display to have values (indicates image is loaded)
+  // Wait for the foreground slice load to finish and the viewer metadata to settle.
   await page.waitForFunction(() => {
+    const appState = window.DicomViewerApp?.state;
     const wlDisplay = document.querySelector('#wlDisplay');
-    return wlDisplay && wlDisplay.textContent && wlDisplay.textContent.includes('C:');
+    const sliceInfo = document.querySelector('#sliceInfo');
+    const imageLoading = document.querySelector('#imageLoading');
+    const sliceText = sliceInfo?.textContent || '';
+    const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
+    const ready = Boolean(
+      appState?.currentStudy
+      && appState?.currentSeries
+      && appState?.baseWindowLevel?.center !== null
+      && appState?.baseWindowLevel?.width !== null
+      &&
+      wlDisplay?.textContent?.includes('C:')
+      && wlDisplay.textContent.includes('W:')
+      && /^\d+\s*\/\s*\d+$/.test(sliceText)
+      && loadingHidden
+    );
+    if (!ready) {
+      window.__dicomViewerReadyStableState = null;
+      return false;
+    }
+    const stableKey = [
+      appState.currentStudy.studyInstanceUid,
+      appState.currentSeries.seriesInstanceUid,
+      appState.currentSliceIndex,
+      appState.baseWindowLevel.center,
+      appState.baseWindowLevel.width,
+      wlDisplay.textContent,
+      sliceText
+    ].join('|');
+    const previous = window.__dicomViewerReadyStableState;
+    if (!previous || previous.key !== stableKey) {
+      window.__dicomViewerReadyStableState = { key: stableKey, since: Date.now() };
+      return false;
+    }
+    return Date.now() - previous.since >= 100;
   }, { timeout: 30000 });
-
-  // Small delay for rendering to complete
-  await page.waitForTimeout(500);
 }
 
 // Helper function to parse W/L values from display
@@ -98,9 +129,15 @@ async function getSliceInfo(page) {
 async function waitForSliceCurrent(page, expectedCurrent, timeout = 10000) {
   await page.waitForFunction(
     expected => {
+      const appState = window.DicomViewerApp?.state;
+      const imageLoading = document.querySelector('#imageLoading');
       const text = document.querySelector('#sliceInfo')?.textContent || '';
       const match = text.match(/(\d+)\s*\/\s*(\d+)/);
-      return Boolean(match) && Number(match[1]) === expected;
+      const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
+      return Boolean(match)
+        && Number(match[1]) === expected
+        && appState?.currentSliceIndex === expected - 1
+        && loadingHidden;
     },
     expectedCurrent,
     { timeout }
