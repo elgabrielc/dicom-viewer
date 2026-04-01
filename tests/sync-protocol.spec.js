@@ -341,6 +341,53 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
         expect(rej.current_data).toHaveProperty('description');
         expect(rej.current_data.description).toBe('Second');
     });
+
+    test('unknown operation does not advance sync_version for the next valid write', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const studyUid = uniqueStudyUid();
+
+        const insert = studyNoteUpdateChange(studyUid, {
+            description: 'Initial version',
+            baseSyncVersion: 0,
+        });
+        const inserted = await syncAndExpectOk(
+            request, BASE_URL, access_token, device_id, null, [insert]
+        );
+        const currentVersion = inserted.accepted[0].sync_version;
+
+        const invalid = {
+            ...studyNoteUpdateChange(studyUid, {
+                description: 'Invalid operation should be rejected',
+                baseSyncVersion: currentVersion,
+            }),
+            operation: 'invalid_op',
+        };
+        const invalidResult = await syncAndExpectOk(
+            request, BASE_URL, access_token, device_id, inserted.delta_cursor, [invalid]
+        );
+
+        expect(invalidResult.accepted).toEqual([]);
+        expect(invalidResult.rejected).toHaveLength(1);
+        expect(invalidResult.rejected[0]).toMatchObject({
+            operation_uuid: invalid.operation_uuid,
+            key: studyUid,
+            reason: 'unknown_operation',
+            current_sync_version: currentVersion,
+        });
+
+        const validUpdate = studyNoteUpdateChange(studyUid, {
+            description: 'Valid update after rejection',
+            baseSyncVersion: currentVersion,
+        });
+        const updated = await syncAndExpectOk(
+            request, BASE_URL, access_token, device_id, inserted.delta_cursor, [validUpdate]
+        );
+
+        expect(updated.rejected).toEqual([]);
+        expect(updated.accepted).toHaveLength(1);
+        expect(updated.accepted[0].operation_uuid).toBe(validUpdate.operation_uuid);
+        expect(updated.accepted[0].sync_version).toBeGreaterThan(currentVersion);
+    });
 });
 
 // ---------------------------------------------------------------------------

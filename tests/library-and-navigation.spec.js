@@ -91,6 +91,14 @@ async function waitForSliceCurrent(page, expectedCurrent, timeout = 10000) {
     );
 }
 
+async function jumpToSlice(page, zeroBasedIndex) {
+    await page.locator(SLICE_SLIDER_SELECTOR).evaluate((slider, nextIndex) => {
+        slider.value = String(nextIndex);
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+        slider.dispatchEvent(new Event('change', { bubbles: true }));
+    }, zeroBasedIndex);
+}
+
 async function isButtonActive(page, selector) {
     const button = page.locator(selector);
     const classList = await button.getAttribute('class');
@@ -507,12 +515,9 @@ test.describe('Test Suite 16: Viewer Navigation Controls', () => {
     test('Next slice button is disabled at last slice', async ({ page }) => {
         const initialSlice = await getSliceInfo(page);
 
-        // Navigate to last slice
-        const stepsToEnd = initialSlice.total - initialSlice.current;
-        for (let i = 0; i < stepsToEnd; i++) {
-            await page.click(NEXT_SLICE_SELECTOR);
-            await page.waitForTimeout(100);
-        }
+        // Jump directly to the final slice and wait for the viewer state to catch up.
+        await jumpToSlice(page, initialSlice.total - 1);
+        await waitForSliceCurrent(page, initialSlice.total, 30000);
 
         // At last slice, next button should be disabled
         await expect(page.locator(NEXT_SLICE_SELECTOR)).toBeDisabled();
@@ -1219,41 +1224,103 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
             expect(body.error).toContain('Directory does not exist');
         });
 
-        test('POST /api/library/config updates active config or stays overridden by env', async ({ page }) => {
-            const beforeResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
-            expect(beforeResponse.status()).toBe(200);
-            const before = await beforeResponse.json();
+        test.describe('Library Config Mutation Coverage', () => {
+            test.describe.configure({ mode: 'serial' });
 
-            const nextFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'dicom-library-config-'));
-            const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                data: { folder: nextFolder }
+            test('POST /api/library/config updates active config or stays overridden by env', async ({ page }) => {
+                const beforeResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
+                expect(beforeResponse.status()).toBe(200);
+                const before = await beforeResponse.json();
+
+                const nextFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'dicom-library-config-'));
+                try {
+                    const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                        data: { folder: nextFolder }
+                    });
+                    expect(saveResponse.status()).toBe(200);
+                    const saveBody = await saveResponse.json();
+
+                    expect(saveBody).toHaveProperty('overridden');
+                    expect(typeof saveBody.overridden).toBe('boolean');
+                    expect(saveBody).toHaveProperty('studies');
+                    expect(Array.isArray(saveBody.studies)).toBe(true);
+
+                    const afterResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
+                    expect(afterResponse.status()).toBe(200);
+                    const after = await afterResponse.json();
+
+                    if (before.source === 'env') {
+                        expect(saveBody.overridden).toBe(true);
+                        expect(saveBody.source).toBe('env');
+                        expect(saveBody.folderResolved).toBe(before.folderResolved);
+                        expect(after.source).toBe('env');
+                        expect(after.folderResolved).toBe(before.folderResolved);
+                    } else {
+                        expect(saveBody.overridden).toBe(false);
+                        expect(saveBody.source).toBe('settings');
+                        expect(saveBody.folderResolved).toBe(nextFolder);
+                        expect(after.source).toBe('settings');
+                        expect(after.folderResolved).toBe(nextFolder);
+                        expect(after.folder).toBe(nextFolder);
+                    }
+                } finally {
+                    if (before.folderResolved || before.folder) {
+                        await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                            data: { folder: before.folderResolved || before.folder }
+                        });
+                    }
+                    fs.rmSync(nextFolder, { recursive: true, force: true });
+                }
             });
-            expect(saveResponse.status()).toBe(200);
-            const saveBody = await saveResponse.json();
 
-            expect(saveBody).toHaveProperty('overridden');
-            expect(typeof saveBody.overridden).toBe('boolean');
-            expect(saveBody).toHaveProperty('studies');
-            expect(Array.isArray(saveBody.studies)).toBe(true);
+            test('library API preserves deterministic collision keys and serves slash-bearing composite series IDs', async ({ page }) => {
+                const fixture = createSyntheticDicomFolder([
+                    { description: '' },
+                    { description: 'AP/Upper' }
+                ]);
 
-            const afterResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
-            expect(afterResponse.status()).toBe(200);
-            const after = await afterResponse.json();
+                const configResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
+                const previousConfig = await configResponse.json();
 
-            if (before.source === 'env') {
-                expect(saveBody.overridden).toBe(true);
-                expect(saveBody.source).toBe('env');
-                expect(saveBody.folderResolved).toBe(before.folderResolved);
-                expect(after.source).toBe('env');
-                expect(after.folderResolved).toBe(before.folderResolved);
-            } else {
-                expect(saveBody.overridden).toBe(false);
-                expect(saveBody.source).toBe('settings');
-                expect(saveBody.folderResolved).toBe(nextFolder);
-                expect(after.source).toBe('settings');
-                expect(after.folderResolved).toBe(nextFolder);
-                expect(after.folder).toBe(nextFolder);
-            }
+                try {
+                    expect(previousConfig.overridden).toBe(false);
+
+                    const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                        data: { folder: fixture.folder }
+                    });
+                    expect(saveResponse.status()).toBe(200);
+
+                    const savePayload = await saveResponse.json();
+                    expect(savePayload.available).toBe(true);
+                    expect(savePayload.studies).toHaveLength(1);
+
+                    const study = savePayload.studies[0];
+                    const seriesIds = study.series.map((series) => series.seriesInstanceUid).sort();
+                    expect(seriesIds).toEqual([
+                        `${fixture.seriesUid}|`,
+                        `${fixture.seriesUid}|AP/Upper`
+                    ]);
+
+                    const slashSeries = study.series.find((series) => series.seriesDescription === 'AP/Upper');
+                    expect(slashSeries).toBeDefined();
+
+                    const dicomResponse = await page.request.get(
+                        `http://127.0.0.1:5001/api/library/dicom/${encodeURIComponent(study.studyInstanceUid)}/${encodeURIComponent(slashSeries.seriesInstanceUid)}/0`
+                    );
+                    expect(dicomResponse.status()).toBe(200);
+                    expect(dicomResponse.headers()['content-type']).toContain('dicom');
+
+                    const body = await dicomResponse.body();
+                    expect(body.length).toBeGreaterThan(132);
+                } finally {
+                    if (previousConfig.folderResolved || previousConfig.folder) {
+                        await page.request.post('http://127.0.0.1:5001/api/library/config', {
+                            data: { folder: previousConfig.folderResolved || previousConfig.folder }
+                        });
+                    }
+                    removeSyntheticDicomFolder(fixture.folder);
+                }
+            });
         });
     });
 
@@ -1356,55 +1423,6 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
             'http://127.0.0.1:5001/api/library/dicom/nonexistent-study-id/nonexistent-series-id/0'
         );
         expect(response.status()).toBe(404);
-    });
-
-    test('library API preserves deterministic collision keys and serves slash-bearing composite series IDs', async ({ page }) => {
-        const fixture = createSyntheticDicomFolder([
-            { description: '' },
-            { description: 'AP/Upper' }
-        ]);
-
-        const configResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
-        const previousConfig = await configResponse.json();
-
-        try {
-            expect(previousConfig.overridden).toBe(false);
-
-            const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                data: { folder: fixture.folder }
-            });
-            expect(saveResponse.status()).toBe(200);
-
-            const savePayload = await saveResponse.json();
-            expect(savePayload.available).toBe(true);
-            expect(savePayload.studies).toHaveLength(1);
-
-            const study = savePayload.studies[0];
-            const seriesIds = study.series.map((series) => series.seriesInstanceUid).sort();
-            expect(seriesIds).toEqual([
-                `${fixture.seriesUid}|`,
-                `${fixture.seriesUid}|AP/Upper`
-            ]);
-
-            const slashSeries = study.series.find((series) => series.seriesDescription === 'AP/Upper');
-            expect(slashSeries).toBeDefined();
-
-            const dicomResponse = await page.request.get(
-                `http://127.0.0.1:5001/api/library/dicom/${encodeURIComponent(study.studyInstanceUid)}/${encodeURIComponent(slashSeries.seriesInstanceUid)}/0`
-            );
-            expect(dicomResponse.status()).toBe(200);
-            expect(dicomResponse.headers()['content-type']).toContain('dicom');
-
-            const body = await dicomResponse.body();
-            expect(body.length).toBeGreaterThan(132);
-        } finally {
-            if (previousConfig.folderResolved || previousConfig.folder) {
-                await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                    data: { folder: previousConfig.folderResolved || previousConfig.folder }
-                });
-            }
-            removeSyntheticDicomFolder(fixture.folder);
-        }
     });
 
     test('GET / serves the main application HTML', async ({ page }) => {

@@ -158,4 +158,85 @@ test.describe('Sync Engine', () => {
         expect(result.accessToken).toBe(result.snapshot.accessToken);
         expect(result.refreshToken).toBe('refresh-token-123');
     });
+
+    test('remote report metadata uses added_at and updated_at when applying sync data', async ({ page }) => {
+        await page.goto(BASE_URL);
+        await page.waitForFunction(() => !!window._SyncEngine && !!window._NotesInternals);
+
+        const result = await page.evaluate(() => {
+            const studyUid = '1.2.840.sync-engine.report-study';
+            const existingReportId = 'report-existing';
+            const insertedReportId = 'report-inserted';
+            const insertedAddedAt = 1700000000000;
+            const insertedUpdatedAt = 1700000005000;
+            const updatedAddedAt = 1700000010000;
+            const updatedUpdatedAt = 1700000015000;
+
+            window._NotesInternals.saveStore({
+                studies: {
+                    [studyUid]: {
+                        description: '',
+                        comments: [],
+                        series: {},
+                        reports: [
+                            {
+                                id: existingReportId,
+                                name: 'Original',
+                                type: 'pdf',
+                                size: 1,
+                                addedAt: new Date(1).toISOString(),
+                                updatedAt: new Date(2).toISOString(),
+                                sync_version: 1
+                            }
+                        ]
+                    }
+                }
+            });
+
+            const engine = new window._SyncEngine.SyncEngine({
+                getAccessToken: async () => 'valid-access-token',
+                onAuthRequired: () => {}
+            });
+
+            engine._applyRemoteData('reports', insertedReportId, {
+                study_uid: studyUid,
+                name: 'Inserted Remote',
+                type: 'pdf',
+                size: 42,
+                added_at: insertedAddedAt,
+                updated_at: insertedUpdatedAt
+            }, 5);
+
+            engine._applyRemoteData('reports', existingReportId, {
+                study_uid: studyUid,
+                name: 'Updated Remote',
+                type: 'png',
+                size: 84,
+                added_at: updatedAddedAt,
+                updated_at: updatedUpdatedAt
+            }, 6);
+
+            const reports = window._NotesInternals.loadStore().studies[studyUid].reports;
+            return {
+                inserted: reports.find((report) => report.id === insertedReportId),
+                updated: reports.find((report) => report.id === existingReportId),
+                insertedAddedAt,
+                insertedUpdatedAt,
+                updatedAddedAt,
+                updatedUpdatedAt
+            };
+        });
+
+        expect(new Date(result.inserted.addedAt).getTime()).toBe(result.insertedAddedAt);
+        expect(new Date(result.inserted.updatedAt).getTime()).toBe(result.insertedUpdatedAt);
+        expect(result.inserted.sync_version).toBe(5);
+        expect(new Date(result.updated.addedAt).getTime()).toBe(result.updatedAddedAt);
+        expect(new Date(result.updated.updatedAt).getTime()).toBe(result.updatedUpdatedAt);
+        expect(result.updated.sync_version).toBe(6);
+        expect(result.updated).toMatchObject({
+            name: 'Updated Remote',
+            type: 'png',
+            size: 84
+        });
+    });
 });
