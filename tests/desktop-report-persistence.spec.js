@@ -13,6 +13,31 @@ async function installMockTauri(page, options = {}) {
         const SECURE_AUTH_STORAGE_KEY = 'mock-tauri-secure-auth-state';
         const failRemoveAll = !!options.failRemoveAll;
         const failWritePatterns = Array.isArray(options.failWritePatterns) ? options.failWritePatterns : [];
+        const selectDelayMs = Number.isFinite(Number(options.selectDelayMs)) ? Number(options.selectDelayMs) : 0;
+        const selectDelayPatterns = Array.isArray(options.selectDelayPatterns)
+            ? options.selectDelayPatterns.map((pattern) => String(pattern).toLowerCase())
+            : [];
+        const sqlPlugin = window.__createMockTauriSql(options);
+
+        if (selectDelayMs > 0) {
+            const originalLoad = sqlPlugin.load.bind(sqlPlugin);
+            sqlPlugin.load = async (db) => {
+                const connection = await originalLoad(db);
+                const originalSelect = connection.select.bind(connection);
+                connection.select = async (query, values) => {
+                    const normalizedQuery = String(query || '').toLowerCase();
+                    const shouldDelay = !selectDelayPatterns.length
+                        || selectDelayPatterns.some((pattern) => normalizedQuery.includes(pattern));
+
+                    if (shouldDelay) {
+                        await new Promise((resolve) => setTimeout(resolve, selectDelayMs));
+                    }
+
+                    return originalSelect(query, values);
+                };
+                return connection;
+            };
+        }
 
         if (options.initialSecureAuthState) {
             localStorage.setItem(
@@ -115,7 +140,7 @@ async function installMockTauri(page, options = {}) {
                     return joinPaths(path);
                 }
             },
-            sql: window.__createMockTauriSql(options),
+            sql: sqlPlugin,
             webview: {
                 getCurrentWebview() {
                     return {
@@ -702,6 +727,75 @@ test.describe('Desktop report persistence', () => {
         );
         expect(restored.legacySyncState).toBeNull();
         expect(restored.legacyOutbox).toBeNull();
+    });
+
+    test('desktop hydration merges pre-hydration sync writes instead of clobbering them', async ({ page }) => {
+        await installMockTauri(page, {
+            selectDelayMs: 150,
+            selectDelayPatterns: ['sync_state', 'sync_outbox'],
+            initialState: {
+                'sqlite:viewer.db': {
+                    sync_state: [
+                        { key: 'delta_cursor', value: 'legacy-cursor', updated_at: 1000 },
+                        { key: 'device_id', value: 'legacy-device', updated_at: 1001 }
+                    ],
+                    sync_outbox: [
+                        {
+                            id: 1,
+                            operation_uuid: 'legacy-op-1',
+                            table_name: 'comments',
+                            record_key: 'legacy-comment-1',
+                            operation: 'insert',
+                            base_sync_version: 0,
+                            created_at: 1000,
+                            synced_at: null,
+                            attempts: 0,
+                            last_error: null
+                        }
+                    ],
+                    meta: {
+                        lastCommentId: 0,
+                        lastOutboxId: 1,
+                        loadCalls: 0
+                    }
+                }
+            }
+        });
+        await page.goto(HOME_URL);
+        await page.waitForFunction(() => !!window._SyncOutbox);
+
+        const raced = await page.evaluate(async () => {
+            const hydration = window._SyncOutbox.hydrateFromSqlite();
+            window._SyncOutbox.setCursor('cursor-race');
+            window._SyncOutbox.setDeviceId('device-race');
+            const queued = window._SyncOutbox.enqueueChange('comments', 'uuid-race', 'insert', 0);
+
+            await hydration;
+            await new Promise((resolve) => setTimeout(resolve, 25));
+
+            return {
+                cursor: window._SyncOutbox.getCursor(),
+                deviceId: window._SyncOutbox.getDeviceId(),
+                queuedOperationUuid: queued?.operation_uuid || null,
+                pending: await window._SyncOutbox.readPendingChangesAsync()
+            };
+        });
+
+        expect(raced.cursor).toBe('cursor-race');
+        expect(raced.deviceId).toBe('device-race');
+        expect(raced.pending).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    operation_uuid: 'legacy-op-1',
+                    record_key: 'legacy-comment-1'
+                }),
+                expect.objectContaining({
+                    operation_uuid: raced.queuedOperationUuid,
+                    record_key: 'uuid-race',
+                    operation: 'insert'
+                })
+            ])
+        );
     });
 
     test('desktop backend persists report files and metadata across reloads', async ({ page }) => {

@@ -10,7 +10,7 @@ Copyright (c) 2026 Divergent Health Technologies
 
 import os
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from server import db as db_module
 from server.maintenance import (
@@ -73,7 +73,7 @@ def trigger_restore():
     backup_path = os.path.join(backups_dir, backup_name)
 
     # Close the per-request DB connection before restoring
-    db_conn = getattr(request, "_db", None)
+    db_conn = g.pop("db", None)
     if db_conn:
         db_conn.close()
 

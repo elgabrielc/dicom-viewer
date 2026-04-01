@@ -606,6 +606,8 @@ const _SyncEngine = (() => {
                     if (data.name !== undefined) report.name = data.name;
                     if (data.type !== undefined) report.type = data.type;
                     if (data.size !== undefined) report.size = data.size;
+                    if (data.added_at !== undefined) report.addedAt = new Date(data.added_at).toISOString();
+                    if (data.updated_at !== undefined) report.updatedAt = new Date(data.updated_at).toISOString();
                     report.sync_version = syncVersion;
                     delete report.deletedAt;
                     delete report.deleted_at;
@@ -616,7 +618,8 @@ const _SyncEngine = (() => {
                         name: data.name || '',
                         type: data.type || '',
                         size: data.size || 0,
-                        addedAt: data.created_at ? new Date(data.created_at).toISOString() : new Date().toISOString(),
+                        addedAt: data.added_at ? new Date(data.added_at).toISOString() : new Date().toISOString(),
+                        updatedAt: data.updated_at ? new Date(data.updated_at).toISOString() : new Date().toISOString(),
                         sync_version: syncVersion
                     });
                 }

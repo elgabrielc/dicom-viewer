@@ -95,16 +95,7 @@ def process_change(db, user_id, device_id, change):
             "current_data": current_data,
         }
 
-    new_version = _next_sync_version(db, table, key, device_id, user_id)
-    now = int(time.time() * 1000)
-
-    if operation == "insert":
-        _apply_insert(db, table, user_id, key, data, device_id, new_version, now)
-    elif operation == "update":
-        _apply_update(db, table, user_id, key, data, device_id, new_version, now)
-    elif operation == "delete":
-        _apply_delete(db, table, user_id, key, device_id, new_version, now)
-    else:
+    if operation not in {"insert", "update", "delete"}:
         return {
             "status": "rejected",
             "operation_uuid": operation_uuid,
@@ -113,6 +104,16 @@ def process_change(db, user_id, device_id, change):
             "current_sync_version": current_version,
             "current_data": {},
         }
+
+    new_version = _next_sync_version(db, table, key, device_id, user_id)
+    now = int(time.time() * 1000)
+
+    if operation == "insert":
+        _apply_insert(db, table, user_id, key, data, device_id, new_version, now)
+    elif operation == "update":
+        _apply_update(db, table, user_id, key, data, device_id, new_version, now)
+    else:
+        _apply_delete(db, table, user_id, key, device_id, new_version, now)
 
     db.execute(
         """

@@ -23,6 +23,45 @@ const _SyncOutbox = (() => {
         syncState: {}
     };
 
+    function mapDesktopOutboxRow(row) {
+        return {
+            id: String(row.id),
+            operation_uuid: row.operation_uuid,
+            table_name: row.table_name,
+            record_key: row.record_key,
+            operation: row.operation,
+            base_sync_version: row.base_sync_version,
+            created_at: row.created_at,
+            synced_at: row.synced_at,
+            attempts: row.attempts || 0,
+            last_error: row.last_error
+        };
+    }
+
+    function mergeHydratedSyncState(stateRows) {
+        for (const row of stateRows) {
+            if (!Object.prototype.hasOwnProperty.call(desktopCache.syncState, row.key)) {
+                desktopCache.syncState[row.key] = row.value;
+            }
+        }
+    }
+
+    function mergeHydratedOutbox(outboxRows) {
+        const existingOperationIds = new Set(
+            desktopCache.outbox
+                .map((entry) => entry?.operation_uuid)
+                .filter(Boolean)
+        );
+
+        for (const row of outboxRows) {
+            if (!existingOperationIds.has(row.operation_uuid)) {
+                desktopCache.outbox.push(mapDesktopOutboxRow(row));
+            }
+        }
+
+        desktopCache.outbox.sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+    }
+
     function isDesktopMode() {
         if (typeof window === 'undefined') return false;
         if (typeof window.CONFIG !== 'undefined') {
@@ -222,23 +261,8 @@ const _SyncOutbox = (() => {
                  ORDER BY created_at ASC`
             );
 
-            desktopCache.syncState = {};
-            for (const row of stateRows) {
-                desktopCache.syncState[row.key] = row.value;
-            }
-
-            desktopCache.outbox = outboxRows.map((row) => ({
-                id: String(row.id),
-                operation_uuid: row.operation_uuid,
-                table_name: row.table_name,
-                record_key: row.record_key,
-                operation: row.operation,
-                base_sync_version: row.base_sync_version,
-                created_at: row.created_at,
-                synced_at: row.synced_at,
-                attempts: row.attempts || 0,
-                last_error: row.last_error
-            }));
+            mergeHydratedSyncState(stateRows);
+            mergeHydratedOutbox(outboxRows);
 
             desktopCache.hydrated = true;
             scheduleLegacyDesktopStorageCleanup();
