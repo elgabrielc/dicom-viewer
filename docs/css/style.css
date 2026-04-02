@@ -162,16 +162,15 @@ header {
     position: relative;
 }
 
-header h1 {
-    font-family: var(--font-serif);
-    font-size: 2rem;
-    color: var(--color-charcoal);
-    margin-bottom: 0.5rem;
+.brand-lockup {
+    margin: 0;
 }
 
-header .subtitle {
-    color: var(--color-text-secondary);
-    font-size: 1rem;
+.brand-lockup-img {
+    display: block;
+    width: min(100%, 480px);
+    height: auto;
+    margin: 0 auto;
 }
 
 /* Upload Section */
