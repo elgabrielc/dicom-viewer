@@ -74,10 +74,12 @@ See [ADR 007](decisions/007-multi-source-library.md) for the full decision recor
 ### Privacy by Default
 
 Medical imaging is sensitive data. The architecture reflects this:
-- Client-side DICOM processing -- pixel data is decoded in the browser/app, not on a server.
-- No telemetry, no analytics, no third-party tracking.
+- Client-side DICOM processing -- pixel data is decoded in the browser/app, not on a server. This is our biggest compliance asset.
+- No third-party analytics SDKs, no external telemetry, no data brokers.
+- Local-only usage counters surfaced in a user-visible stats panel -- the user sees exactly what the app tracks. The stats panel is the privacy policy. ([ADR 008](decisions/008-local-first-instrumentation.md))
+- PHI (patient data, DICOM UIDs, file paths) never touches the telemetry stream. Product data and telemetry are architecturally separate.
 - Demo site is stateless -- no data persists between visits.
-- Cloud platform (future) will require explicit account creation and consent.
+- Cloud platform (future) will require explicit account creation and consent. SOC 2 Type II and HIPAA BAA availability are the compliance targets.
 
 ---
 
@@ -153,6 +155,12 @@ Designed the sync protocol for notes, comments, and reports. Local-first with ou
 **March 2026 -- Copy-on-import library.**
 Pivoted from reference-in-place to copy-on-import after exploring multi-folder references and discovering compounding complexity (offline drives, path canonicalization, cross-source merge safety). The managed library folder is the single source of truth locally and the natural upload source for cloud sync. Benchmarked against Horos and Google Photos. ([ADR 007](decisions/007-multi-source-library.md))
 
+**April 2026 -- Instrumentation design.**
+Benchmarked Todoist (custom Bitmapist analytics), Sublime Text (near-zero telemetry), Claude/Anthropic (two-stream architecture), and Spotify (Wrapped as data-as-feature). Decided on local-first usage counters with a user-visible stats panel. Two-stream separation: product data (DICOM/PHI) and telemetry (usage counters) are architecturally separate. PHI never touches the telemetry stream. ([ADR 008](decisions/008-local-first-instrumentation.md))
+
+**April 2026 -- Patient-to-provider sharing design.**
+Researched HIPAA/FTC compliance, DICOMweb standards, Epic/Ambra integration, and itemized compliance costs. Decided to build DICOMweb (STOW-RS) in-house rather than depend on Ambra's per-study fees. Three-stream data model (telemetry, audit logs, product data). Phased rollout from local DICOM export through SOC 2, HIPAA, and eventually Epic integration. ([ADR 010](decisions/010-patient-provider-image-sharing.md))
+
 **Other key decisions:**
 - Client-side rendering for the cloud platform, not server-side ([ADR 004](decisions/004-cloud-platform-rendering-architecture.md))
 - macOS launch.command for double-click startup ([ADR 001](decisions/001-launch-command.md))
@@ -179,29 +187,39 @@ The desktop app is the current focus. It must be a complete, polished, standalon
 - Copy-on-import library (ADR 007) -- additive folder drop, managed library folder
 - 3D volume rendering (vtk.js) -- volume rendering, MIP, transfer functions
 - Signed and notarized macOS release
+- Local-first instrumentation -- usage counters with user-visible stats panel ([ADR 008](decisions/008-local-first-instrumentation.md))
+- Local DICOM export (USB/folder, DICOMDIR-compliant) -- zero compliance cost, ships in any mode
 
-### Next: Cloud Sync (Annotations First)
+### Next: Cloud Sync + Compliance Prep
 
-Sync notes, comments, and reports across devices. The desktop app remains fully functional offline. Cloud is additive.
+Sync notes, comments, and reports across devices. Begin SOC 2 preparation (6-12 month lead time). The desktop app remains fully functional offline. Cloud is additive.
 
 - User accounts and authentication
 - Sync engine: outbox-based replication, delta cursors, tombstones
 - Server infrastructure (Flask or separate service, TBD)
+- SOC 2 Type II kickoff: compliance platform, policies, security tooling
 - DICOM file sync deferred to after annotation sync is stable
 
 See [ADR 006](decisions/006-cloud-sync-storage-architecture.md) and [Sync Contract v1](planning/SYNC-CONTRACT-V1.md).
 
-### Later: Cloud Platform
+### Later: Cloud Platform + Patient-to-Provider Sharing
 
-The full hosted service at app.divergent.health.
+The full hosted service at app.divergent.health, plus the ability for patients to share imaging with their medical providers.
 
 - DICOM file sync (managed folder as upload source, selective sync per device)
-- Sharing and collaboration
+- DICOMweb (STOW-RS) integration for patient-to-provider image sharing -- built in-house, no exchange network dependency ([ADR 010](decisions/010-patient-provider-image-sharing.md))
+- SOC 2 Type II certification
+- Three-stream data model: telemetry (no PHI), audit logs (PHI references, 6-year retention), product data (DICOM in transit)
+- Published privacy policy (modeled on Panic's approach)
 - Server-side search and organization
 - Multi-platform (Windows, Linux desktop; mobile TBD)
+- Sharing and collaboration
 
-### Future: Advanced Imaging
+### Future: Enterprise + Advanced Imaging
 
+- HIPAA business associate status + provider contracts
+- Epic integration via SMART on FHIR (when revenue justifies $300K+ investment)
+- HITRUST certification (when enterprise payer customers require it)
 - 3D volume rendering with medical presets (CT soft tissue, bone, lung; MRI brain, spine)
 - Multi-planar reconstruction (MPR)
 - Hanging protocols
@@ -225,4 +243,4 @@ The full hosted service at app.divergent.health.
 ---
 
 *Divergent Health Technologies -- divergent.health*
-*Last updated: 2026-03-28*
+*Last updated: 2026-04-06*
