@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 100">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500&amp;display=swap');
+  </style>
+  <text x="0" y="80" font-family="'Lora', Georgia, serif" font-size="86">
+    <tspan font-weight="400" fill="#F08C00">myRad</tspan><tspan font-weight="500" fill="#C4BFB3">One</tspan>
+  </text>
+</svg>

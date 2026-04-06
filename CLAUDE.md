@@ -470,6 +470,13 @@ Canonical location for new decision records is `docs/decisions/` (Architecture D
 - Dark theme optimized for radiologist viewing environment
 - Single source of truth in docs/ (consolidation done 2026-01-28)
 - GitHub Flow branching strategy (simple, single main branch)
+- Emerald design system chosen over sage (ADR 009)
+- Amber (#F08C00) as primary accent, emerald (#2D9B54) for success/status
+- myRadOne logo: Lora 400 amber "myRad" + Lora 500 stone "One" (outlined SVG in app)
+- Divergent Health logo: Inter 500 ash 60% "DIVERGENT" + Source Serif 4 italic 400 amber ".health"
+- Fonts self-hosted (docs/fonts/) -- Tauri CSP blocks Google Fonts
+- Logo must use outlined SVG paths, not SVG text (WKWebView font loading unreliable)
+- Design exploration archive at ~/claude 0/divergent-landing/brand-archive.html
 
 <!-- claude-3-meta -->
 # Meta: Inter-Session Messaging
