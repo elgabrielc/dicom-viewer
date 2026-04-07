@@ -34,25 +34,30 @@
     function renderHelpContent() {
         const tocEl = $('helpToc');
         const contentEl = $('helpContent');
-        if (!tocEl || !contentEl || !Array.isArray(HELP_SECTIONS)) return;
+        const helpSections = window.HELP_SECTIONS;
+        if (!tocEl || !contentEl || !Array.isArray(helpSections)) return;
 
-        tocEl.innerHTML = HELP_SECTIONS.map(
-            (section) => `
+        tocEl.innerHTML = helpSections
+            .map(
+                (section) => `
             <a href="#help-${escapeHtml(section.id)}" class="help-toc-item" data-section-id="${escapeHtml(section.id)}">
                 ${escapeHtml(section.title)}
             </a>
         `,
-        ).join('');
+            )
+            .join('');
 
-        // HELP_SECTIONS content is authored static HTML from help-content.js, not user input.
-        contentEl.innerHTML = HELP_SECTIONS.map(
-            (section) => `
+        // window.HELP_SECTIONS content is authored static HTML from help-content.js, not user input.
+        contentEl.innerHTML = helpSections
+            .map(
+                (section) => `
             <section id="help-${escapeHtml(section.id)}" class="help-section" data-section-id="${escapeHtml(section.id)}">
                 <h2>${escapeHtml(section.title)}</h2>
                 ${section.content}
             </section>
         `,
-        ).join('');
+            )
+            .join('');
 
         tocEl.querySelectorAll('.help-toc-item').forEach((item) => {
             item.addEventListener('click', (e) => {

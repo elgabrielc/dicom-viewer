@@ -741,7 +741,6 @@
                 try {
                     pixelData = await decodeJpeg2000(
                         dataSet,
-                        pixelDataElement,
                         rows,
                         cols,
                         bitsAllocated,
@@ -758,7 +757,7 @@
                 }
             } else if (isJpegLossless(transferSyntax)) {
                 try {
-                    pixelData = decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex);
+                    pixelData = decodeJpegLossless(dataSet, pixelDataElement, bitsAllocated, frameIndex);
                 } catch (error) {
                     return buildDecodeError('JPEG Lossless decode failed', getDecodeFailureMessage(error), {
                         stage: getDecodeFailureStage(error),

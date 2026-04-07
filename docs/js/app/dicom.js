@@ -479,12 +479,10 @@
      *
      * @param {Object} dataSet - dicomParser dataset
      * @param {Object} pixelDataElement - Pixel data element (x7fe00010)
-     * @param {number} rows - Image height
-     * @param {number} cols - Image width
      * @param {number} bitsAllocated - Bits per pixel (8 or 16)
      * @returns {TypedArray} Decoded pixel data
      */
-    function decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex = 0) {
+    function decodeJpegLossless(dataSet, pixelDataElement, bitsAllocated, frameIndex = 0) {
         try {
             let frameData;
 
@@ -773,22 +771,13 @@
      * Decode JPEG 2000 compressed pixel data using OpenJPEG WASM
      *
      * @param {Object} dataSet - dicomParser dataset
-     * @param {Object} pixelDataElement - Pixel data element (unused, uses dataSet.elements)
      * @param {number} rows - Image height
      * @param {number} cols - Image width
      * @param {number} bitsAllocated - Bits per pixel
      * @param {number} pixelRepresentation - 0=unsigned, 1=signed
      * @returns {Promise<TypedArray>} Decoded pixel data
      */
-    async function decodeJpeg2000(
-        dataSet,
-        pixelDataElement,
-        rows,
-        cols,
-        bitsAllocated,
-        pixelRepresentation,
-        frameIndex = 0,
-    ) {
+    async function decodeJpeg2000(dataSet, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
         try {
             console.log('Attempting JPEG 2000 decode for', rows, 'x', cols, 'image');
 
