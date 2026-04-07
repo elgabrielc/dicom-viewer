@@ -88,6 +88,7 @@ For benchmark, planning, and competitive research:
 
 - Workflow rules: `docs/AGENT_WORKTREES.md`
 - Full explanation: `docs/AGENT_WORKTREES_EXPLAINER.md`
+- For design work: start with `docs/design/core.md` and `docs/design/README.md`
 - Research docs policy: `docs/RESEARCH_POLICY.md`
 
 ## Workspace Structure
