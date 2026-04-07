@@ -233,6 +233,20 @@ header {
     margin: 0.25rem 0;
 }
 
+/* "or choose a folder..." link in drop zone */
+.choose-import-link {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-top: 0.5rem;
+    display: inline-block;
+}
+
+.choose-import-link:hover {
+    text-decoration: underline;
+}
+
 /* Sample CT button section */
 .sample-section {
     display: flex;
@@ -541,8 +555,9 @@ header {
     background-color: var(--color-bg-secondary);
 }
 
-.series-dropdown-row > td {
-    padding: 0 !important;
+.studies-table .series-dropdown-row > td,
+.studies-table .comment-panel-row > td {
+    padding: 0;
 }
 
 .series-dropdown {
@@ -561,27 +576,28 @@ header {
     min-width: 120px;
 }
 
-.comment-toggle {
-    -webkit-appearance: none !important;
-    appearance: none !important;
+.comment-toggle,
+.report-toggle {
+    -webkit-appearance: none;
+    appearance: none;
     padding: 0.35rem 0.7rem;
-    border: 1px solid var(--color-emerald-200) !important;
+    border: 1px solid var(--color-emerald-200);
     border-radius: var(--radius-sm);
-    background-color: transparent !important;
-    color: var(--color-emerald-600) !important;
+    background-color: transparent;
+    color: var(--color-emerald-600);
     font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s;
 }
 
-.comment-toggle:hover {
-    background-color: var(--color-emerald-50) !important;
-    border-color: var(--color-emerald-400) !important;
-    color: var(--color-emerald-600) !important;
+.comment-toggle:hover,
+.report-toggle:hover {
+    background-color: var(--color-emerald-50);
+    border-color: var(--color-emerald-400);
+    color: var(--color-emerald-600);
 }
 
 .comment-panel-row > td {
-    padding: 0 !important;
     background-color: var(--color-bg-secondary);
 }
 
@@ -809,25 +825,6 @@ header {
 
 .report-cell {
     min-width: 100px;
-}
-
-.report-toggle {
-    -webkit-appearance: none !important;
-    appearance: none !important;
-    padding: 0.35rem 0.7rem;
-    border: 1px solid var(--color-emerald-200) !important;
-    border-radius: var(--radius-sm);
-    background-color: transparent !important;
-    color: var(--color-emerald-600) !important;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.report-toggle:hover {
-    background-color: var(--color-emerald-50) !important;
-    border-color: var(--color-emerald-400) !important;
-    color: var(--color-emerald-600) !important;
 }
 
 .report-section {
@@ -2212,20 +2209,6 @@ header {
     margin: 0;
 }
 
-/* "or choose a folder..." link in drop zone */
-.choose-import-link {
-    color: var(--color-accent);
-    text-decoration: none;
-    font-size: 0.9rem;
-    cursor: pointer;
-    margin-top: 0.5rem;
-    display: inline-block;
-}
-
-.choose-import-link:hover {
-    text-decoration: underline;
-}
-
 /* Library status footer */
 .library-status-footer {
     display: flex;
@@ -2246,11 +2229,11 @@ header {
 }
 
 .sample-section.de-emphasized .sample-btn {
-    -webkit-appearance: none !important;
-    appearance: none !important;
-    background: #196333 !important;
-    border: 1px solid #196333 !important;
-    color: #ffffff !important;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #196333;
+    border: 1px solid #196333;
+    color: #ffffff;
     padding: 0.4rem 0.8rem;
     font-size: 0.8rem;
     box-shadow: none;
@@ -2258,9 +2241,9 @@ header {
 }
 
 .sample-section.de-emphasized .sample-btn:hover {
-    background: #1e7a3e !important;
-    border-color: #1e7a3e !important;
-    color: #ffffff !important;
+    background: #1e7a3e;
+    border-color: #1e7a3e;
+    color: #ffffff;
     transform: none;
     box-shadow: none;
 }
