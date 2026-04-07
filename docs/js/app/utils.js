@@ -1,6 +1,8 @@
 (() => {
     const app = window.DicomViewerApp || {};
     window.DicomViewerApp = app;
+    const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
+    const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
     const utils = {
         formatDate: (s) => (s?.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s || '-'),
@@ -88,7 +90,7 @@
             if (Array.isArray(bytes)) {
                 return Uint8Array.from(bytes);
             }
-            if (depth < 3 && bytes && Object.hasOwn(bytes, 'data')) {
+            if (depth < 3 && bytes && hasOwn(bytes, 'data')) {
                 return utils.normalizeBinaryResponse(bytes.data, depth + 1);
             }
             return null;

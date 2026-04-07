@@ -12,6 +12,8 @@ const _SyncOutbox = (() => {
     const OUTBOX_KEY = 'dicom-viewer-sync-outbox';
     const SYNC_STATE_KEY = 'dicom-viewer-sync-state';
     const LEGACY_DEVICE_ID_KEY = 'dicom-viewer-device-id';
+    const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
+    const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
     let dbConnection = null;
     let dbPromise = null;
@@ -40,7 +42,7 @@ const _SyncOutbox = (() => {
 
     function mergeHydratedSyncState(stateRows) {
         for (const row of stateRows) {
-            if (!Object.hasOwn(desktopCache.syncState, row.key)) {
+            if (!hasOwn(desktopCache.syncState, row.key)) {
                 desktopCache.syncState[row.key] = row.value;
             }
         }
@@ -614,14 +616,14 @@ const _SyncOutbox = (() => {
 
     function getSyncStateValue(key) {
         if (isDesktopMode()) {
-            if (Object.hasOwn(desktopCache.syncState, key)) {
+            if (hasOwn(desktopCache.syncState, key)) {
                 return desktopCache.syncState[key];
             }
             if (desktopCache.hydrated) {
                 return null;
             }
             const legacyState = loadSyncStateLS();
-            if (Object.hasOwn(legacyState, key)) {
+            if (hasOwn(legacyState, key)) {
                 return legacyState[key];
             }
             if (key === 'device_id') {

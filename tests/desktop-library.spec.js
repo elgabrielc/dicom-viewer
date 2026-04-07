@@ -16,6 +16,8 @@ async function installMockDesktop(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((options) => {
         const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
+        const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
+        const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
         function toByteArray(value) {
             if (Array.isArray(value)) {
@@ -132,7 +134,7 @@ async function installMockDesktop(page, options = {}) {
                 async exists(path) {
                     const normalized = normalizePath(path);
                     return (
-                        Object.hasOwn(fileBytes, normalized) ||
+                        hasOwn(fileBytes, normalized) ||
                         localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null
                     );
                 },
@@ -141,10 +143,10 @@ async function installMockDesktop(page, options = {}) {
                         await new Promise((resolve) => setTimeout(resolve, readDirDelayMs));
                     }
                     const normalized = normalizePath(path);
-                    if (Object.hasOwn(readDirErrors, normalized)) {
+                    if (hasOwn(readDirErrors, normalized)) {
                         throw new Error(readDirErrors[normalized]);
                     }
-                    if (!Object.hasOwn(dirs, normalized)) {
+                    if (!hasOwn(dirs, normalized)) {
                         throw new Error(`Path not found: ${normalized}`);
                     }
                     return dirs[normalized];
@@ -172,7 +174,7 @@ async function installMockDesktop(page, options = {}) {
                 },
                 async stat(path) {
                     const normalized = normalizePath(path);
-                    if (!Object.hasOwn(stats, normalized)) {
+                    if (!hasOwn(stats, normalized)) {
                         throw new Error(`Stat not found: ${normalized}`);
                     }
                     return stats[normalized];
@@ -180,7 +182,7 @@ async function installMockDesktop(page, options = {}) {
                 async rename(fromPath, toPath) {
                     const normalizedFrom = normalizePath(fromPath);
                     const normalizedTo = normalizePath(toPath);
-                    if (!Object.hasOwn(fileBytes, normalizedFrom)) {
+                    if (!hasOwn(fileBytes, normalizedFrom)) {
                         throw new Error(`Rename source not found: ${normalizedFrom}`);
                     }
                     fileBytes[normalizedTo] = fileBytes[normalizedFrom];

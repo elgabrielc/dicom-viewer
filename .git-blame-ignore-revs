@@ -1,2 +1,2 @@
-# Add formatting-only commit hashes here so `git blame` can skip bulk style sweeps.
-# This file is intentionally empty until a dedicated formatting commit is created.
+# Initial lint/format sweep for JS, Python, and Rust.
+4b8defbd56a7d3c389acbb11994b47aec6be8ad7

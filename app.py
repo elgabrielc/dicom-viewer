@@ -50,10 +50,10 @@ if __name__ == '__main__':
 
     if host == '0.0.0.0':
         logging.warning(
-            "SECURITY: Binding to 0.0.0.0 exposes the server on all network "
-            "interfaces. PHI routes require a session token, but /api/session "
-            "will be reachable from the network. Set FLASK_HOST=127.0.0.1 "
-            "(the default) for local-only access."
+            'SECURITY: Binding to 0.0.0.0 exposes the server on all network '
+            'interfaces. PHI routes require a session token, but /api/session '
+            'will be reachable from the network. Set FLASK_HOST=127.0.0.1 '
+            '(the default) for local-only access.'
         )
 
     if explicit_port:
@@ -63,6 +63,6 @@ if __name__ == '__main__':
         # Default 5001: auto-fallback on EADDRINUSE.
         port = _find_free_port(preferred, host)
         if port != preferred:
-            app.logger.warning("Port %d in use, using port %d instead", preferred, port)
+            app.logger.warning('Port %d in use, using port %d instead', preferred, port)
 
     app.run(debug=debug, host=host, port=port)

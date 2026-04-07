@@ -40,8 +40,8 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
-      - name: Check formatting
-        run: npm run format:check
+      - name: Check JS and Python formatting
+        run: npm run format:js:check && npm run format:py:check
 
       - name: Check JS and Python lint rules
         run: npm run lint:js && npm run lint:py

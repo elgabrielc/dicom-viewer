@@ -154,6 +154,8 @@ async function installMockDesktop(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((opts) => {
         const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
+        const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
+        const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
@@ -212,7 +214,7 @@ async function installMockDesktop(page, options = {}) {
                             path: normalized,
                             maxBytes: Number(args.maxBytes) || 0,
                         });
-                        if (Object.hasOwn(state.readFileErrors, normalized)) {
+                        if (hasOwn(state.readFileErrors, normalized)) {
                             throw new Error(state.readFileErrors[normalized]);
                         }
                         const bytes = state.headerReadBytes[normalized] || state.readFileBytes[normalized];
@@ -233,7 +235,7 @@ async function installMockDesktop(page, options = {}) {
                 async exists(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.hasOwn(state.existsResults, normalized)) {
+                    if (hasOwn(state.existsResults, normalized)) {
                         return state.existsResults[normalized];
                     }
                     // Check if writeFile has already written to this path
@@ -242,7 +244,7 @@ async function installMockDesktop(page, options = {}) {
                 async stat(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.hasOwn(state.statResults, normalized)) {
+                    if (hasOwn(state.statResults, normalized)) {
                         return state.statResults[normalized];
                     }
                     throw new Error(`Stat not found: ${normalized}`);
@@ -251,7 +253,7 @@ async function installMockDesktop(page, options = {}) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
                     state.readFileCalls.push(normalized);
-                    if (Object.hasOwn(state.readFileErrors, normalized)) {
+                    if (hasOwn(state.readFileErrors, normalized)) {
                         throw new Error(state.readFileErrors[normalized]);
                     }
                     const bytes = state.readFileBytes[normalized];
@@ -1166,6 +1168,8 @@ async function installMockDesktopIntegration(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((opts) => {
         const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
+        const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
+        const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
@@ -1252,7 +1256,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 async exists(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.hasOwn(state.existsResults, normalized)) {
+                    if (hasOwn(state.existsResults, normalized)) {
                         return state.existsResults[normalized];
                     }
                     // Check if writeFile has already written to this path
@@ -1265,7 +1269,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 async stat(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.hasOwn(state.statResults, normalized)) {
+                    if (hasOwn(state.statResults, normalized)) {
                         return state.statResults[normalized];
                     }
                     throw new Error(`Stat not found: ${normalized}`);
@@ -1273,7 +1277,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 async readFile(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.hasOwn(state.readFileErrors, normalized)) {
+                    if (hasOwn(state.readFileErrors, normalized)) {
                         throw new Error(state.readFileErrors[normalized]);
                     }
                     const bytes = state.readFileBytes[normalized];
@@ -1289,7 +1293,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 },
                 async readDir(dirPath) {
                     const normalized = normalizePath(dirPath);
-                    if (!Object.hasOwn(dirs, normalized)) {
+                    if (!hasOwn(dirs, normalized)) {
                         throw new Error(`Path not found: ${normalized}`);
                     }
                     return dirs[normalized];
