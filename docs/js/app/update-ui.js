@@ -23,7 +23,6 @@
  */
 
 const _UpdateUI = (() => {
-
     // Delay before first background check (let the app finish loading)
     const INITIAL_CHECK_DELAY_MS = 3000;
 
@@ -65,17 +64,19 @@ const _UpdateUI = (() => {
         }
 
         // Wait for Tauri runtime, then register listeners and check
-        waitForUpdaterRuntime().then(runtime => {
+        waitForUpdaterRuntime().then((runtime) => {
             if (!runtime) return;
 
             // Register menu event listener
             const eventApi = runtime.event;
             if (eventApi?.listen) {
-                eventApi.listen('desktop://check-for-updates', () => {
-                    checkForUpdates(true);
-                }).catch(err => {
-                    console.warn('Failed to register update menu handler:', err);
-                });
+                eventApi
+                    .listen('desktop://check-for-updates', () => {
+                        checkForUpdates(true);
+                    })
+                    .catch((err) => {
+                        console.warn('Failed to register update menu handler:', err);
+                    });
             }
 
             // Background check after initial delay
@@ -102,7 +103,7 @@ const _UpdateUI = (() => {
             if (hasUpdaterApis(window.__TAURI__)) {
                 return window.__TAURI__;
             }
-            await new Promise(resolve => setTimeout(resolve, RUNTIME_POLL_INTERVAL_MS));
+            await new Promise((resolve) => setTimeout(resolve, RUNTIME_POLL_INTERVAL_MS));
         }
 
         return null;
@@ -110,9 +111,9 @@ const _UpdateUI = (() => {
 
     function hasUpdaterApis(runtime) {
         return !!(
-            runtime
-            && typeof runtime.updater?.check === 'function'
-            && typeof runtime.event?.listen === 'function'
+            runtime &&
+            typeof runtime.updater?.check === 'function' &&
+            typeof runtime.event?.listen === 'function'
         );
     }
 
@@ -141,10 +142,7 @@ const _UpdateUI = (() => {
 
             if (update) {
                 pendingUpdate = update;
-                showBanner(
-                    'Version ' + update.version + ' is available.',
-                    'Download and Install'
-                );
+                showBanner('Version ' + update.version + ' is available.', 'Download and Install');
             } else if (manual) {
                 showBanner('You are on the latest version.', null);
                 setTimeout(hideBanner, UP_TO_DATE_DISPLAY_MS);

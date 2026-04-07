@@ -48,10 +48,10 @@ function buildSyntheticDicomBytes(options = {}) {
     tags.push({ group: 0x0010, element: 0x0010, vr: 'LO', value: patientName });
 
     // Study Instance UID (0020,000D)
-    tags.push({ group: 0x0020, element: 0x000D, vr: 'UI', value: studyInstanceUid });
+    tags.push({ group: 0x0020, element: 0x000d, vr: 'UI', value: studyInstanceUid });
 
     // Series Instance UID (0020,000E)
-    tags.push({ group: 0x0020, element: 0x000E, vr: 'UI', value: seriesInstanceUid });
+    tags.push({ group: 0x0020, element: 0x000e, vr: 'UI', value: seriesInstanceUid });
 
     // Rows (0028,0010) -- US VR (2 bytes)
     tags.push({ group: 0x0028, element: 0x0010, vr: 'US', value: rows });
@@ -92,7 +92,7 @@ function buildSyntheticDicomBytes(options = {}) {
     bytes[offset++] = 0x44; // D
     bytes[offset++] = 0x49; // I
     bytes[offset++] = 0x43; // C
-    bytes[offset++] = 0x4D; // M
+    bytes[offset++] = 0x4d; // M
 
     // Write each tag
     for (const tag of tags) {
@@ -132,11 +132,11 @@ function buildSyntheticDicomBytes(options = {}) {
     }
 
     // Pixel Data tag (7FE0,0010) with OW VR -- extended length header
-    view.setUint16(offset, 0x7FE0, true);
+    view.setUint16(offset, 0x7fe0, true);
     offset += 2;
     view.setUint16(offset, 0x0010, true);
     offset += 2;
-    bytes[offset++] = 0x4F; // O
+    bytes[offset++] = 0x4f; // O
     bytes[offset++] = 0x57; // W
     offset += 2; // reserved 2 bytes
     view.setUint32(offset, 0, true); // 0 length (just need presence)
@@ -190,7 +190,7 @@ async function installMockDesktop(page, options = {}) {
             readFileBytes: Object.assign({}, opts.readFileBytes || {}),
             manifestEntries: opts.manifestEntries || [],
             readFileErrors: Object.assign({}, opts.readFileErrors || {}),
-            headerReadBytes: Object.assign({}, opts.headerReadBytes || {})
+            headerReadBytes: Object.assign({}, opts.headerReadBytes || {}),
         };
 
         window.__TAURI__ = {
@@ -210,9 +210,9 @@ async function installMockDesktop(page, options = {}) {
                         const state = window.__importMockState;
                         state.headerReadCalls.push({
                             path: normalized,
-                            maxBytes: Number(args.maxBytes) || 0
+                            maxBytes: Number(args.maxBytes) || 0,
                         });
-                        if (Object.prototype.hasOwnProperty.call(state.readFileErrors, normalized)) {
+                        if (Object.hasOwn(state.readFileErrors, normalized)) {
                             throw new Error(state.readFileErrors[normalized]);
                         }
                         const bytes = state.headerReadBytes[normalized] || state.readFileBytes[normalized];
@@ -222,16 +222,18 @@ async function installMockDesktop(page, options = {}) {
                         return Uint8Array.from([]);
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
             dialog: {
-                async open() { return null; }
+                async open() {
+                    return null;
+                },
             },
             fs: {
                 async exists(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.prototype.hasOwnProperty.call(state.existsResults, normalized)) {
+                    if (Object.hasOwn(state.existsResults, normalized)) {
                         return state.existsResults[normalized];
                     }
                     // Check if writeFile has already written to this path
@@ -240,7 +242,7 @@ async function installMockDesktop(page, options = {}) {
                 async stat(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.prototype.hasOwnProperty.call(state.statResults, normalized)) {
+                    if (Object.hasOwn(state.statResults, normalized)) {
                         return state.statResults[normalized];
                     }
                     throw new Error(`Stat not found: ${normalized}`);
@@ -249,7 +251,7 @@ async function installMockDesktop(page, options = {}) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
                     state.readFileCalls.push(normalized);
-                    if (Object.prototype.hasOwnProperty.call(state.readFileErrors, normalized)) {
+                    if (Object.hasOwn(state.readFileErrors, normalized)) {
                         throw new Error(state.readFileErrors[normalized]);
                     }
                     const bytes = state.readFileBytes[normalized];
@@ -258,23 +260,25 @@ async function installMockDesktop(page, options = {}) {
                     }
                     return Uint8Array.from([0]);
                 },
-                async readDir() { return []; },
+                async readDir() {
+                    return [];
+                },
                 async writeFile(filePath, bytes) {
                     const normalized = normalizePath(filePath);
                     window.__importMockState.writeFileCalls.push({
                         path: normalized,
-                        size: bytes.byteLength || bytes.length
+                        size: bytes.byteLength || bytes.length,
                     });
                 },
                 async mkdir(dirPath, mkdirOptions) {
                     const normalized = normalizePath(dirPath);
                     window.__importMockState.mkdirCalls.push({
                         path: normalized,
-                        recursive: !!(mkdirOptions && mkdirOptions.recursive)
+                        recursive: !!(mkdirOptions && mkdirOptions.recursive),
                     });
                 },
                 async remove() {},
-                async rename() {}
+                async rename() {},
             },
             path: {
                 async appDataDir() {
@@ -285,7 +289,7 @@ async function installMockDesktop(page, options = {}) {
                 },
                 async normalize(filePath) {
                     return normalizePath(filePath);
-                }
+                },
             },
             sql: window.__createMockTauriSql(opts),
             webview: {
@@ -293,10 +297,10 @@ async function installMockDesktop(page, options = {}) {
                     return {
                         onDragDropEvent() {
                             return Promise.resolve(() => {});
-                        }
+                        },
                     };
-                }
-            }
+                },
+            },
         };
     }, options);
 }
@@ -306,7 +310,6 @@ async function installMockDesktop(page, options = {}) {
 // ---------------------------------------------------------------------------
 
 test.describe('Desktop import pipeline', () => {
-
     // -----------------------------------------------------------------------
     // buildDestinationPath
     // -----------------------------------------------------------------------
@@ -321,7 +324,7 @@ test.describe('Desktop import pipeline', () => {
             return pipeline.buildDestinationPath('/mock-app-data/library', {
                 studyInstanceUid: '1.2.3.4',
                 seriesInstanceUid: '1.2.3.4.1',
-                sopInstanceUid: '1.2.3.4.1.1'
+                sopInstanceUid: '1.2.3.4.1.1',
             });
         });
 
@@ -338,7 +341,7 @@ test.describe('Desktop import pipeline', () => {
             return pipeline.buildDestinationPath('/lib', {
                 studyInstanceUid: '1.2.3 with spaces/slashes\\back',
                 seriesInstanceUid: '1.2.3<angle>brackets',
-                sopInstanceUid: '1.2.3|pipe&amp'
+                sopInstanceUid: '1.2.3|pipe&amp',
             });
         });
 
@@ -356,7 +359,7 @@ test.describe('Desktop import pipeline', () => {
             try {
                 pipeline.buildDestinationPath('/lib', {
                     studyInstanceUid: '1.2.3',
-                    seriesInstanceUid: '1.2.3.1'
+                    seriesInstanceUid: '1.2.3.1',
                     // sopInstanceUid intentionally omitted
                 });
                 return null;
@@ -376,7 +379,7 @@ test.describe('Desktop import pipeline', () => {
         const result = await page.evaluate(() => {
             const pipeline = window.DicomViewerApp.importPipeline;
             return pipeline.buildDestinationPath('/lib', {
-                sopInstanceUid: '1.2.3.4.1.1'
+                sopInstanceUid: '1.2.3.4.1.1',
                 // studyInstanceUid and seriesInstanceUid intentionally omitted
             });
         });
@@ -415,16 +418,14 @@ test.describe('Desktop import pipeline', () => {
             const state = window.__importMockState;
             return {
                 returnedPath,
-                mkdirCalls: state.mkdirCalls
+                mkdirCalls: state.mkdirCalls,
             };
         });
 
         expect(result.returnedPath).toBe('/mock-app-data/library');
         expect(result.mkdirCalls.length).toBeGreaterThanOrEqual(1);
 
-        const libraryMkdir = result.mkdirCalls.find(
-            (call) => call.path === '/mock-app-data/library'
-        );
+        const libraryMkdir = result.mkdirCalls.find((call) => call.path === '/mock-app-data/library');
         expect(libraryMkdir).toBeTruthy();
         expect(libraryMkdir.recursive).toBe(true);
     });
@@ -438,24 +439,36 @@ test.describe('Desktop import pipeline', () => {
             studyInstanceUid: '1.2.study.1',
             seriesInstanceUid: '1.2.series.1',
             sopInstanceUid: '1.2.sop.1',
-            patientName: 'Happy^Path'
+            patientName: 'Happy^Path',
         });
         const dicomB = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.1',
             seriesInstanceUid: '1.2.series.1',
             sopInstanceUid: '1.2.sop.2',
-            patientName: 'Happy^Path'
+            patientName: 'Happy^Path',
         });
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/file1.dcm', name: 'file1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
-                { path: '/source/file2.dcm', name: 'file2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+                {
+                    path: '/source/file1.dcm',
+                    name: 'file1.dcm',
+                    rootPath: '/source',
+                    size: dicomA.length,
+                    modifiedMs: 1000,
+                },
+                {
+                    path: '/source/file2.dcm',
+                    name: 'file2.dcm',
+                    rootPath: '/source',
+                    size: dicomB.length,
+                    modifiedMs: 2000,
+                },
             ],
             readFileBytes: {
                 '/source/file1.dcm': dicomA,
-                '/source/file2.dcm': dicomB
-            }
+                '/source/file2.dcm': dicomB,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -489,24 +502,30 @@ test.describe('Desktop import pipeline', () => {
         const dicomBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.dup',
             seriesInstanceUid: '1.2.series.dup',
-            sopInstanceUid: '1.2.sop.dup'
+            sopInstanceUid: '1.2.sop.dup',
         });
 
         const destPath = `${LIBRARY_ROOT}/1.2.study.dup/1.2.series.dup/1.2.sop.dup.dcm`;
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/dup.dcm', name: 'dup.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/dup.dcm',
+                    name: 'dup.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/dup.dcm': dicomBytes
+                '/source/dup.dcm': dicomBytes,
             },
             existsOverrides: {
-                [destPath]: true
+                [destPath]: true,
             },
             statOverrides: {
-                [destPath]: { size: dicomBytes.length }
-            }
+                [destPath]: { size: dicomBytes.length },
+            },
         });
 
         await page.goto(HOME_URL);
@@ -526,24 +545,30 @@ test.describe('Desktop import pipeline', () => {
         const dicomBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.headerdup',
             seriesInstanceUid: '1.2.series.headerdup',
-            sopInstanceUid: '1.2.sop.headerdup'
+            sopInstanceUid: '1.2.sop.headerdup',
         });
 
         const destPath = `${LIBRARY_ROOT}/1.2.study.headerdup/1.2.series.headerdup/1.2.sop.headerdup.dcm`;
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/header-dup.dcm', name: 'header-dup.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/header-dup.dcm',
+                    name: 'header-dup.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/header-dup.dcm': dicomBytes
+                '/source/header-dup.dcm': dicomBytes,
             },
             existsOverrides: {
-                [destPath]: true
+                [destPath]: true,
             },
             statOverrides: {
-                [destPath]: { size: dicomBytes.length }
-            }
+                [destPath]: { size: dicomBytes.length },
+            },
         });
 
         await page.goto(HOME_URL);
@@ -555,7 +580,7 @@ test.describe('Desktop import pipeline', () => {
             return {
                 importResult,
                 readFileCalls: window.__importMockState.readFileCalls.slice(),
-                headerReadCalls: window.__importMockState.headerReadCalls.slice()
+                headerReadCalls: window.__importMockState.headerReadCalls.slice(),
             };
         });
 
@@ -564,29 +589,37 @@ test.describe('Desktop import pipeline', () => {
         expect(result.readFileCalls).toHaveLength(0);
     });
 
-    test('importFromPaths: staged header reads continue until Study, Series, and SOP UIDs are available', async ({ page }) => {
+    test('importFromPaths: staged header reads continue until Study, Series, and SOP UIDs are available', async ({
+        page,
+    }) => {
         const dicomBytes = buildSyntheticDicomBytes({
             patientName: 'P'.repeat(65300),
             studyInstanceUid: '1.2.study.staged',
             seriesInstanceUid: '1.2.series.staged',
-            sopInstanceUid: '1.2.sop.staged'
+            sopInstanceUid: '1.2.sop.staged',
         });
 
         const destPath = `${LIBRARY_ROOT}/1.2.study.staged/1.2.series.staged/1.2.sop.staged.dcm`;
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/staged-header.dcm', name: 'staged-header.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/staged-header.dcm',
+                    name: 'staged-header.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/staged-header.dcm': dicomBytes
+                '/source/staged-header.dcm': dicomBytes,
             },
             existsOverrides: {
-                [destPath]: true
+                [destPath]: true,
             },
             statOverrides: {
-                [destPath]: { size: dicomBytes.length }
-            }
+                [destPath]: { size: dicomBytes.length },
+            },
         });
 
         await page.goto(HOME_URL);
@@ -598,7 +631,7 @@ test.describe('Desktop import pipeline', () => {
             return {
                 importResult,
                 readFileCalls: window.__importMockState.readFileCalls.slice(),
-                headerReadCalls: window.__importMockState.headerReadCalls.slice()
+                headerReadCalls: window.__importMockState.headerReadCalls.slice(),
             };
         });
 
@@ -615,25 +648,31 @@ test.describe('Desktop import pipeline', () => {
         const dicomBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.col',
             seriesInstanceUid: '1.2.series.col',
-            sopInstanceUid: '1.2.sop.col'
+            sopInstanceUid: '1.2.sop.col',
         });
 
         const destPath = `${LIBRARY_ROOT}/1.2.study.col/1.2.series.col/1.2.sop.col.dcm`;
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/col.dcm', name: 'col.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/col.dcm',
+                    name: 'col.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/col.dcm': dicomBytes
+                '/source/col.dcm': dicomBytes,
             },
             existsOverrides: {
-                [destPath]: true
+                [destPath]: true,
             },
             statOverrides: {
                 // Different size from the source file
-                [destPath]: { size: dicomBytes.length + 100 }
-            }
+                [destPath]: { size: dicomBytes.length + 100 },
+            },
         });
 
         await page.goto(HOME_URL);
@@ -659,13 +698,25 @@ test.describe('Desktop import pipeline', () => {
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/readme.txt', name: 'readme.txt', rootPath: '/source', size: junkBytes.length, modifiedMs: 1000 },
-                { path: '/source/photo.jpg', name: 'photo.jpg', rootPath: '/source', size: junkBytes.length, modifiedMs: 2000 }
+                {
+                    path: '/source/readme.txt',
+                    name: 'readme.txt',
+                    rootPath: '/source',
+                    size: junkBytes.length,
+                    modifiedMs: 1000,
+                },
+                {
+                    path: '/source/photo.jpg',
+                    name: 'photo.jpg',
+                    rootPath: '/source',
+                    size: junkBytes.length,
+                    modifiedMs: 2000,
+                },
             ],
             readFileBytes: {
                 '/source/readme.txt': junkBytes,
-                '/source/photo.jpg': junkBytes
-            }
+                '/source/photo.jpg': junkBytes,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -686,11 +737,17 @@ test.describe('Desktop import pipeline', () => {
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/not-dicom.bin', name: 'not-dicom.bin', rootPath: '/source', size: junkBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/not-dicom.bin',
+                    name: 'not-dicom.bin',
+                    rootPath: '/source',
+                    size: junkBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/not-dicom.bin': junkBytes
-            }
+                '/source/not-dicom.bin': junkBytes,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -702,7 +759,7 @@ test.describe('Desktop import pipeline', () => {
             return {
                 importResult,
                 readFileCalls: window.__importMockState.readFileCalls.slice(),
-                headerReadCalls: window.__importMockState.headerReadCalls.slice()
+                headerReadCalls: window.__importMockState.headerReadCalls.slice(),
             };
         });
 
@@ -719,16 +776,22 @@ test.describe('Desktop import pipeline', () => {
         const dicomBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.prog',
             seriesInstanceUid: '1.2.series.prog',
-            sopInstanceUid: '1.2.sop.prog'
+            sopInstanceUid: '1.2.sop.prog',
         });
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/prog.dcm', name: 'prog.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/prog.dcm',
+                    name: 'prog.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/prog.dcm': dicomBytes
-            }
+                '/source/prog.dcm': dicomBytes,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -740,7 +803,7 @@ test.describe('Desktop import pipeline', () => {
             const importResult = await pipeline.importFromPaths(['/source'], {
                 onProgress: (stats) => {
                     progressEvents.push(JSON.parse(JSON.stringify(stats)));
-                }
+                },
             });
             return { importResult, progressEvents };
         });
@@ -776,14 +839,14 @@ test.describe('Desktop import pipeline', () => {
             const bytes = buildSyntheticDicomBytes({
                 studyInstanceUid: '1.2.study.abort',
                 seriesInstanceUid: '1.2.series.abort',
-                sopInstanceUid: sopUid
+                sopInstanceUid: sopUid,
             });
             manifestEntries.push({
                 path: filePath,
                 name: `abort-${index}.dcm`,
                 rootPath: '/source',
                 size: bytes.length,
-                modifiedMs: index * 1000
+                modifiedMs: index * 1000,
             });
             readFileBytes[filePath] = bytes;
         }
@@ -807,14 +870,14 @@ test.describe('Desktop import pipeline', () => {
                         if (stats.processed >= 1 && stats.phase === 'importing') {
                             controller.abort();
                         }
-                    }
+                    },
                 });
                 return { aborted: false, processed };
             } catch (error) {
                 return {
                     aborted: error.name === 'AbortError',
                     errorName: error.name,
-                    processed
+                    processed,
                 };
             }
         });
@@ -833,20 +896,26 @@ test.describe('Desktop import pipeline', () => {
         const goodDicom = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.partial',
             seriesInstanceUid: '1.2.series.partial',
-            sopInstanceUid: '1.2.sop.good'
+            sopInstanceUid: '1.2.sop.good',
         });
 
         await installMockDesktop(page, {
             manifestEntries: [
                 { path: '/source/bad.dcm', name: 'bad.dcm', rootPath: '/source', size: 100, modifiedMs: 1000 },
-                { path: '/source/good.dcm', name: 'good.dcm', rootPath: '/source', size: goodDicom.length, modifiedMs: 2000 }
+                {
+                    path: '/source/good.dcm',
+                    name: 'good.dcm',
+                    rootPath: '/source',
+                    size: goodDicom.length,
+                    modifiedMs: 2000,
+                },
             ],
             readFileBytes: {
-                '/source/good.dcm': goodDicom
+                '/source/good.dcm': goodDicom,
             },
             readFileErrors: {
-                '/source/bad.dcm': 'Simulated filesystem read failure'
-            }
+                '/source/bad.dcm': 'Simulated filesystem read failure',
+            },
         });
 
         await page.goto(HOME_URL);
@@ -869,7 +938,7 @@ test.describe('Desktop import pipeline', () => {
 
     test('importFromPaths: empty folder returns zero counts', async ({ page }) => {
         await installMockDesktop(page, {
-            manifestEntries: []
+            manifestEntries: [],
         });
 
         await page.goto(HOME_URL);
@@ -899,34 +968,34 @@ test.describe('Desktop import pipeline', () => {
             seriesInstanceUid: '1.2.multi.series.A1',
             sopInstanceUid: '1.2.multi.sop.A1.1',
             patientName: 'Multi^A',
-            studyDate: '20260101'
+            studyDate: '20260101',
         });
         const dicomB = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.multi.study.A',
             seriesInstanceUid: '1.2.multi.series.A2',
             sopInstanceUid: '1.2.multi.sop.A2.1',
             patientName: 'Multi^A',
-            studyDate: '20260101'
+            studyDate: '20260101',
         });
         const dicomC = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.multi.study.B',
             seriesInstanceUid: '1.2.multi.series.B1',
             sopInstanceUid: '1.2.multi.sop.B1.1',
             patientName: 'Multi^B',
-            studyDate: '20260215'
+            studyDate: '20260215',
         });
 
         await installMockDesktop(page, {
             manifestEntries: [
                 { path: '/src/a1.dcm', name: 'a1.dcm', rootPath: '/src', size: dicomA.length, modifiedMs: 1000 },
                 { path: '/src/a2.dcm', name: 'a2.dcm', rootPath: '/src', size: dicomB.length, modifiedMs: 2000 },
-                { path: '/src/b1.dcm', name: 'b1.dcm', rootPath: '/src', size: dicomC.length, modifiedMs: 3000 }
+                { path: '/src/b1.dcm', name: 'b1.dcm', rootPath: '/src', size: dicomC.length, modifiedMs: 3000 },
             ],
             readFileBytes: {
                 '/src/a1.dcm': dicomA,
                 '/src/a2.dcm': dicomB,
-                '/src/b1.dcm': dicomC
-            }
+                '/src/b1.dcm': dicomC,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -959,16 +1028,22 @@ test.describe('Desktop import pipeline', () => {
         const dicomBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.write',
             seriesInstanceUid: '1.2.series.write',
-            sopInstanceUid: '1.2.sop.write'
+            sopInstanceUid: '1.2.sop.write',
         });
 
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/write.dcm', name: 'write.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/write.dcm',
+                    name: 'write.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/write.dcm': dicomBytes
-            }
+                '/source/write.dcm': dicomBytes,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -980,24 +1055,20 @@ test.describe('Desktop import pipeline', () => {
             const state = window.__importMockState;
             return {
                 mkdirCalls: state.mkdirCalls,
-                writeFileCalls: state.writeFileCalls
+                writeFileCalls: state.writeFileCalls,
             };
         });
 
         // mkdir should have been called for the library root and for the parent
         // of the destination file
         const parentDir = `${LIBRARY_ROOT}/1.2.study.write/1.2.series.write`;
-        const parentMkdir = result.mkdirCalls.find(
-            (call) => call.path === parentDir
-        );
+        const parentMkdir = result.mkdirCalls.find((call) => call.path === parentDir);
         expect(parentMkdir).toBeTruthy();
         expect(parentMkdir.recursive).toBe(true);
 
         // writeFile should have been called with the correct destination path
         const destPath = `${parentDir}/1.2.sop.write.dcm`;
-        const writeCall = result.writeFileCalls.find(
-            (call) => call.path === destPath
-        );
+        const writeCall = result.writeFileCalls.find((call) => call.path === destPath);
         expect(writeCall).toBeTruthy();
         expect(writeCall.size).toBe(dicomBytes.length);
     });
@@ -1013,7 +1084,7 @@ test.describe('Desktop import pipeline', () => {
         const noSopBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.nosop',
             seriesInstanceUid: '1.2.series.nosop',
-            sopInstanceUid: '1.2.sop.nosop' // will be present in bytes
+            sopInstanceUid: '1.2.sop.nosop', // will be present in bytes
         });
 
         // We will override readFile to return bytes that parse as DICOM but have
@@ -1021,8 +1092,8 @@ test.describe('Desktop import pipeline', () => {
         // a real SOP tag by constructing a custom buffer in the browser context.
         await installMockDesktop(page, {
             manifestEntries: [
-                { path: '/source/nosop.dcm', name: 'nosop.dcm', rootPath: '/source', size: 512, modifiedMs: 1000 }
-            ]
+                { path: '/source/nosop.dcm', name: 'nosop.dcm', rootPath: '/source', size: 512, modifiedMs: 1000 },
+            ],
         });
 
         await page.goto(HOME_URL);
@@ -1031,9 +1102,7 @@ test.describe('Desktop import pipeline', () => {
         const result = await page.evaluate(async () => {
             // Build a minimal DICOM in-browser that has transferSyntax but no SOP UID
             const ts = '1.2.840.10008.1.2.1';
-            const tags = [
-                { group: 0x0002, element: 0x0010, vr: 'UI', value: ts }
-            ];
+            const tags = [{ group: 0x0002, element: 0x0010, vr: 'UI', value: ts }];
             let dataSize = 0;
             for (const tag of tags) {
                 let valueLen = tag.value.length;
@@ -1045,16 +1114,21 @@ test.describe('Desktop import pipeline', () => {
             const view = new DataView(buffer);
             const bytes = new Uint8Array(buffer);
             let offset = 128;
-            bytes[offset++] = 0x44; bytes[offset++] = 0x49;
-            bytes[offset++] = 0x43; bytes[offset++] = 0x4D;
+            bytes[offset++] = 0x44;
+            bytes[offset++] = 0x49;
+            bytes[offset++] = 0x43;
+            bytes[offset++] = 0x4d;
             for (const tag of tags) {
-                view.setUint16(offset, tag.group, true); offset += 2;
-                view.setUint16(offset, tag.element, true); offset += 2;
+                view.setUint16(offset, tag.group, true);
+                offset += 2;
+                view.setUint16(offset, tag.element, true);
+                offset += 2;
                 bytes[offset++] = tag.vr.charCodeAt(0);
                 bytes[offset++] = tag.vr.charCodeAt(1);
                 let padLen = tag.value.length;
                 if (padLen % 2 !== 0) padLen += 1;
-                view.setUint16(offset, padLen, true); offset += 2;
+                view.setUint16(offset, padLen, true);
+                offset += 2;
                 for (let ci = 0; ci < tag.value.length; ci++) {
                     bytes[offset++] = tag.value.charCodeAt(ci);
                 }
@@ -1143,7 +1217,7 @@ async function installMockDesktopIntegration(page, options = {}) {
             statResults: Object.assign({}, opts.statOverrides || {}),
             readFileBytes: Object.assign({}, opts.readFileBytes || {}),
             manifestEntries: opts.manifestEntries || [],
-            readFileErrors: Object.assign({}, opts.readFileErrors || {})
+            readFileErrors: Object.assign({}, opts.readFileErrors || {}),
         };
 
         // Capture the drag-drop handler so tests can fire synthetic events
@@ -1162,19 +1236,23 @@ async function installMockDesktopIntegration(page, options = {}) {
                         return window.__importMockState.manifestEntries;
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
             dialog: {
-                async open() { return null; }
+                async open() {
+                    return null;
+                },
             },
             event: {
-                async listen() { return () => {}; }
+                async listen() {
+                    return () => {};
+                },
             },
             fs: {
                 async exists(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.prototype.hasOwnProperty.call(state.existsResults, normalized)) {
+                    if (Object.hasOwn(state.existsResults, normalized)) {
                         return state.existsResults[normalized];
                     }
                     // Check if writeFile has already written to this path
@@ -1187,7 +1265,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 async stat(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.prototype.hasOwnProperty.call(state.statResults, normalized)) {
+                    if (Object.hasOwn(state.statResults, normalized)) {
                         return state.statResults[normalized];
                     }
                     throw new Error(`Stat not found: ${normalized}`);
@@ -1195,7 +1273,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 async readFile(filePath) {
                     const normalized = normalizePath(filePath);
                     const state = window.__importMockState;
-                    if (Object.prototype.hasOwnProperty.call(state.readFileErrors, normalized)) {
+                    if (Object.hasOwn(state.readFileErrors, normalized)) {
                         throw new Error(state.readFileErrors[normalized]);
                     }
                     const bytes = state.readFileBytes[normalized];
@@ -1211,7 +1289,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 },
                 async readDir(dirPath) {
                     const normalized = normalizePath(dirPath);
-                    if (!Object.prototype.hasOwnProperty.call(dirs, normalized)) {
+                    if (!Object.hasOwn(dirs, normalized)) {
                         throw new Error(`Path not found: ${normalized}`);
                     }
                     return dirs[normalized];
@@ -1220,23 +1298,20 @@ async function installMockDesktopIntegration(page, options = {}) {
                     const normalized = normalizePath(filePath);
                     window.__importMockState.writeFileCalls.push({
                         path: normalized,
-                        size: bytes.byteLength || bytes.length
+                        size: bytes.byteLength || bytes.length,
                     });
                     // Also persist to localStorage so readFile can find it later
-                    localStorage.setItem(
-                        `${FILE_STORAGE_PREFIX}${normalized}`,
-                        JSON.stringify(Array.from(bytes))
-                    );
+                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalized}`, JSON.stringify(Array.from(bytes)));
                 },
                 async mkdir(dirPath, mkdirOptions) {
                     const normalized = normalizePath(dirPath);
                     window.__importMockState.mkdirCalls.push({
                         path: normalized,
-                        recursive: !!(mkdirOptions && mkdirOptions.recursive)
+                        recursive: !!(mkdirOptions && mkdirOptions.recursive),
                     });
                 },
                 async remove() {},
-                async rename() {}
+                async rename() {},
             },
             path: {
                 async appDataDir() {
@@ -1247,7 +1322,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                 },
                 async normalize(filePath) {
                     return normalizePath(filePath);
-                }
+                },
             },
             sql: window.__createMockTauriSql(opts),
             webview: {
@@ -1256,16 +1331,15 @@ async function installMockDesktopIntegration(page, options = {}) {
                         onDragDropEvent(handler) {
                             window.__capturedDragDropHandler = handler;
                             return Promise.resolve(() => {});
-                        }
+                        },
                     };
-                }
-            }
+                },
+            },
         };
     }, options);
 }
 
 test.describe('Desktop import integration', () => {
-
     // -----------------------------------------------------------------------
     // Test 1: Drop triggers import when managedLibrary is true
     // -----------------------------------------------------------------------
@@ -1275,13 +1349,13 @@ test.describe('Desktop import integration', () => {
             studyInstanceUid: '1.2.study.drop.1',
             seriesInstanceUid: '1.2.series.drop.1',
             sopInstanceUid: '1.2.sop.drop.1',
-            patientName: 'Drop^Managed'
+            patientName: 'Drop^Managed',
         });
         const dicomB = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.drop.1',
             seriesInstanceUid: '1.2.series.drop.1',
             sopInstanceUid: '1.2.sop.drop.2',
-            patientName: 'Drop^Managed'
+            patientName: 'Drop^Managed',
         });
 
         await installMockDesktopIntegration(page, {
@@ -1289,16 +1363,28 @@ test.describe('Desktop import integration', () => {
                 folder: `${MOCK_APP_DATA}/library`,
                 lastScan: null,
                 managedLibrary: true,
-                importHistory: []
+                importHistory: [],
             },
             manifestEntries: [
-                { path: '/source/img1.dcm', name: 'img1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
-                { path: '/source/img2.dcm', name: 'img2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+                {
+                    path: '/source/img1.dcm',
+                    name: 'img1.dcm',
+                    rootPath: '/source',
+                    size: dicomA.length,
+                    modifiedMs: 1000,
+                },
+                {
+                    path: '/source/img2.dcm',
+                    name: 'img2.dcm',
+                    rootPath: '/source',
+                    size: dicomB.length,
+                    modifiedMs: 2000,
+                },
             ],
             readFileBytes: {
                 '/source/img1.dcm': dicomA,
-                '/source/img2.dcm': dicomB
-            }
+                '/source/img2.dcm': dicomB,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -1319,7 +1405,7 @@ test.describe('Desktop import integration', () => {
             return {
                 importResult,
                 writeFileCalls: state.writeFileCalls,
-                mkdirCalls: state.mkdirCalls
+                mkdirCalls: state.mkdirCalls,
             };
         });
 
@@ -1327,14 +1413,12 @@ test.describe('Desktop import integration', () => {
         expect(result.importResult.skipped).toBe(0);
 
         // Verify files were written to the managed library path
-        const libraryWrites = result.writeFileCalls.filter(
-            (call) => call.path.startsWith(LIBRARY_ROOT)
-        );
+        const libraryWrites = result.writeFileCalls.filter((call) => call.path.startsWith(LIBRARY_ROOT));
         expect(libraryWrites).toHaveLength(2);
 
         // Verify parent directories were created under the library root
         const libraryMkdirs = result.mkdirCalls.filter(
-            (call) => call.path.startsWith(LIBRARY_ROOT) && call.path !== LIBRARY_ROOT
+            (call) => call.path.startsWith(LIBRARY_ROOT) && call.path !== LIBRARY_ROOT,
         );
         expect(libraryMkdirs.length).toBeGreaterThanOrEqual(1);
     });
@@ -1348,7 +1432,7 @@ test.describe('Desktop import integration', () => {
             studyInstanceUid: '1.2.study.scan.1',
             seriesInstanceUid: '1.2.series.scan.1',
             sopInstanceUid: '1.2.sop.scan.1',
-            patientName: 'Scan^NoImport'
+            patientName: 'Scan^NoImport',
         });
 
         await installMockDesktopIntegration(page, {
@@ -1356,16 +1440,22 @@ test.describe('Desktop import integration', () => {
                 folder: '/user-library',
                 lastScan: null,
                 managedLibrary: false,
-                importHistory: []
+                importHistory: [],
             },
             // Supply the same file as both a manifest entry (for importFromPaths)
             // and as readFileBytes so the standard scan path can read it
             manifestEntries: [
-                { path: '/source/scan1.dcm', name: 'scan1.dcm', rootPath: '/source', size: dicomBytes.length, modifiedMs: 1000 }
+                {
+                    path: '/source/scan1.dcm',
+                    name: 'scan1.dcm',
+                    rootPath: '/source',
+                    size: dicomBytes.length,
+                    modifiedMs: 1000,
+                },
             ],
             readFileBytes: {
-                '/source/scan1.dcm': dicomBytes
-            }
+                '/source/scan1.dcm': dicomBytes,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -1390,9 +1480,7 @@ test.describe('Desktop import integration', () => {
             const state = window.__importMockState;
             return {
                 manifestCount: manifest.length,
-                writeFileCalls: state.writeFileCalls.filter(
-                    (call) => call.path.startsWith('/mock-app-data/library')
-                )
+                writeFileCalls: state.writeFileCalls.filter((call) => call.path.startsWith('/mock-app-data/library')),
             };
         });
 
@@ -1412,24 +1500,24 @@ test.describe('Desktop import integration', () => {
             studyInstanceUid: '1.2.study.dedup',
             seriesInstanceUid: '1.2.series.dedup',
             sopInstanceUid: '1.2.sop.dedup.1',
-            patientName: 'Dedup^Test'
+            patientName: 'Dedup^Test',
         });
         const dicomB = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.dedup',
             seriesInstanceUid: '1.2.series.dedup',
             sopInstanceUid: '1.2.sop.dedup.2',
-            patientName: 'Dedup^Test'
+            patientName: 'Dedup^Test',
         });
 
         await installMockDesktopIntegration(page, {
             manifestEntries: [
                 { path: '/source/d1.dcm', name: 'd1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
-                { path: '/source/d2.dcm', name: 'd2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+                { path: '/source/d2.dcm', name: 'd2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 },
             ],
             readFileBytes: {
                 '/source/d1.dcm': dicomA,
-                '/source/d2.dcm': dicomB
-            }
+                '/source/d2.dcm': dicomB,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -1480,7 +1568,7 @@ test.describe('Desktop import integration', () => {
             studyInstanceUid: '1.2.study.startup',
             seriesInstanceUid: '1.2.series.startup',
             sopInstanceUid: '1.2.sop.startup.1',
-            patientName: 'Startup^Managed'
+            patientName: 'Startup^Managed',
         });
 
         // Pre-populate the managed library path with a scan cache so
@@ -1507,18 +1595,21 @@ test.describe('Desktop import integration', () => {
                             {
                                 instanceNumber: 1,
                                 sliceLocation: 0,
-                                source: { kind: 'path', path: `${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup/1.2.sop.startup.1.dcm` }
-                            }
-                        ]
-                    }
-                }
-            }
+                                source: {
+                                    kind: 'path',
+                                    path: `${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup/1.2.sop.startup.1.dcm`,
+                                },
+                            },
+                        ],
+                    },
+                },
+            },
         };
         const snapshotPayload = JSON.stringify({
             version: 1,
             folder: `${MOCK_APP_DATA}/library`,
             savedAt: '2026-03-27T00:00:00.000Z',
-            studies: cachedStudies
+            studies: cachedStudies,
         });
         const snapshotBytes = Array.from(new TextEncoder().encode(snapshotPayload));
 
@@ -1527,10 +1618,10 @@ test.describe('Desktop import integration', () => {
                 folder: `${MOCK_APP_DATA}/library`,
                 lastScan: '2026-03-27T00:00:00.000Z',
                 managedLibrary: true,
-                importHistory: []
+                importHistory: [],
             },
             storedFiles: {
-                [`${MOCK_APP_DATA}/desktop-library-cache.json`]: snapshotBytes
+                [`${MOCK_APP_DATA}/desktop-library-cache.json`]: snapshotBytes,
             },
             // The refresh scan after snapshot load needs dir entries for the library path
             dirs: {
@@ -1539,36 +1630,40 @@ test.describe('Desktop import integration', () => {
                         name: '1.2.study.startup',
                         isFile: false,
                         isDirectory: true,
-                        children: [{
-                            name: '1.2.series.startup',
-                            isFile: false,
-                            isDirectory: true,
-                            children: [{
-                                name: '1.2.sop.startup.1.dcm',
-                                isFile: true,
-                                isDirectory: false
-                            }]
-                        }]
-                    }
+                        children: [
+                            {
+                                name: '1.2.series.startup',
+                                isFile: false,
+                                isDirectory: true,
+                                children: [
+                                    {
+                                        name: '1.2.sop.startup.1.dcm',
+                                        isFile: true,
+                                        isDirectory: false,
+                                    },
+                                ],
+                            },
+                        ],
+                    },
                 ],
                 [`${MOCK_APP_DATA}/library/1.2.study.startup`]: [
                     {
                         name: '1.2.series.startup',
                         isFile: false,
-                        isDirectory: true
-                    }
+                        isDirectory: true,
+                    },
                 ],
                 [`${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup`]: [
                     {
                         name: '1.2.sop.startup.1.dcm',
                         isFile: true,
-                        isDirectory: false
-                    }
-                ]
+                        isDirectory: false,
+                    },
+                ],
             },
             readFileBytes: {
-                [`${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup/1.2.sop.startup.1.dcm`]: dicomBytes
-            }
+                [`${MOCK_APP_DATA}/library/1.2.study.startup/1.2.series.startup/1.2.sop.startup.1.dcm`]: dicomBytes,
+            },
         });
 
         // Use AUTOLOAD_URL (without ?nolib) so initializeDesktopLibrary runs
@@ -1600,7 +1695,7 @@ test.describe('Desktop import integration', () => {
                 invalid: 1,
                 errors: 0,
                 collisions: 0,
-                duration: 3456
+                duration: 3456,
             });
         });
 
@@ -1634,7 +1729,7 @@ test.describe('Desktop import integration', () => {
                 invalid: 0,
                 errors: 2,
                 collisions: 1,
-                duration: 1200
+                duration: 1200,
             });
         });
 
@@ -1668,7 +1763,7 @@ test.describe('Desktop import integration', () => {
                 invalid: 0,
                 errors: 0,
                 collisions: 0,
-                duration: 500
+                duration: 500,
             });
         });
 
@@ -1690,14 +1785,14 @@ test.describe('Desktop import integration', () => {
             seriesInstanceUid: '1.2.series.display',
             sopInstanceUid: '1.2.sop.display.1',
             patientName: 'Display^Test',
-            studyDate: '20260327'
+            studyDate: '20260327',
         });
         const dicomB = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.display',
             seriesInstanceUid: '1.2.series.display',
             sopInstanceUid: '1.2.sop.display.2',
             patientName: 'Display^Test',
-            studyDate: '20260327'
+            studyDate: '20260327',
         });
 
         await installMockDesktopIntegration(page, {
@@ -1705,16 +1800,28 @@ test.describe('Desktop import integration', () => {
                 folder: `${MOCK_APP_DATA}/library`,
                 lastScan: null,
                 managedLibrary: true,
-                importHistory: []
+                importHistory: [],
             },
             manifestEntries: [
-                { path: '/source/disp1.dcm', name: 'disp1.dcm', rootPath: '/source', size: dicomA.length, modifiedMs: 1000 },
-                { path: '/source/disp2.dcm', name: 'disp2.dcm', rootPath: '/source', size: dicomB.length, modifiedMs: 2000 }
+                {
+                    path: '/source/disp1.dcm',
+                    name: 'disp1.dcm',
+                    rootPath: '/source',
+                    size: dicomA.length,
+                    modifiedMs: 1000,
+                },
+                {
+                    path: '/source/disp2.dcm',
+                    name: 'disp2.dcm',
+                    rootPath: '/source',
+                    size: dicomB.length,
+                    modifiedMs: 2000,
+                },
             ],
             readFileBytes: {
                 '/source/disp1.dcm': dicomA,
-                '/source/disp2.dcm': dicomB
-            }
+                '/source/disp2.dcm': dicomB,
+            },
         });
 
         await page.goto(HOME_URL);
@@ -1746,8 +1853,8 @@ test.describe('Desktop import integration', () => {
                         slices: Array.from({ length: series.instanceCount }, (_, idx) => ({
                             instanceNumber: idx + 1,
                             sliceLocation: idx,
-                            source: { kind: 'path', path: `/mock-app-data/library/${uid}/${seriesUid}/sop-${idx}.dcm` }
-                        }))
+                            source: { kind: 'path', path: `/mock-app-data/library/${uid}/${seriesUid}/sop-${idx}.dcm` },
+                        })),
                     };
                 }
                 displayStudies[uid] = {
@@ -1760,7 +1867,7 @@ test.describe('Desktop import integration', () => {
                     imageCount: study.instanceCount,
                     comments: [],
                     reports: [],
-                    series: seriesMap
+                    series: seriesMap,
                 };
             }
 

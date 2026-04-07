@@ -70,111 +70,85 @@ test.describe('Test Suite 35: Unauthenticated Mutating Routes - 401', () => {
     // -- Notes API: PUT/POST/DELETE --
 
     test('PUT /api/notes/<study>/description without token returns 401', async ({ request }) => {
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/description`,
-            {
-                headers: sameOriginHeaders(),
-                data: { description: 'should be rejected' },
-            }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
+            headers: sameOriginHeaders(),
+            data: { description: 'should be rejected' },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('PUT /api/notes/<study>/series/<series>/description without token returns 401', async ({ request }) => {
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            {
-                headers: sameOriginHeaders(),
-                data: { description: 'should be rejected' },
-            }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            headers: sameOriginHeaders(),
+            data: { description: 'should be rejected' },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('POST /api/notes/<study>/comments without token returns 401', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/notes/${studyUid}/comments`,
-            {
-                headers: sameOriginHeaders(),
-                data: { text: 'rejected comment', time: Date.now() },
-            }
-        );
+        const response = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+            headers: sameOriginHeaders(),
+            data: { text: 'rejected comment', time: Date.now() },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('PUT /api/notes/<study>/comments/1 without token returns 401', async ({ request }) => {
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/1`,
-            {
-                headers: sameOriginHeaders(),
-                data: { text: 'rejected edit' },
-            }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${studyUid}/comments/1`, {
+            headers: sameOriginHeaders(),
+            data: { text: 'rejected edit' },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('DELETE /api/notes/<study>/comments/1 without token returns 401', async ({ request }) => {
-        const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/comments/1`,
-            { headers: sameOriginHeaders() }
-        );
+        const response = await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/1`, {
+            headers: sameOriginHeaders(),
+        });
         expect(response.status()).toBe(401);
     });
 
     test('POST /api/notes/<study>/reports without token returns 401', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/notes/${studyUid}/reports`,
-            {
-                headers: sameOriginHeaders(),
-                multipart: {
-                    file: {
-                        name: 'report.pdf',
-                        mimeType: 'application/pdf',
-                        buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
-                    },
+        const response = await request.post(`${BASE_URL}/api/notes/${studyUid}/reports`, {
+            headers: sameOriginHeaders(),
+            multipart: {
+                file: {
+                    name: 'report.pdf',
+                    mimeType: 'application/pdf',
+                    buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
                 },
-            }
-        );
+            },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('DELETE /api/notes/<study>/reports/fake-id without token returns 401', async ({ request }) => {
-        const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/reports/fake-report-id`,
-            { headers: sameOriginHeaders() }
-        );
+        const response = await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/fake-report-id`, {
+            headers: sameOriginHeaders(),
+        });
         expect(response.status()).toBe(401);
     });
 
     test('POST /api/notes/migrate without token returns 401', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/notes/migrate`,
-            {
-                headers: sameOriginHeaders(),
-                data: {},
-            }
-        );
+        const response = await request.post(`${BASE_URL}/api/notes/migrate`, {
+            headers: sameOriginHeaders(),
+            data: {},
+        });
         expect(response.status()).toBe(401);
     });
 
     // -- Library API: POST --
 
     test('POST /api/library/config without token returns 401', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/library/config`,
-            {
-                headers: sameOriginHeaders(),
-                data: { folder: '/tmp/should-be-rejected' },
-            }
-        );
+        const response = await request.post(`${BASE_URL}/api/library/config`, {
+            headers: sameOriginHeaders(),
+            data: { folder: '/tmp/should-be-rejected' },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('POST /api/library/refresh without token returns 401', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/library/refresh`,
-            { headers: sameOriginHeaders() }
-        );
+        const response = await request.post(`${BASE_URL}/api/library/refresh`, { headers: sameOriginHeaders() });
         expect(response.status()).toBe(401);
     });
 });
@@ -190,9 +164,7 @@ test.describe('Test Suite 36: Unauthenticated PHI Reads - 401', () => {
     });
 
     test('GET /api/notes/?studies=some-uid without token returns 401', async ({ request }) => {
-        const response = await request.get(
-            `${BASE_URL}/api/notes/?studies=some-study-uid`
-        );
+        const response = await request.get(`${BASE_URL}/api/notes/?studies=some-study-uid`);
         expect(response.status()).toBe(401);
     });
 
@@ -217,32 +189,25 @@ test.describe('Test Suite 37: Headerless Mutating Requests - 401', () => {
     // omitting the X-Session-Token header is sufficient.
 
     test('POST without Origin/Referer/token is rejected', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/notes/${uniqueStudyUid()}/comments`,
-            {
-                headers: {},
-                data: { text: 'headerless', time: Date.now() },
-            }
-        );
+        const response = await request.post(`${BASE_URL}/api/notes/${uniqueStudyUid()}/comments`, {
+            headers: {},
+            data: { text: 'headerless', time: Date.now() },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('PUT without Origin/Referer/token is rejected', async ({ request }) => {
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${uniqueStudyUid()}/description`,
-            {
-                headers: {},
-                data: { description: 'headerless' },
-            }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${uniqueStudyUid()}/description`, {
+            headers: {},
+            data: { description: 'headerless' },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('DELETE without Origin/Referer/token is rejected', async ({ request }) => {
-        const response = await request.delete(
-            `${BASE_URL}/api/notes/${uniqueStudyUid()}/comments/999`,
-            { headers: {} }
-        );
+        const response = await request.delete(`${BASE_URL}/api/notes/${uniqueStudyUid()}/comments/999`, {
+            headers: {},
+        });
         expect(response.status()).toBe(401);
     });
 });
@@ -312,13 +277,10 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const token = await getSessionToken(request);
         const studyUid = uniqueStudyUid();
 
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/description`,
-            {
-                headers: sameOriginHeaders({ 'X-Session-Token': token }),
-                data: { description: 'authenticated write' },
-            }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': token }),
+            data: { description: 'authenticated write' },
+        });
         expect(response.status()).toBe(200);
     });
 
@@ -326,13 +288,10 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const token = await getSessionToken(request);
         const studyUid = uniqueStudyUid();
 
-        const response = await request.post(
-            `${BASE_URL}/api/notes/${studyUid}/comments`,
-            {
-                headers: sameOriginHeaders({ 'X-Session-Token': token }),
-                data: { text: 'authenticated comment', time: Date.now() },
-            }
-        );
+        const response = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': token }),
+            data: { text: 'authenticated comment', time: Date.now() },
+        });
         expect(response.status()).toBe(200);
     });
 
@@ -349,10 +308,9 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const token = await getSessionToken(request);
         const studyUid = uniqueStudyUid();
 
-        const response = await request.get(
-            `${BASE_URL}/api/notes/?studies=${studyUid}`,
-            { headers: { 'X-Session-Token': token } }
-        );
+        const response = await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`, {
+            headers: { 'X-Session-Token': token },
+        });
         expect(response.status()).toBe(200);
     });
 
@@ -390,20 +348,16 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const studyUid = uniqueStudyUid();
 
         // First create a comment so we have a real ID to delete
-        const createResponse = await request.post(
-            `${BASE_URL}/api/notes/${studyUid}/comments`,
-            {
-                headers: sameOriginHeaders({ 'X-Session-Token': token }),
-                data: { text: 'comment to delete', time: Date.now() },
-            }
-        );
+        const createResponse = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': token }),
+            data: { text: 'comment to delete', time: Date.now() },
+        });
         expect(createResponse.status()).toBe(200);
         const created = await createResponse.json();
 
-        const deleteResponse = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${created.id}`,
-            { headers: sameOriginHeaders({ 'X-Session-Token': token }) }
-        );
+        const deleteResponse = await request.delete(`${BASE_URL}/api/notes/${studyUid}/comments/${created.id}`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': token }),
+        });
         // Should be 200 on successful delete, not 401
         expect(deleteResponse.status()).toBe(200);
     });
@@ -412,19 +366,16 @@ test.describe('Test Suite 40: Authenticated Requests Succeed', () => {
         const token = await getSessionToken(request);
         const studyUid = uniqueStudyUid();
 
-        const response = await request.post(
-            `${BASE_URL}/api/notes/${studyUid}/reports`,
-            {
-                headers: sameOriginHeaders({ 'X-Session-Token': token }),
-                multipart: {
-                    file: {
-                        name: 'auth-test-report.pdf',
-                        mimeType: 'application/pdf',
-                        buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
-                    },
+        const response = await request.post(`${BASE_URL}/api/notes/${studyUid}/reports`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': token }),
+            multipart: {
+                file: {
+                    name: 'auth-test-report.pdf',
+                    mimeType: 'application/pdf',
+                    buffer: Buffer.from('%PDF-1.4\n%%EOF\n'),
                 },
-            }
-        );
+            },
+        });
         expect(response.status()).toBe(200);
     });
 });
@@ -437,32 +388,25 @@ test.describe('Test Suite 41: Invalid Token Rejected - 401', () => {
     const FAKE_TOKEN = 'invalid-token-that-does-not-exist-on-server';
 
     test('PUT with invalid token returns 401', async ({ request }) => {
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${uniqueStudyUid()}/description`,
-            {
-                headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
-                data: { description: 'should fail' },
-            }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${uniqueStudyUid()}/description`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
+            data: { description: 'should fail' },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('POST with invalid token returns 401', async ({ request }) => {
-        const response = await request.post(
-            `${BASE_URL}/api/notes/${uniqueStudyUid()}/comments`,
-            {
-                headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
-                data: { text: 'should fail', time: Date.now() },
-            }
-        );
+        const response = await request.post(`${BASE_URL}/api/notes/${uniqueStudyUid()}/comments`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
+            data: { text: 'should fail', time: Date.now() },
+        });
         expect(response.status()).toBe(401);
     });
 
     test('DELETE with invalid token returns 401', async ({ request }) => {
-        const response = await request.delete(
-            `${BASE_URL}/api/notes/${uniqueStudyUid()}/comments/999`,
-            { headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }) }
-        );
+        const response = await request.delete(`${BASE_URL}/api/notes/${uniqueStudyUid()}/comments/999`, {
+            headers: sameOriginHeaders({ 'X-Session-Token': FAKE_TOKEN }),
+        });
         expect(response.status()).toBe(401);
     });
 

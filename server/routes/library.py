@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import pydicom
-from flask import Blueprint, jsonify, request, send_file, current_app
+from flask import Blueprint, current_app, jsonify, request, send_file
 from pydicom.errors import InvalidDicomError
 
 from server import db as db_module
@@ -30,8 +30,10 @@ LIBRARY_CONFIG_LOCK = threading.Lock()
 # DICOM SCANNING
 # =============================================================================
 
+
 def _extract_metadata(ds, file_path):
     """Extract relevant metadata from a DICOM dataset."""
+
     def get_attr(attr, default=''):
         try:
             val = getattr(ds, attr, default)
@@ -76,17 +78,17 @@ def _resolve_series_key(series_map, bare_uid, description):
         existing_desc = existing.get('series_description', '') or ''
         if existing_desc == description:
             return bare_uid
-        old_key = f"{bare_uid}|{existing_desc}"
+        old_key = f'{bare_uid}|{existing_desc}'
         series_map[old_key] = existing
         existing['series_id'] = old_key
         del series_map[bare_uid]
-        return f"{bare_uid}|{description}"
+        return f'{bare_uid}|{description}'
 
-    composite_key = f"{bare_uid}|{description}"
+    composite_key = f'{bare_uid}|{description}'
     if composite_key in series_map:
         return composite_key
 
-    has_collision = any(key.startswith(f"{bare_uid}|") for key in series_map)
+    has_collision = any(key.startswith(f'{bare_uid}|') for key in series_map)
     return composite_key if has_collision else bare_uid
 
 
@@ -100,7 +102,7 @@ def scan_dicom_folder(folder_path, logger=None):
 
     file_paths = [f for f in folder.rglob('*') if f.is_file()]
     if logger:
-        logger.info("Scanning %d files in %s", len(file_paths), folder_path)
+        logger.info('Scanning %d files in %s', len(file_paths), folder_path)
 
     with ThreadPoolExecutor(max_workers=(os.cpu_count() or 4) * 2) as executor:
         futures = {executor.submit(_read_single_dicom, fp): fp for fp in file_paths}
@@ -121,14 +123,12 @@ def scan_dicom_folder(folder_path, logger=None):
                     'study_description': meta['study_description'],
                     'modality': meta['modality'],
                     'series': {},
-                    'image_count': 0
+                    'image_count': 0,
                 }
 
             bare_series_id = meta['series_instance_uid']
             series_id = _resolve_series_key(
-                studies[study_id]['series'],
-                bare_series_id,
-                meta['series_description'] or ''
+                studies[study_id]['series'], bare_series_id, meta['series_description'] or ''
             )
 
             # Initialize series
@@ -138,15 +138,17 @@ def scan_dicom_folder(folder_path, logger=None):
                     'series_description': meta['series_description'],
                     'series_number': meta['series_number'],
                     'modality': meta['modality'],
-                    'slices': []
+                    'slices': [],
                 }
 
             # Add slice
-            studies[study_id]['series'][series_id]['slices'].append({
-                'file_path': meta['file_path'],
-                'instance_number': meta['instance_number'],
-                'slice_location': meta['slice_location'],
-            })
+            studies[study_id]['series'][series_id]['slices'].append(
+                {
+                    'file_path': meta['file_path'],
+                    'instance_number': meta['instance_number'],
+                    'slice_location': meta['slice_location'],
+                }
+            )
             studies[study_id]['image_count'] += 1
 
     # Sort slices and count series
@@ -156,13 +158,14 @@ def scan_dicom_folder(folder_path, logger=None):
         study['series_count'] = len(study['series'])
 
     if logger:
-        logger.info("Found %d studies in %s", len(studies), folder_path)
+        logger.info('Found %d studies in %s', len(studies), folder_path)
     return studies
 
 
 # =============================================================================
 # DICOM FOLDER SOURCE (CACHED SCANNER)
 # =============================================================================
+
 
 class DicomFolderSource:
     """Reusable DICOM folder scanner with caching."""
@@ -277,10 +280,10 @@ class DicomFolderSource:
                         'seriesDescription': series['series_description'],
                         'seriesNumber': series['series_number'],
                         'modality': series['modality'],
-                        'sliceCount': len(series['slices'])
+                        'sliceCount': len(series['slices']),
                     }
                     for series_id, series in study['series'].items()
-                ]
+                ],
             }
             for study_id, study in studies.items()
         ]
@@ -332,26 +335,18 @@ def _resolve_library_folder(logger):
     env = os.environ.get('DICOM_LIBRARY')
     if isinstance(env, str) and env.strip():
         raw = env.strip()
-        return {
-            'folder': raw,
-            'folder_resolved': os.path.expanduser(raw),
-            'source': 'env'
-        }
+        return {'folder': raw, 'folder_resolved': os.path.expanduser(raw), 'source': 'env'}
 
     settings = db_module.load_settings(logger)
     saved = settings.get('library_folder')
     if isinstance(saved, str) and saved.strip():
         raw = saved.strip()
-        return {
-            'folder': raw,
-            'folder_resolved': os.path.expanduser(raw),
-            'source': 'settings'
-        }
+        return {'folder': raw, 'folder_resolved': os.path.expanduser(raw), 'source': 'settings'}
 
     return {
         'folder': DEFAULT_LIBRARY_FOLDER_RAW,
         'folder_resolved': DEFAULT_LIBRARY_FOLDER,
-        'source': 'default'
+        'source': 'default',
     }
 
 
@@ -369,6 +364,7 @@ def init_library_sources(logger):
 # LIBRARY ROUTE HELPERS
 # =============================================================================
 
+
 def _ensure_library_folder():
     """Ensure active library folder exists/readable (auto-create default only)."""
     with LIBRARY_CONFIG_LOCK:
@@ -378,22 +374,22 @@ def _ensure_library_folder():
 
     if source != 'default':
         if not os.path.isdir(folder_path):
-            return False, f"Directory does not exist: {folder_label}"
+            return False, f'Directory does not exist: {folder_label}'
         if not os.access(folder_path, os.R_OK | os.X_OK):
-            return False, f"Directory is not readable: {folder_label}"
+            return False, f'Directory is not readable: {folder_label}'
         return True, None
 
     try:
         os.makedirs(folder_path, exist_ok=True)
     except PermissionError:
-        current_app.logger.warning("Permission denied creating library folder: %s", folder_path)
-        return False, f"Permission denied creating {folder_label}"
+        current_app.logger.warning('Permission denied creating library folder: %s', folder_path)
+        return False, f'Permission denied creating {folder_label}'
     except OSError as exc:
-        current_app.logger.warning("Failed to create library folder %s: %s", folder_path, exc)
-        return False, f"Failed to create {folder_label}"
+        current_app.logger.warning('Failed to create library folder %s: %s', folder_path, exc)
+        return False, f'Failed to create {folder_label}'
 
     if not os.access(folder_path, os.R_OK | os.X_OK):
-        return False, f"Directory is not readable: {folder_label}"
+        return False, f'Directory is not readable: {folder_label}'
     return True, None
 
 
@@ -402,13 +398,14 @@ def _build_library_config_payload():
         return {
             'folder': library_folder_raw,
             'folderResolved': library_source.folder_path,
-            'source': library_folder_source
+            'source': library_folder_source,
         }
 
 
 # =============================================================================
 # LIBRARY ROUTES
 # =============================================================================
+
 
 @library_bp.route('/api/library/config')
 def get_library_config():
@@ -439,7 +436,9 @@ def update_library_config():
     try:
         db_module.save_library_folder_setting(folder_raw, current_app.logger)
     except OSError as exc:
-        current_app.logger.warning("Failed to save library settings %s: %s", db_module.SETTINGS_PATH, exc)
+        current_app.logger.warning(
+            'Failed to save library settings %s: %s', db_module.SETTINGS_PATH, exc
+        )
         return jsonify({'error': 'Failed to save settings'}), 500
 
     with LIBRARY_CONFIG_LOCK:
@@ -452,7 +451,7 @@ def update_library_config():
             **_build_library_config_payload(),
             'available': available,
             'studies': library_source.format_studies() if available else [],
-            'overridden': True
+            'overridden': True,
         }
         if error:
             response['error'] = error
@@ -461,19 +460,21 @@ def update_library_config():
     try:
         refreshed = library_source.set_folder(folder_path)
     except Exception:
-        current_app.logger.exception("Failed to rescan updated library folder: %s", folder_path)
+        current_app.logger.exception('Failed to rescan updated library folder: %s', folder_path)
         return jsonify({'error': 'Failed to scan library folder'}), 500
 
     with LIBRARY_CONFIG_LOCK:
         library_folder_raw = folder_raw
         library_folder_source = 'settings'
 
-    return jsonify({
-        **_build_library_config_payload(),
-        'available': True,
-        'studies': library_source.format_studies(refreshed),
-        'overridden': False
-    })
+    return jsonify(
+        {
+            **_build_library_config_payload(),
+            'available': True,
+            'studies': library_source.format_studies(refreshed),
+            'overridden': False,
+        }
+    )
 
 
 @library_bp.route('/api/library/studies')
@@ -485,7 +486,7 @@ def get_library_studies():
     payload = {
         'available': available,
         'folder': current_config['folder'],
-        'studies': library_source.format_studies() if available else []
+        'studies': library_source.format_studies() if available else [],
     }
     if error:
         payload['error'] = error
@@ -511,16 +512,15 @@ def refresh_library():
     available, error = _ensure_library_folder()
     current_config = _build_library_config_payload()
     if not available:
-        return jsonify({
-            'available': False,
-            'folder': current_config['folder'],
-            'studies': [],
-            'error': error
-        }), 500
+        return jsonify(
+            {'available': False, 'folder': current_config['folder'], 'studies': [], 'error': error}
+        ), 500
 
     refreshed = library_source.refresh()
-    return jsonify({
-        'available': available,
-        'folder': current_config['folder'],
-        'studies': library_source.format_studies(refreshed)
-    })
+    return jsonify(
+        {
+            'available': available,
+            'folder': current_config['folder'],
+            'studies': library_source.format_studies(refreshed),
+        }
+    )

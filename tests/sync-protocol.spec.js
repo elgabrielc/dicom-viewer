@@ -52,7 +52,7 @@ test.describe('Sync Auth Requirements', () => {
     test('POST /api/sync with expired token returns 401', async ({ request }) => {
         // An obviously invalid/expired token should be rejected
         const response = await request.post(`${BASE_URL}/api/sync`, {
-            headers: { 'Authorization': 'Bearer expired.invalid.token' },
+            headers: { Authorization: 'Bearer expired.invalid.token' },
             data: {
                 device_id: 'any-device-id',
                 delta_cursor: null,
@@ -66,10 +66,7 @@ test.describe('Sync Auth Requirements', () => {
         const { access_token } = await setupSyncUser(request);
 
         // Use a device_id that was never registered for this user
-        const response = await syncRequest(
-            request, BASE_URL, access_token,
-            'unregistered-device-id-12345', null, []
-        );
+        const response = await syncRequest(request, BASE_URL, access_token, 'unregistered-device-id-12345', null, []);
         expect(response.status()).toBe(403);
 
         const body = await response.json();
@@ -102,9 +99,7 @@ test.describe('Sync Basic Flow', () => {
         expect(typeof result.server_time).toBe('number');
 
         // The comment pushed by device 1 should appear in remote_changes for device 2
-        const found = result.remote_changes.find(
-            rc => rc.key === change.key && rc.table === 'comments'
-        );
+        const found = result.remote_changes.find((rc) => rc.key === change.key && rc.table === 'comments');
         expect(found).toBeDefined();
         expect(found.data.text).toBe(change.data.text);
     });
@@ -114,9 +109,7 @@ test.describe('Sync Basic Flow', () => {
 
         // Push a comment and capture the cursor
         const change1 = commentInsertChange();
-        const result1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change1]
-        );
+        const result1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change1]);
         const cursor = result1.delta_cursor;
 
         // Push a second comment
@@ -125,15 +118,13 @@ test.describe('Sync Basic Flow', () => {
 
         // A second device syncs from the first cursor -- should see change2 but not change1
         const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
-        const result2 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device2, cursor, []
-        );
+        const result2 = await syncAndExpectOk(request, BASE_URL, access_token, device2, cursor, []);
 
-        const foundChange2 = result2.remote_changes.find(rc => rc.key === change2.key);
+        const foundChange2 = result2.remote_changes.find((rc) => rc.key === change2.key);
         expect(foundChange2).toBeDefined();
 
         // change1 should NOT appear because it was before the cursor
-        const foundChange1 = result2.remote_changes.find(rc => rc.key === change1.key);
+        const foundChange1 = result2.remote_changes.find((rc) => rc.key === change1.key);
         expect(foundChange1).toBeUndefined();
     });
 
@@ -141,14 +132,10 @@ test.describe('Sync Basic Flow', () => {
         const { access_token, device_id } = await setupSyncUser(request);
 
         // First sync to establish a cursor
-        const result1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, []
-        );
+        const result1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, []);
 
         // Second sync with cursor and no changes
-        const result2 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, result1.delta_cursor, []
-        );
+        const result2 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, result1.delta_cursor, []);
 
         expect(result2.accepted).toEqual([]);
         expect(result2.rejected).toEqual([]);
@@ -166,9 +153,7 @@ test.describe('Sync Push - Accepted Changes', () => {
         const { access_token, device_id } = await setupSyncUser(request);
         const change = commentInsertChange();
 
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change]
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change]);
 
         expect(result.accepted.length).toBe(1);
         const accepted = result.accepted[0];
@@ -187,9 +172,7 @@ test.describe('Sync Push - Accepted Changes', () => {
             description: 'Initial description',
             baseSyncVersion: 0,
         });
-        const insertResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        const insertResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
         expect(insertResult.accepted.length).toBe(1);
         const insertedVersion = insertResult.accepted[0].sync_version;
 
@@ -199,8 +182,12 @@ test.describe('Sync Push - Accepted Changes', () => {
             baseSyncVersion: insertedVersion,
         });
         const updateResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id,
-            insertResult.delta_cursor, [updateChange]
+            request,
+            BASE_URL,
+            access_token,
+            device_id,
+            insertResult.delta_cursor,
+            [updateChange],
         );
 
         expect(updateResult.accepted.length).toBe(1);
@@ -227,9 +214,7 @@ test.describe('Sync Push - Accepted Changes', () => {
                 updated_at: Date.now(),
             },
         };
-        const insertResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        const insertResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
         const insertedVersion = insertResult.accepted[0].sync_version;
 
         // Delete the report
@@ -237,8 +222,12 @@ test.describe('Sync Push - Accepted Changes', () => {
             baseSyncVersion: insertedVersion,
         });
         const deleteResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id,
-            insertResult.delta_cursor, [deleteChange]
+            request,
+            BASE_URL,
+            access_token,
+            device_id,
+            insertResult.delta_cursor,
+            [deleteChange],
         );
 
         expect(deleteResult.accepted.length).toBe(1);
@@ -262,9 +251,7 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             description: 'Version one',
             baseSyncVersion: 0,
         });
-        const insertResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        const insertResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
         const currentVersion = insertResult.accepted[0].sync_version;
 
         // Update from another device to advance the version
@@ -274,8 +261,12 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             baseSyncVersion: currentVersion,
         });
         const updateResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device2,
-            insertResult.delta_cursor, [updateChange]
+            request,
+            BASE_URL,
+            access_token,
+            device2,
+            insertResult.delta_cursor,
+            [updateChange],
         );
         const newerVersion = updateResult.accepted[0].sync_version;
 
@@ -285,8 +276,12 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             baseSyncVersion: currentVersion, // stale -- device B already advanced it
         });
         const staleResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id,
-            insertResult.delta_cursor, [staleChange]
+            request,
+            BASE_URL,
+            access_token,
+            device_id,
+            insertResult.delta_cursor,
+            [staleChange],
         );
 
         // The change should be rejected
@@ -309,9 +304,7 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             description: 'First',
             baseSyncVersion: 0,
         });
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insert]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insert]);
         const v1 = r1.accepted[0].sync_version;
 
         // Update
@@ -319,9 +312,7 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             description: 'Second',
             baseSyncVersion: v1,
         });
-        const r2 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, r1.delta_cursor, [update]
-        );
+        const r2 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, r1.delta_cursor, [update]);
         const v2 = r2.accepted[0].sync_version;
 
         // Stale attempt using v1 (which is now outdated)
@@ -329,12 +320,10 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             description: 'Should be rejected',
             baseSyncVersion: v1,
         });
-        const r3 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, r2.delta_cursor, [stale]
-        );
+        const r3 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, r2.delta_cursor, [stale]);
 
         expect(r3.rejected.length).toBeGreaterThanOrEqual(1);
-        const rej = r3.rejected.find(r => r.key === studyUid);
+        const rej = r3.rejected.find((r) => r.key === studyUid);
         expect(rej).toBeDefined();
         expect(typeof rej.current_sync_version).toBe('number');
         expect(rej.current_sync_version).toBe(v2);
@@ -350,9 +339,7 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             description: 'Initial version',
             baseSyncVersion: 0,
         });
-        const inserted = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insert]
-        );
+        const inserted = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insert]);
         const currentVersion = inserted.accepted[0].sync_version;
 
         const invalid = {
@@ -362,9 +349,9 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             }),
             operation: 'invalid_op',
         };
-        const invalidResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, inserted.delta_cursor, [invalid]
-        );
+        const invalidResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, inserted.delta_cursor, [
+            invalid,
+        ]);
 
         expect(invalidResult.accepted).toEqual([]);
         expect(invalidResult.rejected).toHaveLength(1);
@@ -379,9 +366,9 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
             description: 'Valid update after rejection',
             baseSyncVersion: currentVersion,
         });
-        const updated = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, inserted.delta_cursor, [validUpdate]
-        );
+        const updated = await syncAndExpectOk(request, BASE_URL, access_token, device_id, inserted.delta_cursor, [
+            validUpdate,
+        ]);
 
         expect(updated.rejected).toEqual([]);
         expect(updated.accepted).toHaveLength(1);
@@ -400,16 +387,14 @@ test.describe('Sync Idempotency (operation_uuid dedup)', () => {
         const change = commentInsertChange();
 
         // First submission
-        const result1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change]
-        );
+        const result1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change]);
         expect(result1.accepted.length).toBe(1);
         const version1 = result1.accepted[0].sync_version;
 
         // Second submission with the same operation_uuid
-        const result2 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, result1.delta_cursor, [change]
-        );
+        const result2 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, result1.delta_cursor, [
+            change,
+        ]);
         expect(result2.accepted.length).toBe(1);
         const version2 = result2.accepted[0].sync_version;
 
@@ -423,23 +408,15 @@ test.describe('Sync Idempotency (operation_uuid dedup)', () => {
         const change = commentInsertChange();
 
         // Submit twice
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change]
-        );
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, r1.delta_cursor, [change]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change]);
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, r1.delta_cursor, [change]);
 
         // Sync from a second device to pull all data
         const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
-        const pullResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, device2, null, []
-        );
+        const pullResult = await syncAndExpectOk(request, BASE_URL, access_token, device2, null, []);
 
         // The comment should appear exactly once in remote_changes
-        const matches = pullResult.remote_changes.filter(
-            rc => rc.key === change.key && rc.table === 'comments'
-        );
+        const matches = pullResult.remote_changes.filter((rc) => rc.key === change.key && rc.table === 'comments');
         expect(matches.length).toBe(1);
     });
 });
@@ -454,24 +431,23 @@ test.describe('Sync Pull - Remote Changes', () => {
         const { device_id: deviceB } = await registerDevice(request, BASE_URL, access_token);
 
         // Device B does an initial sync to get a cursor
-        const initialSync = await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceB, null, []
-        );
+        const initialSync = await syncAndExpectOk(request, BASE_URL, access_token, deviceB, null, []);
 
         // Device A pushes a comment
         const change = commentInsertChange({ text: 'Hello from device A' });
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceA, null, [change]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, deviceA, null, [change]);
 
         // Device B syncs from its cursor -- should see device A's comment
         const pullResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceB, initialSync.delta_cursor, []
+            request,
+            BASE_URL,
+            access_token,
+            deviceB,
+            initialSync.delta_cursor,
+            [],
         );
 
-        const found = pullResult.remote_changes.find(
-            rc => rc.key === change.key && rc.table === 'comments'
-        );
+        const found = pullResult.remote_changes.find((rc) => rc.key === change.key && rc.table === 'comments');
         expect(found).toBeDefined();
         expect(found.operation).toBe('insert');
         expect(found.data.text).toBe('Hello from device A');
@@ -485,15 +461,11 @@ test.describe('Sync Pull - Remote Changes', () => {
         // Device A inserts a comment
         const commentKey = uniqueRecordUuid();
         const insertChange = commentInsertChange({ key: commentKey, text: 'Will be deleted' });
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceA, null, [insertChange]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, deviceA, null, [insertChange]);
         const insertedVersion = r1.accepted[0].sync_version;
 
         // Device B syncs to establish cursor
-        const deviceBSync = await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceB, null, []
-        );
+        const deviceBSync = await syncAndExpectOk(request, BASE_URL, access_token, deviceB, null, []);
 
         // Device A deletes the comment
         const deleteChange = {
@@ -504,19 +476,22 @@ test.describe('Sync Pull - Remote Changes', () => {
             base_sync_version: insertedVersion,
             data: {},
         };
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceA, r1.delta_cursor, [deleteChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, deviceA, r1.delta_cursor, [deleteChange]);
 
         // Device B pulls -- should see the tombstoned record
         const pullResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceB, deviceBSync.delta_cursor, []
+            request,
+            BASE_URL,
+            access_token,
+            deviceB,
+            deviceBSync.delta_cursor,
+            [],
         );
 
         // Find the delete change in remote_changes (may also see the insert if cursor
         // was before it; the key thing is that we see a version with deleted_at set)
         const tombstoned = pullResult.remote_changes.find(
-            rc => rc.key === commentKey && rc.data.deleted_at !== null && rc.data.deleted_at !== undefined
+            (rc) => rc.key === commentKey && rc.data.deleted_at !== null && rc.data.deleted_at !== undefined,
         );
         expect(tombstoned).toBeDefined();
         expect(typeof tombstoned.data.deleted_at).toBe('number');
@@ -533,25 +508,19 @@ test.describe('Sync Cursor Management', () => {
 
         // Push change 1, get cursor
         const change1 = commentInsertChange({ text: 'Before cursor' });
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change1]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change1]);
         const cursorAfterChange1 = r1.delta_cursor;
 
         // Push change 2
         const change2 = commentInsertChange({ text: 'After cursor' });
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, cursorAfterChange1, [change2]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, cursorAfterChange1, [change2]);
 
         // New device syncs from cursorAfterChange1 -- should see change2 only
         const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device2, cursorAfterChange1, []
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device2, cursorAfterChange1, []);
 
-        const foundChange2 = result.remote_changes.find(rc => rc.key === change2.key);
-        const foundChange1 = result.remote_changes.find(rc => rc.key === change1.key);
+        const foundChange2 = result.remote_changes.find((rc) => rc.key === change2.key);
+        const foundChange1 = result.remote_changes.find((rc) => rc.key === change1.key);
         expect(foundChange2).toBeDefined();
         expect(foundChange1).toBeUndefined();
     });
@@ -561,8 +530,12 @@ test.describe('Sync Cursor Management', () => {
 
         // Use a clearly fake/expired cursor
         const response = await syncRequest(
-            request, BASE_URL, access_token, device_id,
-            'expired-cursor-that-does-not-exist', []
+            request,
+            BASE_URL,
+            access_token,
+            device_id,
+            'expired-cursor-that-does-not-exist',
+            [],
         );
         expect(response.status()).toBe(410);
 
@@ -577,19 +550,15 @@ test.describe('Sync Cursor Management', () => {
         // Push multiple changes
         const change1 = commentInsertChange({ text: 'Comment one' });
         const change2 = commentInsertChange({ text: 'Comment two' });
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change1, change2]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change1, change2]);
 
         // A new device does a full sync (null cursor)
         const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device2, null, []
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device2, null, []);
 
         // Both changes should appear in remote_changes
-        const found1 = result.remote_changes.find(rc => rc.key === change1.key);
-        const found2 = result.remote_changes.find(rc => rc.key === change2.key);
+        const found1 = result.remote_changes.find((rc) => rc.key === change1.key);
+        const found2 = result.remote_changes.find((rc) => rc.key === change2.key);
         expect(found1).toBeDefined();
         expect(found2).toBeDefined();
     });
@@ -622,27 +591,22 @@ test.describe('Sync Report File Operations', () => {
                 updated_at: Date.now(),
             },
         };
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
 
         // Upload the file
-        const uploadResponse = await request.post(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            {
-                headers: {
-                    'Authorization': `Bearer ${access_token}`,
-                    'Content-Hash': `sha256:${contentHash}`,
+        const uploadResponse = await request.post(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: {
+                Authorization: `Bearer ${access_token}`,
+                'Content-Hash': `sha256:${contentHash}`,
+            },
+            multipart: {
+                file: {
+                    name: 'report.pdf',
+                    mimeType: 'application/pdf',
+                    buffer: pdfContent,
                 },
-                multipart: {
-                    file: {
-                        name: 'report.pdf',
-                        mimeType: 'application/pdf',
-                        buffer: pdfContent,
-                    },
-                },
-            }
-        );
+            },
+        });
         expect(uploadResponse.status()).toBe(200);
     });
 
@@ -668,13 +632,11 @@ test.describe('Sync Report File Operations', () => {
                 updated_at: Date.now(),
             },
         };
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
 
         await request.post(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
             headers: {
-                'Authorization': `Bearer ${access_token}`,
+                Authorization: `Bearer ${access_token}`,
                 'Content-Hash': `sha256:${contentHash}`,
             },
             multipart: {
@@ -687,10 +649,9 @@ test.describe('Sync Report File Operations', () => {
         });
 
         // Download
-        const downloadResponse = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${access_token}` } }
-        );
+        const downloadResponse = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${access_token}` },
+        });
         expect(downloadResponse.status()).toBe(200);
 
         const downloadedBytes = await downloadResponse.body();
@@ -719,12 +680,10 @@ test.describe('Sync Report File Operations', () => {
                 updated_at: Date.now(),
             },
         };
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
 
         const uploadHeaders = {
-            'Authorization': `Bearer ${access_token}`,
+            Authorization: `Bearer ${access_token}`,
             'Content-Hash': `sha256:${contentHash}`,
         };
         const uploadBody = {
@@ -736,24 +695,23 @@ test.describe('Sync Report File Operations', () => {
         };
 
         // First upload
-        const upload1 = await request.post(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: uploadHeaders, multipart: uploadBody }
-        );
+        const upload1 = await request.post(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: uploadHeaders,
+            multipart: uploadBody,
+        });
         expect(upload1.status()).toBe(200);
 
         // Second upload with same hash -- should be accepted (deduped)
-        const upload2 = await request.post(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: uploadHeaders, multipart: uploadBody }
-        );
+        const upload2 = await request.post(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: uploadHeaders,
+            multipart: uploadBody,
+        });
         expect(upload2.status()).toBe(200);
 
         // File should still be downloadable
-        const download = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${access_token}` } }
-        );
+        const download = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${access_token}` },
+        });
         expect(download.status()).toBe(200);
         expect(await download.body()).toEqual(pdfContent);
     });
@@ -780,15 +738,13 @@ test.describe('Sync Report File Operations', () => {
                 updated_at: Date.now(),
             },
         };
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insertChange]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
         const insertedVersion = r1.accepted[0].sync_version;
 
         // Upload the file
         await request.post(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
             headers: {
-                'Authorization': `Bearer ${access_token}`,
+                Authorization: `Bearer ${access_token}`,
                 'Content-Hash': `sha256:${contentHash}`,
             },
             multipart: {
@@ -804,15 +760,12 @@ test.describe('Sync Report File Operations', () => {
         const deleteChange = reportDeleteChange(reportId, {
             baseSyncVersion: insertedVersion,
         });
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, r1.delta_cursor, [deleteChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, device_id, r1.delta_cursor, [deleteChange]);
 
         // Attempting to download should return 404
-        const download = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${access_token}` } }
-        );
+        const download = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${access_token}` },
+        });
         expect(download.status()).toBe(404);
     });
 });
@@ -829,16 +782,12 @@ test.describe('Sync Cross-User Isolation', () => {
 
         // User A pushes a comment
         const change = commentInsertChange({ text: 'Private to user A' });
-        await syncAndExpectOk(
-            request, BASE_URL, userA.access_token, userA.device_id, null, [change]
-        );
+        await syncAndExpectOk(request, BASE_URL, userA.access_token, userA.device_id, null, [change]);
 
         // User B does a full sync -- should NOT see user A's comment
-        const result = await syncAndExpectOk(
-            request, BASE_URL, userB.access_token, userB.device_id, null, []
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, userB.access_token, userB.device_id, null, []);
 
-        const found = result.remote_changes.find(rc => rc.key === change.key);
+        const found = result.remote_changes.find((rc) => rc.key === change.key);
         expect(found).toBeUndefined();
     });
 
@@ -848,34 +797,26 @@ test.describe('Sync Cross-User Isolation', () => {
         const sharedStudyUid = '1.2.840.2026.cross-user.shared-study';
 
         const changeA = studyNoteUpdateChange(sharedStudyUid, {
-            description: 'User A private note'
+            description: 'User A private note',
         });
         const changeB = studyNoteUpdateChange(sharedStudyUid, {
-            description: 'User B private note'
+            description: 'User B private note',
         });
 
-        await syncAndExpectOk(
-            request, BASE_URL, userA.access_token, userA.device_id, null, [changeA]
-        );
-        await syncAndExpectOk(
-            request, BASE_URL, userB.access_token, userB.device_id, null, [changeB]
-        );
+        await syncAndExpectOk(request, BASE_URL, userA.access_token, userA.device_id, null, [changeA]);
+        await syncAndExpectOk(request, BASE_URL, userB.access_token, userB.device_id, null, [changeB]);
 
         const { device_id: userASecondDevice } = await registerDevice(request, BASE_URL, userA.access_token);
         const { device_id: userBSecondDevice } = await registerDevice(request, BASE_URL, userB.access_token);
 
-        const userAPull = await syncAndExpectOk(
-            request, BASE_URL, userA.access_token, userASecondDevice, null, []
-        );
-        const userBPull = await syncAndExpectOk(
-            request, BASE_URL, userB.access_token, userBSecondDevice, null, []
-        );
+        const userAPull = await syncAndExpectOk(request, BASE_URL, userA.access_token, userASecondDevice, null, []);
+        const userBPull = await syncAndExpectOk(request, BASE_URL, userB.access_token, userBSecondDevice, null, []);
 
         const userAStudyNote = userAPull.remote_changes.find(
-            (change) => change.table === 'study_notes' && change.key === sharedStudyUid
+            (change) => change.table === 'study_notes' && change.key === sharedStudyUid,
         );
         const userBStudyNote = userBPull.remote_changes.find(
-            (change) => change.table === 'study_notes' && change.key === sharedStudyUid
+            (change) => change.table === 'study_notes' && change.key === sharedStudyUid,
         );
 
         expect(userAStudyNote?.data?.description).toBe('User A private note');
@@ -891,9 +832,7 @@ test.describe('Sync Response Shape', () => {
     test('sync response contains all required fields per contract', async ({ request }) => {
         const { access_token, device_id } = await setupSyncUser(request);
 
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, []
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, []);
 
         // Required top-level fields
         expect(result).toHaveProperty('accepted');
@@ -915,9 +854,7 @@ test.describe('Sync Response Shape', () => {
         const { access_token, device_id } = await setupSyncUser(request);
         const change = commentInsertChange();
 
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [change]
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [change]);
 
         expect(result.accepted.length).toBe(1);
         const item = result.accepted[0];
@@ -932,14 +869,10 @@ test.describe('Sync Response Shape', () => {
 
         // Device A pushes data
         const change = commentInsertChange({ text: 'Shape test' });
-        await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceA, null, [change]
-        );
+        await syncAndExpectOk(request, BASE_URL, access_token, deviceA, null, [change]);
 
         // Device B pulls
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, deviceB, null, []
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, deviceB, null, []);
 
         expect(result.remote_changes.length).toBeGreaterThan(0);
         const item = result.remote_changes[0];
@@ -980,13 +913,11 @@ test.describe('Sync Multiple Changes Per Request', () => {
             },
         ];
 
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, changes
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, changes);
 
         // All three should be accepted
         expect(result.accepted.length).toBe(3);
-        const uuids = result.accepted.map(a => a.operation_uuid);
+        const uuids = result.accepted.map((a) => a.operation_uuid);
         for (const change of changes) {
             expect(uuids).toContain(change.operation_uuid);
         }
@@ -1001,9 +932,7 @@ test.describe('Sync Multiple Changes Per Request', () => {
             description: 'Original',
             baseSyncVersion: 0,
         });
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, null, [insert]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insert]);
         const currentVersion = r1.accepted[0].sync_version;
 
         // Send two changes: one with correct version (new comment), one with stale version
@@ -1013,17 +942,17 @@ test.describe('Sync Multiple Changes Per Request', () => {
             baseSyncVersion: 0, // stale -- should be currentVersion
         });
 
-        const result = await syncAndExpectOk(
-            request, BASE_URL, access_token, device_id, r1.delta_cursor,
-            [freshChange, staleChange]
-        );
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, r1.delta_cursor, [
+            freshChange,
+            staleChange,
+        ]);
 
         // Fresh comment should be accepted
-        const acceptedUuids = result.accepted.map(a => a.operation_uuid);
+        const acceptedUuids = result.accepted.map((a) => a.operation_uuid);
         expect(acceptedUuids).toContain(freshChange.operation_uuid);
 
         // Stale update should be rejected
-        const rejectedUuids = result.rejected.map(r => r.operation_uuid);
+        const rejectedUuids = result.rejected.map((r) => r.operation_uuid);
         expect(rejectedUuids).toContain(staleChange.operation_uuid);
     });
 });

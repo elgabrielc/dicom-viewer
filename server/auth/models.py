@@ -14,8 +14,8 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from server.db import get_db
 
-
 # --- User helpers ---
+
 
 def create_user(email, password, name):
     """Create a new user account.
@@ -36,7 +36,7 @@ def create_user(email, password, name):
     cursor = db.execute(
         """INSERT INTO users (email, password_hash, name, created_at)
            VALUES (?, ?, ?, ?)""",
-        (email.lower().strip(), generate_password_hash(password), name.strip(), now)
+        (email.lower().strip(), generate_password_hash(password), name.strip(), now),
     )
     db.commit()
     return cursor.lastrowid
@@ -50,8 +50,8 @@ def get_user_by_email(email):
     """
     db = get_db()
     return db.execute(
-        "SELECT id, email, password_hash, name, created_at FROM users WHERE email = ?",
-        (email.lower().strip(),)
+        'SELECT id, email, password_hash, name, created_at FROM users WHERE email = ?',
+        (email.lower().strip(),),
     ).fetchone()
 
 
@@ -63,8 +63,7 @@ def get_user_by_id(user_id):
     """
     db = get_db()
     return db.execute(
-        "SELECT id, email, name, created_at FROM users WHERE id = ?",
-        (user_id,)
+        'SELECT id, email, name, created_at FROM users WHERE id = ?', (user_id,)
     ).fetchone()
 
 
@@ -83,6 +82,7 @@ def verify_password(user_row, password):
 
 # --- Device helpers ---
 
+
 def create_device(user_id, device_name, platform):
     """Register a new device for the given user.
 
@@ -100,7 +100,7 @@ def create_device(user_id, device_name, platform):
     db.execute(
         """INSERT INTO devices (id, user_id, device_name, platform, created_at)
            VALUES (?, ?, ?, ?, ?)""",
-        (device_id, user_id, device_name.strip(), platform.strip(), now)
+        (device_id, user_id, device_name.strip(), platform.strip(), now),
     )
     db.commit()
     return device_id
@@ -115,9 +115,9 @@ def get_device(device_id, user_id):
     """
     db = get_db()
     return db.execute(
-        "SELECT id, user_id, device_name, platform, created_at FROM devices "
-        "WHERE id = ? AND user_id = ?",
-        (device_id, user_id)
+        'SELECT id, user_id, device_name, platform, created_at FROM devices '
+        'WHERE id = ? AND user_id = ?',
+        (device_id, user_id),
     ).fetchone()
 
 
@@ -129,7 +129,7 @@ def list_devices(user_id):
     """
     db = get_db()
     return db.execute(
-        "SELECT id, device_name, platform, created_at FROM devices "
-        "WHERE user_id = ? ORDER BY created_at",
-        (user_id,)
+        'SELECT id, device_name, platform, created_at FROM devices '
+        'WHERE user_id = ? ORDER BY created_at',
+        (user_id,),
     ).fetchall()

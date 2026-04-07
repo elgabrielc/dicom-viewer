@@ -1,6 +1,6 @@
 // Copyright 2026 Divergent Health Technologies
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
 /// Strip a path to its filename for use in error messages (avoids leaking
@@ -16,7 +16,10 @@ pub fn resolve_canonical_path(path: &str, stage: &str) -> Result<PathBuf, String
         return Err(format!("{stage}: path is empty"));
     }
     if !requested_path.is_absolute() {
-        return Err(format!("{stage}: path must be absolute: {}", redact_path(path)));
+        return Err(format!(
+            "{stage}: path must be absolute: {}",
+            redact_path(path)
+        ));
     }
     requested_path
         .canonicalize()
@@ -48,7 +51,7 @@ impl AllowedPaths {
     }
 
     /// Returns true if `path` is equal to or nested under any allowed root.
-    pub fn is_within_scope(&self, path: &PathBuf) -> bool {
+    pub fn is_within_scope(&self, path: &Path) -> bool {
         let roots = self.roots.read().unwrap();
         roots.iter().any(|root| path.starts_with(root))
     }
@@ -63,7 +66,10 @@ pub fn resolve_within_scope(
 ) -> Result<PathBuf, String> {
     let canonical = resolve_canonical_path(path, stage)?;
     if !allowed.is_within_scope(&canonical) {
-        return Err(format!("{stage}: path is outside allowed scope: {}", redact_path(path)));
+        return Err(format!(
+            "{stage}: path is outside allowed scope: {}",
+            redact_path(path)
+        ));
     }
     Ok(canonical)
 }

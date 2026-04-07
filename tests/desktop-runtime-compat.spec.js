@@ -33,7 +33,7 @@ async function installMockTauriInternals(page) {
         window.__TAURI_INTERNALS__ = {
             metadata: {
                 currentWindow: { label: 'main' },
-                currentWebview: { label: 'main', windowLabel: 'main' }
+                currentWebview: { label: 'main', windowLabel: 'main' },
             },
             convertFileSrc(filePath, protocol = 'asset') {
                 return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
@@ -81,7 +81,7 @@ async function installMockTauriInternals(page) {
                             gid: null,
                             rdev: null,
                             blksize: null,
-                            blocks: null
+                            blocks: null,
                         };
                     case 'plugin:fs|write_file':
                         return null;
@@ -103,13 +103,13 @@ async function installMockTauriInternals(page) {
                     default:
                         throw new Error(`Unhandled command: ${cmd}`);
                 }
-            }
+            },
         };
 
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener(_event, id) {
                 callbacks.delete(id);
-            }
+            },
         };
     });
 }
@@ -139,14 +139,14 @@ test('deployment mode detects packaged Tauri origins before globals are ready', 
 
     const modes = await page.evaluate(() => ({
         tauriScheme: window.CONFIG.detectDeploymentMode({
-            location: { protocol: 'tauri:', hostname: 'localhost' }
+            location: { protocol: 'tauri:', hostname: 'localhost' },
         }),
         tauriHost: window.CONFIG.detectDeploymentMode({
-            location: { protocol: 'https:', hostname: 'tauri.localhost' }
+            location: { protocol: 'https:', hostname: 'tauri.localhost' },
         }),
         personal: window.CONFIG.detectDeploymentMode({
-            location: { protocol: 'http:', hostname: '127.0.0.1' }
-        })
+            location: { protocol: 'http:', hostname: '127.0.0.1' },
+        }),
     }));
 
     expect(modes.tauriScheme).toBe('desktop');
@@ -165,7 +165,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
 
         function registerCallback(callback, once = false) {
             const id = callbackId++;
-            callbacks.set(id, payload => {
+            callbacks.set(id, (payload) => {
                 if (once) {
                     callbacks.delete(id);
                 }
@@ -183,7 +183,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
             window.__TAURI_INTERNALS__ = {
                 metadata: {
                     currentWindow: { label: 'main' },
-                    currentWebview: { label: 'main', windowLabel: 'main' }
+                    currentWebview: { label: 'main', windowLabel: 'main' },
                 },
                 convertFileSrc(filePath, protocol = 'asset') {
                     return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
@@ -231,7 +231,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
                                 gid: null,
                                 rdev: null,
                                 blksize: null,
-                                blocks: null
+                                blocks: null,
                             };
                         case 'plugin:fs|write_file':
                             return null;
@@ -253,13 +253,13 @@ test('tauri runtime shim installs when internals arrive after the script loads',
                         default:
                             throw new Error(`Unhandled command: ${cmd}`);
                     }
-                }
+                },
             };
 
             window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
                 unregisterListener(_event, id) {
                     callbacks.delete(id);
-                }
+                },
             };
         }, 50);
     });
@@ -271,7 +271,7 @@ test('tauri runtime shim installs when internals arrive after the script loads',
             hasGlobalTauri: typeof window.__TAURI__ !== 'undefined',
             hasCoreInvoke: typeof runtime?.core?.invoke === 'function',
             hasDialogApi: typeof runtime?.dialog?.open === 'function',
-            hasFsApi: typeof runtime?.fs?.readDir === 'function'
+            hasFsApi: typeof runtime?.fs?.readDir === 'function',
         };
     });
 
@@ -289,14 +289,14 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
             core: {
                 invoke() {
                     return Promise.resolve('native-invoke');
-                }
-            }
+                },
+            },
         };
 
         window.__TAURI_INTERNALS__ = {
             metadata: {
                 currentWindow: { label: 'main' },
-                currentWebview: { label: 'main', windowLabel: 'main' }
+                currentWebview: { label: 'main', windowLabel: 'main' },
             },
             convertFileSrc(filePath, protocol = 'asset') {
                 return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
@@ -341,7 +341,7 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
                             gid: null,
                             rdev: null,
                             blksize: null,
-                            blocks: null
+                            blocks: null,
                         };
                     case 'plugin:fs|write_file':
                         return null;
@@ -363,7 +363,7 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
                     default:
                         throw new Error(`Unhandled command: ${cmd}`);
                 }
-            }
+            },
         };
     });
 
@@ -376,7 +376,7 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
             hasDialogApi: typeof runtime?.dialog?.open === 'function',
             hasFsApi: typeof runtime?.fs?.readDir === 'function',
             hasPathApi: typeof runtime?.path?.appDataDir === 'function',
-            hasSqlApi: typeof runtime?.sql?.load === 'function'
+            hasSqlApi: typeof runtime?.sql?.load === 'function',
         };
     });
 
@@ -387,24 +387,26 @@ test('desktop runtime shim augments a partial global Tauri object', async ({ pag
     expect(result.hasSqlApi).toBe(true);
 });
 
-test('desktop runtime ready promise waits for a partial global Tauri object to finish initializing', async ({ page }) => {
+test('desktop runtime ready promise waits for a partial global Tauri object to finish initializing', async ({
+    page,
+}) => {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript(() => {
         window.__finishMockPartialTauriInitialization = () => {
             window.__TAURI__.dialog = {
                 async open() {
                     return null;
-                }
+                },
             };
             window.__TAURI__.fs = {
                 async readDir() {
                     return [];
-                }
+                },
             };
             window.__TAURI__.path = {
                 async appDataDir() {
                     return '/mock/appdata';
-                }
+                },
             };
             window.__TAURI__.sql = window.__createMockTauriSql();
             window.__TAURI__.webview = {
@@ -412,9 +414,9 @@ test('desktop runtime ready promise waits for a partial global Tauri object to f
                     return {
                         onDragDropEvent() {
                             return Promise.resolve(() => {});
-                        }
+                        },
                     };
-                }
+                },
             };
         };
 
@@ -422,8 +424,8 @@ test('desktop runtime ready promise waits for a partial global Tauri object to f
             core: {
                 invoke() {
                     return Promise.resolve('native-invoke');
-                }
-            }
+                },
+            },
         };
     });
 
@@ -432,7 +434,7 @@ test('desktop runtime ready promise waits for a partial global Tauri object to f
     const result = await page.evaluate(async () => {
         const settledEarly = await Promise.race([
             window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
-            new Promise((resolve) => setTimeout(() => resolve(false), 25))
+            new Promise((resolve) => setTimeout(() => resolve(false), 25)),
         ]);
         window.__finishMockPartialTauriInitialization();
         const runtime = await window.__DICOM_VIEWER_TAURI_READY__;
@@ -441,7 +443,7 @@ test('desktop runtime ready promise waits for a partial global Tauri object to f
             hasDialogApi: typeof runtime?.dialog?.open === 'function',
             hasFsApi: typeof runtime?.fs?.readDir === 'function',
             hasPathApi: typeof runtime?.path?.appDataDir === 'function',
-            hasSqlApi: typeof runtime?.sql?.load === 'function'
+            hasSqlApi: typeof runtime?.sql?.load === 'function',
         };
     });
 
@@ -459,7 +461,7 @@ test('desktop storage ready promise resolves before the full desktop shell is av
             core: {
                 invoke() {
                     return Promise.resolve('native-invoke');
-                }
+                },
             },
             fs: {
                 async exists() {
@@ -473,7 +475,7 @@ test('desktop storage ready promise resolves before the full desktop shell is av
                 },
                 async writeFile() {
                     return null;
-                }
+                },
             },
             path: {
                 async appDataDir() {
@@ -481,9 +483,9 @@ test('desktop storage ready promise resolves before the full desktop shell is av
                 },
                 async join(...parts) {
                     return parts.join('/');
-                }
+                },
             },
-            sql: window.__createMockTauriSql()
+            sql: window.__createMockTauriSql(),
         };
     });
 
@@ -493,7 +495,7 @@ test('desktop storage ready promise resolves before the full desktop shell is av
         const storageRuntime = await window.__DICOM_VIEWER_TAURI_STORAGE_READY__;
         const fullSettledEarly = await Promise.race([
             window.__DICOM_VIEWER_TAURI_READY__.then(() => true),
-            new Promise((resolve) => setTimeout(() => resolve(false), 25))
+            new Promise((resolve) => setTimeout(() => resolve(false), 25)),
         ]);
 
         return {
@@ -502,7 +504,7 @@ test('desktop storage ready promise resolves before the full desktop shell is av
             hasFsWriteFile: typeof storageRuntime?.fs?.writeFile === 'function',
             hasPathJoin: typeof storageRuntime?.path?.join === 'function',
             hasSqlApi: typeof storageRuntime?.sql?.load === 'function',
-            fullSettledEarly
+            fullSettledEarly,
         };
     });
 
@@ -517,7 +519,9 @@ test('desktop storage ready promise resolves before the full desktop shell is av
 test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', async ({ page }) => {
     await page.goto('http://127.0.0.1:5001/?nolib');
 
-    const result = await page.evaluate(() => window.DicomViewerApp.dicom.resolveOpenJpegAssetUrl('openjpegwasm_decode.wasm'));
+    const result = await page.evaluate(() =>
+        window.DicomViewerApp.dicom.resolveOpenJpegAssetUrl('openjpegwasm_decode.wasm'),
+    );
 
     expect(result).toMatch(/\/js\/openjpegwasm_decode\.wasm$/);
 });
@@ -560,7 +564,13 @@ test('desktop scan uses read_scan_manifest and read_scan_header through producti
                     if (cmd === 'read_scan_manifest') {
                         window.__scanCommandsCalled.manifest = true;
                         return [
-                            { path: '/library/IMG001.dcm', name: 'IMG001.dcm', rootPath: '/library', size: 100, modifiedMs: 1000 }
+                            {
+                                path: '/library/IMG001.dcm',
+                                name: 'IMG001.dcm',
+                                rootPath: '/library',
+                                size: 100,
+                                modifiedMs: 1000,
+                            },
                         ];
                     }
                     if (cmd === 'read_scan_header') {
@@ -575,32 +585,52 @@ test('desktop scan uses read_scan_manifest and read_scan_header through producti
                         return [];
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
-            dialog: { async open() { return null; } },
+            dialog: {
+                async open() {
+                    return null;
+                },
+            },
             fs: {
-                async exists() { return false; },
-                async readDir() { return []; },
-                async readFile() { return new Uint8Array([0]); },
+                async exists() {
+                    return false;
+                },
+                async readDir() {
+                    return [];
+                },
+                async readFile() {
+                    return new Uint8Array([0]);
+                },
                 async writeFile() {},
                 async mkdir() {},
                 async remove() {},
-                async stat() { throw new Error('Not found'); },
-                async rename() {}
+                async stat() {
+                    throw new Error('Not found');
+                },
+                async rename() {},
             },
             path: {
-                async appDataDir() { return '/appdata'; },
-                async join(...parts) { return parts.join('/').replace(/\/+/g, '/'); },
-                async normalize(p) { return p; }
+                async appDataDir() {
+                    return '/appdata';
+                },
+                async join(...parts) {
+                    return parts.join('/').replace(/\/+/g, '/');
+                },
+                async normalize(p) {
+                    return p;
+                },
             },
             sql: window.__createMockTauriSql(),
             webview: {
                 getCurrentWebview() {
                     return {
-                        onDragDropEvent() { return Promise.resolve(() => {}); }
+                        onDragDropEvent() {
+                            return Promise.resolve(() => {});
+                        },
                     };
-                }
-            }
+                },
+            },
         };
     });
 
@@ -612,7 +642,7 @@ test('desktop scan uses read_scan_manifest and read_scan_header through producti
         await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
         return {
             manifestCalled: window.__scanCommandsCalled.manifest,
-            headerPaths: window.__scanCommandsCalled.header
+            headerPaths: window.__scanCommandsCalled.header,
         };
     });
 
@@ -642,32 +672,52 @@ test('waitForDesktopRuntime polls until sql.load is available instead of failing
                         return [];
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
-            dialog: { async open() { return null; } },
+            dialog: {
+                async open() {
+                    return null;
+                },
+            },
             fs: {
-                async exists() { return false; },
-                async readDir() { return []; },
-                async readFile() { return new Uint8Array([0]); },
+                async exists() {
+                    return false;
+                },
+                async readDir() {
+                    return [];
+                },
+                async readFile() {
+                    return new Uint8Array([0]);
+                },
                 async writeFile() {},
                 async mkdir() {},
                 async remove() {},
-                async stat() { throw new Error('Not found'); },
-                async rename() {}
+                async stat() {
+                    throw new Error('Not found');
+                },
+                async rename() {},
             },
             path: {
-                async appDataDir() { return '/appdata'; },
-                async join(...parts) { return parts.join('/').replace(/\/+/g, '/'); },
-                async normalize(p) { return p; }
+                async appDataDir() {
+                    return '/appdata';
+                },
+                async join(...parts) {
+                    return parts.join('/').replace(/\/+/g, '/');
+                },
+                async normalize(p) {
+                    return p;
+                },
             },
             // sql is intentionally absent here — this is the race condition that caused the bug
             webview: {
                 getCurrentWebview() {
                     return {
-                        onDragDropEvent() { return Promise.resolve(() => {}); }
+                        onDragDropEvent() {
+                            return Promise.resolve(() => {});
+                        },
                     };
-                }
-            }
+                },
+            },
         };
 
         // Inject sql after a short delay to simulate the plugin arriving asynchronously.
@@ -696,7 +746,7 @@ test('waitForDesktopRuntime polls until sql.load is available instead of failing
         return {
             sqlLoadPresent: typeof window.__TAURI__?.sql?.load === 'function',
             dbSuccess,
-            dbError
+            dbError,
         };
     });
 
@@ -724,24 +774,42 @@ test('waitForDesktopRuntime throws a descriptive error when sql never becomes av
                         return [];
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
-            dialog: { async open() { return null; } },
+            dialog: {
+                async open() {
+                    return null;
+                },
+            },
             fs: {
-                async exists() { return false; },
-                async readDir() { return []; },
-                async readFile() { return new Uint8Array([0]); },
+                async exists() {
+                    return false;
+                },
+                async readDir() {
+                    return [];
+                },
+                async readFile() {
+                    return new Uint8Array([0]);
+                },
                 async writeFile() {},
                 async mkdir() {},
                 async remove() {},
-                async stat() { throw new Error('Not found'); },
-                async rename() {}
+                async stat() {
+                    throw new Error('Not found');
+                },
+                async rename() {},
             },
             path: {
-                async appDataDir() { return '/appdata'; },
-                async join(...parts) { return parts.join('/').replace(/\/+/g, '/'); },
-                async normalize(p) { return p; }
-            }
+                async appDataDir() {
+                    return '/appdata';
+                },
+                async join(...parts) {
+                    return parts.join('/').replace(/\/+/g, '/');
+                },
+                async normalize(p) {
+                    return p;
+                },
+            },
             // sql is permanently absent — no setTimeout injection
         };
 
@@ -783,12 +851,9 @@ test('desktop fs scope includes the native decode cache directory', async () => 
     const capabilityPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'capabilities', 'default.json');
     const capability = JSON.parse(fs.readFileSync(capabilityPath, 'utf8'));
     const fsScope = capability.permissions.find(
-        permission => permission && typeof permission === 'object' && permission.identifier === 'fs:scope'
+        (permission) => permission && typeof permission === 'object' && permission.identifier === 'fs:scope',
     );
 
     // NEW: fs:scope uses $APPDATA and $APPDATA/** which covers decode-cache
-    expect(fsScope?.allow).toEqual(expect.arrayContaining([
-        { path: '$APPDATA' },
-        { path: '$APPDATA/**' }
-    ]));
+    expect(fsScope?.allow).toEqual(expect.arrayContaining([{ path: '$APPDATA' }, { path: '$APPDATA/**' }]));
 });

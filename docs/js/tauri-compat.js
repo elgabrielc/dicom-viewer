@@ -6,34 +6,34 @@
         enter: 'tauri://drag-enter',
         over: 'tauri://drag-over',
         drop: 'tauri://drag-drop',
-        leave: 'tauri://drag-leave'
+        leave: 'tauri://drag-leave',
     };
     const MAX_ATTEMPTS = 1200;
     const RETRY_DELAY_MS = 25;
 
     function hasReadyDesktopStorageApis(runtime) {
         return !!(
-            runtime
-            && typeof runtime.core?.invoke === 'function'
-            && typeof runtime.fs?.exists === 'function'
-            && typeof runtime.fs?.remove === 'function'
-            && typeof runtime.fs?.rename === 'function'
-            && typeof runtime.fs?.writeFile === 'function'
-            && typeof runtime.path?.appDataDir === 'function'
-            && typeof runtime.path?.join === 'function'
-            && typeof runtime.sql?.load === 'function'
+            runtime &&
+            typeof runtime.core?.invoke === 'function' &&
+            typeof runtime.fs?.exists === 'function' &&
+            typeof runtime.fs?.remove === 'function' &&
+            typeof runtime.fs?.rename === 'function' &&
+            typeof runtime.fs?.writeFile === 'function' &&
+            typeof runtime.path?.appDataDir === 'function' &&
+            typeof runtime.path?.join === 'function' &&
+            typeof runtime.sql?.load === 'function'
         );
     }
 
     function hasReadyDesktopApis(runtime) {
         return !!(
-            runtime
-            && typeof runtime.core?.invoke === 'function'
-            && typeof runtime.dialog?.open === 'function'
-            && typeof runtime.fs?.readDir === 'function'
-            && typeof runtime.path?.appDataDir === 'function'
-            && typeof runtime.sql?.load === 'function'
-            && typeof runtime.webview?.getCurrentWebview === 'function'
+            runtime &&
+            typeof runtime.core?.invoke === 'function' &&
+            typeof runtime.dialog?.open === 'function' &&
+            typeof runtime.fs?.readDir === 'function' &&
+            typeof runtime.path?.appDataDir === 'function' &&
+            typeof runtime.sql?.load === 'function' &&
+            typeof runtime.webview?.getCurrentWebview === 'function'
         );
     }
 
@@ -69,14 +69,15 @@
         }
 
         async function listen(event, handler, options = {}) {
-            const target = typeof options.target === 'string'
-                ? { kind: 'AnyLabel', label: options.target }
-                : (options.target || { kind: 'Any' });
+            const target =
+                typeof options.target === 'string'
+                    ? { kind: 'AnyLabel', label: options.target }
+                    : options.target || { kind: 'Any' };
 
             const eventId = await invoke('plugin:event|listen', {
                 event,
                 target,
-                handler: transformCallback(handler)
+                handler: transformCallback(handler),
             });
 
             return async () => {
@@ -86,9 +87,7 @@
         }
 
         function getCurrentWebviewLabel() {
-            return internals.metadata?.currentWebview?.label
-                || internals.metadata?.currentWindow?.label
-                || 'main';
+            return internals.metadata?.currentWebview?.label || internals.metadata?.currentWindow?.label || 'main';
         }
 
         function createCurrentWebview() {
@@ -96,51 +95,62 @@
             return {
                 async onDragDropEvent(handler) {
                     const target = { kind: 'Webview', label };
-                    const unlistenEnter = await listen(DRAG_EVENTS.enter, (event) => {
-                        handler({
-                            ...event,
-                            payload: {
-                                type: 'enter',
-                                paths: event.payload?.paths,
-                                position: event.payload?.position
-                            }
-                        });
-                    }, { target });
-                    const unlistenOver = await listen(DRAG_EVENTS.over, (event) => {
-                        handler({
-                            ...event,
-                            payload: {
-                                type: 'over',
-                                position: event.payload?.position
-                            }
-                        });
-                    }, { target });
-                    const unlistenDrop = await listen(DRAG_EVENTS.drop, (event) => {
-                        handler({
-                            ...event,
-                            payload: {
-                                type: 'drop',
-                                paths: event.payload?.paths,
-                                position: event.payload?.position
-                            }
-                        });
-                    }, { target });
-                    const unlistenLeave = await listen(DRAG_EVENTS.leave, (event) => {
-                        handler({
-                            ...event,
-                            payload: { type: 'leave' }
-                        });
-                    }, { target });
+                    const unlistenEnter = await listen(
+                        DRAG_EVENTS.enter,
+                        (event) => {
+                            handler({
+                                ...event,
+                                payload: {
+                                    type: 'enter',
+                                    paths: event.payload?.paths,
+                                    position: event.payload?.position,
+                                },
+                            });
+                        },
+                        { target },
+                    );
+                    const unlistenOver = await listen(
+                        DRAG_EVENTS.over,
+                        (event) => {
+                            handler({
+                                ...event,
+                                payload: {
+                                    type: 'over',
+                                    position: event.payload?.position,
+                                },
+                            });
+                        },
+                        { target },
+                    );
+                    const unlistenDrop = await listen(
+                        DRAG_EVENTS.drop,
+                        (event) => {
+                            handler({
+                                ...event,
+                                payload: {
+                                    type: 'drop',
+                                    paths: event.payload?.paths,
+                                    position: event.payload?.position,
+                                },
+                            });
+                        },
+                        { target },
+                    );
+                    const unlistenLeave = await listen(
+                        DRAG_EVENTS.leave,
+                        (event) => {
+                            handler({
+                                ...event,
+                                payload: { type: 'leave' },
+                            });
+                        },
+                        { target },
+                    );
 
                     return async () => {
-                        await Promise.all([
-                            unlistenEnter(),
-                            unlistenOver(),
-                            unlistenDrop(),
-                            unlistenLeave()
-                        ]);
+                        await Promise.all([unlistenEnter(), unlistenOver(), unlistenDrop(), unlistenLeave()]);
                     };
-                }
+                },
             };
         }
 
@@ -155,7 +165,7 @@
                 ...info,
                 mtime: info?.mtime !== null && info?.mtime !== undefined ? new Date(info.mtime) : null,
                 atime: info?.atime !== null && info?.atime !== undefined ? new Date(info.atime) : null,
-                birthtime: info?.birthtime !== null && info?.birthtime !== undefined ? new Date(info.birthtime) : null
+                birthtime: info?.birthtime !== null && info?.birthtime !== undefined ? new Date(info.birthtime) : null,
             };
         }
 
@@ -163,8 +173,8 @@
             await invoke('plugin:fs|write_file', data, {
                 headers: {
                     path: encodeURIComponent(path),
-                    options: JSON.stringify(options)
-                }
+                    options: JSON.stringify(options),
+                },
             });
         }
 
@@ -172,7 +182,7 @@
             return invoke('plugin:fs|rename', {
                 fromPath,
                 toPath,
-                options
+                options,
             });
         }
 
@@ -182,12 +192,12 @@
                     const result = await invoke('plugin:sql|execute', {
                         db,
                         query,
-                        values
+                        values,
                     });
                     if (Array.isArray(result)) {
                         return {
                             rowsAffected: result[0],
-                            lastInsertId: result[1]
+                            lastInsertId: result[1],
                         };
                     }
                     return result;
@@ -196,12 +206,12 @@
                     return invoke('plugin:sql|select', {
                         db,
                         query,
-                        values
+                        values,
                     });
                 },
                 async close() {
                     return invoke('plugin:sql|close', { db });
-                }
+                },
             };
         }
 
@@ -270,7 +280,7 @@
         if (typeof tauri.path.appDataDir !== 'function') {
             tauri.path.appDataDir = async function appDataDir() {
                 return invoke('plugin:path|resolve_directory', {
-                    directory: APP_DATA_DIRECTORY
+                    directory: APP_DATA_DIRECTORY,
                 });
             };
         }
@@ -312,7 +322,7 @@
     }
 
     function createReadyPromise(validator) {
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             let attempts = 0;
 
             function finish(runtime) {
@@ -339,9 +349,10 @@
         });
     }
 
-    window.__DICOM_VIEWER_TAURI_STORAGE_READY__ = window.__DICOM_VIEWER_TAURI_STORAGE_READY__
-        || createReadyPromise(hasReadyDesktopStorageApis);
+    window.__DICOM_VIEWER_TAURI_STORAGE_READY__ =
+        window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || createReadyPromise(hasReadyDesktopStorageApis);
 
-    window.__DICOM_VIEWER_TAURI_READY__ = window.__DICOM_VIEWER_TAURI_READY__ || createReadyPromise(hasReadyDesktopApis);
+    window.__DICOM_VIEWER_TAURI_READY__ =
+        window.__DICOM_VIEWER_TAURI_READY__ || createReadyPromise(hasReadyDesktopApis);
     resolveDesktopRuntime(hasReadyDesktopStorageApis) || resolveDesktopRuntime();
 })();

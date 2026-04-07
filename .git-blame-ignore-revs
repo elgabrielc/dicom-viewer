@@ -1,0 +1,2 @@
+# Add formatting-only commit hashes here so `git blame` can skip bulk style sweeps.
+# This file is intentionally empty until a dedicated formatting commit is created.

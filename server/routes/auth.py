@@ -43,6 +43,7 @@ _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 # Auth endpoints
 # ---------------------------------------------------------------------------
 
+
 @auth_bp.route('/api/auth/signup', methods=['POST'])
 def signup():
     """Create a new user account.
@@ -60,9 +61,9 @@ def signup():
     if not email or not _EMAIL_RE.match(email):
         return jsonify({'error': 'Valid email is required'}), 400
     if len(password) < MIN_PASSWORD_LENGTH:
-        return jsonify({
-            'error': f'Password must be at least {MIN_PASSWORD_LENGTH} characters'
-        }), 400
+        return jsonify(
+            {'error': f'Password must be at least {MIN_PASSWORD_LENGTH} characters'}
+        ), 400
     if not name:
         return jsonify({'error': 'Name is required'}), 400
 
@@ -74,11 +75,13 @@ def signup():
     access_token = create_access_token(user_id)
     refresh_token = create_refresh_token(user_id)
 
-    return jsonify({
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'expires_in': ACCESS_TOKEN_LIFETIME,
-    }), 201
+    return jsonify(
+        {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': ACCESS_TOKEN_LIFETIME,
+        }
+    ), 201
 
 
 @auth_bp.route('/api/auth/login', methods=['POST'])
@@ -104,11 +107,13 @@ def login():
     access_token = create_access_token(user['id'])
     refresh_token = create_refresh_token(user['id'])
 
-    return jsonify({
-        'access_token': access_token,
-        'refresh_token': refresh_token,
-        'expires_in': ACCESS_TOKEN_LIFETIME,
-    })
+    return jsonify(
+        {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'expires_in': ACCESS_TOKEN_LIFETIME,
+        }
+    )
 
 
 @auth_bp.route('/api/auth/refresh', methods=['POST'])
@@ -140,15 +145,18 @@ def refresh():
 
     access_token = create_access_token(user_id)
 
-    return jsonify({
-        'access_token': access_token,
-        'expires_in': ACCESS_TOKEN_LIFETIME,
-    })
+    return jsonify(
+        {
+            'access_token': access_token,
+            'expires_in': ACCESS_TOKEN_LIFETIME,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Device registration (requires authentication)
 # ---------------------------------------------------------------------------
+
 
 @auth_bp.route('/api/auth/devices', methods=['POST'])
 def register_device():
@@ -187,22 +195,25 @@ def list_user_devices():
         return auth_error
 
     devices = list_devices(g.user_id)
-    return jsonify({
-        'devices': [
-            {
-                'id': d['id'],
-                'device_name': d['device_name'],
-                'platform': d['platform'],
-                'created_at': d['created_at'],
-            }
-            for d in devices
-        ]
-    })
+    return jsonify(
+        {
+            'devices': [
+                {
+                    'id': d['id'],
+                    'device_name': d['device_name'],
+                    'platform': d['platform'],
+                    'created_at': d['created_at'],
+                }
+                for d in devices
+            ]
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # JWT auth middleware (for use by this blueprint and sync routes)
 # ---------------------------------------------------------------------------
+
 
 def require_cloud_auth(func):
     """Decorator that enforces JWT bearer-token authentication.
@@ -220,6 +231,7 @@ def require_cloud_auth(func):
         if auth_error is not None:
             return auth_error
         return func(*args, **kwargs)
+
     return wrapper
 
 
@@ -235,7 +247,9 @@ def validate_device_ownership(device_id, user_id):
 
     device = get_device(device_id, user_id)
     if device is None:
-        return jsonify({'error': 'device_not_registered', 'message': 'Device not registered for this user'}), 403
+        return jsonify(
+            {'error': 'device_not_registered', 'message': 'Device not registered for this user'}
+        ), 403
 
     return None, None
 
@@ -258,7 +272,9 @@ def _require_jwt_auth():
     auth_header = request.headers.get('Authorization', '')
 
     if not auth_header.startswith('Bearer '):
-        return jsonify({'error': 'unauthorized', 'message': 'Missing or malformed Authorization header'}), 401
+        return jsonify(
+            {'error': 'unauthorized', 'message': 'Missing or malformed Authorization header'}
+        ), 401
 
     token = auth_header[7:]  # Strip "Bearer " prefix
 

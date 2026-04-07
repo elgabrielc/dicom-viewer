@@ -1,5 +1,6 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const notesApi = window.NotesAPI;
     const LEGACY_LIBRARY_CONFIG_KEY = 'dicom-viewer-library-config';
 
@@ -8,13 +9,17 @@
             folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
             lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
             managedLibrary: config?.managedLibrary !== false,
-            importHistory: Array.isArray(config?.importHistory) ? config.importHistory.filter(entry =>
-                entry && typeof entry === 'object'
-                && typeof entry.sourcePath === 'string'
-                && typeof entry.importedAt === 'string'
-                && typeof entry.fileCount === 'number'
-                && typeof entry.studyCount === 'number'
-            ) : []
+            importHistory: Array.isArray(config?.importHistory)
+                ? config.importHistory.filter(
+                      (entry) =>
+                          entry &&
+                          typeof entry === 'object' &&
+                          typeof entry.sourcePath === 'string' &&
+                          typeof entry.importedAt === 'string' &&
+                          typeof entry.fileCount === 'number' &&
+                          typeof entry.studyCount === 'number',
+                  )
+                : [],
         };
     }
 
@@ -166,7 +171,7 @@
                 version: this.SNAPSHOT_VERSION,
                 folder: folderPath,
                 savedAt: Date.now(),
-                studies: studies || {}
+                studies: studies || {},
             };
             const bytes = new TextEncoder().encode(`${JSON.stringify(payload)}\n`);
             await tauri.fs.writeFile(snapshotPath, bytes);
@@ -200,7 +205,7 @@
                     if (typeof onProgress === 'function') {
                         onProgress(stats);
                     }
-                }
+                },
             });
 
             if (captureTiming && lastProgress) {
@@ -218,7 +223,7 @@
                     headerFallbackCount: lastProgress.headerFallbackCount || 0,
                     headerRejectedCount: lastProgress.headerRejectedCount || 0,
                     discovered: lastProgress.discovered || 0,
-                    valid: lastProgress.valid || 0
+                    valid: lastProgress.valid || 0,
                 };
 
                 try {
@@ -260,7 +265,7 @@
                 const selected = await tauri.dialog.open({
                     directory: true,
                     recursive: true,
-                    title: 'Import DICOM Folder into Library'
+                    title: 'Import DICOM Folder into Library',
                 });
                 const folder = Array.isArray(selected) ? selected[0] : selected;
                 if (!folder) return null;
@@ -269,7 +274,7 @@
                 state.libraryAbort = new AbortController();
                 try {
                     await this.runImport([folder], {
-                        signal: state.libraryAbort.signal
+                        signal: state.libraryAbort.signal,
                     });
                 } finally {
                     state.libraryAbort = null;
@@ -282,7 +287,7 @@
             const selected = await tauri.dialog.open({
                 directory: true,
                 recursive: true,
-                title: 'Choose DICOM Library Folder'
+                title: 'Choose DICOM Library Folder',
             });
             const folder = Array.isArray(selected) ? selected[0] : selected;
             if (!folder) return null;
@@ -329,7 +334,7 @@
                     id: jobId,
                     source_path: Array.isArray(paths) ? paths.join(', ') : String(paths),
                     started_at: Date.now(),
-                    status: 'running'
+                    status: 'running',
                 });
             } catch (error) {
                 console.warn('DesktopLibrary: failed to save import job start:', error);
@@ -347,7 +352,7 @@
                         if (typeof app.library?.updateImportProgress === 'function') {
                             app.library.updateImportProgress(stats);
                         }
-                    }
+                    },
                 });
 
                 state.importInProgress = false;
@@ -367,7 +372,7 @@
                         imported_count: result.imported || 0,
                         skipped_count: result.skipped || 0,
                         error_count: result.errors || 0,
-                        status: 'completed'
+                        status: 'completed',
                     });
                 } catch (error) {
                     console.warn('DesktopLibrary: failed to update import job completion:', error);
@@ -386,7 +391,7 @@
                     await notesApi.updateImportJob(jobId, {
                         completed_at: Date.now(),
                         error_count: 1,
-                        status: error.name === 'AbortError' ? 'aborted' : 'failed'
+                        status: error.name === 'AbortError' ? 'aborted' : 'failed',
                     });
                 } catch (persistError) {
                     console.warn('DesktopLibrary: failed to update import job failure:', persistError);
@@ -394,7 +399,7 @@
 
                 throw error;
             }
-        }
+        },
     };
 
     app.desktopLibrary = DesktopLibrary;

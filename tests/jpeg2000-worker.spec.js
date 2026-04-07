@@ -8,12 +8,16 @@ const HOME_URL = 'http://127.0.0.1:5001/?nolib';
 const MR2_J2K_PATH = path.join(__dirname, '..', 'test-fixtures', 'MR2_J2KI.dcm');
 const MR2_UNCOMPRESSED_PATH = path.join(__dirname, '..', 'test-fixtures', 'MR2_UNCI.dcm');
 
-test('JPEG 2000 worker URL resolves relative to the app root and the decoder is no longer eagerly loaded', async ({ page }) => {
+test('JPEG 2000 worker URL resolves relative to the app root and the decoder is no longer eagerly loaded', async ({
+    page,
+}) => {
     await page.goto(HOME_URL);
 
     const result = await page.evaluate(() => ({
         workerUrl: window.DicomViewerApp.dicom.resolveJpeg2000WorkerUrl(),
-        hasDecoderScriptTag: !!document.querySelector('script[src$="js/openjpegwasm_decode.js"], script[src*="openjpegwasm_decode.js"]')
+        hasDecoderScriptTag: !!document.querySelector(
+            'script[src$="js/openjpegwasm_decode.js"], script[src*="openjpegwasm_decode.js"]',
+        ),
     }));
 
     expect(result.workerUrl).toMatch(/\/js\/app\/decode-worker\.js$/);
@@ -42,9 +46,11 @@ test('decodeJ2KInWorker reuses a persistent worker and posts copied frame buffer
                 calls.push({
                     requestId: payload.requestId,
                     url: this.url,
-                    copiedBuffer: payload.frameData.buffer !== (workerCallNumber === 1 ? firstSourceFrame.buffer : secondSourceFrame.buffer),
+                    copiedBuffer:
+                        payload.frameData.buffer !==
+                        (workerCallNumber === 1 ? firstSourceFrame.buffer : secondSourceFrame.buffer),
                     transferCount: transferList.length,
-                    transferByteLength: transferList[0]?.byteLength || 0
+                    transferByteLength: transferList[0]?.byteLength || 0,
                 });
 
                 queueMicrotask(() => {
@@ -56,10 +62,10 @@ test('decodeJ2KInWorker reuses a persistent worker and posts copied frame buffer
                                 workerCallNumber,
                                 workerCallNumber + 10,
                                 workerCallNumber + 20,
-                                workerCallNumber + 30
+                                workerCallNumber + 30,
                             ]),
-                            frameInfo: { width: 2, height: 2 }
-                        }
+                            frameInfo: { width: 2, height: 2 },
+                        },
                     });
                 });
             }
@@ -83,7 +89,7 @@ test('decodeJ2KInWorker reuses a persistent worker and posts copied frame buffer
                 firstPixelValues: Array.from(firstPixelData),
                 secondPixelValues: Array.from(secondPixelData),
                 firstSourceFrame: Array.from(firstSourceFrame),
-                secondSourceFrame: Array.from(secondSourceFrame)
+                secondSourceFrame: Array.from(secondSourceFrame),
             };
         } finally {
             window.Worker = originalWorker;
@@ -196,66 +202,71 @@ test('decodeJ2KInWorker includes the worker URL when the worker fails to load', 
     expect(result.terminated).toBe(true);
 });
 
-test('decodeJpeg2000 decodes a real JPEG 2000 DICOM to the same pixels as its uncompressed companion', async ({ page }) => {
+test('decodeJpeg2000 decodes a real JPEG 2000 DICOM to the same pixels as its uncompressed companion', async ({
+    page,
+}) => {
     const jpeg2000Bytes = Array.from(fs.readFileSync(MR2_J2K_PATH));
     const uncompressedBytes = Array.from(fs.readFileSync(MR2_UNCOMPRESSED_PATH));
 
     await page.goto(HOME_URL);
 
-    const result = await page.evaluate(async ({ jpeg2000Bytes, uncompressedBytes }) => {
-        function toUint8Array(bytes) {
-            return new Uint8Array(bytes);
-        }
+    const result = await page.evaluate(
+        async ({ jpeg2000Bytes, uncompressedBytes }) => {
+            function toUint8Array(bytes) {
+                return new Uint8Array(bytes);
+            }
 
-        function readUncompressedPixels(dataSet, sampleCount) {
-            const pixelElement = dataSet.elements.x7fe00010;
-            const view = new DataView(
-                dataSet.byteArray.buffer,
-                dataSet.byteArray.byteOffset + pixelElement.dataOffset,
-                sampleCount * 2
+            function readUncompressedPixels(dataSet, sampleCount) {
+                const pixelElement = dataSet.elements.x7fe00010;
+                const view = new DataView(
+                    dataSet.byteArray.buffer,
+                    dataSet.byteArray.byteOffset + pixelElement.dataOffset,
+                    sampleCount * 2,
+                );
+                const pixels = new Uint16Array(sampleCount);
+                for (let i = 0; i < sampleCount; i++) {
+                    pixels[i] = view.getUint16(i * 2, true);
+                }
+                return pixels;
+            }
+
+            const jpeg2000DataSet = dicomParser.parseDicom(toUint8Array(jpeg2000Bytes));
+            const uncompressedDataSet = dicomParser.parseDicom(toUint8Array(uncompressedBytes));
+            const rows = jpeg2000DataSet.uint16('x00280010');
+            const cols = jpeg2000DataSet.uint16('x00280011');
+            const sampleCount = rows * cols;
+            const bitsAllocated = jpeg2000DataSet.uint16('x00280100');
+            const pixelRepresentation = jpeg2000DataSet.uint16('x00280103');
+
+            const decodedPixels = await window.DicomViewerApp.dicom.decodeJpeg2000(
+                jpeg2000DataSet,
+                jpeg2000DataSet.elements.x7fe00010,
+                rows,
+                cols,
+                bitsAllocated,
+                pixelRepresentation,
             );
-            const pixels = new Uint16Array(sampleCount);
-            for (let i = 0; i < sampleCount; i++) {
-                pixels[i] = view.getUint16(i * 2, true);
+            const nativePixels = readUncompressedPixels(uncompressedDataSet, sampleCount);
+
+            let allEqual = decodedPixels.length === nativePixels.length;
+            for (let i = 0; allEqual && i < decodedPixels.length; i++) {
+                if (decodedPixels[i] !== nativePixels[i]) {
+                    allEqual = false;
+                }
             }
-            return pixels;
-        }
 
-        const jpeg2000DataSet = dicomParser.parseDicom(toUint8Array(jpeg2000Bytes));
-        const uncompressedDataSet = dicomParser.parseDicom(toUint8Array(uncompressedBytes));
-        const rows = jpeg2000DataSet.uint16('x00280010');
-        const cols = jpeg2000DataSet.uint16('x00280011');
-        const sampleCount = rows * cols;
-        const bitsAllocated = jpeg2000DataSet.uint16('x00280100');
-        const pixelRepresentation = jpeg2000DataSet.uint16('x00280103');
-
-        const decodedPixels = await window.DicomViewerApp.dicom.decodeJpeg2000(
-            jpeg2000DataSet,
-            jpeg2000DataSet.elements.x7fe00010,
-            rows,
-            cols,
-            bitsAllocated,
-            pixelRepresentation
-        );
-        const nativePixels = readUncompressedPixels(uncompressedDataSet, sampleCount);
-
-        let allEqual = decodedPixels.length === nativePixels.length;
-        for (let i = 0; allEqual && i < decodedPixels.length; i++) {
-            if (decodedPixels[i] !== nativePixels[i]) {
-                allEqual = false;
-            }
-        }
-
-        return {
-            decodedType: decodedPixels.constructor.name,
-            sampleCount,
-            allEqual,
-            firstEightDecoded: Array.from(decodedPixels.slice(0, 8)),
-            firstEightNative: Array.from(nativePixels.slice(0, 8)),
-            checksumDecoded: decodedPixels.reduce((sum, value) => sum + value, 0),
-            checksumNative: nativePixels.reduce((sum, value) => sum + value, 0)
-        };
-    }, { jpeg2000Bytes, uncompressedBytes });
+            return {
+                decodedType: decodedPixels.constructor.name,
+                sampleCount,
+                allEqual,
+                firstEightDecoded: Array.from(decodedPixels.slice(0, 8)),
+                firstEightNative: Array.from(nativePixels.slice(0, 8)),
+                checksumDecoded: decodedPixels.reduce((sum, value) => sum + value, 0),
+                checksumNative: nativePixels.reduce((sum, value) => sum + value, 0),
+            };
+        },
+        { jpeg2000Bytes, uncompressedBytes },
+    );
     expect(result.decodedType).toBe('Uint16Array');
     expect(result.sampleCount).toBe(1024 * 1024);
     expect(result.allEqual).toBe(true);

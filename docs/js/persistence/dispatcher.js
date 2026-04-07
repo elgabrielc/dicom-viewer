@@ -24,16 +24,17 @@ const NotesAPI = (() => {
         saveDesktopScanCacheEntries,
         saveImportJob,
         updateImportJob,
-        loadRecentImportJobs
+        loadRecentImportJobs,
     } = window._NotesDesktop;
 
     // ---- Dispatcher ----
     function getBackend() {
-        const mode = (typeof CONFIG !== 'undefined') ? CONFIG.deploymentMode : 'personal';
+        const mode = typeof CONFIG !== 'undefined' ? CONFIG.deploymentMode : 'personal';
         if (mode === 'desktop') return 'desktop';
-        const hasServer = (typeof CONFIG !== 'undefined' && CONFIG.features)
-            ? CONFIG.features.notesServer
-            : mode === 'personal' || mode === 'cloud';
+        const hasServer =
+            typeof CONFIG !== 'undefined' && CONFIG.features
+                ? CONFIG.features.notesServer
+                : mode === 'personal' || mode === 'cloud';
         if (hasServer) return 'server';
         return 'local';
     }
@@ -70,7 +71,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.loadNotes(studyUids),
             () => LocalBackend.loadNotes(studyUids),
-            () => DesktopBackend.loadNotes(studyUids)
+            () => DesktopBackend.loadNotes(studyUids),
         );
     }
 
@@ -79,7 +80,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.saveStudyDescription(studyUid, description),
             () => LocalBackend.saveStudyDescription(studyUid, description),
-            () => DesktopBackend.saveStudyDescription(studyUid, description)
+            () => DesktopBackend.saveStudyDescription(studyUid, description),
         );
     }
 
@@ -88,7 +89,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.saveSeriesDescription(studyUid, seriesUid, description),
             () => LocalBackend.saveSeriesDescription(studyUid, seriesUid, description),
-            () => DesktopBackend.saveSeriesDescription(studyUid, seriesUid, description)
+            () => DesktopBackend.saveSeriesDescription(studyUid, seriesUid, description),
         );
     }
 
@@ -97,7 +98,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.addComment(studyUid, payload),
             () => LocalBackend.addComment(studyUid, payload),
-            () => DesktopBackend.addComment(studyUid, payload)
+            () => DesktopBackend.addComment(studyUid, payload),
         );
     }
 
@@ -106,7 +107,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.updateComment(studyUid, commentId, payload),
             () => LocalBackend.updateComment(studyUid, commentId, payload),
-            () => DesktopBackend.updateComment(studyUid, commentId, payload)
+            () => DesktopBackend.updateComment(studyUid, commentId, payload),
         );
     }
 
@@ -115,7 +116,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.deleteComment(studyUid, commentId),
             () => LocalBackend.deleteComment(studyUid, commentId),
-            () => DesktopBackend.deleteComment(studyUid, commentId)
+            () => DesktopBackend.deleteComment(studyUid, commentId),
         );
     }
 
@@ -124,7 +125,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.uploadReport(studyUid, file, meta),
             () => LocalBackend.uploadReport(studyUid, file, meta),
-            () => DesktopBackend.uploadReport(studyUid, file, meta)
+            () => DesktopBackend.uploadReport(studyUid, file, meta),
         );
     }
 
@@ -133,7 +134,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.deleteReport(studyUid, reportId),
             () => LocalBackend.deleteReport(studyUid, reportId),
-            () => DesktopBackend.deleteReport(studyUid, reportId)
+            () => DesktopBackend.deleteReport(studyUid, reportId),
         );
     }
 
@@ -142,7 +143,7 @@ const NotesAPI = (() => {
         return await withFallback(
             () => ServerBackend.migrate(payload),
             () => LocalBackend.migrate(payload),
-            () => DesktopBackend.migrate(payload)
+            () => DesktopBackend.migrate(payload),
         );
     }
 
@@ -207,7 +208,7 @@ const NotesAPI = (() => {
         loadRecentImportJobs,
         authenticatedFetch,
         syncNow,
-        isSyncing
+        isSyncing,
     };
 })();
 

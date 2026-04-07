@@ -5,7 +5,7 @@ description = "myradone -- your medical imaging library"
 authors = ["Gabriel Casalduc <gabriel@divergent.health>"]
 license = "MIT"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.80.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

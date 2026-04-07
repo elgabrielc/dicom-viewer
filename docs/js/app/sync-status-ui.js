@@ -21,7 +21,6 @@
  */
 
 const _SyncStatusUI = (() => {
-
     // Auto-dismiss conflict banner after this many milliseconds
     const CONFLICT_BANNER_TIMEOUT_MS = 10000;
 
@@ -30,11 +29,11 @@ const _SyncStatusUI = (() => {
 
     // Human-readable labels for each state
     const STATE_LABELS = {
-        synced:  'Synced',
+        synced: 'Synced',
         syncing: 'Syncing...',
         pending: 'Pending',
         offline: 'Offline',
-        error:   'Sync error'
+        error: 'Sync error',
     };
 
     let currentStatus = 'synced';
@@ -127,9 +126,7 @@ const _SyncStatusUI = (() => {
         if (Array.isArray(rejected) && rejected.length > 0) {
             const count = rejected.length;
             const noun = count === 1 ? 'change' : 'changes';
-            showConflictBanner(
-                `${count} ${noun} had conflicts and were resolved by the server.`
-            );
+            showConflictBanner(`${count} ${noun} had conflicts and were resolved by the server.`);
         }
 
         lastSyncTimestamp = Date.now();
@@ -291,7 +288,7 @@ const _SyncStatusUI = (() => {
         getLastSyncTimestamp,
         showConflictBanner,
         hideConflictBanner,
-        formatRelativeTime
+        formatRelativeTime,
     };
 })();
 

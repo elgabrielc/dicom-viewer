@@ -26,8 +26,9 @@ async function installMockTauri(page, options = {}) {
                 const originalSelect = connection.select.bind(connection);
                 connection.select = async (query, values) => {
                     const normalizedQuery = String(query || '').toLowerCase();
-                    const shouldDelay = !selectDelayPatterns.length
-                        || selectDelayPatterns.some((pattern) => normalizedQuery.includes(pattern));
+                    const shouldDelay =
+                        !selectDelayPatterns.length ||
+                        selectDelayPatterns.some((pattern) => normalizedQuery.includes(pattern));
 
                     if (shouldDelay) {
                         await new Promise((resolve) => setTimeout(resolve, selectDelayMs));
@@ -40,10 +41,7 @@ async function installMockTauri(page, options = {}) {
         }
 
         if (options.initialSecureAuthState) {
-            localStorage.setItem(
-                SECURE_AUTH_STORAGE_KEY,
-                JSON.stringify(options.initialSecureAuthState)
-            );
+            localStorage.setItem(SECURE_AUTH_STORAGE_KEY, JSON.stringify(options.initialSecureAuthState));
         }
 
         function joinPaths(...parts) {
@@ -77,18 +75,17 @@ async function installMockTauri(page, options = {}) {
                     }
                     if (cmd === 'load_secure_auth_state') {
                         const raw = localStorage.getItem(SECURE_AUTH_STORAGE_KEY);
-                        return raw ? JSON.parse(raw) : {
-                            access_token: null,
-                            refresh_token: null,
-                            user_email: null,
-                            user_name: null
-                        };
+                        return raw
+                            ? JSON.parse(raw)
+                            : {
+                                  access_token: null,
+                                  refresh_token: null,
+                                  user_email: null,
+                                  user_name: null,
+                              };
                     }
                     if (cmd === 'store_secure_auth_state') {
-                        localStorage.setItem(
-                            SECURE_AUTH_STORAGE_KEY,
-                            JSON.stringify(args.state || {})
-                        );
+                        localStorage.setItem(SECURE_AUTH_STORAGE_KEY, JSON.stringify(args.state || {}));
                         return true;
                     }
                     if (cmd === 'clear_secure_auth_state') {
@@ -96,7 +93,7 @@ async function installMockTauri(page, options = {}) {
                         return true;
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
             fs: {
                 async exists(filePath) {
@@ -123,11 +120,8 @@ async function installMockTauri(page, options = {}) {
                     if (failWritePatterns.some((pattern) => String(filePath).includes(String(pattern)))) {
                         throw new Error(`Mock write failure for ${filePath}`);
                     }
-                    localStorage.setItem(
-                        `${FILE_STORAGE_PREFIX}${filePath}`,
-                        JSON.stringify(Array.from(bytes))
-                    );
-                }
+                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${filePath}`, JSON.stringify(Array.from(bytes)));
+                },
             },
             path: {
                 async appDataDir() {
@@ -138,7 +132,7 @@ async function installMockTauri(page, options = {}) {
                 },
                 async normalize(path) {
                     return joinPaths(path);
-                }
+                },
             },
             sql: sqlPlugin,
             webview: {
@@ -146,10 +140,10 @@ async function installMockTauri(page, options = {}) {
                     return {
                         onDragDropEvent() {
                             return Promise.resolve(() => {});
-                        }
+                        },
                     };
-                }
-            }
+                },
+            },
         };
     }, options);
 }
@@ -163,37 +157,42 @@ test.describe('Desktop report persistence', () => {
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const migrated = await page.evaluate(async ({ studyUid, seriesUid }) => {
-            const payload = {
-                version: 2,
-                comments: {
-                    [studyUid]: {
-                        description: 'Manual migrate study note',
-                        study: [
-                            { id: 'legacy-study-comment', text: 'Manual migrate study comment', time: 101 }
-                        ],
-                        series: {
-                            [seriesUid]: {
-                                description: 'Manual migrate series note',
-                                comments: [
-                                    { id: 'legacy-series-comment', text: 'Manual migrate series comment', time: 202 }
-                                ]
-                            }
-                        }
-                    }
-                }
-            };
+        const migrated = await page.evaluate(
+            async ({ studyUid, seriesUid }) => {
+                const payload = {
+                    version: 2,
+                    comments: {
+                        [studyUid]: {
+                            description: 'Manual migrate study note',
+                            study: [{ id: 'legacy-study-comment', text: 'Manual migrate study comment', time: 101 }],
+                            series: {
+                                [seriesUid]: {
+                                    description: 'Manual migrate series note',
+                                    comments: [
+                                        {
+                                            id: 'legacy-series-comment',
+                                            text: 'Manual migrate series comment',
+                                            time: 202,
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                };
 
-            const result = await window.NotesAPI.migrate(payload);
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+                const result = await window.NotesAPI.migrate(payload);
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
 
-            return {
-                result,
-                notes,
-                sqlStore
-            };
-        }, { studyUid, seriesUid });
+                return {
+                    result,
+                    notes,
+                    sqlStore,
+                };
+            },
+            { studyUid, seriesUid },
+        );
 
         expect(migrated.result).toBe(true);
         expect(migrated.notes.studies[studyUid].description).toBe('Manual migrate study note');
@@ -212,62 +211,63 @@ test.describe('Desktop report persistence', () => {
         const reportPath = `/mock/appdata/reports/${studyUid}/${reportId}.pdf`;
         const libraryConfig = {
             folder: '/Users/gabriel/Desktop/radiology all discs',
-            lastScan: '2026-03-21T18:00:00.000Z'
+            lastScan: '2026-03-21T18:00:00.000Z',
         };
 
         await installMockTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const migrated = await page.evaluate(async ({ studyUid, seriesUid, reportId, reportPath, libraryConfig }) => {
-            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
-            const legacyStore = {
-                studies: {
-                    [studyUid]: {
-                        description: 'Migrated study note',
-                        comments: [
-                            { id: 'legacy-study-comment', text: 'Migrated study comment', time: 101 }
-                        ],
-                        series: {
-                            [seriesUid]: {
-                                description: 'Migrated series note',
-                                comments: [
-                                    { id: 'legacy-series-comment', text: 'Migrated series comment', time: 202 }
-                                ]
-                            }
+        const migrated = await page.evaluate(
+            async ({ studyUid, seriesUid, reportId, reportPath, libraryConfig }) => {
+                const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+                const legacyStore = {
+                    studies: {
+                        [studyUid]: {
+                            description: 'Migrated study note',
+                            comments: [{ id: 'legacy-study-comment', text: 'Migrated study comment', time: 101 }],
+                            series: {
+                                [seriesUid]: {
+                                    description: 'Migrated series note',
+                                    comments: [
+                                        { id: 'legacy-series-comment', text: 'Migrated series comment', time: 202 },
+                                    ],
+                                },
+                            },
+                            reports: [
+                                {
+                                    id: reportId,
+                                    name: 'Migrated report.pdf',
+                                    type: 'pdf',
+                                    size: bytes.length,
+                                    filePath: reportPath,
+                                    addedAt: 303,
+                                    updatedAt: 404,
+                                },
+                            ],
                         },
-                        reports: [
-                            {
-                                id: reportId,
-                                name: 'Migrated report.pdf',
-                                type: 'pdf',
-                                size: bytes.length,
-                                filePath: reportPath,
-                                addedAt: 303,
-                                updatedAt: 404
-                            }
-                        ]
-                    }
-                }
-            };
+                    },
+                };
 
-            localStorage.setItem('dicom-viewer-notes-v3', JSON.stringify(legacyStore));
-            localStorage.setItem('dicom-viewer-library-config', JSON.stringify(libraryConfig));
-            localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
+                localStorage.setItem('dicom-viewer-notes-v3', JSON.stringify(legacyStore));
+                localStorage.setItem('dicom-viewer-library-config', JSON.stringify(libraryConfig));
+                localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
 
-            await window.NotesAPI.initializeDesktopStorage();
+                await window.NotesAPI.initializeDesktopStorage();
 
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const config = await window.NotesAPI.loadDesktopLibraryConfig();
-            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const config = await window.NotesAPI.loadDesktopLibraryConfig();
+                const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
 
-            return {
-                notes,
-                config,
-                reportUrl: window.NotesAPI.getReportFileUrl(reportId),
-                sqlStore
-            };
-        }, { studyUid, seriesUid, reportId, reportPath, libraryConfig });
+                return {
+                    notes,
+                    config,
+                    reportUrl: window.NotesAPI.getReportFileUrl(reportId),
+                    sqlStore,
+                };
+            },
+            { studyUid, seriesUid, reportId, reportPath, libraryConfig },
+        );
 
         expect(migrated.notes.studies[studyUid].description).toBe('Migrated study note');
         expect(migrated.notes.studies[studyUid].comments).toHaveLength(1);
@@ -286,23 +286,26 @@ test.describe('Desktop report persistence', () => {
         expect(migrated.sqlStore.app_config).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ key: 'desktop_library_config' }),
-                expect.objectContaining({ key: 'localstorage_migrated', value: '1' })
-            ])
+                expect.objectContaining({ key: 'localstorage_migrated', value: '1' }),
+            ]),
         );
 
         await page.reload();
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const persisted = await page.evaluate(async ({ studyUid, seriesUid }) => {
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const config = await window.NotesAPI.loadDesktopLibraryConfig();
-            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
-            return {
-                notes,
-                config,
-                sqlStore
-            };
-        }, { studyUid, seriesUid });
+        const persisted = await page.evaluate(
+            async ({ studyUid, seriesUid }) => {
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const config = await window.NotesAPI.loadDesktopLibraryConfig();
+                const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+                return {
+                    notes,
+                    config,
+                    sqlStore,
+                };
+            },
+            { studyUid, seriesUid },
+        );
 
         expect(persisted.notes.studies[studyUid].description).toBe('Migrated study note');
         expect(persisted.notes.studies[studyUid].comments).toHaveLength(1);
@@ -321,7 +324,7 @@ test.describe('Desktop report persistence', () => {
         const reportPath = `/mock/appdata/reports/${studyUid}/${reportId}.pdf`;
         const libraryConfig = {
             folder: '/Users/gabriel/Desktop/radiology all discs',
-            lastScan: '2026-03-20T14:51:37.855Z'
+            lastScan: '2026-03-20T14:51:37.855Z',
         };
 
         await installMockTauri(page, {
@@ -333,10 +336,10 @@ test.describe('Desktop report persistence', () => {
                     reports: [],
                     app_config: [
                         { key: 'desktop_library_config', value: JSON.stringify(libraryConfig), updated_at: 1 },
-                        { key: 'localstorage_migrated', value: '1', updated_at: 1 }
+                        { key: 'localstorage_migrated', value: '1', updated_at: 1 },
                     ],
-                    meta: { lastCommentId: 0 }
-                }
+                    meta: { lastCommentId: 0 },
+                },
             },
             legacyDesktopStores: [
                 {
@@ -355,34 +358,37 @@ test.describe('Desktop report persistence', () => {
                                         size: 123,
                                         filePath: reportPath,
                                         addedAt: 303,
-                                        updatedAt: 404
-                                    }
-                                ]
-                            }
-                        }
+                                        updatedAt: 404,
+                                    },
+                                ],
+                            },
+                        },
                     }),
-                    libraryConfigJson: JSON.stringify(libraryConfig)
-                }
-            ]
+                    libraryConfigJson: JSON.stringify(libraryConfig),
+                },
+            ],
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const repaired = await page.evaluate(async ({ studyUid, reportId, reportPath }) => {
-            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
-            localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
+        const repaired = await page.evaluate(
+            async ({ studyUid, reportId, reportPath }) => {
+                const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+                localStorage.setItem(`mock-tauri-fs:${reportPath}`, JSON.stringify(Array.from(bytes)));
 
-            await window.NotesAPI.initializeDesktopStorage();
+                await window.NotesAPI.initializeDesktopStorage();
 
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
 
-            return {
-                notes,
-                reportUrl: window.NotesAPI.getReportFileUrl(reportId),
-                sqlStore
-            };
-        }, { studyUid, reportId, reportPath });
+                return {
+                    notes,
+                    reportUrl: window.NotesAPI.getReportFileUrl(reportId),
+                    sqlStore,
+                };
+            },
+            { studyUid, reportId, reportPath },
+        );
 
         expect(repaired.notes.studies[studyUid].reports).toHaveLength(1);
         expect(repaired.notes.studies[studyUid].reports[0].filePath).toBe(reportPath);
@@ -391,8 +397,8 @@ test.describe('Desktop report persistence', () => {
         expect(repaired.sqlStore.app_config).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ key: 'localstorage_migrated', value: '1' }),
-                expect.objectContaining({ key: 'legacy_desktop_browser_store_migrated', value: '1' })
-            ])
+                expect.objectContaining({ key: 'legacy_desktop_browser_store_migrated', value: '1' }),
+            ]),
         );
     });
 
@@ -402,74 +408,78 @@ test.describe('Desktop report persistence', () => {
         const goodReportId = 'desktop-legacy-report-good';
 
         await installMockTauri(page, {
-            failWritePatterns: [failedReportId]
+            failWritePatterns: [failedReportId],
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const result = await page.evaluate(async ({ studyUid, failedReportId, goodReportId }) => {
-            const failedBytes = new TextEncoder().encode('%PDF-1.4\nfailed');
-            const goodBytes = new TextEncoder().encode('%PDF-1.4\ngood');
+        const result = await page.evaluate(
+            async ({ studyUid, failedReportId, goodReportId }) => {
+                const failedBytes = new TextEncoder().encode('%PDF-1.4\nfailed');
+                const goodBytes = new TextEncoder().encode('%PDF-1.4\ngood');
 
-            localStorage.setItem('dicom-viewer-comments', JSON.stringify({
-                version: 2,
-                comments: {
-                    [studyUid]: {
-                        reports: [
-                            { id: failedReportId, name: 'failed.pdf', type: 'pdf', size: failedBytes.length },
-                            { id: goodReportId, name: 'good.pdf', type: 'pdf', size: goodBytes.length }
-                        ]
-                    }
-                }
-            }));
+                localStorage.setItem(
+                    'dicom-viewer-comments',
+                    JSON.stringify({
+                        version: 2,
+                        comments: {
+                            [studyUid]: {
+                                reports: [
+                                    { id: failedReportId, name: 'failed.pdf', type: 'pdf', size: failedBytes.length },
+                                    { id: goodReportId, name: 'good.pdf', type: 'pdf', size: goodBytes.length },
+                                ],
+                            },
+                        },
+                    }),
+                );
 
-            const request = indexedDB.open('dicom-viewer-reports', 1);
-            await new Promise((resolve, reject) => {
-                request.onupgradeneeded = () => {
-                    request.result.createObjectStore('reports', { keyPath: 'id' });
+                const request = indexedDB.open('dicom-viewer-reports', 1);
+                await new Promise((resolve, reject) => {
+                    request.onupgradeneeded = () => {
+                        request.result.createObjectStore('reports', { keyPath: 'id' });
+                    };
+                    request.onerror = () => reject(request.error);
+                    request.onsuccess = () => resolve();
+                });
+                const db = request.result;
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction('reports', 'readwrite');
+                    const store = tx.objectStore('reports');
+                    store.put({ id: failedReportId, blob: new Blob([failedBytes], { type: 'application/pdf' }) });
+                    store.put({ id: goodReportId, blob: new Blob([goodBytes], { type: 'application/pdf' }) });
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => reject(tx.error);
+                    tx.onabort = () => reject(tx.error);
+                });
+                db.close();
+
+                await window.NotesAPI.initializeDesktopStorage();
+
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+                return {
+                    notes,
+                    sqlStore,
                 };
-                request.onerror = () => reject(request.error);
-                request.onsuccess = () => resolve();
-            });
-            const db = request.result;
-            await new Promise((resolve, reject) => {
-                const tx = db.transaction('reports', 'readwrite');
-                const store = tx.objectStore('reports');
-                store.put({ id: failedReportId, blob: new Blob([failedBytes], { type: 'application/pdf' }) });
-                store.put({ id: goodReportId, blob: new Blob([goodBytes], { type: 'application/pdf' }) });
-                tx.oncomplete = () => resolve();
-                tx.onerror = () => reject(tx.error);
-                tx.onabort = () => reject(tx.error);
-            });
-            db.close();
-
-            await window.NotesAPI.initializeDesktopStorage();
-
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
-            return {
-                notes,
-                sqlStore
-            };
-        }, { studyUid, failedReportId, goodReportId });
+            },
+            { studyUid, failedReportId, goodReportId },
+        );
 
         expect(result.notes.studies[studyUid].reports.map((entry) => entry.id)).toEqual([goodReportId]);
         expect(result.sqlStore.reports.map((entry) => entry.id)).toEqual([goodReportId]);
         expect(result.sqlStore.app_config).not.toEqual(
-            expect.arrayContaining([
-                expect.objectContaining({ key: 'localstorage_migrated', value: '1' })
-            ])
+            expect.arrayContaining([expect.objectContaining({ key: 'localstorage_migrated', value: '1' })]),
         );
     });
 
     test('desktop legacy packaged store migration prefers the newest browser profile data', async ({ page }) => {
         const olderConfig = {
             folder: '/Users/gabriel/Desktop/older-library',
-            lastScan: '2026-03-20T14:51:37.855Z'
+            lastScan: '2026-03-20T14:51:37.855Z',
         };
         const newerConfig = {
             folder: '/Users/gabriel/Desktop/radiology all discs',
-            lastScan: '2026-03-22T10:00:00.000Z'
+            lastScan: '2026-03-22T10:00:00.000Z',
         };
 
         await installMockTauri(page, {
@@ -478,15 +488,15 @@ test.describe('Desktop report persistence', () => {
                     sourcePath: '/Users/gabriel/Library/WebKit/zzz/localstorage.sqlite3',
                     modifiedMs: 10,
                     notesJson: JSON.stringify({ studies: {} }),
-                    libraryConfigJson: JSON.stringify(olderConfig)
+                    libraryConfigJson: JSON.stringify(olderConfig),
                 },
                 {
                     sourcePath: '/Users/gabriel/Library/WebKit/aaa/localstorage.sqlite3',
                     modifiedMs: 20,
                     notesJson: JSON.stringify({ studies: {} }),
-                    libraryConfigJson: JSON.stringify(newerConfig)
-                }
-            ]
+                    libraryConfigJson: JSON.stringify(newerConfig),
+                },
+            ],
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -501,7 +511,7 @@ test.describe('Desktop report persistence', () => {
 
     test('desktop sqlite init backs off repeated failures before retrying', async ({ page }) => {
         await installMockTauri(page, {
-            sqlLoadError: 'mock desktop sqlite unavailable'
+            sqlLoadError: 'mock desktop sqlite unavailable',
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -537,7 +547,9 @@ test.describe('Desktop report persistence', () => {
         expect(loadCalls.afterRetry).toBe(2);
     });
 
-    test('desktop auth store migrates legacy browser tokens into secure storage and clears localStorage', async ({ page }) => {
+    test('desktop auth store migrates legacy browser tokens into secure storage and clears localStorage', async ({
+        page,
+    }) => {
         await installMockTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -557,7 +569,7 @@ test.describe('Desktop report persistence', () => {
                 legacyAccess: localStorage.getItem('dicom-viewer-access-token'),
                 legacyRefresh: localStorage.getItem('dicom-viewer-refresh-token'),
                 legacyEmail: localStorage.getItem('dicom-viewer-user-email'),
-                legacyName: localStorage.getItem('dicom-viewer-user-name')
+                legacyName: localStorage.getItem('dicom-viewer-user-name'),
             };
         });
 
@@ -565,13 +577,13 @@ test.describe('Desktop report persistence', () => {
             accessToken: 'legacy-access-token',
             refreshToken: 'legacy-refresh-token',
             userEmail: 'legacy@example.com',
-            userName: 'Legacy User'
+            userName: 'Legacy User',
         });
         expect(JSON.parse(migrated.secureRaw || '{}')).toEqual({
             access_token: 'legacy-access-token',
             refresh_token: 'legacy-refresh-token',
             user_email: 'legacy@example.com',
-            user_name: 'Legacy User'
+            user_name: 'Legacy User',
         });
         expect(migrated.legacyAccess).toBeNull();
         expect(migrated.legacyRefresh).toBeNull();
@@ -586,7 +598,7 @@ test.describe('Desktop report persistence', () => {
             await accountUi._authStore.hydrate();
             return {
                 snapshot: accountUi._authStore._snapshot(),
-                legacyAccess: localStorage.getItem('dicom-viewer-access-token')
+                legacyAccess: localStorage.getItem('dicom-viewer-access-token'),
             };
         });
 
@@ -594,32 +606,40 @@ test.describe('Desktop report persistence', () => {
             accessToken: 'legacy-access-token',
             refreshToken: 'legacy-refresh-token',
             userEmail: 'legacy@example.com',
-            userName: 'Legacy User'
+            userName: 'Legacy User',
         });
         expect(restored.legacyAccess).toBeNull();
     });
 
-    test('desktop sync state and outbox persist via sqlite across reload without legacy localStorage', async ({ page }) => {
+    test('desktop sync state and outbox persist via sqlite across reload without legacy localStorage', async ({
+        page,
+    }) => {
         await installMockTauri(page);
         await page.addInitScript(() => {
             if (sessionStorage.getItem('desktop-sync-migration-seeded') === '1') {
                 return;
             }
             sessionStorage.setItem('desktop-sync-migration-seeded', '1');
-            localStorage.setItem('dicom-viewer-sync-state', JSON.stringify({
-                delta_cursor: 'legacy-cursor'
-            }));
+            localStorage.setItem(
+                'dicom-viewer-sync-state',
+                JSON.stringify({
+                    delta_cursor: 'legacy-cursor',
+                }),
+            );
             localStorage.setItem('dicom-viewer-device-id', 'legacy-device');
-            localStorage.setItem('dicom-viewer-sync-outbox', JSON.stringify([
-                {
-                    operation_uuid: 'legacy-op-1',
-                    table_name: 'comments',
-                    record_key: 'legacy-comment-1',
-                    operation: 'insert',
-                    base_sync_version: 0,
-                    created_at: 1000
-                }
-            ]));
+            localStorage.setItem(
+                'dicom-viewer-sync-outbox',
+                JSON.stringify([
+                    {
+                        operation_uuid: 'legacy-op-1',
+                        table_name: 'comments',
+                        record_key: 'legacy-comment-1',
+                        operation: 'insert',
+                        base_sync_version: 0,
+                        created_at: 1000,
+                    },
+                ]),
+            );
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -634,7 +654,7 @@ test.describe('Desktop report persistence', () => {
                 legacySyncState: localStorage.getItem('dicom-viewer-sync-state'),
                 legacyDeviceId: localStorage.getItem('dicom-viewer-device-id'),
                 legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox'),
-                sqlStore: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}')
+                sqlStore: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}'),
             };
         });
 
@@ -646,9 +666,9 @@ test.describe('Desktop report persistence', () => {
                     operation_uuid: 'legacy-op-1',
                     table_name: 'comments',
                     record_key: 'legacy-comment-1',
-                    operation: 'insert'
-                })
-            ])
+                    operation: 'insert',
+                }),
+            ]),
         );
         expect(initial.legacySyncState).toBeNull();
         expect(initial.legacyDeviceId).toBeNull();
@@ -656,17 +676,17 @@ test.describe('Desktop report persistence', () => {
         expect(initial.sqlStore.sync_state).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ key: 'delta_cursor', value: 'legacy-cursor' }),
-                expect.objectContaining({ key: 'device_id', value: 'legacy-device' })
-            ])
+                expect.objectContaining({ key: 'device_id', value: 'legacy-device' }),
+            ]),
         );
         expect(initial.sqlStore.sync_outbox).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({
                     operation_uuid: 'legacy-op-1',
                     table_name: 'comments',
-                    record_key: 'legacy-comment-1'
-                })
-            ])
+                    record_key: 'legacy-comment-1',
+                }),
+            ]),
         );
 
         const mutated = await page.evaluate(async () => {
@@ -680,7 +700,7 @@ test.describe('Desktop report persistence', () => {
                 deviceId: window._SyncOutbox.getDeviceId(),
                 pending: await window._SyncOutbox.readPendingChangesAsync(),
                 legacySyncState: localStorage.getItem('dicom-viewer-sync-state'),
-                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox')
+                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox'),
             };
         });
 
@@ -692,9 +712,9 @@ test.describe('Desktop report persistence', () => {
                 expect.objectContaining({
                     table_name: 'comments',
                     record_key: 'uuid-1',
-                    operation: 'insert'
-                })
-            ])
+                    operation: 'insert',
+                }),
+            ]),
         );
         expect(mutated.legacySyncState).toBeNull();
         expect(mutated.legacyOutbox).toBeNull();
@@ -709,7 +729,7 @@ test.describe('Desktop report persistence', () => {
                 deviceId: window._SyncOutbox.getDeviceId(),
                 pending: await window._SyncOutbox.readPendingChangesAsync(),
                 legacySyncState: localStorage.getItem('dicom-viewer-sync-state'),
-                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox')
+                legacyOutbox: localStorage.getItem('dicom-viewer-sync-outbox'),
             };
         });
 
@@ -721,9 +741,9 @@ test.describe('Desktop report persistence', () => {
                 expect.objectContaining({
                     table_name: 'comments',
                     record_key: 'uuid-1',
-                    operation: 'insert'
-                })
-            ])
+                    operation: 'insert',
+                }),
+            ]),
         );
         expect(restored.legacySyncState).toBeNull();
         expect(restored.legacyOutbox).toBeNull();
@@ -737,7 +757,7 @@ test.describe('Desktop report persistence', () => {
                 'sqlite:viewer.db': {
                     sync_state: [
                         { key: 'delta_cursor', value: 'legacy-cursor', updated_at: 1000 },
-                        { key: 'device_id', value: 'legacy-device', updated_at: 1001 }
+                        { key: 'device_id', value: 'legacy-device', updated_at: 1001 },
                     ],
                     sync_outbox: [
                         {
@@ -750,16 +770,16 @@ test.describe('Desktop report persistence', () => {
                             created_at: 1000,
                             synced_at: null,
                             attempts: 0,
-                            last_error: null
-                        }
+                            last_error: null,
+                        },
                     ],
                     meta: {
                         lastCommentId: 0,
                         lastOutboxId: 1,
-                        loadCalls: 0
-                    }
-                }
-            }
+                        loadCalls: 0,
+                    },
+                },
+            },
         });
         await page.goto(HOME_URL);
         await page.waitForFunction(() => !!window._SyncOutbox);
@@ -777,7 +797,7 @@ test.describe('Desktop report persistence', () => {
                 cursor: window._SyncOutbox.getCursor(),
                 deviceId: window._SyncOutbox.getDeviceId(),
                 queuedOperationUuid: queued?.operation_uuid || null,
-                pending: await window._SyncOutbox.readPendingChangesAsync()
+                pending: await window._SyncOutbox.readPendingChangesAsync(),
             };
         });
 
@@ -787,14 +807,14 @@ test.describe('Desktop report persistence', () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     operation_uuid: 'legacy-op-1',
-                    record_key: 'legacy-comment-1'
+                    record_key: 'legacy-comment-1',
                 }),
                 expect.objectContaining({
                     operation_uuid: raced.queuedOperationUuid,
                     record_key: 'uuid-race',
-                    operation: 'insert'
-                })
-            ])
+                    operation: 'insert',
+                }),
+            ]),
         );
     });
 
@@ -806,44 +826,45 @@ test.describe('Desktop report persistence', () => {
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const created = await page.evaluate(async ({ studyUid, reportId }) => {
-            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
-            const file = new File([bytes], 'report final.pdf', { type: 'application/pdf' });
-            const meta = {
-                id: reportId,
-                name: file.name,
-                type: 'pdf',
-                size: file.size,
-                addedAt: Date.now(),
-                updatedAt: Date.now()
-            };
+        const created = await page.evaluate(
+            async ({ studyUid, reportId }) => {
+                const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+                const file = new File([bytes], 'report final.pdf', { type: 'application/pdf' });
+                const meta = {
+                    id: reportId,
+                    name: file.name,
+                    type: 'pdf',
+                    size: file.size,
+                    addedAt: Date.now(),
+                    updatedAt: Date.now(),
+                };
 
-            const saved = await window.NotesAPI.uploadReport(studyUid, file, meta);
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
+                const saved = await window.NotesAPI.uploadReport(studyUid, file, meta);
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
 
-            return {
-                deploymentMode: window.CONFIG.deploymentMode,
-                saved,
-                stored,
-                fileExists: stored?.filePath
-                    ? await window.__TAURI__.fs.exists(stored.filePath)
-                    : false,
-                reportUrl: window.NotesAPI.getReportFileUrl(reportId),
-                sqlStore: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}')
-            };
-        }, { studyUid, reportId });
+                return {
+                    deploymentMode: window.CONFIG.deploymentMode,
+                    saved,
+                    stored,
+                    fileExists: stored?.filePath ? await window.__TAURI__.fs.exists(stored.filePath) : false,
+                    reportUrl: window.NotesAPI.getReportFileUrl(reportId),
+                    sqlStore: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}'),
+                };
+            },
+            { studyUid, reportId },
+        );
 
         expect(created.deploymentMode).toBe('desktop');
         expect(created.saved).toMatchObject({
             id: reportId,
             name: 'report final.pdf',
-            type: 'pdf'
+            type: 'pdf',
         });
         expect(created.stored).toMatchObject({
             id: reportId,
             name: 'report final.pdf',
-            type: 'pdf'
+            type: 'pdf',
         });
         expect(created.stored.filePath).toContain('/mock/appdata/reports/');
         expect(created.stored.filePath).toContain('desktop-report-001.pdf');
@@ -855,29 +876,30 @@ test.describe('Desktop report persistence', () => {
         await page.reload();
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const persisted = await page.evaluate(async ({ studyUid, reportId }) => {
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
-            const fileExistsBeforeDelete = stored?.filePath
-                ? await window.__TAURI__.fs.exists(stored.filePath)
-                : false;
-            const reportUrlBeforeDelete = window.NotesAPI.getReportFileUrl(reportId);
-            const deleted = await window.NotesAPI.deleteReport(studyUid, reportId);
-            const afterDelete = await window.NotesAPI.loadNotes([studyUid]);
-
-            return {
-                deploymentMode: window.CONFIG.deploymentMode,
-                stored,
-                fileExistsBeforeDelete,
-                reportUrlBeforeDelete,
-                deleted,
-                remainingReports: afterDelete?.studies?.[studyUid]?.reports?.length || 0,
-                fileExistsAfterDelete: stored?.filePath
+        const persisted = await page.evaluate(
+            async ({ studyUid, reportId }) => {
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
+                const fileExistsBeforeDelete = stored?.filePath
                     ? await window.__TAURI__.fs.exists(stored.filePath)
-                    : false,
-                reportUrlAfterDelete: window.NotesAPI.getReportFileUrl(reportId)
-            };
-        }, { studyUid, reportId });
+                    : false;
+                const reportUrlBeforeDelete = window.NotesAPI.getReportFileUrl(reportId);
+                const deleted = await window.NotesAPI.deleteReport(studyUid, reportId);
+                const afterDelete = await window.NotesAPI.loadNotes([studyUid]);
+
+                return {
+                    deploymentMode: window.CONFIG.deploymentMode,
+                    stored,
+                    fileExistsBeforeDelete,
+                    reportUrlBeforeDelete,
+                    deleted,
+                    remainingReports: afterDelete?.studies?.[studyUid]?.reports?.length || 0,
+                    fileExistsAfterDelete: stored?.filePath ? await window.__TAURI__.fs.exists(stored.filePath) : false,
+                    reportUrlAfterDelete: window.NotesAPI.getReportFileUrl(reportId),
+                };
+            },
+            { studyUid, reportId },
+        );
 
         expect(persisted.deploymentMode).toBe('desktop');
         expect(persisted.stored).not.toBeNull();
@@ -897,32 +919,33 @@ test.describe('Desktop report persistence', () => {
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
-        const result = await page.evaluate(async ({ studyUid, reportId }) => {
-            const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
-            const file = new File([bytes], 'failure.pdf', { type: 'application/pdf' });
-            const meta = {
-                id: reportId,
-                name: file.name,
-                type: 'pdf',
-                size: file.size,
-                addedAt: Date.now(),
-                updatedAt: Date.now()
-            };
+        const result = await page.evaluate(
+            async ({ studyUid, reportId }) => {
+                const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+                const file = new File([bytes], 'failure.pdf', { type: 'application/pdf' });
+                const meta = {
+                    id: reportId,
+                    name: file.name,
+                    type: 'pdf',
+                    size: file.size,
+                    addedAt: Date.now(),
+                    updatedAt: Date.now(),
+                };
 
-            const saved = await window.NotesAPI.uploadReport(studyUid, file, meta);
-            const deleted = await window.NotesAPI.deleteReport(studyUid, reportId);
-            const notes = await window.NotesAPI.loadNotes([studyUid]);
-            const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
+                const saved = await window.NotesAPI.uploadReport(studyUid, file, meta);
+                const deleted = await window.NotesAPI.deleteReport(studyUid, reportId);
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const stored = notes?.studies?.[studyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
 
-            return {
-                deleted,
-                saved,
-                stored,
-                fileExists: stored?.filePath
-                    ? await window.__TAURI__.fs.exists(stored.filePath)
-                    : false
-            };
-        }, { studyUid, reportId });
+                return {
+                    deleted,
+                    saved,
+                    stored,
+                    fileExists: stored?.filePath ? await window.__TAURI__.fs.exists(stored.filePath) : false,
+                };
+            },
+            { studyUid, reportId },
+        );
 
         expect(result.saved).not.toBeNull();
         expect(result.deleted).toBe(true);

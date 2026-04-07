@@ -1,5 +1,6 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const config = window.CONFIG;
     const { state } = app;
     const { canvas, ctx } = app.dom;
@@ -17,13 +18,13 @@
         displayBlankSlice,
         decodeJpegLossless,
         decodeJpeg2000,
-        decodeJpegBaseline
+        decodeJpegBaseline,
     } = app.dicom;
     // JPEG 2000 fluoroscopy/angiography studies are the desktop-native-first route because
     // the browser WASM path has shown vendor-specific failures on these modalities.
     const HIGH_RISK_SYNTAXES = new Map([
         ['1.2.840.10008.1.2.4.90', new Set(['RF', 'XA'])],
-        ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])]
+        ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])],
     ]);
     const DEBUG_DECODE_MODE_STORAGE_KEY = 'dicom-viewer-debug-decode-mode';
     const DEBUG_PRELOAD_MODE_STORAGE_KEY = 'dicom-viewer-debug-preload-mode';
@@ -32,7 +33,7 @@
         decodeMode: 'auto',
         preloadMode: 'auto',
         frontendDecodeTrace: false,
-        nativeDecodeDebug: false
+        nativeDecodeDebug: false,
     };
     // XA series can mix 8-bit scout-style frames with 12/16-bit angiography frames.
     // A 4x default window-width jump is a reliable signal that a carried-over W/L override
@@ -109,7 +110,7 @@
             decodeMode: normalizeDecodeMode(runtimeSettings.decodeMode),
             preloadMode: normalizePreloadMode(runtimeSettings.preloadMode),
             frontendDecodeTrace: !!runtimeSettings.frontendDecodeTrace,
-            nativeDecodeDebug: !!runtimeSettings.nativeDecodeDebug
+            nativeDecodeDebug: !!runtimeSettings.nativeDecodeDebug,
         };
     }
 
@@ -163,11 +164,11 @@
             decodeMode,
             preloadMode,
             frontendDecodeTrace,
-            nativeDecodeDebug
+            nativeDecodeDebug,
         };
         window.__DICOM_VIEWER_DEBUG__ = {
             ...(window.__DICOM_VIEWER_DEBUG__ || {}),
-            ...desktopDebugSettings
+            ...desktopDebugSettings,
         };
         return desktopDebugSettings;
     }
@@ -231,7 +232,7 @@
             return Object.fromEntries(
                 Object.entries(value)
                     .map(([key, entryValue]) => [key, normalizeTraceValue(entryValue)])
-                    .filter(([, entryValue]) => entryValue !== undefined)
+                    .filter(([, entryValue]) => entryValue !== undefined),
             );
         }
         return String(value);
@@ -251,12 +252,12 @@
         const payload = {
             seq: frontendDecodeTraceSequence,
             event,
-            ...normalizeTraceValue(details)
+            ...normalizeTraceValue(details),
         };
 
         try {
             await invoke('log_frontend_decode_event', {
-                message: JSON.stringify(payload)
+                message: JSON.stringify(payload),
             });
         } catch (error) {
             console.warn('Failed to emit frontend decode trace:', error);
@@ -275,9 +276,7 @@
     }
 
     function hasWindowLevel(windowLevel) {
-        return Number.isFinite(windowLevel?.center) &&
-            Number.isFinite(windowLevel?.width) &&
-            windowLevel.width > 0;
+        return Number.isFinite(windowLevel?.center) && Number.isFinite(windowLevel?.width) && windowLevel.width > 0;
     }
 
     function getWindowLevelAnchor() {
@@ -327,7 +326,7 @@
         bitsAllocated,
         pixelRepresentation,
         samplesPerPixel,
-        frameIndex = 0
+        frameIndex = 0,
     ) {
         if (bitsAllocated % 8 !== 0) {
             throw new Error(`Native pixel data with Bits Allocated ${bitsAllocated} is not byte-aligned.`);
@@ -339,19 +338,19 @@
         const numberOfFrames = getNumberOfFrames(dataSet);
         const totalPixelBytes = Number.isFinite(pixelDataElement.length)
             ? pixelDataElement.length
-            : (dataSet.byteArray.byteLength - pixelDataElement.dataOffset);
+            : dataSet.byteArray.byteLength - pixelDataElement.dataOffset;
 
         if (frameIndex < 0 || frameIndex >= numberOfFrames) {
             throw new Error(`Frame index ${frameIndex} is outside the available native frames (${numberOfFrames}).`);
         }
 
-        const evenlyDivisibleStride = numberOfFrames > 0 && totalPixelBytes % numberOfFrames === 0
-            ? totalPixelBytes / numberOfFrames
-            : null;
-        const frameStrideBytes = evenlyDivisibleStride && evenlyDivisibleStride >= expectedFrameBytes
-            ? evenlyDivisibleStride
-            : expectedFrameBytes;
-        const frameDataOffset = pixelDataElement.dataOffset + (frameIndex * frameStrideBytes);
+        const evenlyDivisibleStride =
+            numberOfFrames > 0 && totalPixelBytes % numberOfFrames === 0 ? totalPixelBytes / numberOfFrames : null;
+        const frameStrideBytes =
+            evenlyDivisibleStride && evenlyDivisibleStride >= expectedFrameBytes
+                ? evenlyDivisibleStride
+                : expectedFrameBytes;
+        const frameDataOffset = pixelDataElement.dataOffset + frameIndex * frameStrideBytes;
         const frameDataEnd = frameDataOffset + expectedFrameBytes;
         const pixelDataEnd = pixelDataElement.dataOffset + totalPixelBytes;
 
@@ -420,7 +419,7 @@
             transferSyntax: decoded.transferSyntax,
             modality: decoded.modality,
             mrMetadata: decoded.mrMetadata,
-            ...extra
+            ...extra,
         };
     }
 
@@ -430,7 +429,7 @@
             errorMessage,
             errorDetails,
             stage: extra.stage || 'decode',
-            ...extra
+            ...extra,
         };
     }
 
@@ -472,25 +471,23 @@
 
     function getMrMetadata(dataSet) {
         return {
-            repetitionTime: getNumber(dataSet, 'x00180080', 0),     // (0018,0080) TR
-            echoTime: getNumber(dataSet, 'x00180081', 0),          // (0018,0081) TE
-            flipAngle: getNumber(dataSet, 'x00181314', 0),         // (0018,1314) Flip Angle
+            repetitionTime: getNumber(dataSet, 'x00180080', 0), // (0018,0080) TR
+            echoTime: getNumber(dataSet, 'x00180081', 0), // (0018,0081) TE
+            flipAngle: getNumber(dataSet, 'x00181314', 0), // (0018,1314) Flip Angle
             magneticFieldStrength: getNumber(dataSet, 'x00180087', 0), // (0018,0087) Field Strength
-            protocolName: getString(dataSet, 'x00181030'),         // (0018,1030) Protocol Name
-            sequenceName: getString(dataSet, 'x00180024'),         // (0018,0024) Sequence Name
-            scanningSequence: getString(dataSet, 'x00180020'),     // (0018,0020) Scanning Sequence
-            mrAcquisitionType: getString(dataSet, 'x00180023')    // (0018,0023) MR Acquisition Type (2D/3D)
+            protocolName: getString(dataSet, 'x00181030'), // (0018,1030) Protocol Name
+            sequenceName: getString(dataSet, 'x00180024'), // (0018,0024) Sequence Name
+            scanningSequence: getString(dataSet, 'x00180020'), // (0018,0020) Scanning Sequence
+            mrAcquisitionType: getString(dataSet, 'x00180023'), // (0018,0023) MR Acquisition Type (2D/3D)
         };
     }
 
     function resolveWindowLevel(dataSet, modality, preferredWindowCenter = null, preferredWindowWidth = null) {
         const modalityDefaults = getModalityDefaults(modality);
-        const storedWindowCenter = getOptionalNumber(dataSet, 'x00281050');  // (0028,1050)
-        const storedWindowWidth = getOptionalNumber(dataSet, 'x00281051');   // (0028,1051)
-        const hasPreferredWindowLevel = Number.isFinite(preferredWindowCenter) &&
-            Number.isFinite(preferredWindowWidth);
-        const hasStoredWindowLevel = Number.isFinite(storedWindowCenter) &&
-            Number.isFinite(storedWindowWidth);
+        const storedWindowCenter = getOptionalNumber(dataSet, 'x00281050'); // (0028,1050)
+        const storedWindowWidth = getOptionalNumber(dataSet, 'x00281051'); // (0028,1051)
+        const hasPreferredWindowLevel = Number.isFinite(preferredWindowCenter) && Number.isFinite(preferredWindowWidth);
+        const hasStoredWindowLevel = Number.isFinite(storedWindowCenter) && Number.isFinite(storedWindowWidth);
         const hasWindowLevel = hasPreferredWindowLevel || hasStoredWindowLevel;
 
         let windowCenter = hasPreferredWindowLevel ? preferredWindowCenter : storedWindowCenter;
@@ -504,7 +501,7 @@
         return {
             windowCenter,
             windowWidth,
-            hasWindowLevel
+            hasWindowLevel,
         };
     }
 
@@ -512,36 +509,39 @@
         const expectedSampleCount = decoded.rows * decoded.cols * decoded.samplesPerPixel;
         if (!Number.isInteger(expectedSampleCount) || expectedSampleCount <= 0) {
             throw new Error(
-                `${sourceLabel} returned invalid dimensions (${decoded.rows}x${decoded.cols}) or Samples Per Pixel (${decoded.samplesPerPixel}).`
+                `${sourceLabel} returned invalid dimensions (${decoded.rows}x${decoded.cols}) or Samples Per Pixel (${decoded.samplesPerPixel}).`,
             );
         }
 
         if (decoded.pixelData.length !== expectedSampleCount) {
             throw new Error(
-                `${sourceLabel} returned ${decoded.pixelData.length} sample(s) for ${decoded.rows}x${decoded.cols} with ${decoded.samplesPerPixel} sample(s) per pixel; expected ${expectedSampleCount}.`
+                `${sourceLabel} returned ${decoded.pixelData.length} sample(s) for ${decoded.rows}x${decoded.cols} with ${decoded.samplesPerPixel} sample(s) per pixel; expected ${expectedSampleCount}.`,
             );
         }
 
         const isRgb = decoded.samplesPerPixel === 3 && decoded.photometricInterpretation === 'RGB';
         if (decoded.samplesPerPixel !== 1 && !isRgb) {
             throw new Error(
-                `${sourceLabel} returned ${decoded.samplesPerPixel} sample(s) per pixel with photometric interpretation ${decoded.photometricInterpretation || 'unknown'}, but the current renderer only supports monochrome and RGB fallback data.`
+                `${sourceLabel} returned ${decoded.samplesPerPixel} sample(s) per pixel with photometric interpretation ${decoded.photometricInterpretation || 'unknown'}, but the current renderer only supports monochrome and RGB fallback data.`,
             );
         }
 
         if (isRgb && decoded.planarConfiguration !== 0 && decoded.planarConfiguration !== 1) {
             throw new Error(
-                `${sourceLabel} returned RGB data with unsupported Planar Configuration ${decoded.planarConfiguration}.`
+                `${sourceLabel} returned RGB data with unsupported Planar Configuration ${decoded.planarConfiguration}.`,
             );
         }
     }
 
     function finalizeDecodedImage(decoded, hasWindowLevel) {
-        if (decoded.samplesPerPixel === 1 && isBlankSlice(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept)) {
+        if (
+            decoded.samplesPerPixel === 1 &&
+            isBlankSlice(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept)
+        ) {
             console.log('Detected blank slice (all pixels same value)');
             return {
                 ...decoded,
-                isBlank: true
+                isBlank: true,
             };
         }
 
@@ -561,7 +561,7 @@
             ...decoded,
             windowCenter,
             windowWidth,
-            isBlank: false
+            isBlank: false,
         };
     }
 
@@ -592,7 +592,7 @@
                 stage: getDecodeFailureStage(jsFailure),
                 transferSyntax: jsFailure.transferSyntax || transferSyntax,
                 modality: jsFailure.modality || modality,
-                tsInfo: jsFailure.tsInfo || tsInfo
+                tsInfo: jsFailure.tsInfo || tsInfo,
             };
         }
 
@@ -604,33 +604,29 @@
             detailParts.push(`Native: ${getDecodeFailureMessage(nativeFailure)}`);
         }
 
-        return buildDecodeError(
-            'Image decode failed',
-            detailParts.join(' | ') || tsInfo.name,
-            {
-                stage: getDecodeFailureStage(jsFailure, getDecodeFailureStage(nativeFailure)),
-                transferSyntax,
-                modality,
-                tsInfo,
-                jsErrorStage: jsFailure ? getDecodeFailureStage(jsFailure) : null,
-                jsErrorMessage: jsFailure ? getDecodeFailureMessage(jsFailure) : null,
-                nativeErrorStage: nativeFailure ? getDecodeFailureStage(nativeFailure) : null,
-                nativeErrorMessage: nativeFailure ? getDecodeFailureMessage(nativeFailure) : null
-            }
-        );
+        return buildDecodeError('Image decode failed', detailParts.join(' | ') || tsInfo.name, {
+            stage: getDecodeFailureStage(jsFailure, getDecodeFailureStage(nativeFailure)),
+            transferSyntax,
+            modality,
+            tsInfo,
+            jsErrorStage: jsFailure ? getDecodeFailureStage(jsFailure) : null,
+            jsErrorMessage: jsFailure ? getDecodeFailureMessage(jsFailure) : null,
+            nativeErrorStage: nativeFailure ? getDecodeFailureStage(nativeFailure) : null,
+            nativeErrorMessage: nativeFailure ? getDecodeFailureMessage(nativeFailure) : null,
+        });
     }
 
     function canUseNativeDecode(slice) {
-        return config.deploymentMode === 'desktop' &&
+        return (
+            config.deploymentMode === 'desktop' &&
             typeof slice?.source?.path === 'string' &&
             slice.source.path.length > 0 &&
-            typeof app.desktopDecode?.decodeFrameWithPixels === 'function';
+            typeof app.desktopDecode?.decodeFrameWithPixels === 'function'
+        );
     }
 
     function shouldPreferNativeDesktopPathDecode(slice, modality, frameCount = 1) {
-        return canUseNativeDecode(slice) &&
-            frameCount > 1 &&
-            (modality === 'XA' || modality === 'RF');
+        return canUseNativeDecode(slice) && frameCount > 1 && (modality === 'XA' || modality === 'RF');
     }
 
     function getDecodeRoute(transferSyntax, modality, slice = null, options = {}) {
@@ -671,16 +667,12 @@
         const { display = true } = options;
         const normalizedError = {
             ...errorInfo,
-            diagnosticLines: errorInfo.diagnosticLines || buildDecodeDiagnosticLines(errorInfo)
+            diagnosticLines: errorInfo.diagnosticLines || buildDecodeDiagnosticLines(errorInfo),
         };
         state.pixelSpacing = null;
         app.tools.updateCalibrationWarning();
         if (display) {
-            displayError(
-                normalizedError.errorMessage,
-                normalizedError.errorDetails,
-                normalizedError.diagnosticLines
-            );
+            displayError(normalizedError.errorMessage, normalizedError.errorDetails, normalizedError.diagnosticLines);
             app.tools.drawMeasurements?.();
         }
         return normalizedError;
@@ -688,13 +680,13 @@
 
     async function decodeDicom(dataSet, frameIndex = 0) {
         // Extract image dimensions and pixel format from DICOM tags
-        const rows = dataSet.uint16('x00280010');              // (0028,0010) Rows
-        const cols = dataSet.uint16('x00280011');              // (0028,0011) Columns
-        const bitsAllocated = dataSet.uint16('x00280100') || 16;  // (0028,0100) Bits Allocated
+        const rows = dataSet.uint16('x00280010'); // (0028,0010) Rows
+        const cols = dataSet.uint16('x00280011'); // (0028,0011) Columns
+        const bitsAllocated = dataSet.uint16('x00280100') || 16; // (0028,0100) Bits Allocated
         const bitsStored = Math.min(bitsAllocated, dataSet.uint16('x00280101') || bitsAllocated); // (0028,0101)
-        const pixelRepresentation = dataSet.uint16('x00280103') || 0;  // (0028,0103) 0=unsigned, 1=signed
+        const pixelRepresentation = dataSet.uint16('x00280103') || 0; // (0028,0103) 0=unsigned, 1=signed
         const samplesPerPixel = dataSet.uint16('x00280002') || 1;
-        const planarConfiguration = samplesPerPixel > 1 ? (dataSet.uint16('x00280006') || 0) : 0;
+        const planarConfiguration = samplesPerPixel > 1 ? dataSet.uint16('x00280006') || 0 : 0;
         const photometricInterpretation = getString(dataSet, 'x00280004');
         let decodedBitsAllocated = bitsAllocated;
         let decodedBitsStored = bitsStored;
@@ -703,19 +695,15 @@
         let decodedPhotometricInterpretation = photometricInterpretation;
 
         // Get modality for appropriate defaults
-        const modality = getString(dataSet, 'x00080060');  // (0008,0060) Modality
+        const modality = getString(dataSet, 'x00080060'); // (0008,0060) Modality
 
         // Rescale slope/intercept for converting stored values
         // CT: converts to Hounsfield Units; MR: arbitrary signal intensity
-        const rescaleSlope = getNumber(dataSet, 'x00281053', 1);     // (0028,1053)
+        const rescaleSlope = getNumber(dataSet, 'x00281053', 1); // (0028,1053)
         const rescaleIntercept = getNumber(dataSet, 'x00281052', 0); // (0028,1052)
 
         // Window/level for display - use modality-appropriate defaults
-        const {
-            windowCenter,
-            windowWidth,
-            hasWindowLevel
-        } = resolveWindowLevel(dataSet, modality);
+        const { windowCenter, windowWidth, hasWindowLevel } = resolveWindowLevel(dataSet, modality);
 
         // Extract pixel spacing for measurement calibration
         const pixelSpacing = app.tools.extractPixelSpacing(dataSet);
@@ -724,25 +712,21 @@
         const mrMetadata = getMrMetadata(dataSet);
 
         // Get transfer syntax to determine compression format
-        const transferSyntax = getString(dataSet, 'x00020010');  // (0002,0010)
+        const transferSyntax = getString(dataSet, 'x00020010'); // (0002,0010)
         console.log('Transfer Syntax:', transferSyntax, 'Compressed:', isCompressed(transferSyntax));
 
         // Get pixel data element
-        const pixelDataElement = dataSet.elements.x7fe00010;  // (7FE0,0010) Pixel Data
+        const pixelDataElement = dataSet.elements.x7fe00010; // (7FE0,0010) Pixel Data
         const transferSyntaxInfo = getTransferSyntaxInfo(transferSyntax);
 
         if (!pixelDataElement) {
             console.error('No pixel data element found');
-            return buildDecodeError(
-                'No pixel data found',
-                'The DICOM file may be corrupted or incomplete',
-                {
-                    stage: 'frame-extraction',
-                    transferSyntax,
-                    modality,
-                    tsInfo: transferSyntaxInfo
-                }
-            );
+            return buildDecodeError('No pixel data found', 'The DICOM file may be corrupted or incomplete', {
+                stage: 'frame-extraction',
+                transferSyntax,
+                modality,
+                tsInfo: transferSyntaxInfo,
+            });
         }
 
         let pixelData;
@@ -762,57 +746,38 @@
                         cols,
                         bitsAllocated,
                         pixelRepresentation,
-                        frameIndex
+                        frameIndex,
                     );
                 } catch (error) {
-                    return buildDecodeError(
-                        'JPEG 2000 decode failed',
-                        getDecodeFailureMessage(error),
-                        {
-                            stage: getDecodeFailureStage(error),
-                            transferSyntax,
-                            modality,
-                            tsInfo: transferSyntaxInfo
-                        }
-                    );
+                    return buildDecodeError('JPEG 2000 decode failed', getDecodeFailureMessage(error), {
+                        stage: getDecodeFailureStage(error),
+                        transferSyntax,
+                        modality,
+                        tsInfo: transferSyntaxInfo,
+                    });
                 }
             } else if (isJpegLossless(transferSyntax)) {
                 try {
-                    pixelData = decodeJpegLossless(
-                        dataSet,
-                        pixelDataElement,
-                        rows,
-                        cols,
-                        bitsAllocated,
-                        frameIndex
-                    );
+                    pixelData = decodeJpegLossless(dataSet, pixelDataElement, rows, cols, bitsAllocated, frameIndex);
                 } catch (error) {
-                    return buildDecodeError(
-                        'JPEG Lossless decode failed',
-                        getDecodeFailureMessage(error),
-                        {
-                            stage: getDecodeFailureStage(error),
-                            transferSyntax,
-                            modality,
-                            tsInfo: transferSyntaxInfo
-                        }
-                    );
+                    return buildDecodeError('JPEG Lossless decode failed', getDecodeFailureMessage(error), {
+                        stage: getDecodeFailureStage(error),
+                        transferSyntax,
+                        modality,
+                        tsInfo: transferSyntaxInfo,
+                    });
                 }
             } else if (isJpegBaseline(transferSyntax)) {
                 let result;
                 try {
                     result = await decodeJpegBaseline(dataSet, pixelDataElement, rows, cols, frameIndex);
                 } catch (error) {
-                    return buildDecodeError(
-                        'JPEG decode failed',
-                        getDecodeFailureMessage(error),
-                        {
-                            stage: getDecodeFailureStage(error),
-                            transferSyntax,
-                            modality,
-                            tsInfo: transferSyntaxInfo
-                        }
-                    );
+                    return buildDecodeError('JPEG decode failed', getDecodeFailureMessage(error), {
+                        stage: getDecodeFailureStage(error),
+                        transferSyntax,
+                        modality,
+                        tsInfo: transferSyntaxInfo,
+                    });
                 }
                 pixelData = result.pixelData;
                 decodedBitsAllocated = result.bitsAllocated ?? bitsAllocated;
@@ -823,16 +788,12 @@
                 skipWindowLevel = result.skipWindowLevel ?? false;
             } else {
                 // Unsupported compression format
-                return buildDecodeError(
-                    'Unsupported compression format',
-                    transferSyntaxInfo.name,
-                    {
-                        stage: 'decode',
-                        transferSyntax,
-                        modality,
-                        tsInfo: transferSyntaxInfo
-                    }
-                );
+                return buildDecodeError('Unsupported compression format', transferSyntaxInfo.name, {
+                    stage: 'decode',
+                    transferSyntax,
+                    modality,
+                    tsInfo: transferSyntaxInfo,
+                });
             }
         } else {
             try {
@@ -844,20 +805,16 @@
                     bitsAllocated,
                     pixelRepresentation,
                     samplesPerPixel,
-                    frameIndex
+                    frameIndex,
                 );
             } catch (error) {
                 console.error('Native pixel data decode error:', error);
-                return buildDecodeError(
-                    'Native pixel data decode failed',
-                    getDecodeFailureMessage(error),
-                    {
-                        stage: getDecodeFailureStage(error, 'pixel-conversion'),
-                        transferSyntax,
-                        modality,
-                        tsInfo: transferSyntaxInfo
-                    }
-                );
+                return buildDecodeError('Native pixel data decode failed', getDecodeFailureMessage(error), {
+                    stage: getDecodeFailureStage(error, 'pixel-conversion'),
+                    transferSyntax,
+                    modality,
+                    tsInfo: transferSyntaxInfo,
+                });
             }
         }
 
@@ -879,21 +836,17 @@
             transferSyntax,
             mrMetadata,
             pixelSpacing,
-            skipWindowLevel
+            skipWindowLevel,
         };
         try {
             validateRenderedPixelData(decoded, 'Decoded image');
         } catch (error) {
-            return buildDecodeError(
-                'Decoded pixel data is not renderable',
-                getDecodeFailureMessage(error),
-                {
-                    stage: getDecodeFailureStage(error, 'pixel-conversion'),
-                    transferSyntax,
-                    modality,
-                    tsInfo: transferSyntaxInfo
-                }
-            );
+            return buildDecodeError('Decoded pixel data is not renderable', getDecodeFailureMessage(error), {
+                stage: getDecodeFailureStage(error, 'pixel-conversion'),
+                transferSyntax,
+                modality,
+                tsInfo: transferSyntaxInfo,
+            });
         }
 
         return finalizeDecodedImage(decoded, hasWindowLevel);
@@ -913,25 +866,19 @@
         const rows = Number(nativeDecoded.rows);
         const cols = Number(nativeDecoded.cols);
         const bitsAllocated = Number(nativeDecoded.bitsAllocated);
-        const storedBitTagValue = typeof dataSet?.uint16 === 'function'
-            ? dataSet.uint16('x00280101')
-            : bitsAllocated;
+        const storedBitTagValue = typeof dataSet?.uint16 === 'function' ? dataSet.uint16('x00280101') : bitsAllocated;
         const bitsStored = Math.min(
             bitsAllocated,
-            Number(nativeDecoded.bitsStored || storedBitTagValue || bitsAllocated)
+            Number(nativeDecoded.bitsStored || storedBitTagValue || bitsAllocated),
         );
         const pixelRepresentation = Number(nativeDecoded.pixelRepresentation);
         const samplesPerPixel = Number(nativeDecoded.samplesPerPixel || 1);
         const planarConfiguration = Number(nativeDecoded.planarConfiguration || 0);
-        const {
-            windowCenter,
-            windowWidth,
-            hasWindowLevel
-        } = resolveWindowLevel(
+        const { windowCenter, windowWidth, hasWindowLevel } = resolveWindowLevel(
             dataSet,
             modality,
             nativeDecoded.windowCenter,
-            nativeDecoded.windowWidth
+            nativeDecoded.windowWidth,
         );
         const rescaleSlope = Number.isFinite(nativeDecoded.rescaleSlope)
             ? nativeDecoded.rescaleSlope
@@ -957,10 +904,11 @@
             transferSyntax,
             mrMetadata: getMrMetadata(dataSet),
             pixelSpacing: app.tools.extractPixelSpacing(dataSet),
-            skipWindowLevel: bitsAllocated <= 8 &&
+            skipWindowLevel:
+                bitsAllocated <= 8 &&
                 samplesPerPixel === 1 &&
                 photometricInterpretation !== 'MONOCHROME1' &&
-                photometricInterpretation !== 'MONOCHROME2'
+                photometricInterpretation !== 'MONOCHROME2',
         };
         try {
             validateRenderedPixelData(decoded, 'Native decode');
@@ -997,7 +945,7 @@
             decoder: decoderLabel,
             stage: decoded?.stage || null,
             rows: decoded?.rows || null,
-            cols: decoded?.cols || null
+            cols: decoded?.cols || null,
         });
     }
 
@@ -1008,19 +956,28 @@
             decoder: decoderLabel,
             stage: fallback.stage,
             errorMessage: fallback.errorMessage,
-            errorDetails: fallback.errorDetails
+            errorDetails: fallback.errorDetails,
         });
     }
 
-    async function tryNativeFallback(dataSet, slice, frameIndex, jsFailure, jsStage, jsMessage, traceOutcome, jsDecoderKind) {
+    async function tryNativeFallback(
+        dataSet,
+        slice,
+        frameIndex,
+        jsFailure,
+        jsStage,
+        jsMessage,
+        traceOutcome,
+        jsDecoderKind,
+    ) {
         traceOutcome('decode-fallback', {
             from: jsDecoderKind,
             to: 'native',
             jsErrorStage: jsStage,
-            jsErrorMessage: jsMessage
+            jsErrorMessage: jsMessage,
         });
-        const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(
-            () => decodeNative(dataSet, slice.source.path, frameIndex)
+        const { result: nativeDecoded, error: nativeFallbackError } = await attemptDecode(() =>
+            decodeNative(dataSet, slice.source.path, frameIndex),
         );
         if (nativeDecoded) {
             traceDecodeResult(traceOutcome, 'native', nativeDecoded);
@@ -1051,12 +1008,12 @@
             route,
             forcedDecodeMode,
             nativeEligible,
-            jsDecoderKind
+            jsDecoderKind,
         };
         const traceOutcome = (event, extra = {}) => {
             void emitDesktopDecodeTrace(event, {
                 ...traceBase,
-                ...extra
+                ...extra,
             });
         };
 
@@ -1068,15 +1025,13 @@
                 const fallback = buildFallbackDecodeError(
                     dataSet,
                     null,
-                    createStagedError('decode', 'Forced native decode is unavailable for this slice source.')
+                    createStagedError('decode', 'Forced native decode is unavailable for this slice source.'),
                 );
                 traceFallbackError(traceOutcome, 'native', fallback);
                 return fallback;
             }
 
-            const { result, error } = await attemptDecode(
-                () => decodeNative(dataSet, slice.source.path, frameIndex)
-            );
+            const { result, error } = await attemptDecode(() => decodeNative(dataSet, slice.source.path, frameIndex));
             if (result) {
                 traceDecodeResult(traceOutcome, 'native', result);
                 return result;
@@ -1088,9 +1043,7 @@
 
         // --- Forced JS mode ---
         if (forcedDecodeMode === 'js') {
-            const { result: decoded, error } = await attemptDecode(
-                () => decodeDicom(dataSet, frameIndex)
-            );
+            const { result: decoded, error } = await attemptDecode(() => decodeDicom(dataSet, frameIndex));
             if (!error) {
                 // Decode returned (possibly null); mirror original which
                 // fell through to `decoded || buildFallbackDecodeError()`
@@ -1106,8 +1059,8 @@
 
         // --- Native-first route ---
         if (route === 'native-first' && nativeEligible) {
-            const { result: nativeDecoded, error } = await attemptDecode(
-                () => decodeNative(dataSet, slice.source.path, frameIndex)
+            const { result: nativeDecoded, error } = await attemptDecode(() =>
+                decodeNative(dataSet, slice.source.path, frameIndex),
             );
             if (nativeDecoded) {
                 traceDecodeResult(traceOutcome, 'native', nativeDecoded);
@@ -1121,12 +1074,10 @@
                 from: 'native',
                 to: jsDecoderKind,
                 nativeErrorStage: getDecodeFailureStage(error),
-                nativeErrorMessage: getDecodeFailureMessage(error)
+                nativeErrorMessage: getDecodeFailureMessage(error),
             });
 
-            const { result: jsDecoded, error: jsError } = await attemptDecode(
-                () => decodeDicom(dataSet, frameIndex)
-            );
+            const { result: jsDecoded, error: jsError } = await attemptDecode(() => decodeDicom(dataSet, frameIndex));
             if (jsDecoded && !jsDecoded.error) {
                 traceDecodeResult(traceOutcome, jsDecoderKind, jsDecoded);
                 return jsDecoded;
@@ -1139,9 +1090,7 @@
         }
 
         // --- JS-first route (default) ---
-        const { result: jsDecoded, error: jsError } = await attemptDecode(
-            () => decodeDicom(dataSet, frameIndex)
-        );
+        const { result: jsDecoded, error: jsError } = await attemptDecode(() => decodeDicom(dataSet, frameIndex));
 
         if (jsDecoded && !jsDecoded.error) {
             traceDecodeResult(traceOutcome, jsDecoderKind, jsDecoded);
@@ -1157,16 +1106,20 @@
                     decoder: jsDecoderKind,
                     stage: fallback?.stage || null,
                     errorMessage: fallback?.errorMessage || null,
-                    errorDetails: fallback?.errorDetails || null
+                    errorDetails: fallback?.errorDetails || null,
                 });
                 return fallback;
             }
 
             return tryNativeFallback(
-                dataSet, slice, frameIndex, jsDecoded,
+                dataSet,
+                slice,
+                frameIndex,
+                jsDecoded,
                 jsDecoded?.stage || null,
                 jsDecoded?.errorDetails || jsDecoded?.errorMessage || null,
-                traceOutcome, jsDecoderKind
+                traceOutcome,
+                jsDecoderKind,
             );
         }
 
@@ -1178,10 +1131,14 @@
         }
 
         return tryNativeFallback(
-            dataSet, slice, frameIndex, jsError,
+            dataSet,
+            slice,
+            frameIndex,
+            jsError,
             getDecodeFailureStage(jsError),
             getDecodeFailureMessage(jsError),
-            traceOutcome, jsDecoderKind
+            traceOutcome,
+            jsDecoderKind,
         );
     }
 
@@ -1226,7 +1183,7 @@
                 bitsAllocated: decoded.bitsAllocated,
                 bitsStored: decoded.bitsStored,
                 modality: decoded.modality,
-                transferSyntax: decoded.transferSyntax
+                transferSyntax: decoded.transferSyntax,
             });
             state.windowLevel = { center: null, width: null };
             state.windowLevelAnchor = { center: windowCenter, width: windowWidth };
@@ -1262,18 +1219,15 @@
             const planeSize = decoded.rows * decoded.cols;
             const rgbBitDepth = Math.max(
                 1,
-                Math.min(
-                    Number(decoded.bitsStored || decoded.bitsAllocated || 8),
-                    Number(decoded.bitsAllocated || 8)
-                )
+                Math.min(Number(decoded.bitsStored || decoded.bitsAllocated || 8), Number(decoded.bitsAllocated || 8)),
             );
-            const rgbScale = rgbBitDepth > 8 ? 255 / ((2 ** rgbBitDepth) - 1) : 1;
+            const rgbScale = rgbBitDepth > 8 ? 255 / (2 ** rgbBitDepth - 1) : 1;
             for (let i = 0; i < planeSize; i++) {
                 const pixelIndex = i * 4;
                 if (decoded.planarConfiguration === 1) {
                     outputPixels[pixelIndex] = Math.round(decoded.pixelData[i] * rgbScale);
                     outputPixels[pixelIndex + 1] = Math.round(decoded.pixelData[i + planeSize] * rgbScale);
-                    outputPixels[pixelIndex + 2] = Math.round(decoded.pixelData[i + (planeSize * 2)] * rgbScale);
+                    outputPixels[pixelIndex + 2] = Math.round(decoded.pixelData[i + planeSize * 2] * rgbScale);
                 } else {
                     const interleavedIndex = i * 3;
                     outputPixels[pixelIndex] = Math.round(decoded.pixelData[interleavedIndex] * rgbScale);
@@ -1302,10 +1256,10 @@
                 }
                 // Set RGBA values (grayscale = R=G=B, alpha=255)
                 const pixelIndex = i * 4;
-                outputPixels[pixelIndex] = grayscaleValue;      // R
-                outputPixels[pixelIndex + 1] = grayscaleValue;  // G
-                outputPixels[pixelIndex + 2] = grayscaleValue;  // B
-                outputPixels[pixelIndex + 3] = 255;             // A (opaque)
+                outputPixels[pixelIndex] = grayscaleValue; // R
+                outputPixels[pixelIndex + 1] = grayscaleValue; // G
+                outputPixels[pixelIndex + 2] = grayscaleValue; // B
+                outputPixels[pixelIndex + 3] = 255; // A (opaque)
             }
         }
 
@@ -1328,17 +1282,15 @@
         const { displayErrors = true } = options;
         const decoded = await decodeWithFallback(dataSet, frameIndex, slice);
         if (!decoded) {
-            return renderDecodeError(
-                buildDecodeError('Image decode failed', 'Unknown decode error'),
-                { display: displayErrors }
-            );
+            return renderDecodeError(buildDecodeError('Image decode failed', 'Unknown decode error'), {
+                display: displayErrors,
+            });
         }
         if (decoded.error) {
             return renderDecodeError(decoded, { display: displayErrors });
         }
         return renderPixels(decoded, wlOverride);
     }
-
 
     app.rendering = {
         displayError,
@@ -1354,6 +1306,6 @@
         isViewerPreloadEnabled,
         renderDecodeError,
         renderPixels,
-        renderDicom
+        renderDicom,
     };
 })();

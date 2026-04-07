@@ -3,21 +3,13 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
-const {
-    createSyntheticDicomFolder,
-    removeSyntheticDicomFolder
-} = require('./dicom-fixture-helper');
+const { createSyntheticDicomFolder, removeSyntheticDicomFolder } = require('./dicom-fixture-helper');
 const { normalizePath, joinPaths } = require('./helpers/desktop-test-utils');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
 const AUTOLOAD_URL = `${TEST_BASE_URL}/`;
-const JPEG_BASELINE_RGB_FIXTURE_PATH = path.join(
-    __dirname,
-    '..',
-    'test-fixtures',
-    'SC_RGB_JPEG_BASELINE_YBR422.dcm'
-);
+const JPEG_BASELINE_RGB_FIXTURE_PATH = path.join(__dirname, '..', 'test-fixtures', 'SC_RGB_JPEG_BASELINE_YBR422.dcm');
 const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 
 async function installMockDesktop(page, options = {}) {
@@ -92,10 +84,7 @@ async function installMockDesktop(page, options = {}) {
         }
 
         for (const [path, value] of Object.entries(options.storedFiles || {})) {
-            localStorage.setItem(
-                `${FILE_STORAGE_PREFIX}${normalizePath(path)}`,
-                JSON.stringify(toByteArray(value))
-            );
+            localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalizePath(path)}`, JSON.stringify(toByteArray(value)));
         }
 
         const readFileFailures = {};
@@ -118,31 +107,33 @@ async function installMockDesktop(page, options = {}) {
                         return options.nativeScanManifest || null;
                     }
                     if (cmd === 'get_debug_settings') {
-                        return options.debugSettings || {
-                            decodeMode: 'auto',
-                            preloadMode: 'auto',
-                            frontendDecodeTrace: false,
-                            nativeDecodeDebug: false
-                        };
+                        return (
+                            options.debugSettings || {
+                                decodeMode: 'auto',
+                                preloadMode: 'auto',
+                                frontendDecodeTrace: false,
+                                nativeDecodeDebug: false,
+                            }
+                        );
                     }
                     if (cmd === 'log_frontend_decode_event') {
                         window.__frontendDecodeTraceCalls.push(args?.message || '');
                         return null;
                     }
                     throw new Error(`Unhandled core invoke: ${cmd}`);
-                }
+                },
             },
             dialog: {
                 async open() {
                     return null;
-                }
+                },
             },
             fs: {
                 async exists(path) {
                     const normalized = normalizePath(path);
                     return (
-                        Object.prototype.hasOwnProperty.call(fileBytes, normalized)
-                        || localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null
+                        Object.hasOwn(fileBytes, normalized) ||
+                        localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null
                     );
                 },
                 async readDir(path) {
@@ -150,10 +141,10 @@ async function installMockDesktop(page, options = {}) {
                         await new Promise((resolve) => setTimeout(resolve, readDirDelayMs));
                     }
                     const normalized = normalizePath(path);
-                    if (Object.prototype.hasOwnProperty.call(readDirErrors, normalized)) {
+                    if (Object.hasOwn(readDirErrors, normalized)) {
                         throw new Error(readDirErrors[normalized]);
                     }
-                    if (!Object.prototype.hasOwnProperty.call(dirs, normalized)) {
+                    if (!Object.hasOwn(dirs, normalized)) {
                         throw new Error(`Path not found: ${normalized}`);
                     }
                     return dirs[normalized];
@@ -166,17 +157,12 @@ async function installMockDesktop(page, options = {}) {
                         throw new Error(`Transient read failure: ${normalized}`);
                     }
                     const persisted = localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`);
-                    const bytes = fileBytes[normalized]
-                        || (persisted ? JSON.parse(persisted) : null)
-                        || [0];
+                    const bytes = fileBytes[normalized] || (persisted ? JSON.parse(persisted) : null) || [0];
                     return Uint8Array.from(bytes);
                 },
                 async writeFile(path, bytes) {
                     const normalized = normalizePath(path);
-                    localStorage.setItem(
-                        `${FILE_STORAGE_PREFIX}${normalized}`,
-                        JSON.stringify(Array.from(bytes))
-                    );
+                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalized}`, JSON.stringify(Array.from(bytes)));
                 },
                 async mkdir() {
                     return undefined;
@@ -186,7 +172,7 @@ async function installMockDesktop(page, options = {}) {
                 },
                 async stat(path) {
                     const normalized = normalizePath(path);
-                    if (!Object.prototype.hasOwnProperty.call(stats, normalized)) {
+                    if (!Object.hasOwn(stats, normalized)) {
                         throw new Error(`Stat not found: ${normalized}`);
                     }
                     return stats[normalized];
@@ -194,12 +180,12 @@ async function installMockDesktop(page, options = {}) {
                 async rename(fromPath, toPath) {
                     const normalizedFrom = normalizePath(fromPath);
                     const normalizedTo = normalizePath(toPath);
-                    if (!Object.prototype.hasOwnProperty.call(fileBytes, normalizedFrom)) {
+                    if (!Object.hasOwn(fileBytes, normalizedFrom)) {
                         throw new Error(`Rename source not found: ${normalizedFrom}`);
                     }
                     fileBytes[normalizedTo] = fileBytes[normalizedFrom];
                     delete fileBytes[normalizedFrom];
-                }
+                },
             },
             path: {
                 async appDataDir() {
@@ -210,7 +196,7 @@ async function installMockDesktop(page, options = {}) {
                 },
                 async normalize(path) {
                     return normalizePath(path);
-                }
+                },
             },
             sql: window.__createMockTauriSql(options),
             webview: {
@@ -218,10 +204,10 @@ async function installMockDesktop(page, options = {}) {
                     return {
                         onDragDropEvent() {
                             return Promise.resolve(() => {});
-                        }
+                        },
                     };
-                }
-            }
+                },
+            },
         };
     }, options);
 }
@@ -241,13 +227,17 @@ function buildRevealInFinderStudies({ withReport = false } = {}) {
             seriesCount: 2,
             imageCount: 2,
             comments: [],
-            reports: withReport ? [{
-                id: 'report-1',
-                name: 'report.pdf',
-                type: 'pdf',
-                size: 2048,
-                addedAt: 1710000000000
-            }] : [],
+            reports: withReport
+                ? [
+                      {
+                          id: 'report-1',
+                          name: 'report.pdf',
+                          type: 'pdf',
+                          size: 2048,
+                          addedAt: 1710000000000,
+                      },
+                  ]
+                : [],
             series: {
                 [seriesAUid]: {
                     seriesInstanceUid: seriesAUid,
@@ -255,15 +245,17 @@ function buildRevealInFinderStudies({ withReport = false } = {}) {
                     seriesNumber: '1',
                     transferSyntax: '1.2.840.10008.1.2.1',
                     comments: [],
-                    slices: [{
-                        source: {
-                            kind: 'path',
-                            path: '/library/study/series-a/IMG0001.dcm'
+                    slices: [
+                        {
+                            source: {
+                                kind: 'path',
+                                path: '/library/study/series-a/IMG0001.dcm',
+                            },
+                            frameIndex: 0,
+                            instanceNumber: 1,
+                            sliceLocation: 1,
                         },
-                        frameIndex: 0,
-                        instanceNumber: 1,
-                        sliceLocation: 1
-                    }]
+                    ],
                 },
                 [seriesBUid]: {
                     seriesInstanceUid: seriesBUid,
@@ -271,18 +263,20 @@ function buildRevealInFinderStudies({ withReport = false } = {}) {
                     seriesNumber: '2',
                     transferSyntax: '1.2.840.10008.1.2.1',
                     comments: [],
-                    slices: [{
-                        source: {
-                            kind: 'path',
-                            path: '/library/study/series-b/IMG0001.dcm'
+                    slices: [
+                        {
+                            source: {
+                                kind: 'path',
+                                path: '/library/study/series-b/IMG0001.dcm',
+                            },
+                            frameIndex: 0,
+                            instanceNumber: 1,
+                            sliceLocation: 2,
                         },
-                        frameIndex: 0,
-                        instanceNumber: 1,
-                        sliceLocation: 2
-                    }]
-                }
-            }
-        }
+                    ],
+                },
+            },
+        },
     };
 }
 
@@ -318,9 +312,9 @@ test.describe('Desktop library scanning', () => {
                     name: 'image.dcm',
                     rootPath: '/library',
                     size: 4,
-                    modifiedMs: 1234
-                }
-            ]
+                    modifiedMs: 1234,
+                },
+            ],
         });
 
         await page.goto(HOME_URL);
@@ -332,7 +326,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -345,7 +339,7 @@ test.describe('Desktop library scanning', () => {
             const studies = await window.DicomViewerApp.sources.loadStudiesFromDesktopPaths(['/library']);
             return {
                 studyCount: Object.keys(studies).length,
-                readFileCount
+                readFileCount,
             };
         });
 
@@ -361,9 +355,9 @@ test.describe('Desktop library scanning', () => {
                     name: 'image.dcm',
                     rootPath: '/library',
                     size: 4,
-                    modifiedMs: 1234
-                }
-            ]
+                    modifiedMs: 1234,
+                },
+            ],
         });
 
         await page.goto(HOME_URL);
@@ -375,7 +369,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -398,7 +392,7 @@ test.describe('Desktop library scanning', () => {
                 firstStudyCount: Object.keys(firstStudies).length,
                 secondStudyCount: Object.keys(secondStudies).length,
                 readsAfterFirstScan,
-                readsAfterSecondScan: readFileCount
+                readsAfterSecondScan: readFileCount,
             };
         });
 
@@ -416,23 +410,23 @@ test.describe('Desktop library scanning', () => {
                     name: 'DICOMDIR',
                     rootPath: '/library',
                     size: 128,
-                    modifiedMs: 111
+                    modifiedMs: 111,
                 },
                 {
                     path: '/library/images/IMG00001.dcm',
                     name: 'IMG00001.dcm',
                     rootPath: '/library',
                     size: 512,
-                    modifiedMs: 222
+                    modifiedMs: 222,
                 },
                 {
                     path: '/library/images/IMG00002.dcm',
                     name: 'IMG00002.dcm',
                     rootPath: '/library',
                     size: 512,
-                    modifiedMs: 333
-                }
-            ]
+                    modifiedMs: 333,
+                },
+            ],
         });
 
         await page.goto(HOME_URL);
@@ -455,8 +449,8 @@ test.describe('Desktop library scanning', () => {
                             modality: 'DX',
                             sopInstanceUid: 'sop-1',
                             instanceNumber: 1,
-                            sliceLocation: 0
-                        }
+                            sliceLocation: 0,
+                        },
                     },
                     {
                         source: { kind: 'path', path: '/library/images/IMG00002.dcm' },
@@ -471,15 +465,12 @@ test.describe('Desktop library scanning', () => {
                             modality: 'DX',
                             sopInstanceUid: 'sop-2',
                             instanceNumber: 2,
-                            sliceLocation: 0
-                        }
-                    }
+                            sliceLocation: 0,
+                        },
+                    },
                 ],
-                indexedPaths: [
-                    '/library/images/IMG00001.dcm',
-                    '/library/images/IMG00002.dcm'
-                ],
-                error: null
+                indexedPaths: ['/library/images/IMG00001.dcm', '/library/images/IMG00002.dcm'],
+                error: null,
             });
 
             window.__TAURI__.fs.readFile = async (path) => {
@@ -491,7 +482,7 @@ test.describe('Desktop library scanning', () => {
             return {
                 studyCount: Object.keys(studies).length,
                 readKeys: Object.keys(readsByPath).sort(),
-                readsByPath
+                readsByPath,
             };
         });
 
@@ -501,7 +492,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.readKeys).toEqual([
             '/library/DICOMDIR',
             '/library/images/IMG00001.dcm',
-            '/library/images/IMG00002.dcm'
+            '/library/images/IMG00002.dcm',
         ]);
         expect(result.readsByPath['/library/DICOMDIR']).toBe(1);
         expect(result.readsByPath['/library/images/IMG00001.dcm']).toBe(1);
@@ -531,9 +522,9 @@ test.describe('Desktop library scanning', () => {
             readDirDelayMs: 250,
             dirs: {
                 '/library': rootEntries,
-                '/library/nested': nestedEntries
+                '/library/nested': nestedEntries,
             },
-            fileBytes
+            fileBytes,
         });
 
         await page.goto(HOME_URL);
@@ -547,13 +538,13 @@ test.describe('Desktop library scanning', () => {
                         discovered: stats.discovered,
                         processed: stats.processed,
                         valid: stats.valid,
-                        complete: stats.complete
+                        complete: stats.complete,
                     });
-                }
+                },
             });
             return {
                 studyCount: Object.keys(studies).length,
-                progress
+                progress,
             };
         });
 
@@ -563,35 +554,38 @@ test.describe('Desktop library scanning', () => {
             discovered: 130,
             processed: 130,
             valid: 0,
-            complete: true
+            complete: true,
         });
     });
 
     test('desktop path reads retry transient filesystem failures', async ({ page }) => {
         await installMockDesktop(page, {
             fileBytes: {
-                '/library/image.dcm': [1, 2, 3, 4]
+                '/library/image.dcm': [1, 2, 3, 4],
             },
             readFileFailures: {
-                '/library/image.dcm': 2
-            }
+                '/library/image.dcm': 2,
+            },
         });
 
         await page.goto(HOME_URL);
 
         const bytes = await page.evaluate(async () => {
-            const buffer = await window.DicomViewerApp.sources.readSliceBuffer({
-                source: { kind: 'path', path: '/library/image.dcm' }
-            }, 'scan');
+            const buffer = await window.DicomViewerApp.sources.readSliceBuffer(
+                {
+                    source: { kind: 'path', path: '/library/image.dcm' },
+                },
+                'scan',
+            );
             return {
                 isUint8Array: buffer instanceof Uint8Array,
-                bytes: Array.from(buffer)
+                bytes: Array.from(buffer),
             };
         });
 
         expect(bytes).toEqual({
             isUint8Array: true,
-            bytes: [1, 2, 3, 4]
+            bytes: [1, 2, 3, 4],
         });
     });
 
@@ -606,21 +600,21 @@ test.describe('Desktop library scanning', () => {
                     studyInstanceUid: '1.2.3',
                     hasPixelData: true,
                     rows: 2991,
-                    cols: 1580
+                    cols: 1580,
                 }),
                 structuredReport: isRenderableImageMetadata({
                     studyInstanceUid: '1.2.3',
                     hasPixelData: false,
                     rows: 0,
                     cols: 0,
-                    sopClassUid: '1.2.840.10008.5.1.4.1.1.88.22'
+                    sopClassUid: '1.2.840.10008.5.1.4.1.1.88.22',
                 }),
                 missingDimensions: isRenderableImageMetadata({
                     studyInstanceUid: '1.2.3',
                     hasPixelData: true,
                     rows: 0,
-                    cols: 1580
-                })
+                    cols: 1580,
+                }),
             };
         });
 
@@ -638,7 +632,7 @@ test.describe('Desktop library scanning', () => {
                 string(tag) {
                     const values = {
                         x00200013: '',
-                        x00201041: ''
+                        x00201041: '',
                     };
                     return values[tag] || '';
                 },
@@ -646,20 +640,20 @@ test.describe('Desktop library scanning', () => {
                     const values = {
                         x00280010: 512,
                         x00280011: 512,
-                        x00200013: 7
+                        x00200013: 7,
                     };
                     return values[tag];
                 },
                 elements: {
-                    x7fe00010: {}
-                }
+                    x7fe00010: {},
+                },
             };
 
             const { getMetadataNumber } = window.DicomViewerApp.dicom;
             return {
                 rows: getMetadataNumber(dataSet, 'x00280010', 0),
                 cols: getMetadataNumber(dataSet, 'x00280011', 0),
-                instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0)
+                instanceNumber: getMetadataNumber(dataSet, 'x00200013', 0),
             };
         });
 
@@ -677,13 +671,13 @@ test.describe('Desktop library scanning', () => {
             const normalized = await window.DicomViewerApp.dicom.toDicomByteArray(bytes);
             return {
                 sameReference: normalized === bytes,
-                bytes: Array.from(normalized)
+                bytes: Array.from(normalized),
             };
         });
 
         expect(result).toEqual({
             sameReference: true,
-            bytes: [8, 7]
+            bytes: [8, 7],
         });
     });
 
@@ -693,39 +687,30 @@ test.describe('Desktop library scanning', () => {
 
         const result = await page.evaluate(() => {
             const source = { kind: 'path', path: '/library/multi-frame.dcm' };
-            const slices = window.DicomViewerApp.sources.expandFrameSlices({
-                numberOfFrames: 4,
-                sopInstanceUid: '1.2.3.4',
-                instanceNumber: 12,
-                sliceLocation: 34.5
-            }, source);
+            const slices = window.DicomViewerApp.sources.expandFrameSlices(
+                {
+                    numberOfFrames: 4,
+                    sopInstanceUid: '1.2.3.4',
+                    instanceNumber: 12,
+                    sliceLocation: 34.5,
+                },
+                source,
+            );
 
             return {
                 count: slices.length,
                 frameIndexes: slices.map((slice) => slice.frameIndex),
                 sameSourceReference: slices.every((slice) => slice.source === source),
                 dedupeKeys: slices.map((slice) => window.DicomViewerApp.sources.getSliceDedupKey(slice)),
-                cacheKeys: slices.map((slice, index) =>
-                    window.DicomViewerApp.sources.getSliceCacheKey(slice, index)
-                )
+                cacheKeys: slices.map((slice, index) => window.DicomViewerApp.sources.getSliceCacheKey(slice, index)),
             };
         });
 
         expect(result.count).toBe(4);
         expect(result.frameIndexes).toEqual([0, 1, 2, 3]);
         expect(result.sameSourceReference).toBe(true);
-        expect(result.dedupeKeys).toEqual([
-            '1.2.3.4|0',
-            '1.2.3.4|1',
-            '1.2.3.4|2',
-            '1.2.3.4|3'
-        ]);
-        expect(result.cacheKeys).toEqual([
-            'sop:1.2.3.4:0',
-            'sop:1.2.3.4:1',
-            'sop:1.2.3.4:2',
-            'sop:1.2.3.4:3'
-        ]);
+        expect(result.dedupeKeys).toEqual(['1.2.3.4|0', '1.2.3.4|1', '1.2.3.4|2', '1.2.3.4|3']);
+        expect(result.cacheKeys).toEqual(['sop:1.2.3.4:0', 'sop:1.2.3.4:1', 'sop:1.2.3.4:2', 'sop:1.2.3.4:3']);
     });
 
     test('scan dedupes duplicate DICOM copies with the same SOP instance UID', async ({ page }) => {
@@ -738,13 +723,13 @@ test.describe('Desktop library scanning', () => {
             const fixtureStudy = studiesPayload[0];
             const series = fixtureStudy.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${fixtureStudy.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${fixtureStudy.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const blob = await dicomResponse.blob();
 
             const studies = await window.DicomViewerApp.sources.processFilesFromSources([
                 { name: 'first-copy.dcm', source: { kind: 'blob', blob } },
-                { name: 'second-copy.dcm', source: { kind: 'blob', blob } }
+                { name: 'second-copy.dcm', source: { kind: 'blob', blob } },
             ]);
 
             const loadedStudy = Object.values(studies)[0];
@@ -752,73 +737,80 @@ test.describe('Desktop library scanning', () => {
             return {
                 studyCount: Object.keys(studies).length,
                 seriesCount: Object.keys(loadedStudy.series).length,
-                sliceCount: loadedSeries.slices.length
+                sliceCount: loadedSeries.slices.length,
             };
         });
 
         expect(summary).toEqual({
             studyCount: 1,
             seriesCount: 1,
-            sliceCount: 1
+            sliceCount: 1,
         });
     });
 
-    test('processFilesFromSources splits colliding series UIDs, including empty and pipe-bearing descriptions', async ({ page }) => {
+    test('processFilesFromSources splits colliding series UIDs, including empty and pipe-bearing descriptions', async ({
+        page,
+    }) => {
         const fixture = createSyntheticDicomFolder([
             { description: '' },
             { description: 'AP Upper' },
-            { description: 'AP|Upper' }
+            { description: 'AP|Upper' },
         ]);
 
         try {
             const filePayloads = fixture.entries.map((entry) => ({
                 name: path.basename(entry.path),
-                bytes: Array.from(fs.readFileSync(entry.path))
+                bytes: Array.from(fs.readFileSync(entry.path)),
             }));
 
             await installMockDesktop(page);
             await page.goto(HOME_URL);
 
-            const summary = await page.evaluate(async ({ filePayloads }) => {
-                const files = filePayloads.map((entry) => ({
-                    name: entry.name,
-                    source: {
-                        kind: 'blob',
-                        blob: new Blob([Uint8Array.from(entry.bytes)])
-                    }
-                }));
+            const summary = await page.evaluate(
+                async ({ filePayloads }) => {
+                    const files = filePayloads.map((entry) => ({
+                        name: entry.name,
+                        source: {
+                            kind: 'blob',
+                            blob: new Blob([Uint8Array.from(entry.bytes)]),
+                        },
+                    }));
 
-                const studies = await window.DicomViewerApp.sources.processFilesFromSources(files);
-                const study = Object.values(studies)[0];
-                const seriesEntries = Object.values(study.series).map((series) => ({
-                    uid: series.seriesInstanceUid,
-                    description: series.seriesDescription || '',
-                    sliceCount: series.slices.length
-                })).sort((a, b) => a.uid.localeCompare(b.uid));
+                    const studies = await window.DicomViewerApp.sources.processFilesFromSources(files);
+                    const study = Object.values(studies)[0];
+                    const seriesEntries = Object.values(study.series)
+                        .map((series) => ({
+                            uid: series.seriesInstanceUid,
+                            description: series.seriesDescription || '',
+                            sliceCount: series.slices.length,
+                        }))
+                        .sort((a, b) => a.uid.localeCompare(b.uid));
 
-                return {
-                    studyCount: Object.keys(studies).length,
-                    seriesEntries
-                };
-            }, { filePayloads });
+                    return {
+                        studyCount: Object.keys(studies).length,
+                        seriesEntries,
+                    };
+                },
+                { filePayloads },
+            );
 
             expect(summary.studyCount).toBe(1);
             expect(summary.seriesEntries).toEqual([
                 {
                     uid: `${fixture.seriesUid}|`,
                     description: '',
-                    sliceCount: 1
+                    sliceCount: 1,
                 },
                 {
                     uid: `${fixture.seriesUid}|AP Upper`,
                     description: 'AP Upper',
-                    sliceCount: 1
+                    sliceCount: 1,
                 },
                 {
                     uid: `${fixture.seriesUid}|AP|Upper`,
                     description: 'AP|Upper',
-                    sliceCount: 1
-                }
+                    sliceCount: 1,
+                },
             ]);
         } finally {
             removeSyntheticDicomFolder(fixture.folder);
@@ -831,7 +823,7 @@ test.describe('Desktop library scanning', () => {
 
         const result = await page.evaluate(async () => {
             const frame0Pixels = Array.from({ length: 16 }, (_, index) => index * 100);
-            const frame1Pixels = Array.from({ length: 16 }, (_, index) => 4000 + (index * 100));
+            const frame1Pixels = Array.from({ length: 16 }, (_, index) => 4000 + index * 100);
             const buffer = new ArrayBuffer(32 * 2);
             const pixels = new Uint16Array(buffer);
             pixels.set([...frame0Pixels, ...frame1Pixels]);
@@ -841,13 +833,13 @@ test.describe('Desktop library scanning', () => {
                 elements: {
                     x7fe00010: {
                         dataOffset: 0,
-                        length: buffer.byteLength
-                    }
+                        length: buffer.byteLength,
+                    },
                 },
                 string(tag) {
                     const values = {
                         x00020010: '1.2.840.10008.1.2.1',
-                        x00080060: 'DX'
+                        x00080060: 'DX',
                     };
                     return values[tag] || '';
                 },
@@ -857,10 +849,10 @@ test.describe('Desktop library scanning', () => {
                         x00280011: 4,
                         x00280100: 16,
                         x00280103: 0,
-                        x00280002: 1
+                        x00280002: 1,
                     };
                     return values[tag];
-                }
+                },
             };
 
             await window.DicomViewerApp.rendering.renderDicom(dataSet, { center: 3500, width: 7000 }, 0);
@@ -894,8 +886,8 @@ test.describe('Desktop library scanning', () => {
                 elements: {
                     x7fe00010: {
                         dataOffset: 0,
-                        length: buffer.byteLength
-                    }
+                        length: buffer.byteLength,
+                    },
                 },
                 string(tag) {
                     const values = {
@@ -903,7 +895,7 @@ test.describe('Desktop library scanning', () => {
                         x00080060: 'CT',
                         x00280004: 'MONOCHROME2',
                         x00281050: '128',
-                        x00281051: '256'
+                        x00281051: '256',
                     };
                     return values[tag] || '';
                 },
@@ -914,16 +906,16 @@ test.describe('Desktop library scanning', () => {
                         x00280100: 32,
                         x00280103: 0,
                         x00280002: 1,
-                        x00280008: 2
+                        x00280008: 2,
                     };
                     return values[tag];
-                }
+                },
             };
 
             const decoded = await window.DicomViewerApp.rendering.decodeDicom(dataSet, 1);
             return {
                 pixelDataType: decoded.pixelData.constructor.name,
-                pixelValues: Array.from(decoded.pixelData)
+                pixelValues: Array.from(decoded.pixelData),
             };
         });
 
@@ -938,15 +930,15 @@ test.describe('Desktop library scanning', () => {
         const result = await page.evaluate(async () => {
             const buffer = new ArrayBuffer(16 * 2);
             const pixels = new Uint16Array(buffer);
-            pixels.set(Array.from({ length: 16 }, (_, index) => 1000 + (index * 10)));
+            pixels.set(Array.from({ length: 16 }, (_, index) => 1000 + index * 10));
 
             const dataSet = {
                 byteArray: new Uint8Array(buffer),
                 elements: {
                     x7fe00010: {
                         dataOffset: 0,
-                        length: buffer.byteLength
-                    }
+                        length: buffer.byteLength,
+                    },
                 },
                 string(tag) {
                     const values = {
@@ -957,7 +949,7 @@ test.describe('Desktop library scanning', () => {
                         x00281050: '40',
                         x00281051: '400',
                         x00281052: '-1024',
-                        x00281053: '2'
+                        x00281053: '2',
                     };
                     return values[tag] || '';
                 },
@@ -967,10 +959,10 @@ test.describe('Desktop library scanning', () => {
                         x00280011: 4,
                         x00280100: 16,
                         x00280103: 0,
-                        x00280002: 1
+                        x00280002: 1,
                     };
                     return values[tag];
-                }
+                },
             };
 
             const decoded = await window.DicomViewerApp.rendering.decodeDicom(dataSet, 0);
@@ -992,7 +984,7 @@ test.describe('Desktop library scanning', () => {
                 pixelSpacing: decoded.pixelSpacing,
                 isBlank: decoded.isBlank,
                 skipWindowLevel: decoded.skipWindowLevel,
-                mrMetadataKeys: Object.keys(decoded.mrMetadata).sort()
+                mrMetadataKeys: Object.keys(decoded.mrMetadata).sort(),
             };
         });
 
@@ -1013,18 +1005,20 @@ test.describe('Desktop library scanning', () => {
             pixelDataLength: 16,
             pixelSpacing: { row: 0.7, col: 0.8 },
             isBlank: false,
-            skipWindowLevel: false
+            skipWindowLevel: false,
         });
-        expect(result.mrMetadataKeys).toEqual(expect.arrayContaining([
-            'echoTime',
-            'flipAngle',
-            'magneticFieldStrength',
-            'mrAcquisitionType',
-            'protocolName',
-            'repetitionTime',
-            'scanningSequence',
-            'sequenceName',
-        ]));
+        expect(result.mrMetadataKeys).toEqual(
+            expect.arrayContaining([
+                'echoTime',
+                'flipAngle',
+                'magneticFieldStrength',
+                'mrAcquisitionType',
+                'protocolName',
+                'repetitionTime',
+                'scanningSequence',
+                'sequenceName',
+            ]),
+        );
     });
 
     test('decodeDicom does not write to the canvas when it returns an error', async ({ page }) => {
@@ -1040,27 +1034,30 @@ test.describe('Desktop library scanning', () => {
             ctx.fillRect(0, 0, 2, 2);
             const before = Array.from(ctx.getImageData(0, 0, 2, 2).data);
 
-            const info = await window.DicomViewerApp.rendering.decodeDicom({
-                elements: {},
-                string() {
-                    return '';
+            const info = await window.DicomViewerApp.rendering.decodeDicom(
+                {
+                    elements: {},
+                    string() {
+                        return '';
+                    },
+                    uint16() {
+                        return 0;
+                    },
                 },
-                uint16() {
-                    return 0;
-                }
-            }, 0);
+                0,
+            );
 
             return {
                 info,
                 after: Array.from(ctx.getImageData(0, 0, 2, 2).data),
                 canvasSize: { width: canvas.width, height: canvas.height },
-                before
+                before,
             };
         });
 
         expect(result.info).toMatchObject({
             error: true,
-            errorMessage: 'No pixel data found'
+            errorMessage: 'No pixel data found',
         });
         expect(result.canvasSize).toEqual({ width: 2, height: 2 });
         expect(result.after).toEqual(result.before);
@@ -1079,27 +1076,33 @@ test.describe('Desktop library scanning', () => {
             ctx.fillRect(0, 0, 2, 2);
             const before = Array.from(ctx.getImageData(0, 0, 2, 2).data);
 
-            const info = await window.DicomViewerApp.rendering.renderDicom({
-                elements: {},
-                string() {
-                    return '';
+            const info = await window.DicomViewerApp.rendering.renderDicom(
+                {
+                    elements: {},
+                    string() {
+                        return '';
+                    },
+                    uint16() {
+                        return 0;
+                    },
                 },
-                uint16() {
-                    return 0;
-                }
-            }, null, 0, null, { displayErrors: false });
+                null,
+                0,
+                null,
+                { displayErrors: false },
+            );
 
             return {
                 info,
                 after: Array.from(ctx.getImageData(0, 0, 2, 2).data),
                 canvasSize: { width: canvas.width, height: canvas.height },
-                before
+                before,
             };
         });
 
         expect(result.info).toMatchObject({
             error: true,
-            errorMessage: 'No pixel data found'
+            errorMessage: 'No pixel data found',
         });
         expect(result.canvasSize).toEqual({ width: 2, height: 2 });
         expect(result.after).toEqual(result.before);
@@ -1124,18 +1127,18 @@ test.describe('Desktop library scanning', () => {
                     string(tag) {
                         const values = {
                             x00020010: '1.2.840.10008.1.2.4.90',
-                            x00080060: 'RF'
+                            x00080060: 'RF',
                         };
                         return values[tag] || '';
                     },
                     uint16() {
                         return 0;
-                    }
+                    },
                 });
 
                 return {
                     info,
-                    drawnText
+                    drawnText,
                 };
             } finally {
                 ctx.fillText = originalFillText;
@@ -1144,18 +1147,14 @@ test.describe('Desktop library scanning', () => {
 
         expect(result.info).toMatchObject({
             error: true,
-            stage: 'frame-extraction'
+            stage: 'frame-extraction',
         });
-        expect(result.info.diagnosticLines).toEqual(expect.arrayContaining([
-            'Stage: frame-extraction',
-            'Transfer Syntax: JPEG 2000 Lossless',
-            'Modality: RF'
-        ]));
-        expect(result.drawnText).toEqual(expect.arrayContaining([
-            'Stage: frame-extraction',
-            'Transfer Syntax: JPEG 2000 Lossless',
-            'Modality: RF'
-        ]));
+        expect(result.info.diagnosticLines).toEqual(
+            expect.arrayContaining(['Stage: frame-extraction', 'Transfer Syntax: JPEG 2000 Lossless', 'Modality: RF']),
+        );
+        expect(result.drawnText).toEqual(
+            expect.arrayContaining(['Stage: frame-extraction', 'Transfer Syntax: JPEG 2000 Lossless', 'Modality: RF']),
+        );
     });
 
     test('renderDicom fallback diagnostics include both js and native failure stages', async ({ page }) => {
@@ -1179,37 +1178,42 @@ test.describe('Desktop library scanning', () => {
             };
 
             try {
-                const info = await app.rendering.renderDicom({
-                    elements: {},
-                    string(tag) {
-                        const values = {
-                            x00020010: '1.2.840.10008.1.2.1',
-                            x00080060: 'CT',
-                            x00280004: 'MONOCHROME2'
-                        };
-                        return values[tag] || '';
+                const info = await app.rendering.renderDicom(
+                    {
+                        elements: {},
+                        string(tag) {
+                            const values = {
+                                x00020010: '1.2.840.10008.1.2.1',
+                                x00080060: 'CT',
+                                x00280004: 'MONOCHROME2',
+                            };
+                            return values[tag] || '';
+                        },
+                        uint16(tag) {
+                            const values = {
+                                x00280010: 4,
+                                x00280011: 4,
+                                x00280100: 16,
+                                x00280103: 0,
+                                x00280002: 1,
+                            };
+                            return values[tag] || 0;
+                        },
                     },
-                    uint16(tag) {
-                        const values = {
-                            x00280010: 4,
-                            x00280011: 4,
-                            x00280100: 16,
-                            x00280103: 0,
-                            x00280002: 1
-                        };
-                        return values[tag] || 0;
-                    }
-                }, null, 0, {
-                    frameIndex: 0,
-                    source: {
-                        kind: 'path',
-                        path: '/library/fallback-failure.dcm'
-                    }
-                });
+                    null,
+                    0,
+                    {
+                        frameIndex: 0,
+                        source: {
+                            kind: 'path',
+                            path: '/library/fallback-failure.dcm',
+                        },
+                    },
+                );
 
                 return {
                     info,
-                    drawnText
+                    drawnText,
                 };
             } finally {
                 ctx.fillText = originalFillText;
@@ -1220,19 +1224,20 @@ test.describe('Desktop library scanning', () => {
             error: true,
             stage: 'frame-extraction',
             jsErrorStage: 'frame-extraction',
-            nativeErrorStage: 'decode-timeout'
+            nativeErrorStage: 'decode-timeout',
         });
-        expect(result.info.diagnosticLines).toEqual(expect.arrayContaining([
-            'Stage: frame-extraction',
-            'Transfer Syntax: Explicit VR Little Endian',
-            'Modality: CT',
-            'JS Stage: frame-extraction',
-            'Native Stage: decode-timeout'
-        ]));
-        expect(result.drawnText).toEqual(expect.arrayContaining([
-            'JS Stage: frame-extraction',
-            'Native Stage: decode-timeout'
-        ]));
+        expect(result.info.diagnosticLines).toEqual(
+            expect.arrayContaining([
+                'Stage: frame-extraction',
+                'Transfer Syntax: Explicit VR Little Endian',
+                'Modality: CT',
+                'JS Stage: frame-extraction',
+                'Native Stage: decode-timeout',
+            ]),
+        );
+        expect(result.drawnText).toEqual(
+            expect.arrayContaining(['JS Stage: frame-extraction', 'Native Stage: decode-timeout']),
+        );
     });
 
     test('decodeDicom returns a detached copy of uncompressed pixel data', async ({ page }) => {
@@ -1249,8 +1254,8 @@ test.describe('Desktop library scanning', () => {
                 elements: {
                     x7fe00010: {
                         dataOffset: 0,
-                        length: buffer.byteLength
-                    }
+                        length: buffer.byteLength,
+                    },
                 },
                 string(tag) {
                     const values = {
@@ -1258,7 +1263,7 @@ test.describe('Desktop library scanning', () => {
                         x00080060: 'CT',
                         x00280004: 'MONOCHROME2',
                         x00281050: '40',
-                        x00281051: '400'
+                        x00281051: '400',
                     };
                     return values[tag] || '';
                 },
@@ -1269,10 +1274,10 @@ test.describe('Desktop library scanning', () => {
                         x00280100: 16,
                         x00280103: 0,
                         x00280002: 1,
-                        x00280008: 1
+                        x00280008: 1,
                     };
                     return values[tag];
-                }
+                },
             };
 
             const decoded = await window.DicomViewerApp.rendering.decodeDicom(dataSet, 0);
@@ -1282,7 +1287,7 @@ test.describe('Desktop library scanning', () => {
             return {
                 sharesBuffer,
                 backingFirstValue: backingPixels[0],
-                decodedFirstValue: decoded.pixelData[0]
+                decodedFirstValue: decoded.pixelData[0],
             };
         });
 
@@ -1322,11 +1327,11 @@ test.describe('Desktop library scanning', () => {
                     protocolName: '',
                     sequenceName: '',
                     scanningSequence: '',
-                    mrAcquisitionType: ''
+                    mrAcquisitionType: '',
                 },
                 pixelSpacing: { row: 0.5, col: 0.25 },
                 isBlank: false,
-                skipWindowLevel: false
+                skipWindowLevel: false,
             });
 
             const canvas = document.getElementById('imageCanvas');
@@ -1339,7 +1344,7 @@ test.describe('Desktop library scanning', () => {
                 firstChannel: imageData.filter((_, index) => index % 4 === 0),
                 alphaChannel: imageData.filter((_, index) => index % 4 === 3),
                 baseWindowLevel: state.baseWindowLevel,
-                pixelSpacing: state.pixelSpacing
+                pixelSpacing: state.pixelSpacing,
             };
         });
 
@@ -1349,7 +1354,7 @@ test.describe('Desktop library scanning', () => {
             wc: 1500,
             ww: 3000,
             transferSyntax: '1.2.840.10008.1.2.1',
-            modality: 'CT'
+            modality: 'CT',
         });
         expect(result.canvasSize).toEqual({ width: 2, height: 2 });
         expect(result.firstChannel).toEqual([0, 85, 170, 255]);
@@ -1389,11 +1394,11 @@ test.describe('Desktop library scanning', () => {
                     protocolName: '',
                     sequenceName: '',
                     scanningSequence: '',
-                    mrAcquisitionType: ''
+                    mrAcquisitionType: '',
                 },
                 pixelSpacing: null,
                 isBlank: false,
-                skipWindowLevel: false
+                skipWindowLevel: false,
             });
 
             const canvas = document.getElementById('imageCanvas');
@@ -1403,20 +1408,22 @@ test.describe('Desktop library scanning', () => {
             return {
                 info,
                 firstChannel: imageData.filter((_, index) => index % 4 === 0),
-                alphaChannel: imageData.filter((_, index) => index % 4 === 3)
+                alphaChannel: imageData.filter((_, index) => index % 4 === 3),
             };
         });
 
         expect(result.info).toMatchObject({
             rows: 2,
             cols: 2,
-            modality: 'CR'
+            modality: 'CR',
         });
         expect(result.firstChannel).toEqual([255, 170, 85, 0]);
         expect(result.alphaChannel).toEqual([255, 255, 255, 255]);
     });
 
-    test('renderPixels clears an incompatible W/L override when scrubbing into a different XA display domain', async ({ page }) => {
+    test('renderPixels clears an incompatible W/L override when scrubbing into a different XA display domain', async ({
+        page,
+    }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -1444,7 +1451,7 @@ test.describe('Desktop library scanning', () => {
                 mrMetadata: null,
                 pixelSpacing: null,
                 skipWindowLevel: false,
-                isBlank: false
+                isBlank: false,
             };
             const decoded8BitXa = {
                 pixelData: new Uint8Array([0, 128, 192, 255]),
@@ -1465,7 +1472,7 @@ test.describe('Desktop library scanning', () => {
                 mrMetadata: null,
                 pixelSpacing: null,
                 skipWindowLevel: false,
-                isBlank: false
+                isBlank: false,
             };
 
             state.baseWindowLevel = { center: null, width: null };
@@ -1476,20 +1483,19 @@ test.describe('Desktop library scanning', () => {
             rendering.renderPixels(decoded12BitXa);
             state.windowLevel = { center: 1928, width: 4694 };
             const info = rendering.renderPixels(decoded8BitXa, state.windowLevel);
-            const firstChannel = Array.from(ctx.getImageData(0, 0, 2, 2).data)
-                .filter((_, index) => index % 4 === 0);
+            const firstChannel = Array.from(ctx.getImageData(0, 0, 2, 2).data).filter((_, index) => index % 4 === 0);
 
             return {
                 info,
                 firstChannel,
                 baseWindowLevel: state.baseWindowLevel,
-                windowLevel: state.windowLevel
+                windowLevel: state.windowLevel,
             };
         });
 
         expect(result.info).toMatchObject({
             wc: 128,
-            ww: 171
+            ww: 171,
         });
         expect(result.firstChannel).toEqual([0, 128, 223, 255]);
         expect(result.baseWindowLevel).toEqual({ center: 128, width: 171 });
@@ -1522,11 +1528,11 @@ test.describe('Desktop library scanning', () => {
                 mrMetadata: null,
                 pixelSpacing: null,
                 skipWindowLevel: false,
-                isBlank: false
+                isBlank: false,
             };
             const decodedB = {
                 ...decodedA,
-                pixelData: new Uint16Array([4095, 2048, 1024, 0])
+                pixelData: new Uint16Array([4095, 2048, 1024, 0]),
             };
 
             state.baseWindowLevel = { center: null, width: null };
@@ -1541,13 +1547,13 @@ test.describe('Desktop library scanning', () => {
             return {
                 info,
                 baseWindowLevel: state.baseWindowLevel,
-                windowLevel: state.windowLevel
+                windowLevel: state.windowLevel,
             };
         });
 
         expect(result.info).toMatchObject({
             wc: 1928,
-            ww: 4694
+            ww: 4694,
         });
         expect(result.baseWindowLevel).toEqual({ center: 2048, width: 4096 });
         expect(result.windowLevel).toEqual({ center: 1928, width: 4694 });
@@ -1563,10 +1569,7 @@ test.describe('Desktop library scanning', () => {
             state.pixelSpacing = null;
 
             const info = rendering.renderPixels({
-                pixelData: new Uint16Array([
-                    0, 4095, 2048,
-                    4095, 0, 1024
-                ]),
+                pixelData: new Uint16Array([0, 4095, 2048, 4095, 0, 1024]),
                 rows: 1,
                 cols: 2,
                 bitsAllocated: 16,
@@ -1589,35 +1592,34 @@ test.describe('Desktop library scanning', () => {
                     protocolName: '',
                     sequenceName: '',
                     scanningSequence: '',
-                    mrAcquisitionType: ''
+                    mrAcquisitionType: '',
                 },
                 pixelSpacing: null,
                 isBlank: false,
-                skipWindowLevel: true
+                skipWindowLevel: true,
             });
 
             const rgba = Array.from(
-                document.getElementById('imageCanvas').getContext('2d').getImageData(0, 0, 2, 1).data
+                document.getElementById('imageCanvas').getContext('2d').getImageData(0, 0, 2, 1).data,
             );
 
             return {
                 info,
-                rgba
+                rgba,
             };
         });
 
         expect(result.info).toMatchObject({
             rows: 1,
             cols: 2,
-            modality: 'OT'
+            modality: 'OT',
         });
-        expect(result.rgba).toEqual([
-            0, 255, 128, 255,
-            255, 0, 64, 255
-        ]);
+        expect(result.rgba).toEqual([0, 255, 128, 255, 255, 0, 64, 255]);
     });
 
-    test('decodeDicom treats JPEG Baseline MONOCHROME1 data as grayscale even with minor RGB roundtrip drift', async ({ page }) => {
+    test('decodeDicom treats JPEG Baseline MONOCHROME1 data as grayscale even with minor RGB roundtrip drift', async ({
+        page,
+    }) => {
         const fixtureBytes = Array.from(fs.readFileSync(JPEG_BASELINE_RGB_FIXTURE_PATH));
 
         await installMockDesktop(page);
@@ -1657,14 +1659,11 @@ test.describe('Desktop library scanning', () => {
                             drawImage() {},
                             getImageData() {
                                 return {
-                                    data: new Uint8ClampedArray([
-                                        120, 121, 119, 255,
-                                        15, 16, 14, 255
-                                    ])
+                                    data: new Uint8ClampedArray([120, 121, 119, 255, 15, 16, 14, 255]),
                                 };
-                            }
+                            },
                         };
-                    }
+                    },
                 };
             };
 
@@ -1677,7 +1676,7 @@ test.describe('Desktop library scanning', () => {
                     samplesPerPixel: decoded.samplesPerPixel,
                     photometricInterpretation: decoded.photometricInterpretation,
                     skipWindowLevel: decoded.skipWindowLevel,
-                    pixels: Array.from(decoded.pixelData)
+                    pixels: Array.from(decoded.pixelData),
                 };
             } finally {
                 window.createImageBitmap = originalCreateImageBitmap;
@@ -1736,7 +1735,7 @@ test.describe('Desktop library scanning', () => {
             rows: 100,
             cols: 100,
             transferSyntax: '1.2.840.10008.1.2.4.50',
-            modality: 'OT'
+            modality: 'OT',
         });
         expect(result.redDominantPixel[0]).toBeGreaterThan(result.redDominantPixel[1] + 40);
         expect(result.redDominantPixel[0]).toBeGreaterThan(result.redDominantPixel[2] + 40);
@@ -1746,7 +1745,9 @@ test.describe('Desktop library scanning', () => {
         expect(result.greenDominantPixel[3]).toBe(255);
     });
 
-    test('decodeDicom plus renderPixels preserves uncompressed interleaved RGB secondary-capture pixels', async ({ page }) => {
+    test('decodeDicom plus renderPixels preserves uncompressed interleaved RGB secondary-capture pixels', async ({
+        page,
+    }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -1755,23 +1756,20 @@ test.describe('Desktop library scanning', () => {
             state.baseWindowLevel = { center: null, width: null };
             state.pixelSpacing = null;
 
-            const byteArray = new Uint8Array([
-                255, 0, 0,
-                0, 255, 0
-            ]);
+            const byteArray = new Uint8Array([255, 0, 0, 0, 255, 0]);
             const dataSet = {
                 byteArray,
                 elements: {
                     x7fe00010: {
                         dataOffset: 0,
-                        length: byteArray.byteLength
-                    }
+                        length: byteArray.byteLength,
+                    },
                 },
                 string(tag) {
                     const values = {
                         x00020010: '1.2.840.10008.1.2.1',
                         x00080060: 'OT',
-                        x00280004: 'RGB'
+                        x00280004: 'RGB',
                     };
                     return values[tag] || '';
                 },
@@ -1782,10 +1780,10 @@ test.describe('Desktop library scanning', () => {
                         x00280100: 8,
                         x00280103: 0,
                         x00280002: 3,
-                        x00280006: 0
+                        x00280006: 0,
                     };
                     return values[tag] || 0;
-                }
+                },
             };
 
             const decoded = await rendering.decodeDicom(dataSet, 0);
@@ -1799,7 +1797,7 @@ test.describe('Desktop library scanning', () => {
                 planarConfiguration: decoded.planarConfiguration,
                 photometricInterpretation: decoded.photometricInterpretation,
                 info,
-                rgba
+                rgba,
             };
         });
 
@@ -1811,12 +1809,9 @@ test.describe('Desktop library scanning', () => {
             rows: 1,
             cols: 2,
             transferSyntax: '1.2.840.10008.1.2.1',
-            modality: 'OT'
+            modality: 'OT',
         });
-        expect(result.rgba).toEqual([
-            255, 0, 0, 255,
-            0, 255, 0, 255
-        ]);
+        expect(result.rgba).toEqual([255, 0, 0, 255, 0, 255, 0, 255]);
     });
 
     test('decodeDicom plus renderPixels preserves planar RGB pixels and keeps MR defaults intact', async ({ page }) => {
@@ -1828,24 +1823,20 @@ test.describe('Desktop library scanning', () => {
             state.baseWindowLevel = { center: null, width: null };
             state.pixelSpacing = null;
 
-            const byteArray = new Uint8Array([
-                255, 0,
-                0, 255,
-                0, 0
-            ]);
+            const byteArray = new Uint8Array([255, 0, 0, 255, 0, 0]);
             const dataSet = {
                 byteArray,
                 elements: {
                     x7fe00010: {
                         dataOffset: 0,
-                        length: byteArray.byteLength
-                    }
+                        length: byteArray.byteLength,
+                    },
                 },
                 string(tag) {
                     const values = {
                         x00020010: '1.2.840.10008.1.2.1',
                         x00080060: 'MR',
-                        x00280004: 'RGB'
+                        x00280004: 'RGB',
                     };
                     return values[tag] || '';
                 },
@@ -1856,10 +1847,10 @@ test.describe('Desktop library scanning', () => {
                         x00280100: 8,
                         x00280103: 0,
                         x00280002: 3,
-                        x00280006: 1
+                        x00280006: 1,
                     };
                     return values[tag] || 0;
-                }
+                },
             };
 
             const decoded = await rendering.decodeDicom(dataSet, 0);
@@ -1873,7 +1864,7 @@ test.describe('Desktop library scanning', () => {
                 planarConfiguration: decoded.planarConfiguration,
                 photometricInterpretation: decoded.photometricInterpretation,
                 info,
-                rgba
+                rgba,
             };
         });
 
@@ -1887,12 +1878,9 @@ test.describe('Desktop library scanning', () => {
             wc: 512,
             ww: 1024,
             transferSyntax: '1.2.840.10008.1.2.1',
-            modality: 'MR'
+            modality: 'MR',
         });
-        expect(result.rgba).toEqual([
-            255, 0, 0, 255,
-            0, 255, 0, 255
-        ]);
+        expect(result.rgba).toEqual([255, 0, 0, 255, 0, 255, 0, 255]);
     });
 
     test('decodeNative rejects native payloads whose sample count does not match the geometry', async ({ page }) => {
@@ -1912,22 +1900,26 @@ test.describe('Desktop library scanning', () => {
                 windowWidth: 100,
                 rescaleSlope: 1,
                 rescaleIntercept: 0,
-                pixelData: new Uint16Array([10, 20, 30])
+                pixelData: new Uint16Array([10, 20, 30]),
             });
 
             try {
-                await app.rendering.decodeNative({
-                    string(tag) {
-                        const values = {
-                            x00020010: '1.2.840.10008.1.2.1',
-                            x00080060: 'CT',
-                            x00280004: 'MONOCHROME2',
-                            x00281050: '50',
-                            x00281051: '100'
-                        };
-                        return values[tag] || '';
-                    }
-                }, '/library/bad-native.dcm', 0);
+                await app.rendering.decodeNative(
+                    {
+                        string(tag) {
+                            const values = {
+                                x00020010: '1.2.840.10008.1.2.1',
+                                x00080060: 'CT',
+                                x00280004: 'MONOCHROME2',
+                                x00281050: '50',
+                                x00281051: '100',
+                            };
+                            return values[tag] || '';
+                        },
+                    },
+                    '/library/bad-native.dcm',
+                    0,
+                );
                 return null;
             } catch (error) {
                 return String(error?.message || error);
@@ -1952,8 +1944,8 @@ test.describe('Desktop library scanning', () => {
                     elements: {
                         x7fe00010: {
                             dataOffset: 0,
-                            length: buffer.byteLength
-                        }
+                            length: buffer.byteLength,
+                        },
                     },
                     string(tag) {
                         const values = {
@@ -1964,7 +1956,7 @@ test.describe('Desktop library scanning', () => {
                             x00281050: '128',
                             x00281051: '256',
                             x00281052: '0',
-                            x00281053: '1'
+                            x00281053: '1',
                         };
                         return values[tag] || '';
                     },
@@ -1974,10 +1966,10 @@ test.describe('Desktop library scanning', () => {
                             x00280011: 4,
                             x00280100: 16,
                             x00280103: 0,
-                            x00280002: 1
+                            x00280002: 1,
                         };
                         return values[tag];
-                    }
+                    },
                 };
             }
 
@@ -2007,7 +1999,7 @@ test.describe('Desktop library scanning', () => {
                 splitBaseWindowLevel,
                 wrapperBaseWindowLevel: state.baseWindowLevel,
                 splitPixelSpacing,
-                wrapperPixelSpacing: state.pixelSpacing
+                wrapperPixelSpacing: state.pixelSpacing,
             };
         });
 
@@ -2028,8 +2020,8 @@ test.describe('Desktop library scanning', () => {
                 sliceLocation: 12.34,
                 source: {
                     kind: 'path',
-                    path: '/library/cached-decoded.dcm'
-                }
+                    path: '/library/cached-decoded.dcm',
+                },
             };
             const cacheKey = app.sources.getSliceCacheKey(slice, 0);
             const decoded = {
@@ -2051,17 +2043,17 @@ test.describe('Desktop library scanning', () => {
                 pixelSpacing: { row: 0.5, col: 0.25 },
                 skipWindowLevel: false,
                 isBlank: false,
-                pixelData: new Uint16Array(Array.from({ length: 16 }, (_, index) => index * 200))
+                pixelData: new Uint16Array(Array.from({ length: 16 }, (_, index) => index * 200)),
             };
             let readFileCalls = 0;
             let nativeDecodeCalls = 0;
 
             app.state.currentStudy = {
-                studyInstanceUid: 'study-1'
+                studyInstanceUid: 'study-1',
             };
             app.state.currentSeries = {
                 seriesInstanceUid: 'series-1',
-                slices: [slice]
+                slices: [slice],
             };
             // Start "between" slices so loadSlice still renders the cached target instead of
             // short-circuiting the already-current fast path.
@@ -2107,19 +2099,14 @@ test.describe('Desktop library scanning', () => {
                     hasPixelData: ArrayBuffer.isView(cached?.pixelData),
                     hasByteArray: !!cached?.byteArray,
                     hasElements: !!cached?.elements,
-                    sameObject: cached === decoded
-                }
+                    sameObject: cached === decoded,
+                },
             };
         });
 
         expect(result.readFileCalls).toBe(0);
         expect(result.nativeDecodeCalls).toBe(0);
-        expect(result.firstChannel).toEqual([
-            0, 17, 34, 51,
-            68, 85, 102, 119,
-            136, 153, 170, 187,
-            204, 221, 238, 255
-        ]);
+        expect(result.firstChannel).toEqual([0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]);
         expect(result.baseWindowLevel).toEqual({ center: 1500, width: 3000 });
         expect(result.pixelSpacing).toEqual({ row: 0.5, col: 0.25 });
         expect(result.metadataText).toContain('CT');
@@ -2128,7 +2115,7 @@ test.describe('Desktop library scanning', () => {
             hasPixelData: true,
             hasByteArray: false,
             hasElements: false,
-            sameObject: true
+            sameObject: true,
         });
     });
 
@@ -2144,8 +2131,8 @@ test.describe('Desktop library scanning', () => {
                 sopInstanceUid: '1.2.826.0.1.3680043.2.1127.1',
                 source: {
                     kind: 'path',
-                    path: '/library/native-header-success.dcm'
-                }
+                    path: '/library/native-header-success.dcm',
+                },
             };
             const cacheKey = app.sources.getSliceCacheKey(slice, 0);
             let readFileCalls = 0;
@@ -2156,11 +2143,11 @@ test.describe('Desktop library scanning', () => {
             const originalReadHeader = app.sources.readDesktopRenderHeaderDataSet;
             const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
             app.state.currentStudy = {
-                studyInstanceUid: 'study-header'
+                studyInstanceUid: 'study-header',
             };
             app.state.currentSeries = {
                 seriesInstanceUid: 'series-header',
-                slices: [slice]
+                slices: [slice],
             };
             app.state.currentSliceIndex = 0;
             app.state.windowLevel = { center: null, width: null };
@@ -2182,16 +2169,16 @@ test.describe('Desktop library scanning', () => {
                             x00280004: 'MONOCHROME2',
                             x00280030: '0.5\\0.25',
                             x00281053: '1',
-                            x00281052: '-1024'
+                            x00281052: '-1024',
                         };
                         return values[tag] || '';
                     },
                     uint16(tag) {
                         const values = {
-                            x00280101: 16
+                            x00280101: 16,
                         };
                         return values[tag] || 0;
-                    }
+                    },
                 };
             };
             app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
@@ -2209,7 +2196,7 @@ test.describe('Desktop library scanning', () => {
                     windowWidth: 400,
                     rescaleSlope: 1,
                     rescaleIntercept: -1024,
-                    pixelData: new Uint16Array([1100, 1500])
+                    pixelData: new Uint16Array([1100, 1500]),
                 };
             };
 
@@ -2231,8 +2218,8 @@ test.describe('Desktop library scanning', () => {
                 cachedSummary: {
                     hasPixelData: ArrayBuffer.isView(cached?.pixelData),
                     hasByteArray: !!cached?.byteArray,
-                    hasElements: !!cached?.elements
-                }
+                    hasElements: !!cached?.elements,
+                },
             };
         });
 
@@ -2245,7 +2232,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.cachedSummary).toEqual({
             hasPixelData: true,
             hasByteArray: false,
-            hasElements: false
+            hasElements: false,
         });
     });
 
@@ -2255,14 +2242,10 @@ test.describe('Desktop library scanning', () => {
 
         const result = await page.evaluate(async () => {
             const app = window.DicomViewerApp;
-            const paths = [
-                '/tmp/rapid-load-0.dcm',
-                '/tmp/rapid-load-1.dcm',
-                '/tmp/rapid-load-2.dcm'
-            ];
+            const paths = ['/tmp/rapid-load-0.dcm', '/tmp/rapid-load-1.dcm', '/tmp/rapid-load-2.dcm'];
             const slices = paths.map((path, index) => ({
                 source: { kind: 'path', path },
-                sopInstanceUid: `1.2.826.0.1.3680043.2.1125.${index}`
+                sopInstanceUid: `1.2.826.0.1.3680043.2.1125.${index}`,
             }));
             const readResolvers = new Map();
             const readCalls = [];
@@ -2271,7 +2254,7 @@ test.describe('Desktop library scanning', () => {
             const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
             const originalDicomParser = window.dicomParser;
 
-            const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+            const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
             const waitFor = async (predicate, message) => {
                 for (let attempt = 0; attempt < 40; attempt += 1) {
                     if (predicate()) return;
@@ -2281,11 +2264,11 @@ test.describe('Desktop library scanning', () => {
             };
 
             app.state.currentStudy = {
-                studyInstanceUid: 'study-rapid'
+                studyInstanceUid: 'study-rapid',
             };
             app.state.currentSeries = {
                 seriesInstanceUid: 'series-rapid',
-                slices
+                slices,
             };
             app.state.currentSliceIndex = 0;
             app.state.windowLevel = { center: null, width: null };
@@ -2293,10 +2276,11 @@ test.describe('Desktop library scanning', () => {
             app.state.pixelSpacing = null;
             app.state.sliceCache.clear();
 
-            window.__TAURI__.fs.readFile = async (path) => new Promise(resolve => {
-                readCalls.push(path);
-                readResolvers.set(path, () => resolve(Uint8Array.from([1, 2, 3, 4])));
-            });
+            window.__TAURI__.fs.readFile = async (path) =>
+                new Promise((resolve) => {
+                    readCalls.push(path);
+                    readResolvers.set(path, () => resolve(Uint8Array.from([1, 2, 3, 4])));
+                });
             window.dicomParser = {
                 ...originalDicomParser,
                 parseDicom() {
@@ -2305,18 +2289,18 @@ test.describe('Desktop library scanning', () => {
                             const values = {
                                 x00020010: '1.2.840.10008.1.2.4.90',
                                 x00080060: 'RF',
-                                x00280004: 'MONOCHROME2'
+                                x00280004: 'MONOCHROME2',
                             };
                             return values[tag] || '';
                         },
                         uint16(tag) {
                             const values = {
-                                x00280101: 16
+                                x00280101: 16,
                             };
                             return values[tag] || 0;
-                        }
+                        },
                     };
-                }
+                },
             };
             app.desktopDecode.decodeFrameWithPixels = async (path) => {
                 decodeCalls.push(path);
@@ -2334,7 +2318,7 @@ test.describe('Desktop library scanning', () => {
                     windowWidth: 256,
                     rescaleSlope: 1,
                     rescaleIntercept: 0,
-                    pixelData: new Uint16Array([intensity])
+                    pixelData: new Uint16Array([intensity]),
                 };
             };
 
@@ -2360,14 +2344,12 @@ test.describe('Desktop library scanning', () => {
                 readCalls,
                 decodeCalls,
                 currentSliceIndex: app.state.currentSliceIndex,
-                renderedPixel
+                renderedPixel,
             };
         });
 
         expect(result.readCalls[0]).toBe('/tmp/rapid-load-2.dcm');
-        expect(result.decodeCalls).toEqual([
-            '/tmp/rapid-load-2.dcm'
-        ]);
+        expect(result.decodeCalls).toEqual(['/tmp/rapid-load-2.dcm']);
         expect(result.currentSliceIndex).toBe(2);
     });
 
@@ -2377,14 +2359,10 @@ test.describe('Desktop library scanning', () => {
 
         const result = await page.evaluate(async () => {
             const app = window.DicomViewerApp;
-            const paths = [
-                '/tmp/preload-stop-0.dcm',
-                '/tmp/preload-stop-1.dcm',
-                '/tmp/preload-stop-2.dcm'
-            ];
+            const paths = ['/tmp/preload-stop-0.dcm', '/tmp/preload-stop-1.dcm', '/tmp/preload-stop-2.dcm'];
             const slices = paths.map((path, index) => ({
                 source: { kind: 'path', path },
-                sopInstanceUid: `1.2.826.0.1.3680043.2.1126.${index}`
+                sopInstanceUid: `1.2.826.0.1.3680043.2.1126.${index}`,
             }));
             const readResolvers = new Map();
             const readCalls = [];
@@ -2393,7 +2371,7 @@ test.describe('Desktop library scanning', () => {
             const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
             const originalDicomParser = window.dicomParser;
 
-            const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+            const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
             const waitFor = async (predicate, message) => {
                 for (let attempt = 0; attempt < 40; attempt += 1) {
                     if (predicate()) return;
@@ -2403,11 +2381,11 @@ test.describe('Desktop library scanning', () => {
             };
 
             app.state.currentStudy = {
-                studyInstanceUid: 'study-preload'
+                studyInstanceUid: 'study-preload',
             };
             app.state.currentSeries = {
                 seriesInstanceUid: 'series-preload',
-                slices
+                slices,
             };
             app.state.currentSliceIndex = 0;
             app.state.windowLevel = { center: null, width: null };
@@ -2415,10 +2393,11 @@ test.describe('Desktop library scanning', () => {
             app.state.pixelSpacing = null;
             app.state.sliceCache.clear();
 
-            window.__TAURI__.fs.readFile = async (path) => new Promise(resolve => {
-                readCalls.push(path);
-                readResolvers.set(path, () => resolve(Uint8Array.from([5, 6, 7, 8])));
-            });
+            window.__TAURI__.fs.readFile = async (path) =>
+                new Promise((resolve) => {
+                    readCalls.push(path);
+                    readResolvers.set(path, () => resolve(Uint8Array.from([5, 6, 7, 8])));
+                });
             window.dicomParser = {
                 ...originalDicomParser,
                 parseDicom() {
@@ -2427,18 +2406,18 @@ test.describe('Desktop library scanning', () => {
                             const values = {
                                 x00020010: '1.2.840.10008.1.2.4.90',
                                 x00080060: 'RF',
-                                x00280004: 'MONOCHROME2'
+                                x00280004: 'MONOCHROME2',
                             };
                             return values[tag] || '';
                         },
                         uint16(tag) {
                             const values = {
-                                x00280101: 16
+                                x00280101: 16,
                             };
                             return values[tag] || 0;
-                        }
+                        },
                     };
-                }
+                },
             };
             app.desktopDecode.decodeFrameWithPixels = async (path) => {
                 decodeCalls.push(path);
@@ -2456,7 +2435,7 @@ test.describe('Desktop library scanning', () => {
                     windowWidth: 256,
                     rescaleSlope: 1,
                     rescaleIntercept: 0,
-                    pixelData: new Uint16Array([intensity])
+                    pixelData: new Uint16Array([intensity]),
                 };
             };
 
@@ -2487,19 +2466,16 @@ test.describe('Desktop library scanning', () => {
                 readCalls,
                 decodeCalls,
                 currentSliceIndex: app.state.currentSliceIndex,
-                renderedPixel
+                renderedPixel,
             };
         });
 
         expect(result.readCalls.slice(0, 3)).toEqual([
             '/tmp/preload-stop-0.dcm',
             '/tmp/preload-stop-1.dcm',
-            '/tmp/preload-stop-2.dcm'
+            '/tmp/preload-stop-2.dcm',
         ]);
-        expect(result.decodeCalls).toEqual([
-            '/tmp/preload-stop-0.dcm',
-            '/tmp/preload-stop-2.dcm'
-        ]);
+        expect(result.decodeCalls).toEqual(['/tmp/preload-stop-0.dcm', '/tmp/preload-stop-2.dcm']);
         expect(result.currentSliceIndex).toBe(2);
     });
 
@@ -2508,8 +2484,8 @@ test.describe('Desktop library scanning', () => {
             debugSettings: {
                 decodeMode: 'js',
                 preloadMode: 'off',
-                nativeDecodeDebug: false
-            }
+                nativeDecodeDebug: false,
+            },
         });
         await page.goto(HOME_URL);
 
@@ -2520,30 +2496,27 @@ test.describe('Desktop library scanning', () => {
                 {
                     source: { kind: 'path', path: sharedPath },
                     frameIndex: 0,
-                    sopInstanceUid: '1.2.826.0.1.3680043.2.1128.0'
+                    sopInstanceUid: '1.2.826.0.1.3680043.2.1128.0',
                 },
                 {
                     source: { kind: 'path', path: sharedPath },
                     frameIndex: 1,
-                    sopInstanceUid: '1.2.826.0.1.3680043.2.1128.1'
-                }
+                    sopInstanceUid: '1.2.826.0.1.3680043.2.1128.1',
+                },
             ];
             const readCalls = [];
             let parseCalls = 0;
             const originalReadFile = window.__TAURI__.fs.readFile;
             const originalDicomParser = window.dicomParser;
 
-            const frameBytes = new Uint8Array([
-                0x10, 0x00,
-                0x80, 0x00
-            ]);
+            const frameBytes = new Uint8Array([0x10, 0x00, 0x80, 0x00]);
 
             app.state.currentStudy = {
-                studyInstanceUid: 'study-multiframe'
+                studyInstanceUid: 'study-multiframe',
             };
             app.state.currentSeries = {
                 seriesInstanceUid: 'series-multiframe',
-                slices
+                slices,
             };
             app.state.currentSliceIndex = 0;
             app.state.windowLevel = { center: null, width: null };
@@ -2559,23 +2532,20 @@ test.describe('Desktop library scanning', () => {
                 ...originalDicomParser,
                 parseDicom() {
                     parseCalls += 1;
-                    const byteArray = new Uint8Array([
-                        0x10, 0x00,
-                        0x80, 0x00
-                    ]);
+                    const byteArray = new Uint8Array([0x10, 0x00, 0x80, 0x00]);
                     return {
                         byteArray,
                         elements: {
                             x7fe00010: {
                                 dataOffset: 0,
-                                length: 4
-                            }
+                                length: 4,
+                            },
                         },
                         string(tag) {
                             const values = {
                                 x00020010: '1.2.840.10008.1.2.1',
                                 x00080060: 'XA',
-                                x00280004: 'MONOCHROME2'
+                                x00280004: 'MONOCHROME2',
                             };
                             return values[tag] || '';
                         },
@@ -2587,12 +2557,12 @@ test.describe('Desktop library scanning', () => {
                                 x00280100: 16,
                                 x00280101: 16,
                                 x00280103: 0,
-                                x00280002: 1
+                                x00280002: 1,
                             };
                             return values[tag] || 0;
-                        }
+                        },
                     };
-                }
+                },
             };
 
             try {
@@ -2606,13 +2576,11 @@ test.describe('Desktop library scanning', () => {
             return {
                 readCalls,
                 parseCalls,
-                currentSliceIndex: app.state.currentSliceIndex
+                currentSliceIndex: app.state.currentSliceIndex,
             };
         });
 
-        expect(result.readCalls).toEqual([
-            '/tmp/multiframe-shared.dcm'
-        ]);
+        expect(result.readCalls).toEqual(['/tmp/multiframe-shared.dcm']);
         expect(result.parseCalls).toBe(1);
         expect(result.currentSliceIndex).toBe(1);
     });
@@ -2622,20 +2590,17 @@ test.describe('Desktop library scanning', () => {
             debugSettings: {
                 decodeMode: 'auto',
                 preloadMode: 'off',
-                nativeDecodeDebug: false
-            }
+                nativeDecodeDebug: false,
+            },
         });
         await page.goto(HOME_URL);
 
         const result = await page.evaluate(async () => {
             const app = window.DicomViewerApp;
-            const paths = [
-                '/tmp/preload-off-0.dcm',
-                '/tmp/preload-off-1.dcm'
-            ];
+            const paths = ['/tmp/preload-off-0.dcm', '/tmp/preload-off-1.dcm'];
             const slices = paths.map((path, index) => ({
                 source: { kind: 'path', path },
-                sopInstanceUid: `1.2.826.0.1.3680043.2.1127.${index}`
+                sopInstanceUid: `1.2.826.0.1.3680043.2.1127.${index}`,
             }));
             const readResolvers = new Map();
             const readCalls = [];
@@ -2644,7 +2609,7 @@ test.describe('Desktop library scanning', () => {
             const originalNativeDecode = app.desktopDecode.decodeFrameWithPixels;
             const originalDicomParser = window.dicomParser;
 
-            const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+            const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
             const waitFor = async (predicate, message) => {
                 for (let attempt = 0; attempt < 40; attempt += 1) {
                     if (predicate()) return;
@@ -2654,11 +2619,11 @@ test.describe('Desktop library scanning', () => {
             };
 
             app.state.currentStudy = {
-                studyInstanceUid: 'study-preload-off'
+                studyInstanceUid: 'study-preload-off',
             };
             app.state.currentSeries = {
                 seriesInstanceUid: 'series-preload-off',
-                slices
+                slices,
             };
             app.state.currentSliceIndex = 0;
             app.state.windowLevel = { center: null, width: null };
@@ -2666,10 +2631,11 @@ test.describe('Desktop library scanning', () => {
             app.state.pixelSpacing = null;
             app.state.sliceCache.clear();
 
-            window.__TAURI__.fs.readFile = async (path) => new Promise(resolve => {
-                readCalls.push(path);
-                readResolvers.set(path, () => resolve(Uint8Array.from([9, 10, 11, 12])));
-            });
+            window.__TAURI__.fs.readFile = async (path) =>
+                new Promise((resolve) => {
+                    readCalls.push(path);
+                    readResolvers.set(path, () => resolve(Uint8Array.from([9, 10, 11, 12])));
+                });
             window.dicomParser = {
                 ...originalDicomParser,
                 parseDicom() {
@@ -2678,18 +2644,18 @@ test.describe('Desktop library scanning', () => {
                             const values = {
                                 x00020010: '1.2.840.10008.1.2.4.90',
                                 x00080060: 'RF',
-                                x00280004: 'MONOCHROME2'
+                                x00280004: 'MONOCHROME2',
                             };
                             return values[tag] || '';
                         },
                         uint16(tag) {
                             const values = {
-                                x00280101: 16
+                                x00280101: 16,
                             };
                             return values[tag] || 0;
-                        }
+                        },
                     };
-                }
+                },
             };
             app.desktopDecode.decodeFrameWithPixels = async (path) => {
                 decodeCalls.push(path);
@@ -2706,7 +2672,7 @@ test.describe('Desktop library scanning', () => {
                     windowWidth: 256,
                     rescaleSlope: 1,
                     rescaleIntercept: 0,
-                    pixelData: new Uint16Array([path.endsWith('0.dcm') ? 72 : 144])
+                    pixelData: new Uint16Array([path.endsWith('0.dcm') ? 72 : 144]),
                 };
             };
 
@@ -2727,18 +2693,14 @@ test.describe('Desktop library scanning', () => {
                 preloadMode: app.rendering.getActivePreloadMode(),
                 preloadEnabled: app.rendering.isViewerPreloadEnabled(),
                 readCalls,
-                decodeCalls
+                decodeCalls,
             };
         });
 
         expect(result.preloadMode).toBe('off');
         expect(result.preloadEnabled).toBe(false);
-        expect(result.readCalls).toEqual([
-            '/tmp/preload-off-0.dcm'
-        ]);
-        expect(result.decodeCalls).toEqual([
-            '/tmp/preload-off-0.dcm'
-        ]);
+        expect(result.readCalls).toEqual(['/tmp/preload-off-0.dcm']);
+        expect(result.decodeCalls).toEqual(['/tmp/preload-off-0.dcm']);
     });
 
     test('decodeWithFallback uses native-first routing for JPEG 2000 RF desktop slices', async ({ page }) => {
@@ -2768,7 +2730,7 @@ test.describe('Desktop library scanning', () => {
                     rescaleSlope: 1,
                     rescaleIntercept: 0,
                     pixelDataLength: 4,
-                    pixelData: new Uint16Array([100, 200])
+                    pixelData: new Uint16Array([100, 200]),
                 };
             };
 
@@ -2780,21 +2742,21 @@ test.describe('Desktop library scanning', () => {
                     const values = {
                         x00020010: '1.2.840.10008.1.2.4.90',
                         x00080060: 'RF',
-                        x00280004: 'MONOCHROME2'
+                        x00280004: 'MONOCHROME2',
                     };
                     return values[tag] || '';
                 },
                 uint16() {
                     return 0;
-                }
+                },
             };
 
             const decoded = await app.rendering.decodeWithFallback(dataSet, 0, {
                 frameIndex: 0,
                 source: {
                     kind: 'path',
-                    path: '/risk/rf-j2k.dcm'
-                }
+                    path: '/risk/rf-j2k.dcm',
+                },
             });
 
             return {
@@ -2802,7 +2764,7 @@ test.describe('Desktop library scanning', () => {
                 nativeCalls,
                 pixelValues: Array.from(decoded.pixelData),
                 modality: decoded.modality,
-                transferSyntax: decoded.transferSyntax
+                transferSyntax: decoded.transferSyntax,
             };
         });
 
@@ -2810,8 +2772,8 @@ test.describe('Desktop library scanning', () => {
         expect(result.nativeCalls).toEqual([
             {
                 path: '/risk/rf-j2k.dcm',
-                frameIndex: 0
-            }
+                frameIndex: 0,
+            },
         ]);
         expect(result.pixelValues).toEqual([100, 200]);
         expect(result.modality).toBe('RF');
@@ -2819,7 +2781,9 @@ test.describe('Desktop library scanning', () => {
         expect(consoleMessages.some((message) => message.includes('No pixel data element found'))).toBe(false);
     });
 
-    test('decodeWithFallback uses native-first routing for uncompressed multi-frame XA desktop slices', async ({ page }) => {
+    test('decodeWithFallback uses native-first routing for uncompressed multi-frame XA desktop slices', async ({
+        page,
+    }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
@@ -2841,7 +2805,7 @@ test.describe('Desktop library scanning', () => {
                     rescaleSlope: 1,
                     rescaleIntercept: 0,
                     pixelDataLength: 8,
-                    pixelData: new Uint16Array([100, 200, 300, 400])
+                    pixelData: new Uint16Array([100, 200, 300, 400]),
                 };
             };
 
@@ -2851,7 +2815,7 @@ test.describe('Desktop library scanning', () => {
                     const values = {
                         x00020010: '1.2.840.10008.1.2.1',
                         x00080060: 'XA',
-                        x00280004: 'MONOCHROME2'
+                        x00280004: 'MONOCHROME2',
                     };
                     return values[tag] || '';
                 },
@@ -2866,15 +2830,15 @@ test.describe('Desktop library scanning', () => {
                         return 37;
                     }
                     return undefined;
-                }
+                },
             };
 
             const slice = {
                 frameIndex: 12,
                 source: {
                     kind: 'path',
-                    path: '/risk/xa-multiframe.dcm'
-                }
+                    path: '/risk/xa-multiframe.dcm',
+                },
             };
 
             const decoded = await app.rendering.decodeWithFallback(dataSet, 12, slice);
@@ -2883,7 +2847,7 @@ test.describe('Desktop library scanning', () => {
                 defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'XA'),
                 effectiveRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'XA', slice, { frameCount: 37 }),
                 nativeCalls,
-                pixelValues: Array.from(decoded.pixelData)
+                pixelValues: Array.from(decoded.pixelData),
             };
         });
 
@@ -2892,8 +2856,8 @@ test.describe('Desktop library scanning', () => {
         expect(result.nativeCalls).toEqual([
             {
                 path: '/risk/xa-multiframe.dcm',
-                frameIndex: 12
-            }
+                frameIndex: 12,
+            },
         ]);
         expect(result.pixelValues).toEqual([100, 200, 300, 400]);
     });
@@ -2903,36 +2867,8 @@ test.describe('Desktop library scanning', () => {
             debugSettings: {
                 decodeMode: 'js',
                 preloadMode: 'auto',
-                nativeDecodeDebug: false
-            }
-        });
-        await page.goto(HOME_URL);
-
-        const result = await page.evaluate(() => {
-            const app = window.DicomViewerApp;
-            return {
-                mode: app.rendering.getActiveDecodeMode(),
-                preloadMode: app.rendering.getActivePreloadMode(),
-                riskyRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
-                defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT')
-            };
-        });
-
-        expect(result).toEqual({
-            mode: 'js',
-            preloadMode: 'auto',
-            riskyRoute: 'js-first',
-            defaultRoute: 'js-first'
-        });
-    });
-
-    test('desktop debug settings can force native decode routing', async ({ page }) => {
-        await installMockDesktop(page, {
-            debugSettings: {
-                decodeMode: 'native',
-                preloadMode: 'auto',
-                nativeDecodeDebug: true
-            }
+                nativeDecodeDebug: false,
+            },
         });
         await page.goto(HOME_URL);
 
@@ -2943,7 +2879,35 @@ test.describe('Desktop library scanning', () => {
                 preloadMode: app.rendering.getActivePreloadMode(),
                 riskyRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
                 defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT'),
-                nativeDecodeDebug: !!window.__DICOM_VIEWER_DEBUG__?.nativeDecodeDebug
+            };
+        });
+
+        expect(result).toEqual({
+            mode: 'js',
+            preloadMode: 'auto',
+            riskyRoute: 'js-first',
+            defaultRoute: 'js-first',
+        });
+    });
+
+    test('desktop debug settings can force native decode routing', async ({ page }) => {
+        await installMockDesktop(page, {
+            debugSettings: {
+                decodeMode: 'native',
+                preloadMode: 'auto',
+                nativeDecodeDebug: true,
+            },
+        });
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(() => {
+            const app = window.DicomViewerApp;
+            return {
+                mode: app.rendering.getActiveDecodeMode(),
+                preloadMode: app.rendering.getActivePreloadMode(),
+                riskyRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.4.90', 'RF'),
+                defaultRoute: app.rendering.getDecodeRoute('1.2.840.10008.1.2.1', 'CT'),
+                nativeDecodeDebug: !!window.__DICOM_VIEWER_DEBUG__?.nativeDecodeDebug,
             };
         });
 
@@ -2952,7 +2916,7 @@ test.describe('Desktop library scanning', () => {
             preloadMode: 'auto',
             riskyRoute: 'native-first',
             defaultRoute: 'native-first',
-            nativeDecodeDebug: true
+            nativeDecodeDebug: true,
         });
     });
 
@@ -2962,8 +2926,8 @@ test.describe('Desktop library scanning', () => {
                 decodeMode: 'js',
                 preloadMode: 'off',
                 frontendDecodeTrace: true,
-                nativeDecodeDebug: false
-            }
+                nativeDecodeDebug: false,
+            },
         });
         await page.goto(HOME_URL);
 
@@ -2972,23 +2936,23 @@ test.describe('Desktop library scanning', () => {
             await app.rendering.emitDesktopDecodeTrace('trace-smoke', {
                 path: '.../trace.dcm',
                 frameIndex: 7,
-                note: 'forced-mode-smoke'
+                note: 'forced-mode-smoke',
             });
 
             return {
                 debug: {
                     decodeMode: window.__DICOM_VIEWER_DEBUG__?.decodeMode,
                     preloadMode: window.__DICOM_VIEWER_DEBUG__?.preloadMode,
-                    frontendDecodeTrace: !!window.__DICOM_VIEWER_DEBUG__?.frontendDecodeTrace
+                    frontendDecodeTrace: !!window.__DICOM_VIEWER_DEBUG__?.frontendDecodeTrace,
                 },
-                calls: window.__frontendDecodeTraceCalls.map((message) => JSON.parse(message))
+                calls: window.__frontendDecodeTraceCalls.map((message) => JSON.parse(message)),
             };
         });
 
         expect(result.debug).toEqual({
             decodeMode: 'js',
             preloadMode: 'off',
-            frontendDecodeTrace: true
+            frontendDecodeTrace: true,
         });
         expect(result.calls).toHaveLength(1);
         expect(result.calls[0]).toMatchObject({
@@ -2996,7 +2960,7 @@ test.describe('Desktop library scanning', () => {
             event: 'trace-smoke',
             path: '.../trace.dcm',
             frameIndex: 7,
-            note: 'forced-mode-smoke'
+            note: 'forced-mode-smoke',
         });
     });
 
@@ -3034,11 +2998,11 @@ test.describe('Desktop library scanning', () => {
                 transferSyntax: '1.2.840.10008.1.2.1',
                 mrMetadata: null,
                 pixelSpacing: null,
-                skipWindowLevel: false
+                skipWindowLevel: false,
             };
             const decodedB = {
                 ...decodedA,
-                pixelData: new Uint16Array([4095, 2048, 1024, 0])
+                pixelData: new Uint16Array([4095, 2048, 1024, 0]),
             };
 
             app.state.baseWindowLevel = { center: null, width: null };
@@ -3048,42 +3012,47 @@ test.describe('Desktop library scanning', () => {
 
             ctx.createImageData = originalCreateImageData;
             return {
-                createCalls
+                createCalls,
             };
         });
 
         expect(result.createCalls).toBe(1);
     });
 
-    test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({ page }) => {
+    test('encapsulated frame extraction falls back for single-frame files with an empty basic offset table', async ({
+        page,
+    }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
 
         const result = await page.evaluate(() => {
             const parser = globalThis.dicomParser || window.dicomParser || dicomParser;
             const byteArray = Uint8Array.from([
-                0xfe, 0xff, 0x00, 0xe0, 0x00, 0x00, 0x00, 0x00,
-                0xfe, 0xff, 0x00, 0xe0, 0x03, 0x00, 0x00, 0x00,
-                0x07, 0x08, 0x09
+                0xfe, 0xff, 0x00, 0xe0, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xff, 0x00, 0xe0, 0x03, 0x00, 0x00, 0x00, 0x07,
+                0x08, 0x09,
             ]);
 
-            const frame = window.DicomViewerApp.dicom.getEncapsulatedFrameData({
-                byteArrayParser: parser.littleEndianByteArrayParser,
-                byteArray,
-                string() {
-                    return '';
-                }
-            }, {
-                tag: 'x7fe00010',
-                dataOffset: 0,
-                encapsulatedPixelData: true,
-                hadUndefinedLength: true,
-                basicOffsetTable: [],
-                fragments: [{ offset: 0, position: 16, length: 3 }]
-            }, 0);
+            const frame = window.DicomViewerApp.dicom.getEncapsulatedFrameData(
+                {
+                    byteArrayParser: parser.littleEndianByteArrayParser,
+                    byteArray,
+                    string() {
+                        return '';
+                    },
+                },
+                {
+                    tag: 'x7fe00010',
+                    dataOffset: 0,
+                    encapsulatedPixelData: true,
+                    hadUndefinedLength: true,
+                    basicOffsetTable: [],
+                    fragments: [{ offset: 0, position: 16, length: 3 }],
+                },
+                0,
+            );
 
             return {
-                frame: Array.from(frame)
+                frame: Array.from(frame),
             };
         });
 
@@ -3095,12 +3064,12 @@ test.describe('Desktop library scanning', () => {
             initialConfig: {
                 folder: '/slow-library',
                 lastScan: '2026-03-07T12:00:00.000Z',
-                managedLibrary: false
+                managedLibrary: false,
             },
             dirs: {
-                '/slow-library': []
+                '/slow-library': [],
             },
-            readDirDelayMs: 500
+            readDirDelayMs: 500,
         });
 
         await page.goto(AUTOLOAD_URL);
@@ -3109,18 +3078,20 @@ test.describe('Desktop library scanning', () => {
         await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
     });
 
-    test('desktop library config falls back to the mirrored local config when native storage is unavailable', async ({ page }) => {
+    test('desktop library config falls back to the mirrored local config when native storage is unavailable', async ({
+        page,
+    }) => {
         await installMockDesktop(page, {
             initialConfig: {
                 folder: '/slow-library',
                 lastScan: '2026-03-07T12:00:00.000Z',
-                managedLibrary: false
+                managedLibrary: false,
             },
             dirs: {
-                '/slow-library': []
+                '/slow-library': [],
             },
             readDirDelayMs: 500,
-            sqlLoadError: 'mock desktop sqlite unavailable'
+            sqlLoadError: 'mock desktop sqlite unavailable',
         });
 
         await page.goto(AUTOLOAD_URL);
@@ -3152,33 +3123,35 @@ test.describe('Desktop library scanning', () => {
                             {
                                 instanceNumber: 1,
                                 sliceLocation: 0,
-                                source: { kind: 'path', path: '/slow-library/image.dcm' }
-                            }
-                        ]
-                    }
-                }
-            }
+                                source: { kind: 'path', path: '/slow-library/image.dcm' },
+                            },
+                        ],
+                    },
+                },
+            },
         };
-        const snapshotBytes = new TextEncoder().encode(JSON.stringify({
-            version: 1,
-            folder: '/slow-library',
-            savedAt: '2026-03-22T00:00:00.000Z',
-            studies: cachedStudies
-        }));
+        const snapshotBytes = new TextEncoder().encode(
+            JSON.stringify({
+                version: 1,
+                folder: '/slow-library',
+                savedAt: '2026-03-22T00:00:00.000Z',
+                studies: cachedStudies,
+            }),
+        );
 
         await installMockDesktop(page, {
             initialConfig: {
                 folder: '/slow-library',
                 lastScan: '2026-03-07T12:00:00.000Z',
-                managedLibrary: false
+                managedLibrary: false,
             },
             dirs: {
-                '/slow-library': []
+                '/slow-library': [],
             },
             readDirDelayMs: 3000,
             storedFiles: {
-                '/appdata/desktop-library-cache.json': snapshotBytes
-            }
+                '/appdata/desktop-library-cache.json': snapshotBytes,
+            },
         });
 
         await page.goto(AUTOLOAD_URL);
@@ -3215,12 +3188,12 @@ test.describe('Desktop library scanning', () => {
                                 {
                                     instanceNumber: 1,
                                     sliceLocation: 0,
-                                    source: { kind: 'path', path: '/library/image.dcm' }
-                                }
-                            ]
-                        }
-                    }
-                }
+                                    source: { kind: 'path', path: '/library/image.dcm' },
+                                },
+                            ],
+                        },
+                    },
+                },
             };
 
             await window.DicomViewerApp.desktopLibrary.saveCachedStudies('/library', studies);
@@ -3228,15 +3201,17 @@ test.describe('Desktop library scanning', () => {
             return {
                 loaded: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/library'),
                 mismatch: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/other-library'),
-                rawText: raw ? new TextDecoder().decode(Uint8Array.from(JSON.parse(raw))) : ''
+                rawText: raw ? new TextDecoder().decode(Uint8Array.from(JSON.parse(raw))) : '',
             };
         });
 
-        expect(result.loaded).toEqual(expect.objectContaining({
-            '1.2.840.cached.study': expect.objectContaining({
-                patientName: 'Roundtrip Patient'
-            })
-        }));
+        expect(result.loaded).toEqual(
+            expect.objectContaining({
+                '1.2.840.cached.study': expect.objectContaining({
+                    patientName: 'Roundtrip Patient',
+                }),
+            }),
+        );
         expect(result.mismatch).toBeNull();
         expect(result.rawText).toContain('"folder":"/library"');
     });
@@ -3244,8 +3219,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop auto-load does not mark empty folders as a successful scan', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/empty': []
-            }
+                '/empty': [],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3254,7 +3229,7 @@ test.describe('Desktop library scanning', () => {
             const app = window.DicomViewerApp;
             await app.desktopLibrary.saveConfig({
                 folder: '/empty',
-                lastScan: '2026-03-07T12:00:00.000Z'
+                lastScan: '2026-03-07T12:00:00.000Z',
             });
             await app.library.loadLibraryConfig();
             const files = await app.desktopLibrary.scanFolder('/empty');
@@ -3272,11 +3247,9 @@ test.describe('Desktop library scanning', () => {
     test('desktop loadStudies writes a timing report with final scan metrics', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
+                '/library': [{ name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }],
             },
-            readDirDelayMs: 15
+            readDirDelayMs: 15,
         });
 
         await page.goto(HOME_URL);
@@ -3288,7 +3261,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -3297,7 +3270,7 @@ test.describe('Desktop library scanning', () => {
             localStorage.setItem('dicom-viewer-debug-scan-timing', '1');
             window.__TAURI__.path.appDataDir = async () => '/appdata';
             window.__TAURI__.fs.readFile = async () => {
-                await new Promise(resolve => setTimeout(resolve, 5));
+                await new Promise((resolve) => setTimeout(resolve, 5));
                 return Uint8Array.from(dicomBytes);
             };
             window.__TAURI__.fs.mkdir = async (path, options) => {
@@ -3306,20 +3279,20 @@ test.describe('Desktop library scanning', () => {
             window.__TAURI__.fs.writeFile = async (path, data) => {
                 writes.push({
                     path,
-                    text: new TextDecoder().decode(data)
+                    text: new TextDecoder().decode(data),
                 });
             };
 
             const progress = [];
             const studies = await window.DicomViewerApp.desktopLibrary.loadStudies('/library', {
-                onProgress: (stats) => progress.push(stats)
+                onProgress: (stats) => progress.push(stats),
             });
 
             return {
                 studyCount: Object.keys(studies).length,
                 progress: progress.at(-1),
                 mkdirCalls,
-                writes
+                writes,
             };
         });
 
@@ -3328,7 +3301,7 @@ test.describe('Desktop library scanning', () => {
             discovered: 1,
             processed: 1,
             valid: 1,
-            complete: true
+            complete: true,
         });
         expect(result.progress.readDirMs).toBeGreaterThan(0);
         expect(result.progress.readFileMs).toBeGreaterThan(0);
@@ -3336,13 +3309,11 @@ test.describe('Desktop library scanning', () => {
         expect(result.progress.fullReadMs).toBeGreaterThan(0);
         expect(result.progress.parseMs).toBeGreaterThan(0);
         expect(result.progress.finalizeMs).toBeGreaterThanOrEqual(0);
-        expect(result.mkdirCalls).toEqual([
-            { path: '/appdata/reports', options: { recursive: true } }
-        ]);
+        expect(result.mkdirCalls).toEqual([{ path: '/appdata/reports', options: { recursive: true } }]);
         expect(result.writes).toHaveLength(2);
         expect(result.writes.map((entry) => entry.path)).toEqual([
             '/appdata/reports/scan-timing.json',
-            '/appdata/desktop-library-cache.json'
+            '/appdata/desktop-library-cache.json',
         ]);
 
         const report = JSON.parse(result.writes[0].text);
@@ -3354,7 +3325,7 @@ test.describe('Desktop library scanning', () => {
             headerReadMs: Math.round(result.progress.headerReadMs || 0),
             fullReadMs: Math.round(result.progress.fullReadMs || 0),
             parseMs: Math.round(result.progress.parseMs),
-            finalizeMs: Math.round(result.progress.finalizeMs)
+            finalizeMs: Math.round(result.progress.finalizeMs),
         });
         expect(report.totalMs).toBeGreaterThan(0);
     });
@@ -3362,10 +3333,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop loadStudies does not write a timing report by default', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3377,7 +3346,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -3391,13 +3360,13 @@ test.describe('Desktop library scanning', () => {
 
             const progress = [];
             const studies = await window.DicomViewerApp.desktopLibrary.loadStudies('/library', {
-                onProgress: (stats) => progress.push(stats)
+                onProgress: (stats) => progress.push(stats),
             });
 
             return {
                 studyCount: Object.keys(studies).length,
                 progress: progress.at(-1),
-                writes
+                writes,
             };
         });
 
@@ -3406,7 +3375,7 @@ test.describe('Desktop library scanning', () => {
             discovered: 1,
             processed: 1,
             valid: 1,
-            complete: true
+            complete: true,
         });
         expect(result.progress.readDirMs).toBeUndefined();
         expect(result.progress.readFileMs).toBeUndefined();
@@ -3421,10 +3390,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop loadStudies ignores timing report write failures', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3436,7 +3403,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -3450,7 +3417,7 @@ test.describe('Desktop library scanning', () => {
 
             const studies = await window.DicomViewerApp.desktopLibrary.loadStudies('/library');
             return {
-                studyCount: Object.keys(studies).length
+                studyCount: Object.keys(studies).length,
             };
         });
 
@@ -3460,10 +3427,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop path scan uses native header reads when the header chunk is sufficient', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3475,7 +3440,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -3488,7 +3453,7 @@ test.describe('Desktop library scanning', () => {
                     }
                     headerReads++;
                     return dicomBytes;
-                }
+                },
             };
             window.__TAURI__.fs.readFile = async () => {
                 fullReads++;
@@ -3499,7 +3464,7 @@ test.describe('Desktop library scanning', () => {
             return {
                 studyCount: Object.keys(studies).length,
                 headerReads,
-                fullReads
+                fullReads,
             };
         });
 
@@ -3511,10 +3476,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop path scan falls back for DICM-preamble header misses', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3526,7 +3489,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
             const dicmHeader = new Uint8Array(256 * 1024);
@@ -3544,7 +3507,7 @@ test.describe('Desktop library scanning', () => {
                     }
                     headerReads++;
                     return dicmHeader;
-                }
+                },
             };
             window.__TAURI__.fs.readFile = async () => {
                 fullReads++;
@@ -3557,7 +3520,7 @@ test.describe('Desktop library scanning', () => {
                 studyCount: Object.keys(studies).length,
                 imageCount: firstStudy?.imageCount || 0,
                 headerReads,
-                fullReads
+                fullReads,
             };
         });
 
@@ -3570,10 +3533,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop path scan falls back to a full read after exhausting staged header reads', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3585,7 +3546,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
             const truncatedHeader = new Uint8Array(256 * 1024);
@@ -3600,7 +3561,7 @@ test.describe('Desktop library scanning', () => {
                     }
                     headerReads++;
                     return truncatedHeader;
-                }
+                },
             };
             window.__TAURI__.fs.readFile = async () => {
                 fullReads++;
@@ -3611,7 +3572,7 @@ test.describe('Desktop library scanning', () => {
             return {
                 studyCount: Object.keys(studies).length,
                 headerReads,
-                fullReads
+                fullReads,
             };
         });
 
@@ -3623,10 +3584,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop path scan skips a full read for obvious non-DICOM header misses', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'not-dicom.bin', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'not-dicom.bin', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3642,7 +3601,7 @@ test.describe('Desktop library scanning', () => {
                     }
                     headerReads++;
                     return new Uint8Array(256 * 1024);
-                }
+                },
             };
             window.__TAURI__.fs.readFile = async () => {
                 fullReads++;
@@ -3653,7 +3612,7 @@ test.describe('Desktop library scanning', () => {
             return {
                 studyCount: Object.keys(studies).length,
                 headerReads,
-                fullReads
+                fullReads,
             };
         });
 
@@ -3665,10 +3624,8 @@ test.describe('Desktop library scanning', () => {
     test('desktop path scan skips obvious junk extensions before any header read', async ({ page }) => {
         await installMockDesktop(page, {
             dirs: {
-                '/library': [
-                    { name: 'notes.txt', isDirectory: false, isFile: true, isSymlink: false }
-                ]
-            }
+                '/library': [{ name: 'notes.txt', isDirectory: false, isFile: true, isSymlink: false }],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3694,7 +3651,7 @@ test.describe('Desktop library scanning', () => {
             return {
                 studyCount: Object.keys(studies).length,
                 headerReads,
-                fullReads
+                fullReads,
             };
         });
 
@@ -3712,12 +3669,12 @@ test.describe('Desktop library scanning', () => {
                     { name: 'Reviewer', isDirectory: true, isFile: false, isSymlink: false },
                     { name: 'Catapult', isDirectory: true, isFile: false, isSymlink: false },
                     { name: 'ddv', isDirectory: true, isFile: false, isSymlink: false },
-                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false }
-                ]
+                    { name: 'image.dcm', isDirectory: false, isFile: true, isSymlink: false },
+                ],
             },
             fileBytes: {
-                '/library/image.dcm': [1, 2, 3, 4]
-            }
+                '/library/image.dcm': [1, 2, 3, 4],
+            },
         });
 
         await page.goto(HOME_URL);
@@ -3739,15 +3696,15 @@ test.describe('Desktop library scanning', () => {
                 onProgress: (stats) => {
                     progress.push({
                         discovered: stats.discovered,
-                        processed: stats.processed
+                        processed: stats.processed,
                     });
-                }
+                },
             });
 
             return {
                 studyCount: Object.keys(studies).length,
                 headerReads,
-                finalProgress: progress.at(-1)
+                finalProgress: progress.at(-1),
             };
         });
 
@@ -3755,7 +3712,7 @@ test.describe('Desktop library scanning', () => {
         expect(result.headerReads).toBe(1);
         expect(result.finalProgress).toEqual({
             discovered: 1,
-            processed: 1
+            processed: 1,
         });
     });
 
@@ -3764,7 +3721,9 @@ test.describe('Desktop library scanning', () => {
     // also added to indexedFilePaths, causing the directory walk to skip them entirely.
     // Fix: processDesktopPathDicomDirFile no longer calls addSliceToStudies or adds paths
     // to indexedFilePaths. Every file referenced by DICOMDIR gets a normal header read.
-    test('DICOMDIR-referenced files are not skipped and produce series with a defined transferSyntax', async ({ page }) => {
+    test('DICOMDIR-referenced files are not skipped and produce series with a defined transferSyntax', async ({
+        page,
+    }) => {
         await installMockDesktop(page, {
             nativeScanManifest: [
                 {
@@ -3772,16 +3731,16 @@ test.describe('Desktop library scanning', () => {
                     name: 'DICOMDIR',
                     rootPath: '/library',
                     size: 128,
-                    modifiedMs: 111
+                    modifiedMs: 111,
                 },
                 {
                     path: '/library/images/IMG00001.dcm',
                     name: 'IMG00001.dcm',
                     rootPath: '/library',
                     size: 512,
-                    modifiedMs: 222
-                }
-            ]
+                    modifiedMs: 222,
+                },
+            ],
         });
 
         await page.goto(HOME_URL);
@@ -3806,12 +3765,12 @@ test.describe('Desktop library scanning', () => {
                             modality: 'CT',
                             sopInstanceUid: 'regression-sop-1',
                             instanceNumber: 1,
-                            sliceLocation: 0
-                        }
-                    }
+                            sliceLocation: 0,
+                        },
+                    },
                 ],
                 indexedPaths: ['/library/images/IMG00001.dcm'],
-                error: null
+                error: null,
             });
 
             // Fetch a real DICOM file to use as the file content so parseDicomMetadata
@@ -3821,7 +3780,7 @@ test.describe('Desktop library scanning', () => {
             const study = studiesPayload[0];
             const series = study.series[0];
             const dicomResponse = await fetch(
-                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+                `/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
             );
             const dicomBytes = new Uint8Array(await dicomResponse.arrayBuffer());
 
@@ -3843,7 +3802,7 @@ test.describe('Desktop library scanning', () => {
                 // If the bug is present, IMG00001.dcm is in indexedFilePaths and is skipped
                 // (readFile is never called for it). The fix ensures it IS read.
                 fileReadsByPath,
-                imageFileWasRead: (fileReadsByPath['/library/images/IMG00001.dcm'] || 0) > 0
+                imageFileWasRead: (fileReadsByPath['/library/images/IMG00001.dcm'] || 0) > 0,
             };
         });
 
@@ -3872,23 +3831,23 @@ test.describe('Desktop library scanning', () => {
                     name: 'DICOMDIR',
                     rootPath: '/library',
                     size: 128,
-                    modifiedMs: 111
+                    modifiedMs: 111,
                 },
                 {
                     path: '/library/IMG00001.dcm',
                     name: 'IMG00001.dcm',
                     rootPath: '/library',
                     size: 512,
-                    modifiedMs: 222
+                    modifiedMs: 222,
                 },
                 {
                     path: '/library/IMG00002.dcm',
                     name: 'IMG00002.dcm',
                     rootPath: '/library',
                     size: 512,
-                    modifiedMs: 333
-                }
-            ]
+                    modifiedMs: 333,
+                },
+            ],
         });
 
         await page.goto(HOME_URL);
@@ -3911,8 +3870,8 @@ test.describe('Desktop library scanning', () => {
                             modality: 'MR',
                             sopInstanceUid: 'skip-sop-1',
                             instanceNumber: 1,
-                            sliceLocation: 0
-                        }
+                            sliceLocation: 0,
+                        },
                     },
                     {
                         source: { kind: 'path', path: '/library/IMG00002.dcm' },
@@ -3927,12 +3886,12 @@ test.describe('Desktop library scanning', () => {
                             modality: 'MR',
                             sopInstanceUid: 'skip-sop-2',
                             instanceNumber: 2,
-                            sliceLocation: 0
-                        }
-                    }
+                            sliceLocation: 0,
+                        },
+                    },
                 ],
                 indexedPaths: ['/library/IMG00001.dcm', '/library/IMG00002.dcm'],
-                error: null
+                error: null,
             });
 
             const fileReadsByPath = {};
@@ -3949,7 +3908,7 @@ test.describe('Desktop library scanning', () => {
                 // If the bug is present, img files have 0 reads because indexedFilePaths blocked them.
                 img001Reads: fileReadsByPath['/library/IMG00001.dcm'] || 0,
                 img002Reads: fileReadsByPath['/library/IMG00002.dcm'] || 0,
-                dicomdirReads: fileReadsByPath['/library/DICOMDIR'] || 0
+                dicomdirReads: fileReadsByPath['/library/DICOMDIR'] || 0,
             };
         });
 
@@ -3966,8 +3925,8 @@ test.describe('Desktop library scanning', () => {
             '/root': [
                 { name: 'root-file.dcm', isDirectory: false, isFile: true, isSymlink: false },
                 { name: 'level01', isDirectory: true, isFile: false, isSymlink: false },
-                { name: 'loop', isDirectory: false, isFile: false, isSymlink: true }
-            ]
+                { name: 'loop', isDirectory: false, isFile: false, isSymlink: true },
+            ],
         };
 
         let currentPath = '/root';
@@ -3976,7 +3935,12 @@ test.describe('Desktop library scanning', () => {
             const nextLevel = `level${String(level + 1).padStart(2, '0')}`;
             const nextPath = joinPaths(currentPath, name);
             dirs[nextPath] = [
-                { name: `file-${String(level).padStart(2, '0')}.dcm`, isDirectory: false, isFile: true, isSymlink: false }
+                {
+                    name: `file-${String(level).padStart(2, '0')}.dcm`,
+                    isDirectory: false,
+                    isFile: true,
+                    isSymlink: false,
+                },
             ];
             if (level < 25) {
                 dirs[nextPath].push({ name: nextLevel, isDirectory: true, isFile: false, isSymlink: false });
@@ -4018,9 +3982,7 @@ test.describe('Desktop library Reveal in Finder', () => {
         await expect(studyDropdown).toBeHidden();
         await page.locator('.report-context-item').click();
 
-        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual([
-            '/library/study'
-        ]);
+        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual(['/library/study']);
 
         await studyRow.click();
         await expect(studyDropdown).toBeVisible();
@@ -4030,15 +3992,16 @@ test.describe('Desktop library Reveal in Finder', () => {
         await expect(page.locator('.report-context-menu')).toBeVisible();
         await page.locator('.report-context-item').click();
 
-        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual([
-            '/library/study',
-            '/library/study/series-a/IMG0001.dcm'
-        ]);
+        await expect
+            .poll(() => page.evaluate(() => window.__revealInvokeCalls.slice()))
+            .toEqual(['/library/study', '/library/study/series-a/IMG0001.dcm']);
 
         await expect(page.locator('#viewerView')).toBeHidden();
     });
 
-    test('report and series comment right-clicks suppress native context menus without triggering actions', async ({ page }) => {
+    test('report and series comment right-clicks suppress native context menus without triggering actions', async ({
+        page,
+    }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -4077,7 +4040,7 @@ test.describe('Desktop library Reveal in Finder', () => {
             return {
                 defaultPrevented: window.__reportTogglePrevented,
                 menuCount: document.querySelectorAll('.report-context-menu').length,
-                commentPanelDisplay: commentPanel.style.display
+                commentPanelDisplay: commentPanel.style.display,
             };
         });
 
@@ -4090,7 +4053,7 @@ test.describe('Desktop library Reveal in Finder', () => {
                 defaultPrevented: window.__seriesCommentTogglePrevented,
                 menuCount: document.querySelectorAll('.report-context-menu').length,
                 seriesCommentPanelDisplay: seriesCommentPanel.style.display,
-                viewerDisplay: document.querySelector('#viewerView').style.display
+                viewerDisplay: document.querySelector('#viewerView').style.display,
             };
         });
 
@@ -4098,14 +4061,14 @@ test.describe('Desktop library Reveal in Finder', () => {
             afterReportToggle: {
                 defaultPrevented: true,
                 menuCount: 0,
-                commentPanelDisplay: 'none'
+                commentPanelDisplay: 'none',
             },
             afterSeriesCommentToggle: {
                 defaultPrevented: true,
                 menuCount: 0,
                 seriesCommentPanelDisplay: 'none',
-                viewerDisplay: 'none'
-            }
+                viewerDisplay: 'none',
+            },
         });
     });
 
@@ -4120,7 +4083,7 @@ test.describe('Desktop library Reveal in Finder', () => {
             name: 'followup.pdf',
             type: 'pdf',
             size: 1024,
-            addedAt: 1710000005000
+            addedAt: 1710000005000,
         });
         await seedDesktopStudies(page, studies);
 
@@ -4141,9 +4104,7 @@ test.describe('Desktop library Reveal in Finder', () => {
 
             const originalContextMenuHandler = toggle.oncontextmenu;
             toggle.oncontextmenu = (event) => {
-                const result = originalContextMenuHandler
-                    ? originalContextMenuHandler.call(toggle, event)
-                    : undefined;
+                const result = originalContextMenuHandler ? originalContextMenuHandler.call(toggle, event) : undefined;
                 window.__reportTogglePrevented = event.defaultPrevented;
                 return result;
             };
@@ -4157,7 +4118,7 @@ test.describe('Desktop library Reveal in Finder', () => {
                 clickCount: window.__reportToggleClickCount,
                 defaultPrevented: window.__reportTogglePrevented,
                 menuCount: document.querySelectorAll('.report-context-menu').length,
-                panelDisplay: panel.style.display
+                panelDisplay: panel.style.display,
             };
         });
 
@@ -4165,7 +4126,7 @@ test.describe('Desktop library Reveal in Finder', () => {
             clickCount: 1,
             defaultPrevented: true,
             menuCount: 0,
-            panelDisplay: 'table-row'
+            panelDisplay: 'table-row',
         });
     });
 
@@ -4189,8 +4150,8 @@ test.describe('Desktop library Reveal in Finder', () => {
         await expect(page.locator('.report-context-item')).toHaveText('Reveal in Finder');
         await page.locator('.report-context-item').click();
 
-        await expect.poll(() => page.evaluate(() => window.__revealInvokeCalls.slice())).toEqual([
-            '/reports/report-1.pdf'
-        ]);
+        await expect
+            .poll(() => page.evaluate(() => window.__revealInvokeCalls.slice()))
+            .toEqual(['/reports/report-1.pdf']);
     });
 });

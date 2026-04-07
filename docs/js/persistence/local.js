@@ -68,7 +68,7 @@ const _NotesInternals = (() => {
                 description: '',
                 comments: [],
                 series: {},
-                reports: []
+                reports: [],
             };
             return store.studies[studyUid];
         }
@@ -85,7 +85,7 @@ const _NotesInternals = (() => {
         if (!studyEntry.series[seriesUid]) {
             studyEntry.series[seriesUid] = {
                 description: '',
-                comments: []
+                comments: [],
             };
             return studyEntry.series[seriesUid];
         }
@@ -135,7 +135,7 @@ const _NotesInternals = (() => {
         return {
             fs: tauri?.fs || null,
             path: tauri?.path || null,
-            core: tauri?.core || null
+            core: tauri?.core || null,
         };
     }
 
@@ -152,10 +152,10 @@ const _NotesInternals = (() => {
                     const entry = clone(ensureStudy(store, studyUid));
                     // Filter out tombstoned records (soft-deleted with deletedAt)
                     if (Array.isArray(entry.reports)) {
-                        entry.reports = entry.reports.filter(r => !r.deletedAt);
+                        entry.reports = entry.reports.filter((r) => !r.deletedAt);
                     }
                     if (Array.isArray(entry.comments)) {
-                        entry.comments = entry.comments.filter(c => !c.deletedAt);
+                        entry.comments = entry.comments.filter((c) => !c.deletedAt);
                     }
                     filtered.studies[studyUid] = entry;
                 }
@@ -192,7 +192,7 @@ const _NotesInternals = (() => {
             const comment = {
                 id: createCommentId(),
                 text: (payload.text || '').trim(),
-                time: payload.time ?? Date.now()
+                time: payload.time ?? Date.now(),
             };
             target.comments.push(comment);
             saveStore(store);
@@ -237,7 +237,9 @@ const _NotesInternals = (() => {
                     seriesEntry.comments = [];
                     continue;
                 }
-                seriesEntry.comments = seriesEntry.comments.filter((comment) => normalizeCommentId(comment.id) !== target);
+                seriesEntry.comments = seriesEntry.comments.filter(
+                    (comment) => normalizeCommentId(comment.id) !== target,
+                );
             }
 
             saveStore(store);
@@ -260,7 +262,7 @@ const _NotesInternals = (() => {
 
         getReportFileUrl() {
             return '';
-        }
+        },
     };
 
     return {
@@ -279,7 +281,7 @@ const _NotesInternals = (() => {
         sanitizeFilenamePart,
         getDesktopTauriApis,
         // Backend
-        LocalBackend
+        LocalBackend,
     };
 })();
 

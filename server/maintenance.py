@@ -28,9 +28,10 @@ DEFAULT_TOMBSTONE_RETENTION_DAYS = 30
 # SQLite backup
 # ---------------------------------------------------------------------------
 
+
 def _backups_dir():
     """Return the backups directory path, creating it if needed."""
-    backups = os.path.join(db_module.DATA_DIR, "backups")
+    backups = os.path.join(db_module.DATA_DIR, 'backups')
     os.makedirs(backups, exist_ok=True)
     return backups
 
@@ -45,8 +46,8 @@ def backup_database(max_backups=DEFAULT_MAX_BACKUPS):
     Returns the absolute path to the new backup file.
     """
     backups_dir = _backups_dir()
-    timestamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-    backup_filename = f"{timestamp}.db"
+    timestamp = time.strftime('%Y%m%d-%H%M%S', time.gmtime())
+    backup_filename = f'{timestamp}.db'
     backup_path = os.path.join(backups_dir, backup_filename)
 
     # Open a dedicated read connection to the live database.  We do NOT use
@@ -57,7 +58,7 @@ def backup_database(max_backups=DEFAULT_MAX_BACKUPS):
         dest = sqlite3.connect(backup_path)
         try:
             source.backup(dest)
-            logger.info("Database backed up to %s", backup_path)
+            logger.info('Database backed up to %s', backup_path)
         finally:
             dest.close()
     finally:
@@ -72,23 +73,23 @@ def backup_database(max_backups=DEFAULT_MAX_BACKUPS):
 def _prune_old_backups(backups_dir, max_backups):
     """Delete the oldest backups beyond *max_backups*."""
     existing = sorted(
-        (f for f in os.listdir(backups_dir) if f.endswith(".db")),
+        (f for f in os.listdir(backups_dir) if f.endswith('.db')),
         reverse=True,  # newest first (lexicographic on YYYYMMDD-HHMMSS)
     )
     for old_file in existing[max_backups:]:
         old_path = os.path.join(backups_dir, old_file)
         try:
             os.remove(old_path)
-            logger.info("Pruned old backup %s", old_path)
+            logger.info('Pruned old backup %s', old_path)
         except OSError as exc:
-            logger.warning("Failed to prune backup %s: %s", old_path, exc)
+            logger.warning('Failed to prune backup %s: %s', old_path, exc)
 
 
 def list_backups():
     """Return a list of backup filenames sorted newest-first."""
     backups_dir = _backups_dir()
     return sorted(
-        (f for f in os.listdir(backups_dir) if f.endswith(".db")),
+        (f for f in os.listdir(backups_dir) if f.endswith('.db')),
         reverse=True,
     )
 
@@ -105,17 +106,17 @@ def restore_database(backup_path):
     Raises ValueError if the file is not a valid SQLite database.
     """
     if not os.path.isfile(backup_path):
-        raise FileNotFoundError(f"Backup file not found: {backup_path}")
+        raise FileNotFoundError(f'Backup file not found: {backup_path}')
 
     # Quick validation: open the backup and run an integrity check.
     try:
         check_conn = sqlite3.connect(backup_path)
-        result = check_conn.execute("PRAGMA integrity_check").fetchone()
+        result = check_conn.execute('PRAGMA integrity_check').fetchone()
         check_conn.close()
-        if result[0] != "ok":
-            raise ValueError(f"Backup integrity check failed: {result[0]}")
+        if result[0] != 'ok':
+            raise ValueError(f'Backup integrity check failed: {result[0]}')
     except sqlite3.DatabaseError as exc:
-        raise ValueError(f"Not a valid SQLite database: {exc}") from exc
+        raise ValueError(f'Not a valid SQLite database: {exc}') from exc
 
     # Use the backup API in reverse: backup *from* the backup file *to* the
     # live database path.  This overwrites the live DB atomically.
@@ -124,7 +125,7 @@ def restore_database(backup_path):
         dest = sqlite3.connect(db_module.DB_PATH)
         try:
             source.backup(dest)
-            logger.info("Database restored from %s", backup_path)
+            logger.info('Database restored from %s', backup_path)
         finally:
             dest.close()
     finally:
@@ -134,6 +135,7 @@ def restore_database(backup_path):
 # ---------------------------------------------------------------------------
 # Tombstone purge
 # ---------------------------------------------------------------------------
+
 
 def purge_tombstones(days=DEFAULT_TOMBSTONE_RETENTION_DAYS, syncing=False):
     """Hard-delete tombstoned records older than *days*.
@@ -155,19 +157,19 @@ def purge_tombstones(days=DEFAULT_TOMBSTONE_RETENTION_DAYS, syncing=False):
 
     conn = sqlite3.connect(db_module.DB_PATH, timeout=10)
     try:
-        for table in ("comments", "reports"):
+        for table in ('comments', 'reports'):
             conditions = [
-                "deleted_at IS NOT NULL",
-                "deleted_at < ?",
+                'deleted_at IS NOT NULL',
+                'deleted_at < ?',
             ]
             params = [cutoff_ms]
 
             if syncing:
-                conditions.append("sync_version > 0")
+                conditions.append('sync_version > 0')
 
-            where = " AND ".join(conditions)
+            where = ' AND '.join(conditions)
             cursor = conn.execute(
-                f"DELETE FROM {table} WHERE {where}",  # noqa: S608 -- table name from static list
+                f'DELETE FROM {table} WHERE {where}',  # noqa: S608 -- table name from static list
                 params,
             )
             counts[table] = cursor.rowcount
@@ -177,8 +179,10 @@ def purge_tombstones(days=DEFAULT_TOMBSTONE_RETENTION_DAYS, syncing=False):
         conn.close()
 
     logger.info(
-        "Tombstone purge complete (cutoff=%d, syncing=%s): %s",
-        cutoff_ms, syncing, counts,
+        'Tombstone purge complete (cutoff=%d, syncing=%s): %s',
+        cutoff_ms,
+        syncing,
+        counts,
     )
     return counts
 
@@ -186,6 +190,7 @@ def purge_tombstones(days=DEFAULT_TOMBSTONE_RETENTION_DAYS, syncing=False):
 # ---------------------------------------------------------------------------
 # Report blob garbage collection
 # ---------------------------------------------------------------------------
+
 
 def gc_report_blobs(purge_days=DEFAULT_TOMBSTONE_RETENTION_DAYS):
     """Remove orphaned report files from disk.
@@ -198,7 +203,7 @@ def gc_report_blobs(purge_days=DEFAULT_TOMBSTONE_RETENTION_DAYS):
     """
     reports_dir = db_module.REPORTS_DIR
     if not os.path.isdir(reports_dir):
-        return {"deleted_count": 0, "bytes_reclaimed": 0}
+        return {'deleted_count': 0, 'bytes_reclaimed': 0}
 
     cutoff_ms = int((time.time() - purge_days * 86400) * 1000)
 
@@ -207,13 +212,18 @@ def gc_report_blobs(purge_days=DEFAULT_TOMBSTONE_RETENTION_DAYS):
     try:
         # Paths for live (non-tombstoned) reports
         live_rows = conn.execute(
-            "SELECT file_path FROM reports WHERE file_path IS NOT NULL AND deleted_at IS NULL"
+            'SELECT file_path FROM reports WHERE file_path IS NOT NULL AND deleted_at IS NULL'
         ).fetchall()
         live_paths = {row[0] for row in live_rows}
 
         # Paths for recently-tombstoned reports (not yet eligible for purge)
         recent_tombstoned = conn.execute(
-            "SELECT file_path FROM reports WHERE file_path IS NOT NULL AND deleted_at IS NOT NULL AND deleted_at >= ?",
+            (
+                'SELECT file_path FROM reports '
+                'WHERE file_path IS NOT NULL '
+                'AND deleted_at IS NOT NULL '
+                'AND deleted_at >= ?'
+            ),
             (cutoff_ms,),
         ).fetchall()
         recent_paths = {row[0] for row in recent_tombstoned}
@@ -228,7 +238,7 @@ def gc_report_blobs(purge_days=DEFAULT_TOMBSTONE_RETENTION_DAYS):
 
     for filename in os.listdir(reports_dir):
         # Skip temp files (ongoing uploads)
-        if filename.endswith(".tmp"):
+        if filename.endswith('.tmp'):
             continue
 
         file_path = os.path.join(reports_dir, filename)
@@ -244,20 +254,22 @@ def gc_report_blobs(purge_days=DEFAULT_TOMBSTONE_RETENTION_DAYS):
             os.remove(file_path)
             deleted_count += 1
             bytes_reclaimed += file_size
-            logger.info("GC removed orphaned report file: %s (%d bytes)", file_path, file_size)
+            logger.info('GC removed orphaned report file: %s (%d bytes)', file_path, file_size)
         except OSError as exc:
-            logger.warning("GC failed to remove %s: %s", file_path, exc)
+            logger.warning('GC failed to remove %s: %s', file_path, exc)
 
     logger.info(
-        "Report blob GC complete: %d files deleted, %d bytes reclaimed",
-        deleted_count, bytes_reclaimed,
+        'Report blob GC complete: %d files deleted, %d bytes reclaimed',
+        deleted_count,
+        bytes_reclaimed,
     )
-    return {"deleted_count": deleted_count, "bytes_reclaimed": bytes_reclaimed}
+    return {'deleted_count': deleted_count, 'bytes_reclaimed': bytes_reclaimed}
 
 
 # ---------------------------------------------------------------------------
 # Status / diagnostics
 # ---------------------------------------------------------------------------
+
 
 def get_maintenance_status():
     """Gather maintenance-related diagnostics.
@@ -269,35 +281,35 @@ def get_maintenance_status():
 
     # Database size
     if os.path.isfile(db_module.DB_PATH):
-        status["database_size_bytes"] = os.path.getsize(db_module.DB_PATH)
+        status['database_size_bytes'] = os.path.getsize(db_module.DB_PATH)
     else:
-        status["database_size_bytes"] = 0
+        status['database_size_bytes'] = 0
 
     # Tombstone counts per table
     tombstones = {}
     conn = sqlite3.connect(db_module.DB_PATH, timeout=10)
     try:
-        for table in ("comments", "reports"):
+        for table in ('comments', 'reports'):
             row = conn.execute(
-                f"SELECT COUNT(*) FROM {table} WHERE deleted_at IS NOT NULL"  # noqa: S608
+                f'SELECT COUNT(*) FROM {table} WHERE deleted_at IS NOT NULL'  # noqa: S608
             ).fetchone()
             tombstones[table] = row[0] if row else 0
     finally:
         conn.close()
-    status["tombstones"] = tombstones
+    status['tombstones'] = tombstones
 
     # Orphaned report files
     orphan_count = _count_orphaned_report_files()
-    status["orphaned_report_files"] = orphan_count
+    status['orphaned_report_files'] = orphan_count
 
     # Backup info
     backups = list_backups()
-    status["backup_count"] = len(backups)
+    status['backup_count'] = len(backups)
     if backups:
         # Newest backup filename is YYYYMMDD-HHMMSS.db
-        status["last_backup"] = backups[0].replace(".db", "")
+        status['last_backup'] = backups[0].replace('.db', '')
     else:
-        status["last_backup"] = None
+        status['last_backup'] = None
 
     return status
 
@@ -311,7 +323,7 @@ def _count_orphaned_report_files():
     conn = sqlite3.connect(db_module.DB_PATH, timeout=10)
     try:
         rows = conn.execute(
-            "SELECT file_path FROM reports WHERE file_path IS NOT NULL AND deleted_at IS NULL"
+            'SELECT file_path FROM reports WHERE file_path IS NOT NULL AND deleted_at IS NULL'
         ).fetchall()
         live_paths = {row[0] for row in rows}
     finally:
@@ -319,7 +331,7 @@ def _count_orphaned_report_files():
 
     count = 0
     for filename in os.listdir(reports_dir):
-        if filename.endswith(".tmp"):
+        if filename.endswith('.tmp'):
             continue
         file_path = os.path.join(reports_dir, filename)
         if os.path.isfile(file_path) and file_path not in live_paths:
@@ -331,6 +343,7 @@ def _count_orphaned_report_files():
 # ---------------------------------------------------------------------------
 # Startup maintenance (lightweight, safe to run on every boot)
 # ---------------------------------------------------------------------------
+
 
 def run_startup_maintenance(app):
     """Run lightweight cleanup tasks on server startup.
@@ -346,19 +359,17 @@ def run_startup_maintenance(app):
     try:
         # Clean up expired sync cursors
         now = int(time.time())
-        cursor = conn.execute(
-            "DELETE FROM sync_cursors WHERE expires_at < ?", (now,)
-        )
+        cursor = conn.execute('DELETE FROM sync_cursors WHERE expires_at < ?', (now,))
         expired_cursors = cursor.rowcount
         if expired_cursors > 0:
             app.logger.info(
-                "Startup maintenance: cleaned up %d expired sync cursors",
+                'Startup maintenance: cleaned up %d expired sync cursors',
                 expired_cursors,
             )
 
         conn.commit()
     except sqlite3.OperationalError as exc:
         # Table might not exist yet on first run; that's fine
-        app.logger.debug("Startup maintenance skipped (table may not exist): %s", exc)
+        app.logger.debug('Startup maintenance skipped (table may not exist): %s', exc)
     finally:
         conn.close()

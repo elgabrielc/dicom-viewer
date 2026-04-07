@@ -8,7 +8,8 @@
  * Copyright (c) 2026 Divergent Health Technologies
  */
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { parseDicomMetadataDetailed } = app.dicom;
 
     // =====================================================================
@@ -22,14 +23,11 @@
     const MAX_UID_SEGMENT_LENGTH = 64;
     const UID_SANITIZE_PATTERN = /[^a-zA-Z0-9.]/g;
     const UNKNOWN_UID_PLACEHOLDER = 'unknown';
-    const IMPORT_HEADER_READ_SIZES = Object.freeze([
-        64 * 1024,
-        256 * 1024
-    ]);
+    const IMPORT_HEADER_READ_SIZES = Object.freeze([64 * 1024, 256 * 1024]);
     const IMPORT_TRUNCATION_ERROR_PATTERNS = [
         'buffer overrun',
         'attempt to read past end of buffer',
-        'missing required meta header attribute 0002,0010'
+        'missing required meta header attribute 0002,0010',
     ];
 
     // =====================================================================
@@ -39,11 +37,7 @@
     const hasLikelyDicomMetadata = app.utils.hasLikelyDicomMetadata;
 
     function hasImportDestinationMetadata(meta) {
-        return !!(
-            meta?.studyInstanceUid &&
-            meta?.seriesInstanceUid &&
-            meta?.sopInstanceUid
-        );
+        return !!(meta?.studyInstanceUid && meta?.seriesInstanceUid && meta?.sopInstanceUid);
     }
 
     /**
@@ -70,7 +64,7 @@
      * Yield to the event loop so the UI stays responsive.
      */
     function yieldToEventLoop() {
-        return new Promise(resolve => setTimeout(resolve, 0));
+        return new Promise((resolve) => setTimeout(resolve, 0));
     }
 
     const normalizeBinaryResponse = app.utils.normalizeBinaryResponse;
@@ -178,7 +172,8 @@
     function emitProgress(onProgress, stats, currentPath, force) {
         if (typeof onProgress !== 'function') return;
 
-        const shouldEmit = force ||
+        const shouldEmit =
+            force ||
             stats.processed === 1 ||
             stats.processed % PROGRESS_UPDATE_INTERVAL === 0 ||
             stats.processed === stats.discovered;
@@ -195,7 +190,7 @@
                 invalid: stats.invalid,
                 errors: stats.errors,
                 collisions: stats.collisions,
-                currentPath: currentPath || ''
+                currentPath: currentPath || '',
             });
         } catch (error) {
             console.warn('Import pipeline progress callback failed:', error);
@@ -278,7 +273,7 @@
             skipped: 0,
             invalid: 0,
             errors: 0,
-            collisions: 0
+            collisions: 0,
         };
 
         const studies = {};
@@ -302,7 +297,7 @@
         const paths = (Array.isArray(sourcePaths) ? sourcePaths : [sourcePaths]).filter(Boolean);
         const manifestEntries = await invoke('read_scan_manifest', {
             roots: paths,
-            maxDepth: MAX_SCAN_DEPTH
+            maxDepth: MAX_SCAN_DEPTH,
         });
 
         if (!Array.isArray(manifestEntries)) {
@@ -314,10 +309,13 @@
             .map((entry) => ({
                 path: typeof entry?.path === 'string' ? entry.path : '',
                 name: typeof entry?.name === 'string' && entry.name ? entry.name : '',
-                rootPath: typeof entry?.rootPath === 'string'
-                    ? entry.rootPath
-                    : (typeof entry?.root_path === 'string' ? entry.root_path : ''),
-                size: Number.isFinite(Number(entry?.size)) ? Number(entry.size) : null
+                rootPath:
+                    typeof entry?.rootPath === 'string'
+                        ? entry.rootPath
+                        : typeof entry?.root_path === 'string'
+                          ? entry.root_path
+                          : '',
+                size: Number.isFinite(Number(entry?.size)) ? Number(entry.size) : null,
             }))
             .filter((entry) => entry.path);
 
@@ -378,7 +376,7 @@
             errors: stats.errors,
             collisions: stats.collisions,
             studies,
-            duration: performance.now() - startedAt
+            duration: performance.now() - startedAt,
         };
     }
 
@@ -454,7 +452,7 @@
                 studyDescription: meta.studyDescription || '',
                 seriesCount: 0,
                 instanceCount: 0,
-                series: {}
+                series: {},
             };
         }
 
@@ -465,7 +463,7 @@
                 seriesInstanceUid: seriesUid,
                 seriesDescription: meta.seriesDescription || '',
                 modality: meta.modality || '',
-                instanceCount: 0
+                instanceCount: 0,
             };
             study.seriesCount++;
         }
@@ -482,6 +480,6 @@
         getLibraryPath,
         ensureLibraryFolder,
         buildDestinationPath,
-        importFromPaths
+        importFromPaths,
     };
 })();

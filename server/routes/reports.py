@@ -16,9 +16,13 @@ from flask import Blueprint, jsonify, request, send_file
 
 from server import db as db_module
 from server.db import (
-    get_db, parse_int, sanitize_report_id, resolve_report_type,
-    REPORT_TYPE_MAP, MAX_BATCH_STUDY_UIDS,
+    MAX_BATCH_STUDY_UIDS,
+    REPORT_TYPE_MAP,
     _ensure_data_dirs,
+    get_db,
+    parse_int,
+    resolve_report_type,
+    sanitize_report_id,
 )
 
 reports_bp = Blueprint('reports', __name__)
@@ -26,9 +30,7 @@ reports_bp = Blueprint('reports', __name__)
 
 def _get_device_id(db):
     """Read the device_id from sync_state, or return None if not yet seeded."""
-    row = db.execute(
-        "SELECT value FROM sync_state WHERE key = 'device_id'"
-    ).fetchone()
+    row = db.execute("SELECT value FROM sync_state WHERE key = 'device_id'").fetchone()
     return row['value'] if row else None
 
 
@@ -39,13 +41,21 @@ def _build_notes_payload(study_uids, db):
     placeholders = ','.join('?' for _ in study_uids)
 
     study_rows = db.execute(
-        f"SELECT study_uid, description FROM study_notes WHERE study_uid IN ({placeholders}) AND deleted_at IS NULL",
-        study_uids
+        (
+            'SELECT study_uid, description '
+            f'FROM study_notes WHERE study_uid IN ({placeholders}) '
+            'AND deleted_at IS NULL'
+        ),
+        study_uids,
     ).fetchall()
 
     series_rows = db.execute(
-        f"SELECT study_uid, series_uid, description FROM series_notes WHERE study_uid IN ({placeholders}) AND deleted_at IS NULL",
-        study_uids
+        (
+            'SELECT study_uid, series_uid, description '
+            f'FROM series_notes WHERE study_uid IN ({placeholders}) '
+            'AND deleted_at IS NULL'
+        ),
+        study_uids,
     ).fetchall()
 
     comment_rows = db.execute(
@@ -56,7 +66,7 @@ def _build_notes_payload(study_uids, db):
           AND deleted_at IS NULL
         ORDER BY time ASC, id ASC
         """,
-        study_uids
+        study_uids,
     ).fetchall()
 
     report_rows = db.execute(
@@ -68,19 +78,14 @@ def _build_notes_payload(study_uids, db):
         AND deleted_at IS NULL
         ORDER BY added_at ASC, id ASC
         """,
-        study_uids
+        study_uids,
     ).fetchall()
 
     notes = {}
 
     def ensure(study_uid):
         if study_uid not in notes:
-            notes[study_uid] = {
-                'description': '',
-                'comments': [],
-                'series': {},
-                'reports': []
-            }
+            notes[study_uid] = {'description': '', 'comments': [], 'series': {}, 'reports': []}
 
     for row in study_rows:
         study_uid = row['study_uid']
@@ -92,24 +97,18 @@ def _build_notes_payload(study_uids, db):
         series_uid = row['series_uid']
         ensure(study_uid)
         series = notes[study_uid]['series'].setdefault(
-            series_uid,
-            {'description': '', 'comments': []}
+            series_uid, {'description': '', 'comments': []}
         )
         series['description'] = row['description'] or ''
 
     for row in comment_rows:
         study_uid = row['study_uid']
         ensure(study_uid)
-        comment = {
-            'id': row['record_uuid'] or row['id'],
-            'text': row['text'],
-            'time': row['time']
-        }
+        comment = {'id': row['record_uuid'] or row['id'], 'text': row['text'], 'time': row['time']}
         series_uid = row['series_uid']
         if series_uid:
             series = notes[study_uid]['series'].setdefault(
-                series_uid,
-                {'description': '', 'comments': []}
+                series_uid, {'description': '', 'comments': []}
             )
             series['comments'].append(comment)
         else:
@@ -118,14 +117,16 @@ def _build_notes_payload(study_uids, db):
     for row in report_rows:
         study_uid = row['study_uid']
         ensure(study_uid)
-        notes[study_uid]['reports'].append({
-            'id': row['id'],
-            'name': row['name'],
-            'type': row['type'],
-            'size': row['size'],
-            'addedAt': row['added_at'],
-            'updatedAt': row['updated_at']
-        })
+        notes[study_uid]['reports'].append(
+            {
+                'id': row['id'],
+                'name': row['name'],
+                'type': row['type'],
+                'size': row['size'],
+                'addedAt': row['added_at'],
+                'updatedAt': row['updated_at'],
+            }
+        )
 
     def has_notes(entry):
         if entry['description'] or entry['comments'] or entry['reports']:
@@ -177,12 +178,12 @@ def upload_report(study_uid):
     added_at = parse_int(request.form.get('addedAt'), now)
     updated_at = parse_int(request.form.get('updatedAt'), now)
 
-    report_path = os.path.join(db_module.REPORTS_DIR, f"{report_id}.{ext}")
+    report_path = os.path.join(db_module.REPORTS_DIR, f'{report_id}.{ext}')
 
     # Save upload to a temp file first, then commit DB, then move into place.
     # This prevents orphan files if the DB operation fails.
     _ensure_data_dirs()
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=db_module.REPORTS_DIR, suffix=f".{ext}.tmp")
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=db_module.REPORTS_DIR, suffix=f'.{ext}.tmp')
     try:
         os.close(tmp_fd)
         file.save(tmp_path)
@@ -200,8 +201,7 @@ def upload_report(study_uid):
         device_id = _get_device_id(db)
 
         existing = db.execute(
-            "SELECT file_path, added_at FROM reports WHERE id = ?",
-            (report_id,)
+            'SELECT file_path, added_at FROM reports WHERE id = ?', (report_id,)
         ).fetchone()
 
         if existing and existing['added_at'] and not request.form.get('addedAt'):
@@ -227,8 +227,18 @@ def upload_report(study_uid):
                 sync_version=0,
                 deleted_at=NULL
             """,
-            (report_id, study_uid, name, report_type, size, report_path,
-             added_at, updated_at, content_hash, device_id)
+            (
+                report_id,
+                study_uid,
+                name,
+                report_type,
+                size,
+                report_path,
+                added_at,
+                updated_at,
+                content_hash,
+                device_id,
+            ),
         )
         db.commit()
 
@@ -248,24 +258,25 @@ def upload_report(study_uid):
             pass
         raise
 
-    return jsonify({
-        'id': report_id,
-        'studyUid': study_uid,
-        'name': name,
-        'type': report_type,
-        'size': size,
-        'addedAt': added_at,
-        'updatedAt': updated_at,
-        'contentHash': content_hash
-    })
+    return jsonify(
+        {
+            'id': report_id,
+            'studyUid': study_uid,
+            'name': name,
+            'type': report_type,
+            'size': size,
+            'addedAt': added_at,
+            'updatedAt': updated_at,
+            'contentHash': content_hash,
+        }
+    )
 
 
 @reports_bp.route('/api/notes/reports/<report_id>/file', methods=['GET'])
 def get_report_file(report_id):
     db = get_db()
     row = db.execute(
-        "SELECT file_path, type FROM reports WHERE id = ? AND deleted_at IS NULL",
-        (report_id,)
+        'SELECT file_path, type FROM reports WHERE id = ? AND deleted_at IS NULL', (report_id,)
     ).fetchone()
 
     if not row or not row['file_path'] or not os.path.exists(row['file_path']):
@@ -284,8 +295,8 @@ def get_report_file(report_id):
 def delete_report(study_uid, report_id):
     db = get_db()
     row = db.execute(
-        "SELECT file_path FROM reports WHERE id = ? AND study_uid = ? AND deleted_at IS NULL",
-        (report_id, study_uid)
+        'SELECT file_path FROM reports WHERE id = ? AND study_uid = ? AND deleted_at IS NULL',
+        (report_id, study_uid),
     ).fetchone()
 
     if not row:
@@ -296,8 +307,11 @@ def delete_report(study_uid, report_id):
     now = int(time.time() * 1000)
     device_id = _get_device_id(db)
     db.execute(
-        "UPDATE reports SET deleted_at = ?, updated_at = ?, device_id = ? WHERE id = ? AND study_uid = ?",
-        (now, now, device_id, report_id, study_uid)
+        (
+            'UPDATE reports SET deleted_at = ?, updated_at = ?, device_id = ? '
+            'WHERE id = ? AND study_uid = ?'
+        ),
+        (now, now, device_id, report_id, study_uid),
     )
     db.commit()
 
@@ -327,7 +341,7 @@ def migrate_notes():
                 VALUES (?, ?, ?)
                 ON CONFLICT(study_uid) DO NOTHING
                 """,
-                (study_uid, description, now)
+                (study_uid, description, now),
             )
 
         for comment in stored.get('study') or []:
@@ -338,8 +352,11 @@ def migrate_notes():
                 continue
             timestamp = parse_int(comment.get('time'), now)
             db.execute(
-                "INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)",
-                (study_uid, '', text, timestamp)
+                (
+                    'INSERT OR IGNORE INTO comments '
+                    '(study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)'
+                ),
+                (study_uid, '', text, timestamp),
             )
 
         series_blob = stored.get('series') or {}
@@ -361,7 +378,7 @@ def migrate_notes():
                         VALUES (?, ?, ?, ?)
                         ON CONFLICT(study_uid, series_uid) DO NOTHING
                         """,
-                        (study_uid, series_uid, series_description, now)
+                        (study_uid, series_uid, series_description, now),
                     )
 
                 for comment in series_comments:
@@ -372,8 +389,11 @@ def migrate_notes():
                         continue
                     timestamp = parse_int(comment.get('time'), now)
                     db.execute(
-                        "INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)",
-                        (study_uid, series_uid, text, timestamp)
+                        (
+                            'INSERT OR IGNORE INTO comments '
+                            '(study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)'
+                        ),
+                        (study_uid, series_uid, text, timestamp),
                     )
 
         migrated += 1

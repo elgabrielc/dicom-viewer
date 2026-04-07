@@ -17,8 +17,7 @@ test_data_bp = Blueprint('test_data', __name__)
 
 # Test data folder for automated testing (bypasses File System Access API)
 TEST_DATA_FOLDER = os.environ.get(
-    'DICOM_TEST_DATA',
-    os.path.expanduser('~/claude 0/test-data-mri-1')
+    'DICOM_TEST_DATA', os.path.expanduser('~/claude 0/test-data-mri-1')
 )
 
 # Module-level source, initialized at import time (same as original app.py)
@@ -48,8 +47,10 @@ def get_test_dicom(study_id, series_id, slice_num):
 def get_test_info():
     """Get info about available test data."""
     studies = test_source.get_data()
-    return jsonify({
-        'available': test_source.is_available(),
-        'studyCount': len(studies),
-        'totalImages': sum(s['image_count'] for s in studies.values())
-    })
+    return jsonify(
+        {
+            'available': test_source.is_available(),
+            'studyCount': len(studies),
+            'totalImages': sum(s['image_count'] for s in studies.values()),
+        }
+    )

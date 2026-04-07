@@ -85,19 +85,19 @@ function createSyntheticDicomFolder(entries, options = {}) {
         fileName: entry.fileName || `series-${String(index + 1).padStart(2, '0')}.dcm`,
         instanceNumber: entry.instanceNumber || index + 1,
         modality: entry.modality || 'DX',
-        seriesNumber: entry.seriesNumber || 1
+        seriesNumber: entry.seriesNumber || 1,
     }));
 
     const payload = JSON.stringify({
         folder,
         studyUid,
         seriesUid,
-        entries: normalizedEntries
+        entries: normalizedEntries,
     });
 
     execFileSync(PYTHON_BIN, ['-c', PYTHON_SCRIPT, payload], {
         cwd: REPO_ROOT,
-        stdio: 'pipe'
+        stdio: 'pipe',
     });
 
     return {
@@ -106,8 +106,8 @@ function createSyntheticDicomFolder(entries, options = {}) {
         seriesUid,
         entries: normalizedEntries.map((entry) => ({
             ...entry,
-            path: path.join(folder, entry.fileName)
-        }))
+            path: path.join(folder, entry.fileName),
+        })),
     };
 }
 
@@ -118,5 +118,5 @@ function removeSyntheticDicomFolder(folder) {
 
 module.exports = {
     createSyntheticDicomFolder,
-    removeSyntheticDicomFolder
+    removeSyntheticDicomFolder,
 };

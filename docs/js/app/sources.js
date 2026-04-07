@@ -1,12 +1,9 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { uploadProgress, progressFill, progressText, progressDetail } = app.dom;
-    const {
-        parseDicomMetadata,
-        parseDicomMetadataDetailed,
-        parseDicomHeaderDataSet,
-        isRenderableImageMetadata
-    } = app.dicom;
+    const { parseDicomMetadata, parseDicomMetadataDetailed, parseDicomHeaderDataSet, isRenderableImageMetadata } =
+        app.dicom;
     const DESKTOP_MAX_SCAN_DEPTH = 20;
     const DEFAULT_SCAN_CONCURRENCY = 100;
     const DESKTOP_PATH_SCAN_CONCURRENCY = 10;
@@ -17,10 +14,7 @@
     const DESKTOP_LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
     const DESKTOP_MAX_CONCURRENT_LARGE_READS = 2;
     const DESKTOP_SCAN_HEADER_BYTES = 256 * 1024;
-    const DESKTOP_SCAN_HEADER_READ_SIZES = Object.freeze([
-        64 * 1024,
-        DESKTOP_SCAN_HEADER_BYTES
-    ]);
+    const DESKTOP_SCAN_HEADER_READ_SIZES = Object.freeze([64 * 1024, DESKTOP_SCAN_HEADER_BYTES]);
     const DESKTOP_SCAN_SKIP_EXTENSIONS = new Set([
         '.bmp',
         '.chm',
@@ -53,22 +47,12 @@
         '.ttf',
         '.txt',
         '.xml',
-        '.xz'
+        '.xz',
     ]);
     // These names recur in exported disc bundles and never represent study content.
-    const DESKTOP_SCAN_SKIP_FILE_NAMES = new Set([
-        '.ds_store',
-        'dicomdir',
-        'thumbs.db'
-    ]);
+    const DESKTOP_SCAN_SKIP_FILE_NAMES = new Set(['.ds_store', 'dicomdir', 'thumbs.db']);
     // These are viewer payload directories that show up alongside studies on burned/exported media.
-    const DESKTOP_SCAN_SKIP_DIRECTORY_NAMES = new Set([
-        '__macosx',
-        'catapult',
-        'ddv',
-        'libraries',
-        'reviewer'
-    ]);
+    const DESKTOP_SCAN_SKIP_DIRECTORY_NAMES = new Set(['__macosx', 'catapult', 'ddv', 'libraries', 'reviewer']);
     const SCAN_PROGRESS_UPDATE_INTERVAL = 200;
     const SCAN_YIELD_INTERVAL_MS = 16;
 
@@ -115,7 +99,7 @@
         // Check if a collision was already detected for this UID
         const compositeKey = `${bareUid}|${desc}`;
         if (studyMap[compositeKey]) return compositeKey;
-        const hasCollision = Object.keys(studyMap).some(k => k.startsWith(`${bareUid}|`));
+        const hasCollision = Object.keys(studyMap).some((k) => k.startsWith(`${bareUid}|`));
         return hasCollision ? compositeKey : bareUid;
     }
 
@@ -130,12 +114,10 @@
                 seriesCount: 0,
                 imageCount: 0,
                 comments: [],
-                reports: []
+                reports: [],
             };
         }
-        const seriesUid = resolveSeriesKey(
-            studies[studyUid].series, bareUid, meta.seriesDescription || ''
-        );
+        const seriesUid = resolveSeriesKey(studies[studyUid].series, bareUid, meta.seriesDescription || '');
         if (!studies[studyUid].series[seriesUid]) {
             studies[studyUid].series[seriesUid] = {
                 seriesInstanceUid: seriesUid,
@@ -144,7 +126,7 @@
                 transferSyntax: meta.transferSyntax,
                 slices: [],
                 comments: [],
-                seenSliceKeys: new Set()
+                seenSliceKeys: new Set(),
             };
         }
         const series = studies[studyUid].series[seriesUid];
@@ -171,7 +153,7 @@
             frameIndex,
             sopInstanceUid: meta.sopInstanceUid || '',
             instanceNumber: meta.instanceNumber,
-            sliceLocation: meta.sliceLocation
+            sliceLocation: meta.sliceLocation,
         }));
     }
 
@@ -186,10 +168,11 @@
         for (const study of Object.values(studies)) {
             let count = 0;
             for (const series of Object.values(study.series)) {
-                series.slices.sort((a, b) =>
-                    (a.instanceNumber ?? 0) - (b.instanceNumber ?? 0) ||
-                    (a.sliceLocation ?? 0) - (b.sliceLocation ?? 0) ||
-                    (a.frameIndex ?? 0) - (b.frameIndex ?? 0)
+                series.slices.sort(
+                    (a, b) =>
+                        (a.instanceNumber ?? 0) - (b.instanceNumber ?? 0) ||
+                        (a.sliceLocation ?? 0) - (b.sliceLocation ?? 0) ||
+                        (a.frameIndex ?? 0) - (b.frameIndex ?? 0),
                 );
                 count += series.slices.length;
                 delete series.seenSliceKeys;
@@ -356,7 +339,7 @@
     const DESKTOP_SCAN_TRUNCATION_ERROR_PATTERNS = [
         'buffer overrun',
         'attempt to read past end of buffer',
-        'missing required meta header attribute 0002,0010'
+        'missing required meta header attribute 0002,0010',
     ];
 
     const hasLikelyDicomMetadata = app.utils.hasLikelyDicomMetadata;
@@ -425,7 +408,7 @@
             return headerResult.meta;
         }
 
-        const effectiveSize = Number.isFinite(fileSize) ? fileSize : (source.size || 0);
+        const effectiveSize = Number.isFinite(fileSize) ? fileSize : source.size || 0;
         if (largeReadGate) {
             await largeReadGate.acquireLargeReadSlot(effectiveSize);
         }
@@ -465,13 +448,18 @@
                 .map((entry) => ({
                     path: typeof entry?.path === 'string' ? entry.path : '',
                     name: typeof entry?.name === 'string' ? entry.name : getPathName(entry?.path),
-                    rootPath: typeof entry?.rootPath === 'string'
-                        ? entry.rootPath
-                        : (typeof entry?.root_path === 'string' ? entry.root_path : ''),
+                    rootPath:
+                        typeof entry?.rootPath === 'string'
+                            ? entry.rootPath
+                            : typeof entry?.root_path === 'string'
+                              ? entry.root_path
+                              : '',
                     size: Number.isFinite(Number(entry?.size)) ? Number(entry.size) : null,
                     modifiedMs: Number.isFinite(Number(entry?.modifiedMs))
                         ? Number(entry.modifiedMs)
-                        : (Number.isFinite(Number(entry?.modified_ms)) ? Number(entry.modified_ms) : null)
+                        : Number.isFinite(Number(entry?.modified_ms))
+                          ? Number(entry.modified_ms)
+                          : null,
                 }))
                 .filter((entry) => entry.path);
         } catch (error) {
@@ -495,8 +483,9 @@
                     size: Number.isFinite(Number(row.size)) ? Number(row.size) : null,
                     modifiedMs: Number.isFinite(Number(row.modified_ms)) ? Number(row.modified_ms) : null,
                     renderable: !!row.renderable,
-                    metaJson: (row.renderable && typeof row.meta_json === 'string' && row.meta_json) ? row.meta_json : null,
-                    meta: null
+                    metaJson:
+                        row.renderable && typeof row.meta_json === 'string' && row.meta_json ? row.meta_json : null,
+                    meta: null,
                 });
             }
             return cache;
@@ -554,10 +543,10 @@
 
     function createDesktopScanCacheEntry(fileEntry, meta, renderable) {
         if (
-            fileEntry?.source?.kind !== 'path'
-            || !fileEntry.source.path
-            || !fileEntry.rootPath
-            || !Number.isFinite(Number(fileEntry.size))
+            fileEntry?.source?.kind !== 'path' ||
+            !fileEntry.source.path ||
+            !fileEntry.rootPath ||
+            !Number.isFinite(Number(fileEntry.size))
         ) {
             return null;
         }
@@ -577,7 +566,7 @@
             size: Number(fileEntry.size),
             modifiedMs: Number.isFinite(Number(fileEntry.modifiedMs)) ? Number(fileEntry.modifiedMs) : null,
             renderable: !!renderable,
-            metaJson
+            metaJson,
         };
     }
 
@@ -597,21 +586,22 @@
 
     function shouldSkipDesktopScanPathEntry(name) {
         const normalizedName = String(name || '').toLowerCase();
-        return (!isDesktopScanDicomDirFileName(normalizedName) && DESKTOP_SCAN_SKIP_FILE_NAMES.has(normalizedName)) ||
-            DESKTOP_SCAN_SKIP_EXTENSIONS.has(getDesktopScanFileExtension(normalizedName));
+        return (
+            (!isDesktopScanDicomDirFileName(normalizedName) && DESKTOP_SCAN_SKIP_FILE_NAMES.has(normalizedName)) ||
+            DESKTOP_SCAN_SKIP_EXTENSIONS.has(getDesktopScanFileExtension(normalizedName))
+        );
     }
 
     function shouldSkipDesktopScanDirectory(name) {
         const normalizedName = String(name || '').toLowerCase();
-        return normalizedName.endsWith('.app') ||
-            DESKTOP_SCAN_SKIP_DIRECTORY_NAMES.has(normalizedName);
+        return normalizedName.endsWith('.app') || DESKTOP_SCAN_SKIP_DIRECTORY_NAMES.has(normalizedName);
     }
 
     function createDesktopPathScanStats(captureTiming) {
         const stats = {
             discovered: 0,
             processed: 0,
-            valid: 0
+            valid: 0,
         };
         if (captureTiming) {
             Object.assign(stats, {
@@ -625,21 +615,21 @@
                 headerHitCount: 0,
                 headerShortCount: 0,
                 headerFallbackCount: 0,
-                headerRejectedCount: 0
+                headerRejectedCount: 0,
             });
         }
         return stats;
     }
 
     function wait(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     function createYieldController(intervalMs = SCAN_YIELD_INTERVAL_MS) {
         let lastYieldAt = performance.now();
         return async function yieldIfNeeded(force = false) {
             const now = performance.now();
-            if (!force && (now - lastYieldAt) < intervalMs) {
+            if (!force && now - lastYieldAt < intervalMs) {
                 return;
             }
             lastYieldAt = now;
@@ -654,11 +644,7 @@
     }
 
     async function withRetries(task, options = {}) {
-        const {
-            attempts = 1,
-            retryDelayMs = 0,
-            onRetry = null
-        } = options;
+        const { attempts = 1, retryDelayMs = 0, onRetry = null } = options;
 
         let lastError = null;
         for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -685,7 +671,8 @@
         if (typeof onProgress !== 'function') return;
 
         const { force = false, currentPath = '', complete = false } = options;
-        const shouldEmit = force ||
+        const shouldEmit =
+            force ||
             stats.discovered === 0 ||
             stats.processed === 1 ||
             stats.discovered % SCAN_PROGRESS_UPDATE_INTERVAL === 0 ||
@@ -707,7 +694,7 @@
             if (handle.kind === 'file') {
                 files.push({ handle, name });
             } else if (handle.kind === 'directory') {
-                files.push(...await getAllFileHandles(handle));
+                files.push(...(await getAllFileHandles(handle)));
             }
         }
         return files;
@@ -716,7 +703,7 @@
     async function processFiles(fileHandles) {
         const files = fileHandles.map(({ handle, name }) => ({
             name,
-            source: { kind: 'handle', handle }
+            source: { kind: 'handle', handle },
         }));
         return processFilesFromSources(files);
     }
@@ -730,26 +717,35 @@
         const concurrency = getScanConcurrency(files);
         for (let i = 0; i < files.length; i += concurrency) {
             const batch = files.slice(i, i + concurrency);
-            await Promise.all(batch.map(async ({ name, source }) => {
-                try {
-                    const buffer = await readSliceBuffer({ source }, 'scan');
-                    const meta = await parseDicomMetadata(buffer);
-                    if (!isRenderableImageMetadata(meta)) return;
-                    valid++;
-                    addSliceToStudies(studies, meta, source);
-                } catch (e) {
-                    console.warn(`Skipping unreadable DICOM file during scan: ${name}`, e);
-                } finally {
-                    processed++;
-                    updateScanProgress(processed, total, valid);
-                }
-            }));
+            await Promise.all(
+                batch.map(async ({ name, source }) => {
+                    try {
+                        const buffer = await readSliceBuffer({ source }, 'scan');
+                        const meta = await parseDicomMetadata(buffer);
+                        if (!isRenderableImageMetadata(meta)) return;
+                        valid++;
+                        addSliceToStudies(studies, meta, source);
+                    } catch (e) {
+                        console.warn(`Skipping unreadable DICOM file during scan: ${name}`, e);
+                    } finally {
+                        processed++;
+                        updateScanProgress(processed, total, valid);
+                    }
+                }),
+            );
         }
 
         return finalizeStudies(studies);
     }
 
-    async function processDesktopPathFile(fileEntry, studies, stats, onProgress, cacheUpdates = null, largeReadGate = null) {
+    async function processDesktopPathFile(
+        fileEntry,
+        studies,
+        stats,
+        onProgress,
+        cacheUpdates = null,
+        largeReadGate = null,
+    ) {
         const { name, source } = fileEntry;
         let meta = null;
         let renderable = false;
@@ -782,7 +778,7 @@
         indexedFilePaths,
         stats,
         onProgress,
-        availablePaths = null
+        availablePaths = null,
     ) {
         const sourcePath = fileEntry?.source?.path || '';
         const shouldTimeReads = typeof stats.readFileMs === 'number';
@@ -834,25 +830,22 @@
             case 'api': {
                 const apiFetch = window.NotesAPI?.authenticatedFetch || fetch;
                 const resp = await apiFetch(
-                    `${source.apiBase}/dicom/${encodeURIComponent(source.studyId)}/${encodeURIComponent(source.seriesId)}/${source.sliceIndex}`
+                    `${source.apiBase}/dicom/${encodeURIComponent(source.studyId)}/${encodeURIComponent(source.seriesId)}/${source.sliceIndex}`,
                 );
                 if (!resp.ok) throw new Error(`Failed to ${purpose} slice: ${resp.status}`);
                 return resp.arrayBuffer();
             }
             case 'path': {
-                const bytes = await withRetries(
-                    () => window.__TAURI__.fs.readFile(source.path),
-                    {
-                        attempts: DESKTOP_PATH_READ_ATTEMPTS,
-                        retryDelayMs: DESKTOP_PATH_READ_RETRY_DELAY_MS,
-                        onRetry: (error, nextAttempt) => {
-                            console.warn(
-                                `Retrying desktop file read (${nextAttempt}/${DESKTOP_PATH_READ_ATTEMPTS}) for ${source.path}:`,
-                                error
-                            );
-                        }
-                    }
-                );
+                const bytes = await withRetries(() => window.__TAURI__.fs.readFile(source.path), {
+                    attempts: DESKTOP_PATH_READ_ATTEMPTS,
+                    retryDelayMs: DESKTOP_PATH_READ_RETRY_DELAY_MS,
+                    onRetry: (error, nextAttempt) => {
+                        console.warn(
+                            `Retrying desktop file read (${nextAttempt}/${DESKTOP_PATH_READ_ATTEMPTS}) for ${source.path}:`,
+                            error,
+                        );
+                    },
+                });
                 return bytes;
             }
             default:
@@ -861,12 +854,12 @@
     }
 
     function normalizeStudiesPayload(payload, apiBase) {
-        const studiesArray = Array.isArray(payload) ? payload : (payload.studies || []);
+        const studiesArray = Array.isArray(payload) ? payload : payload.studies || [];
         const studies = {};
 
         for (const study of studiesArray) {
             const seriesMap = {};
-            for (const series of (study.series || [])) {
+            for (const series of study.series || []) {
                 seriesMap[series.seriesInstanceUid] = {
                     seriesInstanceUid: series.seriesInstanceUid,
                     seriesDescription: series.seriesDescription,
@@ -881,9 +874,9 @@
                             apiBase,
                             studyId: study.studyInstanceUid,
                             seriesId: series.seriesInstanceUid,
-                            sliceIndex: i
-                        }
-                    }))
+                            sliceIndex: i,
+                        },
+                    })),
                 };
             }
 
@@ -897,7 +890,7 @@
                 imageCount: study.imageCount,
                 comments: [],
                 reports: [],
-                series: seriesMap
+                series: seriesMap,
             };
         }
 
@@ -908,7 +901,7 @@
         return {
             studies,
             available: !!payload.available,
-            folder: payload.folder || ''
+            folder: payload.folder || '',
         };
     }
 
@@ -952,19 +945,23 @@
 
     async function resolveDesktopPathSource(fs, path, readError) {
         if (!fs?.stat) {
-            return [{
-                name: getPathName(path),
-                source: { kind: 'path', path }
-            }];
+            return [
+                {
+                    name: getPathName(path),
+                    source: { kind: 'path', path },
+                },
+            ];
         }
 
         try {
             const info = await fs.stat(path);
             if (info?.isFile) {
-                return [{
-                    name: getPathName(path),
-                    source: { kind: 'path', path }
-                }];
+                return [
+                    {
+                        name: getPathName(path),
+                        source: { kind: 'path', path },
+                    },
+                ];
             }
 
             if (info?.isDirectory) {
@@ -988,11 +985,7 @@
             throw new Error('Desktop file APIs unavailable');
         }
 
-        const {
-            depth = 0,
-            maxDepth = DESKTOP_MAX_SCAN_DEPTH,
-            visited = new Set()
-        } = options;
+        const { depth = 0, maxDepth = DESKTOP_MAX_SCAN_DEPTH, visited = new Set() } = options;
         const normalizedPath = await normalizePath(path);
 
         if (visited.has(normalizedPath)) {
@@ -1024,18 +1017,20 @@
                     console.warn('Skipping path beyond desktop scan depth limit:', entryPath);
                     continue;
                 }
-                files.push(...await collectPathSources(entryPath, {
-                    depth: depth + 1,
-                    maxDepth,
-                    visited
-                }));
+                files.push(
+                    ...(await collectPathSources(entryPath, {
+                        depth: depth + 1,
+                        maxDepth,
+                        visited,
+                    })),
+                );
             } else if (entry.isFile) {
                 if (shouldSkipDesktopScanPathEntry(entry.name)) {
                     continue;
                 }
                 files.push({
                     name: entry.name,
-                    source: { kind: 'path', path: entryPath }
+                    source: { kind: 'path', path: entryPath },
                 });
             }
         }
@@ -1048,11 +1043,7 @@
             throw new Error('Desktop file APIs unavailable');
         }
 
-        const {
-            maxDepth = DESKTOP_MAX_SCAN_DEPTH,
-            onProgress = null,
-            captureTiming = false
-        } = options;
+        const { maxDepth = DESKTOP_MAX_SCAN_DEPTH, onProgress = null, captureTiming = false } = options;
 
         const normalizedPaths = [];
         for (const path of (Array.isArray(paths) ? paths : [paths]).filter(Boolean)) {
@@ -1076,7 +1067,7 @@
         async function acquireLargeReadSlot(size) {
             if (size <= DESKTOP_LARGE_FILE_THRESHOLD) return;
             while (activeLargeReads >= DESKTOP_MAX_CONCURRENT_LARGE_READS) {
-                await new Promise(r => largeReadWaiters.push(r));
+                await new Promise((r) => largeReadWaiters.push(r));
             }
             activeLargeReads++;
         }
@@ -1130,7 +1121,7 @@
             pendingFiles.push(fileEntry);
             stats.discovered++;
             safeEmitDesktopPathProgress(onProgress, stats, {
-                currentPath: fileEntry.source?.path || currentPath
+                currentPath: fileEntry.source?.path || currentPath,
             });
             wakeQueuedWorkers();
             return true;
@@ -1168,10 +1159,7 @@
             }
         }
 
-        const workers = Array.from(
-            { length: DESKTOP_PATH_SCAN_CONCURRENCY },
-            () => workerLoop()
-        );
+        const workers = Array.from({ length: DESKTOP_PATH_SCAN_CONCURRENCY }, () => workerLoop());
 
         safeEmitDesktopPathProgress(onProgress, stats, { force: true, complete: false });
 
@@ -1193,7 +1181,7 @@
                         source: { kind: 'path', path: entry.path },
                         rootPath: entry.rootPath || normalizedPaths[0] || '',
                         size: entry.size,
-                        modifiedMs: entry.modifiedMs
+                        modifiedMs: entry.modifiedMs,
                     };
                     const currentPath = fileEntry.source.path;
                     if (currentPath && queuedFilePaths.has(currentPath)) {
@@ -1211,7 +1199,7 @@
                             indexedFilePaths,
                             stats,
                             onProgress,
-                            manifestPathSet
+                            manifestPathSet,
                         );
                         continue;
                     }
@@ -1289,14 +1277,19 @@
                                 stats.discovered++;
                                 stats.processed++;
                                 safeEmitDesktopPathProgress(onProgress, stats, {
-                                    currentPath: fileEntry.source?.path || currentPath
+                                    currentPath: fileEntry.source?.path || currentPath,
                                 });
                                 continue;
                             }
-                            if (enqueuePendingFile({
-                                ...fileEntry,
-                                rootPath: current.rootPath
-                            }, currentPath)) {
+                            if (
+                                enqueuePendingFile(
+                                    {
+                                        ...fileEntry,
+                                        rootPath: current.rootPath,
+                                    },
+                                    currentPath,
+                                )
+                            ) {
                                 await waitForQueueCapacity();
                             }
                         }
@@ -1317,11 +1310,17 @@
                         }
                         queuedFilePaths.add(entryPath);
                         stats.discovered++;
-                        await processDesktopPathDicomDirFile({
-                            name: entry.name,
-                            source: { kind: 'path', path: entryPath },
-                            rootPath: current.rootPath
-                        }, studies, indexedFilePaths, stats, onProgress);
+                        await processDesktopPathDicomDirFile(
+                            {
+                                name: entry.name,
+                                source: { kind: 'path', path: entryPath },
+                                rootPath: current.rootPath,
+                            },
+                            studies,
+                            indexedFilePaths,
+                            stats,
+                            onProgress,
+                        );
                     }
 
                     for (const entry of entries) {
@@ -1342,7 +1341,7 @@
                             stack.push({
                                 path: entryPath,
                                 depth: current.depth + 1,
-                                rootPath: current.rootPath
+                                rootPath: current.rootPath,
                             });
                             continue;
                         }
@@ -1364,11 +1363,16 @@
                             continue;
                         }
 
-                        if (enqueuePendingFile({
-                            name: entry.name,
-                            source: { kind: 'path', path: entryPath },
-                            rootPath: current.rootPath
-                        }, entryPath)) {
+                        if (
+                            enqueuePendingFile(
+                                {
+                                    name: entry.name,
+                                    source: { kind: 'path', path: entryPath },
+                                    rootPath: current.rootPath,
+                                },
+                                entryPath,
+                            )
+                        ) {
                             await waitForQueueCapacity();
                         }
                     }
@@ -1414,9 +1418,9 @@
                     lastProgress = stats;
                     showIndeterminateProgress(
                         'Scanning desktop folder...',
-                        `${stats.processed}/${stats.discovered} files processed (${stats.valid} viewable DICOM)`
+                        `${stats.processed}/${stats.discovered} files processed (${stats.valid} viewable DICOM)`,
                     );
-                }
+                },
             });
 
             if (!lastProgress.discovered) {
@@ -1499,6 +1503,6 @@
         loadStudiesFromApi,
         expandFrameSlices,
         getSliceDedupKey,
-        getSliceCacheKey
+        getSliceCacheKey,
     };
 })();

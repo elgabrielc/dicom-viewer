@@ -28,13 +28,13 @@ test.describe('Sync Engine', () => {
                                 time: 1,
                                 created_at: 1,
                                 updated_at: 1,
-                                sync_version: 0
-                            }
+                                sync_version: 0,
+                            },
                         ],
                         series: {},
-                        reports: []
-                    }
-                }
+                        reports: [],
+                    },
+                },
             });
             window._SyncOutbox._saveOutbox([]);
             window._SyncOutbox._saveSyncState({});
@@ -49,23 +49,25 @@ test.describe('Sync Engine', () => {
             const queued = window._SyncOutbox.enqueueChange('comments', commentKey, 'update', 0);
             const operationUuid = queued.operation_uuid;
             const originalFetch = window.fetch;
-            window.fetch = async () => new Response(JSON.stringify({
-                accepted: [
-                    { operation_uuid: operationUuid, sync_version: 7 }
-                ],
-                rejected: [],
-                remote_changes: [],
-                delta_cursor: 'cursor-7',
-                server_time: 1700000000000
-            }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' }
-            });
+            window.fetch = async () =>
+                new Response(
+                    JSON.stringify({
+                        accepted: [{ operation_uuid: operationUuid, sync_version: 7 }],
+                        rejected: [],
+                        remote_changes: [],
+                        delta_cursor: 'cursor-7',
+                        server_time: 1700000000000,
+                    }),
+                    {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' },
+                    },
+                );
 
             try {
                 const engine = new window._SyncEngine.SyncEngine({
                     getAccessToken: async () => 'valid-access-token',
-                    onAuthRequired: () => {}
+                    onAuthRequired: () => {},
                 });
                 const summary = await engine.syncNow();
                 const store = window._NotesInternals.loadStore();
@@ -74,7 +76,7 @@ test.describe('Sync Engine', () => {
                     events,
                     cursor: window._SyncOutbox.getCursor(),
                     pending: window._SyncOutbox.readPendingChanges(),
-                    comment: store.studies[studyUid].comments[0]
+                    comment: store.studies[studyUid].comments[0],
                 };
             } finally {
                 window.fetch = originalFetch;
@@ -88,14 +90,11 @@ test.describe('Sync Engine', () => {
         expect(result.comment.sync_version).toBe(7);
         expect(result.cursor).toBe('cursor-7');
         expect(result.pending).toEqual([]);
-        expect(result.events.map((event) => event.type)).toEqual([
-            'sync:started',
-            'sync:completed'
-        ]);
+        expect(result.events.map((event) => event.type)).toEqual(['sync:started', 'sync:completed']);
         expect(result.events[1].detail).toMatchObject({
             acceptedCount: 1,
             rejected: [],
-            noopsCleaned: 0
+            noopsCleaned: 0,
         });
     });
 
@@ -110,10 +109,7 @@ test.describe('Sync Engine', () => {
                 .replace(/=+$/g, '');
             const expiredAccessToken = `header.${payload}.signature`;
 
-            await window.DicomViewerApp.accountUi._storeTokens(
-                expiredAccessToken,
-                'refresh-token-123'
-            );
+            await window.DicomViewerApp.accountUi._storeTokens(expiredAccessToken, 'refresh-token-123');
 
             const originalFetch = window.fetch;
             window.fetch = async (input, init) => {
@@ -131,7 +127,7 @@ test.describe('Sync Engine', () => {
                 } catch (error) {
                     thrown = {
                         message: error.message,
-                        transient: !!error.transient
+                        transient: !!error.transient,
                     };
                 }
 
@@ -139,7 +135,7 @@ test.describe('Sync Engine', () => {
                     thrown,
                     snapshot: window.DicomViewerApp.accountUi._authStore._snapshot(),
                     accessToken: localStorage.getItem('dicom-viewer-access-token'),
-                    refreshToken: localStorage.getItem('dicom-viewer-refresh-token')
+                    refreshToken: localStorage.getItem('dicom-viewer-refresh-token'),
                 };
             } finally {
                 window.fetch = originalFetch;
@@ -148,12 +144,12 @@ test.describe('Sync Engine', () => {
 
         expect(result.thrown).toEqual(
             expect.objectContaining({
-                transient: true
-            })
+                transient: true,
+            }),
         );
         expect(result.snapshot).toMatchObject({
             accessToken: expect.any(String),
-            refreshToken: 'refresh-token-123'
+            refreshToken: 'refresh-token-123',
         });
         expect(result.accessToken).toBe(result.snapshot.accessToken);
         expect(result.refreshToken).toBe('refresh-token-123');
@@ -186,35 +182,45 @@ test.describe('Sync Engine', () => {
                                 size: 1,
                                 addedAt: new Date(1).toISOString(),
                                 updatedAt: new Date(2).toISOString(),
-                                sync_version: 1
-                            }
-                        ]
-                    }
-                }
+                                sync_version: 1,
+                            },
+                        ],
+                    },
+                },
             });
 
             const engine = new window._SyncEngine.SyncEngine({
                 getAccessToken: async () => 'valid-access-token',
-                onAuthRequired: () => {}
+                onAuthRequired: () => {},
             });
 
-            engine._applyRemoteData('reports', insertedReportId, {
-                study_uid: studyUid,
-                name: 'Inserted Remote',
-                type: 'pdf',
-                size: 42,
-                added_at: insertedAddedAt,
-                updated_at: insertedUpdatedAt
-            }, 5);
+            engine._applyRemoteData(
+                'reports',
+                insertedReportId,
+                {
+                    study_uid: studyUid,
+                    name: 'Inserted Remote',
+                    type: 'pdf',
+                    size: 42,
+                    added_at: insertedAddedAt,
+                    updated_at: insertedUpdatedAt,
+                },
+                5,
+            );
 
-            engine._applyRemoteData('reports', existingReportId, {
-                study_uid: studyUid,
-                name: 'Updated Remote',
-                type: 'png',
-                size: 84,
-                added_at: updatedAddedAt,
-                updated_at: updatedUpdatedAt
-            }, 6);
+            engine._applyRemoteData(
+                'reports',
+                existingReportId,
+                {
+                    study_uid: studyUid,
+                    name: 'Updated Remote',
+                    type: 'png',
+                    size: 84,
+                    added_at: updatedAddedAt,
+                    updated_at: updatedUpdatedAt,
+                },
+                6,
+            );
 
             const reports = window._NotesInternals.loadStore().studies[studyUid].reports;
             return {
@@ -223,7 +229,7 @@ test.describe('Sync Engine', () => {
                 insertedAddedAt,
                 insertedUpdatedAt,
                 updatedAddedAt,
-                updatedUpdatedAt
+                updatedUpdatedAt,
             };
         });
 
@@ -236,7 +242,7 @@ test.describe('Sync Engine', () => {
         expect(result.updated).toMatchObject({
             name: 'Updated Remote',
             type: 'png',
-            size: 84
+            size: 84,
         });
     });
 });

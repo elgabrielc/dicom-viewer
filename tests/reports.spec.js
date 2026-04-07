@@ -39,12 +39,10 @@ test.describe('Test Suite 31: POST /api/notes/<study_uid>/reports - Upload Repor
         const studyUid = uniqueStudyUid();
         const { id: reportId } = await (await uploadReport(request, studyUid)).json();
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const reports = body.studies[studyUid]?.reports || [];
-        const found = reports.find(r => r.id === reportId);
+        const found = reports.find((r) => r.id === reportId);
         expect(found).toBeDefined();
         expect(found.type).toBe('pdf');
         expect(typeof found.size).toBe('number');
@@ -82,9 +80,7 @@ test.describe('Test Suite 31: POST /api/notes/<study_uid>/reports - Upload Repor
     test('PNG report is accepted and type is set to png', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         // Minimal PNG signature bytes
-        const pngBuffer = Buffer.from([
-            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
-        ]);
+        const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
         const response = await uploadReport(request, studyUid, {
             filename: 'screenshot.png',
             mimeType: 'image/png',
@@ -226,9 +222,7 @@ test.describe('Test Suite 32: GET /api/notes/reports/<id>/file - Download Report
     });
 
     test('returns 404 for a report ID that does not exist', async ({ request }) => {
-        const response = await request.get(
-            `${BASE_URL}/api/notes/reports/nonexistent-report-id-xyz/file`
-        );
+        const response = await request.get(`${BASE_URL}/api/notes/reports/nonexistent-report-id-xyz/file`);
         expect(response.status()).toBe(404);
     });
 
@@ -278,9 +272,7 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
         const studyUid = uniqueStudyUid();
         const { id: reportId } = await (await uploadReport(request, studyUid)).json();
 
-        const deleteResponse = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`
-        );
+        const deleteResponse = await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
         expect(deleteResponse.status()).toBe(200);
 
         const body = await deleteResponse.json();
@@ -290,9 +282,7 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
 
     test('returns 404 when deleting a report that does not exist', async ({ request }) => {
         const studyUid = uniqueStudyUid();
-        const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/reports/nonexistent-rpt-id`
-        );
+        const response = await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/nonexistent-rpt-id`);
         expect(response.status()).toBe(404);
     });
 
@@ -301,15 +291,11 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
         const studyB = uniqueStudyUid();
         const { id: reportId } = await (await uploadReport(request, studyA)).json();
 
-        const response = await request.delete(
-            `${BASE_URL}/api/notes/${studyB}/reports/${reportId}`
-        );
+        const response = await request.delete(`${BASE_URL}/api/notes/${studyB}/reports/${reportId}`);
         expect(response.status()).toBe(404);
 
         // Report under studyA must still exist
-        const fileResponse = await request.get(
-            `${BASE_URL}/api/notes/reports/${reportId}/file`
-        );
+        const fileResponse = await request.get(`${BASE_URL}/api/notes/reports/${reportId}/file`);
         expect(fileResponse.status()).toBe(200);
     });
 
@@ -319,9 +305,7 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
 
         await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         // Study has no remaining notes -- absent from response
         expect(body.studies).not.toHaveProperty(studyUid);
     });
@@ -361,12 +345,10 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
 
         await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${idB}`);
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         const reports = body.studies[studyUid]?.reports || [];
-        const foundA = reports.find(r => r.id === idA);
-        const foundB = reports.find(r => r.id === idB);
+        const foundA = reports.find((r) => r.id === idA);
+        const foundB = reports.find((r) => r.id === idB);
 
         expect(foundA).toBeDefined();
         expect(foundB).toBeUndefined();
@@ -381,20 +363,16 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
         await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
 
         // Confirm it is gone from queries
-        const afterDelete = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
-        expect(afterDelete.studies[studyUid]?.reports?.find(r => r.id === reportId)).toBeUndefined();
+        const afterDelete = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
+        expect(afterDelete.studies[studyUid]?.reports?.find((r) => r.id === reportId)).toBeUndefined();
 
         // Re-upload (resurrection)
         const reUpload = await uploadReport(request, studyUid, { reportId, filename: 'v2.pdf', name: 'Resurrected' });
         expect(reUpload.status()).toBe(200);
 
         // Should now appear again in queries
-        const afterResurrect = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
-        const found = afterResurrect.studies[studyUid]?.reports?.find(r => r.id === reportId);
+        const afterResurrect = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
+        const found = afterResurrect.studies[studyUid]?.reports?.find((r) => r.id === reportId);
         expect(found).toBeDefined();
         expect(found.name).toBe('Resurrected');
     });
@@ -431,13 +409,19 @@ test.describe('Test Suite 34: Content Hash and Soft-Delete File Retention', () =
         const studyA = uniqueStudyUid();
         const studyB = uniqueStudyUid();
 
-        const bodyA = await (await uploadReport(request, studyA, {
-            filename: 'a.pdf', fileContent: content
-        })).json();
+        const bodyA = await (
+            await uploadReport(request, studyA, {
+                filename: 'a.pdf',
+                fileContent: content,
+            })
+        ).json();
 
-        const bodyB = await (await uploadReport(request, studyB, {
-            filename: 'b.pdf', fileContent: content
-        })).json();
+        const bodyB = await (
+            await uploadReport(request, studyB, {
+                filename: 'b.pdf',
+                fileContent: content,
+            })
+        ).json();
 
         expect(bodyA.contentHash).toBe(bodyB.contentHash);
     });
@@ -445,17 +429,21 @@ test.describe('Test Suite 34: Content Hash and Soft-Delete File Retention', () =
     test('different file content produces different content hashes', async ({ request }) => {
         const studyUid = uniqueStudyUid();
 
-        const bodyA = await (await uploadReport(request, studyUid, {
-            reportId: 'hash-diff-test-aaa1',
-            filename: 'a.pdf',
-            fileContent: Buffer.from('%PDF-1.4\ncontent A\n%%EOF\n'),
-        })).json();
+        const bodyA = await (
+            await uploadReport(request, studyUid, {
+                reportId: 'hash-diff-test-aaa1',
+                filename: 'a.pdf',
+                fileContent: Buffer.from('%PDF-1.4\ncontent A\n%%EOF\n'),
+            })
+        ).json();
 
-        const bodyB = await (await uploadReport(request, studyUid, {
-            reportId: 'hash-diff-test-bbb2',
-            filename: 'b.pdf',
-            fileContent: Buffer.from('%PDF-1.4\ncontent B\n%%EOF\n'),
-        })).json();
+        const bodyB = await (
+            await uploadReport(request, studyUid, {
+                reportId: 'hash-diff-test-bbb2',
+                filename: 'b.pdf',
+                fileContent: Buffer.from('%PDF-1.4\ncontent B\n%%EOF\n'),
+            })
+        ).json();
 
         expect(bodyA.contentHash).not.toBe(bodyB.contentHash);
     });
@@ -463,14 +451,15 @@ test.describe('Test Suite 34: Content Hash and Soft-Delete File Retention', () =
     test('physical report file is retained on disk after soft delete', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const pdfContent = minimalPdfBuffer();
-        const { id: reportId } = await (await uploadReport(request, studyUid, {
-            filename: 'retained.pdf', fileContent: pdfContent
-        })).json();
+        const { id: reportId } = await (
+            await uploadReport(request, studyUid, {
+                filename: 'retained.pdf',
+                fileContent: pdfContent,
+            })
+        ).json();
 
         // Soft delete
-        const deleteResponse = await request.delete(
-            `${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`
-        );
+        const deleteResponse = await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
         expect(deleteResponse.status()).toBe(200);
 
         // The file endpoint returns 404 because the record is tombstoned,

@@ -1,7 +1,8 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
 
-    const $ = id => document.getElementById(id);
+    const $ = (id) => document.getElementById(id);
 
     const dom = {
         $,
@@ -40,7 +41,7 @@
         nextBtn: $('nextSlice'),
         backBtn: $('backBtn'),
         loadSampleCtBtn: $('loadSampleCtBtn'),
-        loadSampleMriBtn: $('loadSampleMriBtn')
+        loadSampleMriBtn: $('loadSampleMriBtn'),
     };
 
     // Scripts load at the end of body in the current static layout, so canvases exist here.

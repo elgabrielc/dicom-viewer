@@ -27,7 +27,9 @@ def issue_cursor(db, user_id, device_id, position):
 
     db.execute(
         """
-        INSERT INTO sync_cursors (cursor_token, user_id, device_id, position, created_at, expires_at)
+        INSERT INTO sync_cursors (
+            cursor_token, user_id, device_id, position, created_at, expires_at
+        )
         VALUES (?, ?, ?, ?, ?, ?)
         """,
         (token, user_id, device_id, position, now, expires_at),
@@ -46,29 +48,29 @@ def validate_cursor(db, token, user_id):
         CursorInvalidError   -- token not found or belongs to another user.
     """
     row = db.execute(
-        "SELECT position, user_id, expires_at FROM sync_cursors WHERE cursor_token = ?",
+        'SELECT position, user_id, expires_at FROM sync_cursors WHERE cursor_token = ?',
         (token,),
     ).fetchone()
 
     if row is None:
-        raise CursorInvalidError("Cursor token not found")
+        raise CursorInvalidError('Cursor token not found')
 
-    if row["user_id"] != user_id:
-        raise CursorInvalidError("Cursor belongs to another user")
+    if row['user_id'] != user_id:
+        raise CursorInvalidError('Cursor belongs to another user')
 
     now = int(time.time())
-    if row["expires_at"] < now:
+    if row['expires_at'] < now:
         # Clean up the expired row
-        db.execute("DELETE FROM sync_cursors WHERE cursor_token = ?", (token,))
-        raise CursorExpiredError("Cursor has expired")
+        db.execute('DELETE FROM sync_cursors WHERE cursor_token = ?', (token,))
+        raise CursorExpiredError('Cursor has expired')
 
-    return row["position"]
+    return row['position']
 
 
 def cleanup_expired_cursors(db):
     """Remove all expired cursor rows. Call periodically to keep the table tidy."""
     now = int(time.time())
-    db.execute("DELETE FROM sync_cursors WHERE expires_at < ?", (now,))
+    db.execute('DELETE FROM sync_cursors WHERE expires_at < ?', (now,))
 
 
 class CursorExpiredError(Exception):

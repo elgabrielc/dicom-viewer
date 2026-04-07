@@ -68,76 +68,76 @@
 
 :root {
     /* --- Neutrals --- */
-    --color-white:        #FFFFFF;
-    --color-light:        #FFF8F3;
-    --color-dawn:         #F2F0E2;
-    --color-sand:         #E5E0D4;
-    --color-stone:        #C4BFB3;
-    --color-drift:        #A09B8F;
-    --color-ash:          #6B6660;
-    --color-charcoal:     #3D3A36;
-    --color-night:        #1E1C1A;
+    --color-white: #ffffff;
+    --color-light: #fff8f3;
+    --color-dawn: #f2f0e2;
+    --color-sand: #e5e0d4;
+    --color-stone: #c4bfb3;
+    --color-drift: #a09b8f;
+    --color-ash: #6b6660;
+    --color-charcoal: #3d3a36;
+    --color-night: #1e1c1a;
 
     /* --- Emerald (Green Family) --- */
-    --color-emerald-50:   #ECFAF0;
-    --color-emerald-100:  #C8F0D4;
-    --color-emerald-200:  #84D9A0;
-    --color-emerald-300:  #4EBF72;
-    --color-emerald-400:  #2D9B54;
-    --color-emerald-500:  #1E7A3E;
-    --color-emerald-600:  #196333;
-    --color-emerald-700:  #144D28;
-    --color-emerald-800:  #0F381D;
-    --color-emerald-900:  #0A2413;
+    --color-emerald-50: #ecfaf0;
+    --color-emerald-100: #c8f0d4;
+    --color-emerald-200: #84d9a0;
+    --color-emerald-300: #4ebf72;
+    --color-emerald-400: #2d9b54;
+    --color-emerald-500: #1e7a3e;
+    --color-emerald-600: #196333;
+    --color-emerald-700: #144d28;
+    --color-emerald-800: #0f381d;
+    --color-emerald-900: #0a2413;
 
     /* --- Amber (Orange Family) --- */
-    --color-amber-50:     #FFF4E6;
-    --color-amber-100:    #FEE2B8;
-    --color-amber-200:    #FBC477;
-    --color-amber-300:    #F5A83A;
-    --color-amber-400:    #F08C00;
-    --color-amber-500:    #D67D00;
-    --color-amber-600:    #B26800;
-    --color-amber-700:    #864E00;
-    --color-amber-800:    #5C3600;
-    --color-amber-900:    #332000;
+    --color-amber-50: #fff4e6;
+    --color-amber-100: #fee2b8;
+    --color-amber-200: #fbc477;
+    --color-amber-300: #f5a83a;
+    --color-amber-400: #f08c00;
+    --color-amber-500: #d67d00;
+    --color-amber-600: #b26800;
+    --color-amber-700: #864e00;
+    --color-amber-800: #5c3600;
+    --color-amber-900: #332000;
 
     /* --- Semantic: Library (Light Mode) --- */
-    --color-bg-primary:    var(--color-light);
-    --color-bg-secondary:  var(--color-dawn);
-    --color-bg-surface:    var(--color-white);
-    --color-bg-muted:      var(--color-sand);
-    --color-text-primary:  var(--color-charcoal);
+    --color-bg-primary: var(--color-light);
+    --color-bg-secondary: var(--color-dawn);
+    --color-bg-surface: var(--color-white);
+    --color-bg-muted: var(--color-sand);
+    --color-text-primary: var(--color-charcoal);
     --color-text-secondary: var(--color-ash);
-    --color-text-muted:    var(--color-drift);
-    --color-text-inverse:  var(--color-light);
-    --color-accent:        var(--color-amber-400);
-    --color-accent-hover:  var(--color-amber-500);
-    --color-border:        var(--color-sand);
+    --color-text-muted: var(--color-drift);
+    --color-text-inverse: var(--color-light);
+    --color-accent: var(--color-amber-400);
+    --color-accent-hover: var(--color-amber-500);
+    --color-border: var(--color-sand);
     --color-border-subtle: var(--color-dawn);
 
     /* --- Semantic: Viewer (Dark Mode) --- */
-    --color-viewer-bg:     #0F1E14;
-    --color-viewer-panel:  #14281A;
-    --color-viewer-header: #0A160E;
-    --color-viewer-border: #1E3A26;
-    --color-viewer-text:   #EEEEEE;
+    --color-viewer-bg: #0f1e14;
+    --color-viewer-panel: #14281a;
+    --color-viewer-header: #0a160e;
+    --color-viewer-border: #1e3a26;
+    --color-viewer-text: #eeeeee;
     --color-viewer-accent: var(--color-amber-400);
 
     /* --- Typography --- */
-    --font-sans:  'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-serif: 'Lora', Georgia, 'Times New Roman', serif;
-    --font-mono:  'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
     /* --- Radii --- */
-    --radius-sm:   4px;
-    --radius-md:   8px;
-    --radius-lg:   12px;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
 
     /* --- Shadows --- */
-    --shadow-sm:  0 1px 2px rgba(30, 28, 26, 0.05);
-    --shadow-md:  0 2px 8px rgba(30, 28, 26, 0.08);
-    --shadow-lg:  0 4px 16px rgba(30, 28, 26, 0.10);
+    --shadow-sm: 0 1px 2px rgba(30, 28, 26, 0.05);
+    --shadow-md: 0 2px 8px rgba(30, 28, 26, 0.08);
+    --shadow-lg: 0 4px 16px rgba(30, 28, 26, 0.1);
 
     /* --- Transitions --- */
     --ease-default: 200ms ease;
@@ -258,7 +258,10 @@ header {
     font-size: 1rem;
     font-weight: 500;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+    transition:
+        transform 0.2s,
+        box-shadow 0.2s,
+        background-color 0.2s;
 }
 
 .sample-btn:hover {
@@ -1102,7 +1105,10 @@ header {
     color: #888;
     text-decoration: none;
     font-size: 0.9rem;
-    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+    transition:
+        color 0.15s ease,
+        background-color 0.15s ease,
+        border-color 0.15s ease;
 }
 
 .help-toc-item:hover {
@@ -1208,7 +1214,10 @@ header {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
     position: relative;
     flex-shrink: 0;
 }
@@ -1312,8 +1321,13 @@ header {
 }
 
 @keyframes progress-pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
+    0%,
+    100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 1;
+    }
 }
 
 /* ==========================================================================
@@ -1465,8 +1479,8 @@ header {
 }
 
 .tool-btn:hover {
-    background: #1E3A26;
-    border-color: #2E5A3E;
+    background: #1e3a26;
+    border-color: #2e5a3e;
 }
 
 .tool-btn.active {
@@ -1581,7 +1595,7 @@ header {
     height: 36px;
     border: none;
     border-radius: 6px;
-    background-color: #1E3A26;
+    background-color: #1e3a26;
     color: #fff;
     font-size: 1rem;
     cursor: pointer;
@@ -1589,7 +1603,7 @@ header {
 }
 
 .slice-btn:hover {
-    background-color: #2E5A3E;
+    background-color: #2e5a3e;
 }
 
 .slice-btn:disabled {
@@ -1602,7 +1616,7 @@ header {
     height: 8px;
     -webkit-appearance: none;
     appearance: none;
-    background: #1E3A26;
+    background: #1e3a26;
     border-radius: 4px;
     cursor: pointer;
 }
@@ -1721,9 +1735,9 @@ header {
     text-align: center;
 }
 
-.account-modal-content input[type="email"],
-.account-modal-content input[type="password"],
-.account-modal-content input[type="text"] {
+.account-modal-content input[type='email'],
+.account-modal-content input[type='password'],
+.account-modal-content input[type='text'] {
     display: block;
     width: 100%;
     padding: 0.75rem 1rem;
@@ -1747,7 +1761,7 @@ header {
     color: var(--color-stone);
 }
 
-.account-modal-content button[type="submit"] {
+.account-modal-content button[type='submit'] {
     display: block;
     width: 100%;
     padding: 0.75rem 1rem;
@@ -1762,11 +1776,11 @@ header {
     margin-top: 0.25rem;
 }
 
-.account-modal-content button[type="submit"]:hover {
+.account-modal-content button[type='submit']:hover {
     background: var(--color-accent-hover);
 }
 
-.account-modal-content button[type="submit"]:disabled {
+.account-modal-content button[type='submit']:disabled {
     background: var(--color-sand);
     color: var(--color-drift);
     cursor: not-allowed;
@@ -1901,7 +1915,8 @@ header {
 }
 
 @keyframes sync-pulse {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
     }
     50% {
@@ -2151,7 +2166,9 @@ header {
     line-height: 28px;
     text-align: center;
     cursor: pointer;
-    transition: color 0.2s, border-color 0.2s;
+    transition:
+        color 0.2s,
+        border-color 0.2s;
     flex-shrink: 0;
 }
 
@@ -2233,7 +2250,7 @@ header {
     appearance: none !important;
     background: #196333 !important;
     border: 1px solid #196333 !important;
-    color: #FFFFFF !important;
+    color: #ffffff !important;
     padding: 0.4rem 0.8rem;
     font-size: 0.8rem;
     box-shadow: none;
@@ -2241,9 +2258,9 @@ header {
 }
 
 .sample-section.de-emphasized .sample-btn:hover {
-    background: #1E7A3E !important;
-    border-color: #1E7A3E !important;
-    color: #FFFFFF !important;
+    background: #1e7a3e !important;
+    border-color: #1e7a3e !important;
+    color: #ffffff !important;
     transform: none;
     box-shadow: none;
 }

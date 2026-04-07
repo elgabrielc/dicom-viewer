@@ -20,9 +20,7 @@ study_notes_bp = Blueprint('study_notes', __name__)
 
 def _get_device_id(db):
     """Read device_id from sync_state, or None if not yet provisioned."""
-    row = db.execute(
-        "SELECT value FROM sync_state WHERE key = 'device_id'"
-    ).fetchone()
+    row = db.execute("SELECT value FROM sync_state WHERE key = 'device_id'").fetchone()
     return row['value'] if row else None
 
 
@@ -45,7 +43,7 @@ def save_study_description(study_uid):
                 device_id=excluded.device_id,
                 deleted_at=NULL
             """,
-            (study_uid, description, now, device_id)
+            (study_uid, description, now, device_id),
         )
     else:
         # Frozen invariant: clear = UPDATE to empty string, never DELETE.
@@ -60,7 +58,7 @@ def save_study_description(study_uid):
                 device_id=excluded.device_id,
                 deleted_at=NULL
             """,
-            (study_uid, now, device_id)
+            (study_uid, now, device_id),
         )
 
     db.commit()
@@ -78,7 +76,9 @@ def save_series_description(study_uid, series_uid):
     if description:
         db.execute(
             """
-            INSERT INTO series_notes (study_uid, series_uid, description, updated_at, device_id, sync_version)
+            INSERT INTO series_notes (
+                study_uid, series_uid, description, updated_at, device_id, sync_version
+            )
             VALUES (?, ?, ?, ?, ?, 0)
             ON CONFLICT(study_uid, series_uid) DO UPDATE SET
                 description=excluded.description,
@@ -86,13 +86,15 @@ def save_series_description(study_uid, series_uid):
                 device_id=excluded.device_id,
                 deleted_at=NULL
             """,
-            (study_uid, series_uid, description, now, device_id)
+            (study_uid, series_uid, description, now, device_id),
         )
     else:
         # Frozen invariant: clear = UPDATE to empty string, never DELETE.
         db.execute(
             """
-            INSERT INTO series_notes (study_uid, series_uid, description, updated_at, device_id, sync_version)
+            INSERT INTO series_notes (
+                study_uid, series_uid, description, updated_at, device_id, sync_version
+            )
             VALUES (?, ?, '', ?, ?, 0)
             ON CONFLICT(study_uid, series_uid) DO UPDATE SET
                 description='',
@@ -100,13 +102,15 @@ def save_series_description(study_uid, series_uid):
                 device_id=excluded.device_id,
                 deleted_at=NULL
             """,
-            (study_uid, series_uid, now, device_id)
+            (study_uid, series_uid, now, device_id),
         )
 
     db.commit()
-    return jsonify({
-        'studyUid': study_uid,
-        'seriesUid': series_uid,
-        'description': description,
-        'updatedAt': now
-    })
+    return jsonify(
+        {
+            'studyUid': study_uid,
+            'seriesUid': series_uid,
+            'description': description,
+            'updatedAt': now,
+        }
+    )
