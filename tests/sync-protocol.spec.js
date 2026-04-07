@@ -20,8 +20,6 @@ const {
     uniqueStudyUid,
     uniqueRecordUuid,
     uniqueOperationUuid,
-    createTestUser,
-    loginUser,
     registerDevice,
     syncRequest,
     syncAndExpectOk,
@@ -932,17 +930,16 @@ test.describe('Sync Multiple Changes Per Request', () => {
             description: 'Original',
             baseSyncVersion: 0,
         });
-        const r1 = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insert]);
-        const currentVersion = r1.accepted[0].sync_version;
+        const initialSync = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insert]);
 
         // Send two changes: one with correct version (new comment), one with stale version
         const freshChange = commentInsertChange({ text: 'Fresh comment' });
         const staleChange = studyNoteUpdateChange(studyUid, {
             description: 'Stale update',
-            baseSyncVersion: 0, // stale -- should be currentVersion
+            baseSyncVersion: 0,
         });
 
-        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, r1.delta_cursor, [
+        const result = await syncAndExpectOk(request, BASE_URL, access_token, device_id, initialSync.delta_cursor, [
             freshChange,
             staleChange,
         ]);

@@ -70,7 +70,7 @@ async function getWLValues(page) {
     const text = await page.locator(WL_DISPLAY_SELECTOR).textContent();
     const match = text.match(/C:\s*(-?\d+)\s*W:\s*(\d+)/);
     if (match) {
-        return { center: parseInt(match[1]), width: parseInt(match[2]) };
+        return { center: parseInt(match[1], 10), width: parseInt(match[2], 10) };
     }
     return null;
 }
@@ -79,7 +79,7 @@ async function getWLValues(page) {
 async function isButtonActive(page, selector) {
     const button = page.locator(selector);
     const classList = await button.getAttribute('class');
-    return classList && classList.includes('active');
+    return classList?.includes('active');
 }
 
 // Helper function to perform a drag operation
@@ -123,7 +123,7 @@ async function getSliceInfo(page) {
     const text = await page.locator('#sliceInfo').textContent();
     const match = text.match(/(\d+)\s*\/\s*(\d+)/);
     if (match) {
-        return { current: parseInt(match[1]), total: parseInt(match[2]) };
+        return { current: parseInt(match[1], 10), total: parseInt(match[2], 10) };
     }
     return null;
 }
@@ -153,15 +153,6 @@ async function getCanvasCursor(page) {
     return await page.locator(CANVAS_SELECTOR).evaluate((el) => {
         return window.getComputedStyle(el).cursor;
     });
-}
-
-// Seeded random number generator for reproducible tests
-function seededRandom(seed) {
-    let state = seed;
-    return () => {
-        state = (state * 1103515245 + 12345) & 0x7fffffff;
-        return state / 0x7fffffff;
-    };
 }
 
 /**
@@ -468,21 +459,11 @@ test.describe('Test Suite 3: Pan Tool', () => {
         const centerX = bounds.x + bounds.width / 2;
         const centerY = bounds.y + bounds.height / 2;
 
-        // Get initial canvas transform (if any)
-        const initialTransform = await page.locator(CANVAS_SELECTOR).evaluate((el) => {
-            return window.getComputedStyle(el).transform;
-        });
-
         // Perform pan drag
         await performDrag(page, centerX, centerY, centerX + 50, centerY + 50);
 
         // Wait for update
         await page.waitForTimeout(100);
-
-        // Get new transform
-        const newTransform = await page.locator(CANVAS_SELECTOR).evaluate((el) => {
-            return window.getComputedStyle(el).transform;
-        });
 
         // Transform should change (image moved)
         // Note: If the app uses internal state rather than CSS transform,

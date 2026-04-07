@@ -1,10 +1,10 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 const { createSyntheticDicomFolder, removeSyntheticDicomFolder } = require('./dicom-fixture-helper');
-const { normalizePath, joinPaths } = require('./helpers/desktop-test-utils');
+const { joinPaths } = require('./helpers/desktop-test-utils');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
@@ -2183,7 +2183,7 @@ test.describe('Desktop library scanning', () => {
                     },
                 };
             };
-            app.desktopDecode.decodeFrameWithPixels = async (path, frameIndex) => {
+            app.desktopDecode.decodeFrameWithPixels = async () => {
                 nativeDecodeCalls += 1;
                 return {
                     rows: 1,
@@ -3449,7 +3449,7 @@ test.describe('Desktop library scanning', () => {
             let headerReads = 0;
             let fullReads = 0;
             window.__TAURI__.core = {
-                async invoke(command, args) {
+                async invoke(command) {
                     if (command !== 'read_scan_header') {
                         throw new Error(`Unexpected command: ${command}`);
                     }
@@ -3503,7 +3503,7 @@ test.describe('Desktop library scanning', () => {
             let headerReads = 0;
             let fullReads = 0;
             window.__TAURI__.core = {
-                async invoke(command, args) {
+                async invoke(command) {
                     if (command !== 'read_scan_header') {
                         throw new Error(`Unexpected command: ${command}`);
                     }
@@ -3557,7 +3557,7 @@ test.describe('Desktop library scanning', () => {
             let headerReads = 0;
             let fullReads = 0;
             window.__TAURI__.core = {
-                async invoke(command, args) {
+                async invoke(command) {
                     if (command !== 'read_scan_header') {
                         throw new Error(`Unexpected command: ${command}`);
                     }
@@ -3597,7 +3597,7 @@ test.describe('Desktop library scanning', () => {
             let headerReads = 0;
             let fullReads = 0;
             window.__TAURI__.core = {
-                async invoke(command, args) {
+                async invoke(command) {
                     if (command !== 'read_scan_header') {
                         throw new Error(`Unexpected command: ${command}`);
                     }

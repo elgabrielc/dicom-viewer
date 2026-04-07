@@ -1,8 +1,8 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const HOME_URL = 'http://127.0.0.1:5001/';
 const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
@@ -42,7 +42,7 @@ async function installMockTauriInternals(page) {
             unregisterCallback(id) {
                 callbacks.delete(id);
             },
-            async invoke(cmd, args, options) {
+            async invoke(cmd, args) {
                 switch (cmd) {
                     case 'plugin:dialog|open':
                         return null;

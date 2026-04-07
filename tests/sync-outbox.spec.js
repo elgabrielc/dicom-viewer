@@ -135,7 +135,7 @@ async function clearOutbox(page) {
  * @param {Object} [data] - unused by the real API but kept for test readability
  * @returns {Promise<void>}
  */
-async function enqueueChange(page, table, key, operation, data = {}) {
+async function enqueueChange(page, table, key, operation, _data = {}) {
     await page.evaluate(
         ({ table, key, operation }) => {
             if (typeof window._SyncOutbox !== 'undefined') {

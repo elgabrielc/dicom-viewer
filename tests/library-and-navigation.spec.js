@@ -1,9 +1,9 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 const { test, expect } = require('@playwright/test');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createSyntheticDicomFolder, removeSyntheticDicomFolder } = require('./dicom-fixture-helper');
 
 /**
@@ -106,7 +106,7 @@ async function getSliceInfo(page) {
     const text = await page.locator(SLICE_INFO_SELECTOR).textContent();
     const match = text.match(/(\d+)\s*\/\s*(\d+)/);
     if (match) {
-        return { current: parseInt(match[1]), total: parseInt(match[2]) };
+        return { current: parseInt(match[1], 10), total: parseInt(match[2], 10) };
     }
     return null;
 }
@@ -142,7 +142,7 @@ async function jumpToSlice(page, zeroBasedIndex) {
 async function isButtonActive(page, selector) {
     const button = page.locator(selector);
     const classList = await button.getAttribute('class');
-    return classList && classList.includes('active');
+    return classList?.includes('active');
 }
 
 async function getCanvasCursor(page) {
@@ -430,9 +430,6 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
 
         const expandIcon = page.locator(`${STUDIES_BODY_SELECTOR} .expand-icon`).first();
         await expect(expandIcon).toBeVisible();
-
-        // Initial state: expand icon should be pointing right (collapsed)
-        const initialIconText = await expandIcon.textContent();
 
         // Click the study row to expand it
         const studyRow = page.locator(`${STUDIES_BODY_SELECTOR} .study-row`).first();
@@ -823,9 +820,6 @@ test.describe('Test Suite 19: Metadata Panel', () => {
 
     test('Metadata panel updates slice number after navigation', async ({ page }) => {
         const initialSlice = await getSliceInfo(page);
-
-        // Extract initial slice number from metadata panel
-        const initialMetadata = await page.locator(METADATA_CONTENT_SELECTOR).textContent();
 
         // Navigate to next slice
         await page.keyboard.press('ArrowRight');
