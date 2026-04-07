@@ -43,6 +43,7 @@ Rejected. The desktop code already relies on `std::sync::LazyLock`, which requir
 
 - Biome is pinned exactly in the root `package.json` so CLI behavior stays stable across local runs and CI.
 - Ruff is installed through `scripts/run-ruff.sh`, which manages a cached, versioned virtual environment outside the repository root. This avoids adding a second Python requirements file while still pinning the tool version.
+- Ruff configuration lives in `ruff.toml` instead of `pyproject.toml` so Vercel preview builds do not mistake lint-only settings for an application package manifest.
 - Generated and vendor JavaScript assets are excluded from Biome so linting applies only to maintained source files.
 - Biome keeps the repository's existing 4-space indentation and single-quote JavaScript/CSS style, and import organization remains disabled.
 
