@@ -1,6 +1,6 @@
 [package]
 name = "dicom-viewer-desktop"
-version = "0.2.0"
+version = "0.3.0"
 description = "myradone -- your medical imaging library"
 authors = ["Gabriel Casalduc <gabriel@divergent.health>"]
 license = "MIT"
