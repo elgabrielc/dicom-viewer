@@ -1,6 +1,6 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
-const path = require('path');
+const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
@@ -294,7 +294,7 @@ test.describe('Desktop report persistence', () => {
         await expect(page.locator('#libraryView')).toBeVisible();
 
         const persisted = await page.evaluate(
-            async ({ studyUid, seriesUid }) => {
+            async ({ studyUid }) => {
                 const notes = await window.NotesAPI.loadNotes([studyUid]);
                 const config = await window.NotesAPI.loadDesktopLibraryConfig();
                 const sqlStore = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
@@ -304,7 +304,7 @@ test.describe('Desktop report persistence', () => {
                     sqlStore,
                 };
             },
-            { studyUid, seriesUid },
+            { studyUid },
         );
 
         expect(persisted.notes.studies[studyUid].description).toBe('Migrated study note');

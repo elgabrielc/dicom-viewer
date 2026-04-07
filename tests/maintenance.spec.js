@@ -1,12 +1,12 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 
-const fs = require('fs');
-const net = require('net');
-const os = require('os');
-const path = require('path');
-const { spawn } = require('child_process');
-const { once } = require('events');
+const fs = require('node:fs');
+const net = require('node:net');
+const os = require('node:os');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { once } = require('node:events');
 const { test, expect, request: playwrightRequest } = require('@playwright/test');
 
 const REPO_ROOT = path.resolve(__dirname, '..');

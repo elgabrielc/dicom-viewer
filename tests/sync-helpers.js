@@ -9,7 +9,7 @@
  */
 
 const { expect } = require('@playwright/test');
-const { randomUUID } = require('crypto');
+const { randomUUID } = require('node:crypto');
 
 const BASE_URL = 'http://127.0.0.1:5001';
 
@@ -256,7 +256,7 @@ function minimalPdfBuffer() {
  * @returns {string}
  */
 function sha256Hex(buffer) {
-    const crypto = require('crypto');
+    const crypto = require('node:crypto');
     return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 

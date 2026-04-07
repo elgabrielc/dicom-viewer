@@ -1,8 +1,7 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
-const path = require('path');
+const path = require('node:path');
 const { test, expect } = require('@playwright/test');
-const { normalizePath, joinPaths } = require('./helpers/desktop-test-utils');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
@@ -153,7 +152,6 @@ function buildSyntheticDicomBytes(options = {}) {
 async function installMockDesktop(page, options = {}) {
     await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
     await page.addInitScript((opts) => {
-        const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
         const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
         const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
@@ -276,7 +274,7 @@ async function installMockDesktop(page, options = {}) {
                     const normalized = normalizePath(dirPath);
                     window.__importMockState.mkdirCalls.push({
                         path: normalized,
-                        recursive: !!(mkdirOptions && mkdirOptions.recursive),
+                        recursive: !!mkdirOptions?.recursive,
                     });
                 },
                 async remove() {},
@@ -1080,15 +1078,6 @@ test.describe('Desktop import pipeline', () => {
     // -----------------------------------------------------------------------
 
     test('importFromPaths: DICOM without SOP Instance UID counted as invalid', async ({ page }) => {
-        // Build a DICOM-like buffer that has study/series UIDs but no SOP UID.
-        // We need the transfer syntax so hasLikelyDicomMetadata returns true,
-        // but the SOP Instance UID check in processOneFile should reject it.
-        const noSopBytes = buildSyntheticDicomBytes({
-            studyInstanceUid: '1.2.study.nosop',
-            seriesInstanceUid: '1.2.series.nosop',
-            sopInstanceUid: '1.2.sop.nosop', // will be present in bytes
-        });
-
         // We will override readFile to return bytes that parse as DICOM but have
         // the SOP UID field empty. The simplest approach: build bytes without
         // a real SOP tag by constructing a custom buffer in the browser context.
@@ -1311,7 +1300,7 @@ async function installMockDesktopIntegration(page, options = {}) {
                     const normalized = normalizePath(dirPath);
                     window.__importMockState.mkdirCalls.push({
                         path: normalized,
-                        recursive: !!(mkdirOptions && mkdirOptions.recursive),
+                        recursive: !!mkdirOptions?.recursive,
                     });
                 },
                 async remove() {},

@@ -806,7 +806,6 @@ test.describe('E2E Report File Sync', () => {
         const {
             reportId,
             contentHash,
-            cursor: aCursor,
         } = await insertReportWithFile(request, deviceA.access_token, deviceA.device_id, null, pdfContent);
 
         // Device B syncs to learn about the report
