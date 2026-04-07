@@ -18,7 +18,8 @@
  * Copyright (c) 2026 Divergent Health Technologies
  */
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const config = window.CONFIG;
 
     // Browser-storage keys used for web sessions and as a migration source
@@ -48,8 +49,7 @@
     // ---- Token Storage ----
 
     function isDesktopSecureStoreMode() {
-        return config?.deploymentMode === 'desktop'
-            && typeof window.__TAURI__?.core?.invoke === 'function';
+        return config?.deploymentMode === 'desktop' && typeof window.__TAURI__?.core?.invoke === 'function';
     }
 
     function readBrowserSession() {
@@ -57,7 +57,7 @@
             accessToken: localStorage.getItem(ACCESS_TOKEN_KEY),
             refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
             userEmail: localStorage.getItem(USER_EMAIL_KEY),
-            userName: localStorage.getItem(USER_NAME_KEY)
+            userName: localStorage.getItem(USER_NAME_KEY),
         };
     }
 
@@ -87,7 +87,7 @@
             accessToken: null,
             refreshToken: null,
             userEmail: null,
-            userName: null
+            userName: null,
         };
         let hydratePromise = null;
 
@@ -96,7 +96,7 @@
                 accessToken: cache.accessToken || null,
                 refreshToken: cache.refreshToken || null,
                 userEmail: cache.userEmail || null,
-                userName: cache.userName || null
+                userName: cache.userName || null,
             };
         }
 
@@ -115,8 +115,8 @@
                     access_token: session.accessToken || null,
                     refresh_token: session.refreshToken || null,
                     user_email: session.userEmail || null,
-                    user_name: session.userName || null
-                }
+                    user_name: session.userName || null,
+                },
             });
             clearBrowserSession();
         }
@@ -143,7 +143,7 @@
                     accessToken: secure?.access_token || legacy.accessToken || null,
                     refreshToken: secure?.refresh_token || legacy.refreshToken || null,
                     userEmail: secure?.user_email || legacy.userEmail || null,
-                    userName: secure?.user_name || legacy.userName || null
+                    userName: secure?.user_name || legacy.userName || null,
                 };
 
                 assign(session);
@@ -167,7 +167,7 @@
         async function save(partialSession = {}) {
             const session = assign({
                 ...snapshot(),
-                ...partialSession
+                ...partialSession,
             });
 
             if (isDesktopSecureStoreMode()) {
@@ -198,7 +198,7 @@
             getRefreshToken: () => cache.refreshToken,
             getUserEmail: () => cache.userEmail,
             getUserName: () => cache.userName,
-            _snapshot: snapshot
+            _snapshot: snapshot,
         };
     })();
 
@@ -215,7 +215,7 @@
             accessToken,
             refreshToken: refreshToken || authStore.getRefreshToken(),
             userEmail: authStore.getUserEmail(),
-            userName: authStore.getUserName()
+            userName: authStore.getUserName(),
         });
     }
 
@@ -228,7 +228,7 @@
             accessToken: authStore.getAccessToken(),
             refreshToken: authStore.getRefreshToken(),
             userEmail: email || null,
-            userName: name || null
+            userName: name || null,
         });
     }
 
@@ -276,7 +276,7 @@
             return true;
         }
         const nowSeconds = Math.floor(Date.now() / 1000);
-        return payload.exp <= (nowSeconds + bufferSeconds);
+        return payload.exp <= nowSeconds + bufferSeconds;
     }
 
     // ---- Token Refresh ----
@@ -307,7 +307,7 @@
                 const res = await fetch('/api/auth/refresh', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ refresh_token: refreshToken })
+                    body: JSON.stringify({ refresh_token: refreshToken }),
                 });
 
                 if (!res.ok) {
@@ -328,9 +328,7 @@
                     throw e;
                 }
                 console.warn('AccountUI: token refresh failed:', e);
-                throw createTransientRefreshError(
-                    `Token refresh failed: ${e?.message || 'network error'}`
-                );
+                throw createTransientRefreshError(`Token refresh failed: ${e?.message || 'network error'}`);
             }
         })();
 
@@ -387,13 +385,13 @@
             const res = await fetch('/api/auth/devices', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Content-Type': 'application/json'
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
                     device_name: `${platform} Browser`,
-                    platform: platform
-                })
+                    platform: platform,
+                }),
             });
 
             if (!res.ok) {
@@ -448,7 +446,7 @@
             getAccessToken: getValidAccessToken,
             onAuthRequired: () => {
                 window.dispatchEvent(new CustomEvent('sync:auth-required'));
-            }
+            },
         });
 
         // Expose instance for other modules (e.g., dispatcher integration).
@@ -472,7 +470,7 @@
     // ---- DOM Helpers ----
 
     function resolveDom() {
-        const $ = id => document.getElementById(id);
+        const $ = (id) => document.getElementById(id);
         modalEl = $('accountModal');
         modalTitleEl = $('accountModalTitle');
         formEl = $('loginForm');
@@ -502,8 +500,12 @@
         if (!submitBtn) return;
         submitBtn.disabled = loading;
         submitBtn.textContent = loading
-            ? (isSignupMode ? 'Creating Account...' : 'Signing In...')
-            : (isSignupMode ? 'Sign Up' : 'Sign In');
+            ? isSignupMode
+                ? 'Creating Account...'
+                : 'Signing In...'
+            : isSignupMode
+              ? 'Sign Up'
+              : 'Sign In';
     }
 
     // ---- Modal Control ----
@@ -577,7 +579,7 @@
         const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+            body: JSON.stringify({ email, password }),
         });
 
         if (!res.ok) {
@@ -598,7 +600,7 @@
         const res = await fetch('/api/auth/signup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, name })
+            body: JSON.stringify({ email, password, name }),
         });
 
         if (!res.ok) {
@@ -654,7 +656,6 @@
 
             // Register device and start sync
             await startSyncEngine(authResponse.access_token);
-
         } catch (e) {
             showError(e.message || 'Authentication failed. Please try again.');
         } finally {
@@ -807,7 +808,7 @@
         _authStore: authStore,
         _decodeJwtPayload: decodeJwtPayload,
         _storeTokens: storeTokens,
-        _clearTokens: clearTokens
+        _clearTokens: clearTokens,
     };
 
     // Self-initialize: the script loads after the DOM elements it references

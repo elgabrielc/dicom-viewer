@@ -12,7 +12,7 @@ import uuid
 
 from flask import Blueprint, jsonify, request
 
-from server.db import get_db, parse_int, MAX_TIMESTAMP_DRIFT_MS
+from server.db import MAX_TIMESTAMP_DRIFT_MS, get_db, parse_int
 
 comments_bp = Blueprint('comments', __name__)
 
@@ -43,18 +43,20 @@ def add_comment(study_uid):
         """INSERT INTO comments
            (study_uid, series_uid, text, time, record_uuid, created_at, updated_at, sync_version)
            VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
-        (study_uid, series_uid, text, timestamp, record_uuid, timestamp, timestamp)
+        (study_uid, series_uid, text, timestamp, record_uuid, timestamp, timestamp),
     )
     db.commit()
 
-    return jsonify({
-        'id': record_uuid,
-        'record_uuid': record_uuid,
-        'studyUid': study_uid,
-        'seriesUid': series_uid,
-        'text': text,
-        'time': timestamp
-    })
+    return jsonify(
+        {
+            'id': record_uuid,
+            'record_uuid': record_uuid,
+            'studyUid': study_uid,
+            'seriesUid': series_uid,
+            'text': text,
+            'time': timestamp,
+        }
+    )
 
 
 @comments_bp.route('/api/notes/<study_uid>/comments/<comment_uuid>', methods=['PUT'])
@@ -72,7 +74,7 @@ def update_comment(study_uid, comment_uuid):
     cursor = db.execute(
         """UPDATE comments SET text = ?, time = ?, updated_at = ?
            WHERE record_uuid = ? AND study_uid = ? AND deleted_at IS NULL""",
-        (text, now, now, comment_uuid, study_uid)
+        (text, now, now, comment_uuid, study_uid),
     )
     if cursor.rowcount == 0:
         # Fall back to integer id lookup for backward compatibility
@@ -81,19 +83,14 @@ def update_comment(study_uid, comment_uuid):
             cursor = db.execute(
                 """UPDATE comments SET text = ?, time = ?, updated_at = ?
                    WHERE id = ? AND study_uid = ? AND deleted_at IS NULL""",
-                (text, now, now, legacy_id, study_uid)
+                (text, now, now, legacy_id, study_uid),
             )
     db.commit()
 
     if cursor.rowcount == 0:
         return jsonify({'error': 'Comment not found'}), 404
 
-    return jsonify({
-        'record_uuid': comment_uuid,
-        'studyUid': study_uid,
-        'text': text,
-        'time': now
-    })
+    return jsonify({'record_uuid': comment_uuid, 'studyUid': study_uid, 'text': text, 'time': now})
 
 
 @comments_bp.route('/api/notes/<study_uid>/comments/<comment_uuid>', methods=['DELETE'])
@@ -105,7 +102,7 @@ def delete_comment(study_uid, comment_uuid):
     cursor = db.execute(
         """UPDATE comments SET deleted_at = ?, updated_at = ?
            WHERE record_uuid = ? AND study_uid = ? AND deleted_at IS NULL""",
-        (now, now, comment_uuid, study_uid)
+        (now, now, comment_uuid, study_uid),
     )
     if cursor.rowcount == 0:
         # Fall back to integer id lookup for backward compatibility
@@ -114,7 +111,7 @@ def delete_comment(study_uid, comment_uuid):
             cursor = db.execute(
                 """UPDATE comments SET deleted_at = ?, updated_at = ?
                    WHERE id = ? AND study_uid = ? AND deleted_at IS NULL""",
-                (now, now, legacy_id, study_uid)
+                (now, now, legacy_id, study_uid),
             )
     db.commit()
 

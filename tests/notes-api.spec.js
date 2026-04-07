@@ -111,9 +111,7 @@ test.describe('Test Suite 25: GET /api/notes/ - Batch Load', () => {
             data: { description: 'field shape test' },
         });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const entry = body.studies[studyUid];
         expect(entry).toHaveProperty('description');
@@ -138,9 +136,7 @@ test.describe('Test Suite 25: GET /api/notes/ - Batch Load', () => {
         });
 
         const studiesParam = [uid1, uid2, uidNoData].join(',');
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studiesParam}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studiesParam}`)).json();
 
         expect(body.studies).toHaveProperty(uid1);
         expect(body.studies).toHaveProperty(uid2);
@@ -179,15 +175,13 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
         expect(body.migrated).toBeGreaterThanOrEqual(1);
 
         // Verify data is readable back
-        const getBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const getBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const entry = getBody.studies[studyUid];
         expect(entry).toBeDefined();
         expect(entry.description).toBe('migrated description');
         expect(entry.comments.length).toBe(2);
-        expect(entry.comments.some(c => c.text === 'migrated comment one')).toBe(true);
+        expect(entry.comments.some((c) => c.text === 'migrated comment one')).toBe(true);
     });
 
     test('migrates series-level comments', async ({ request }) => {
@@ -201,9 +195,7 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
                     series: {
                         [seriesUid]: {
                             description: 'series description migrated',
-                            comments: [
-                                { text: 'series comment migrated', time: commentTime },
-                            ],
+                            comments: [{ text: 'series comment migrated', time: commentTime }],
                         },
                     },
                 },
@@ -213,14 +205,12 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
         const response = await request.post(`${BASE_URL}/api/notes/migrate`, { data: payload });
         expect(response.status()).toBe(200);
 
-        const getBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const getBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const seriesEntry = getBody.studies[studyUid]?.series?.[seriesUid];
         expect(seriesEntry).toBeDefined();
         expect(seriesEntry.description).toBe('series description migrated');
-        expect(seriesEntry.comments.some(c => c.text === 'series comment migrated')).toBe(true);
+        expect(seriesEntry.comments.some((c) => c.text === 'series comment migrated')).toBe(true);
     });
 
     test('migration is idempotent: running twice does not duplicate comments', async ({ request }) => {
@@ -230,9 +220,7 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
         const payload = {
             comments: {
                 [studyUid]: {
-                    study: [
-                        { text: 'idempotent comment', time: commentTime },
-                    ],
+                    study: [{ text: 'idempotent comment', time: commentTime }],
                 },
             },
         };
@@ -241,13 +229,11 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
         await request.post(`${BASE_URL}/api/notes/migrate`, { data: payload });
         await request.post(`${BASE_URL}/api/notes/migrate`, { data: payload });
 
-        const getBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const getBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const comments = getBody.studies[studyUid]?.comments || [];
         // The unique constraint (study_uid, series_uid, text, time) ensures no duplicates
-        const matching = comments.filter(c => c.text === 'idempotent comment');
+        const matching = comments.filter((c) => c.text === 'idempotent comment');
         expect(matching.length).toBe(1);
     });
 
@@ -271,9 +257,7 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
             },
         });
 
-        const getBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const getBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         // Existing description must be preserved (INSERT OR NOTHING semantics)
         expect(getBody.studies[studyUid].description).toBe('existing server description');
@@ -318,9 +302,7 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
             comments: {
                 [studyUid]: {
                     series: {
-                        [seriesUid]: [
-                            { text: 'legacy list comment', time: commentTime },
-                        ],
+                        [seriesUid]: [{ text: 'legacy list comment', time: commentTime }],
                     },
                 },
             },
@@ -329,13 +311,11 @@ test.describe('Test Suite 34: POST /api/notes/migrate - LocalStorage Import', ()
         const response = await request.post(`${BASE_URL}/api/notes/migrate`, { data: payload });
         expect(response.status()).toBe(200);
 
-        const getBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const getBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const seriesEntry = getBody.studies[studyUid]?.series?.[seriesUid];
         expect(seriesEntry).toBeDefined();
-        const found = seriesEntry.comments.find(c => c.text === 'legacy list comment');
+        const found = seriesEntry.comments.find((c) => c.text === 'legacy list comment');
         expect(found).toBeDefined();
     });
 
@@ -371,10 +351,9 @@ test.describe('Test Suite 36: End-to-End Notes Lifecycle', () => {
         });
 
         // 2. Write series description
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'Full lifecycle test series' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: 'Full lifecycle test series' },
+        });
 
         // 3. Add study-level comment
         const { id: studyCommentId } = await (
@@ -392,35 +371,30 @@ test.describe('Test Suite 36: End-to-End Notes Lifecycle', () => {
         const { id: reportId } = await (await uploadReport(request, studyUid)).json();
 
         // 6. Read everything back in one batch request
-        const batchBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const batchBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const entry = batchBody.studies[studyUid];
         expect(entry.description).toBe('Full lifecycle test study');
-        expect(entry.comments.some(c => c.text === 'Study-level observation')).toBe(true);
+        expect(entry.comments.some((c) => c.text === 'Study-level observation')).toBe(true);
         expect(entry.series[seriesUid].description).toBe('Full lifecycle test series');
-        expect(entry.series[seriesUid].comments.some(c => c.text === 'Series-level finding')).toBe(true);
-        expect(entry.reports.some(r => r.id === reportId)).toBe(true);
+        expect(entry.series[seriesUid].comments.some((c) => c.text === 'Series-level finding')).toBe(true);
+        expect(entry.reports.some((r) => r.id === reportId)).toBe(true);
 
         // 7. Edit the study comment
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/comments/${studyCommentId}`,
-            { data: { text: 'Updated observation' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/comments/${studyCommentId}`, {
+            data: { text: 'Updated observation' },
+        });
 
         // 8. Delete the report
         await request.delete(`${BASE_URL}/api/notes/${studyUid}/reports/${reportId}`);
 
         // 9. Verify edits and deletions
-        const afterBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const afterBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const afterEntry = afterBody.studies[studyUid];
-        const editedComment = afterEntry.comments.find(c => c.id === studyCommentId);
+        const editedComment = afterEntry.comments.find((c) => c.id === studyCommentId);
         expect(editedComment.text).toBe('Updated observation');
-        expect(afterEntry.reports.find(r => r.id === reportId)).toBeUndefined();
+        expect(afterEntry.reports.find((r) => r.id === reportId)).toBeUndefined();
 
         // 10. Delete the study description (clears it)
         await request.put(`${BASE_URL}/api/notes/${studyUid}/description`, {
@@ -428,9 +402,7 @@ test.describe('Test Suite 36: End-to-End Notes Lifecycle', () => {
         });
 
         // Study still has notes (comments remain), so it persists in the batch response
-        const stillHasComments = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const stillHasComments = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         expect(stillHasComments.studies).toHaveProperty(studyUid);
         expect(stillHasComments.studies[studyUid].description).toBe('');
     });
@@ -447,14 +419,12 @@ test.describe('Test Suite 36: End-to-End Notes Lifecycle', () => {
             });
         }
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const comments = body.studies[studyUid]?.comments || [];
         expect(comments.length).toBe(texts.length);
         for (const text of texts) {
-            expect(comments.some(c => c.text === text)).toBe(true);
+            expect(comments.some((c) => c.text === text)).toBe(true);
         }
     });
 });

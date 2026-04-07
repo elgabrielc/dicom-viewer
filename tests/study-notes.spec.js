@@ -40,9 +40,7 @@ test.describe('Test Suite 26: PUT /api/notes/<study_uid>/description', () => {
             data: { description: 'readable description' },
         });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         expect(body.studies[studyUid].description).toBe('readable description');
     });
 
@@ -56,9 +54,7 @@ test.describe('Test Suite 26: PUT /api/notes/<study_uid>/description', () => {
             data: { description: 'second description' },
         });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         expect(body.studies[studyUid].description).toBe('second description');
     });
 
@@ -80,9 +76,7 @@ test.describe('Test Suite 26: PUT /api/notes/<study_uid>/description', () => {
         expect(clearBody.description).toBe('');
 
         // The study should no longer appear in batch results (has_notes = False now)
-        const batchBody = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const batchBody = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         expect(batchBody.studies).not.toHaveProperty(studyUid);
     });
 
@@ -100,9 +94,7 @@ test.describe('Test Suite 26: PUT /api/notes/<study_uid>/description', () => {
             data: { description: 'resurrected' },
         });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         expect(body.studies[studyUid].description).toBe('resurrected');
     });
 
@@ -147,10 +139,9 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         const studyUid = uniqueStudyUid();
         const seriesUid = uniqueSeriesUid();
 
-        const response = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'Axial T1 weighted' } }
-        );
+        const response = await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: 'Axial T1 weighted' },
+        });
         expect(response.status()).toBe(200);
 
         const body = await response.json();
@@ -164,14 +155,11 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         const studyUid = uniqueStudyUid();
         const seriesUid = uniqueSeriesUid();
 
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'FLAIR sequence' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: 'FLAIR sequence' },
+        });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const seriesEntry = body.studies[studyUid]?.series?.[seriesUid];
         expect(seriesEntry).toBeDefined();
@@ -183,18 +171,14 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         const seriesA = uniqueSeriesUid();
         const seriesB = uniqueSeriesUid();
 
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesA}/description`,
-            { data: { description: 'series A' } }
-        );
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesB}/description`,
-            { data: { description: 'series B' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesA}/description`, {
+            data: { description: 'series A' },
+        });
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesB}/description`, {
+            data: { description: 'series B' },
+        });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         expect(body.studies[studyUid].series[seriesA].description).toBe('series A');
         expect(body.studies[studyUid].series[seriesB].description).toBe('series B');
@@ -205,22 +189,18 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         const seriesUid = uniqueSeriesUid();
 
         // Write description
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'to be cleared' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: 'to be cleared' },
+        });
 
         // Clear it
-        const clearResponse = await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: '' } }
-        );
+        const clearResponse = await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: '' },
+        });
         expect(clearResponse.status()).toBe(200);
 
         // If the only data was the series description, study has no notes and drops from results
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
         // Study either absent entirely or series entry is gone
         const studyEntry = body.studies[studyUid];
         if (studyEntry) {
@@ -238,22 +218,17 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         const seriesUid = uniqueSeriesUid();
 
         // Write, clear, then re-set
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'original series' } }
-        );
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: '' } }
-        );
-        await request.put(
-            `${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`,
-            { data: { description: 'resurrected series' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: 'original series' },
+        });
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: '' },
+        });
+        await request.put(`${BASE_URL}/api/notes/${studyUid}/series/${seriesUid}/description`, {
+            data: { description: 'resurrected series' },
+        });
 
-        const body = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)
-        ).json();
+        const body = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyUid}`)).json();
 
         const seriesEntry = body.studies[studyUid]?.series?.[seriesUid];
         expect(seriesEntry).toBeDefined();
@@ -267,21 +242,15 @@ test.describe('Test Suite 27: PUT /api/notes/<study_uid>/series/<series_uid>/des
         const studyA = uniqueStudyUid();
         const studyB = uniqueStudyUid();
 
-        await request.put(
-            `${BASE_URL}/api/notes/${studyA}/series/${sharedSeriesUid}/description`,
-            { data: { description: 'study A view' } }
-        );
-        await request.put(
-            `${BASE_URL}/api/notes/${studyB}/series/${sharedSeriesUid}/description`,
-            { data: { description: 'study B view' } }
-        );
+        await request.put(`${BASE_URL}/api/notes/${studyA}/series/${sharedSeriesUid}/description`, {
+            data: { description: 'study A view' },
+        });
+        await request.put(`${BASE_URL}/api/notes/${studyB}/series/${sharedSeriesUid}/description`, {
+            data: { description: 'study B view' },
+        });
 
-        const bodyA = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyA}`)
-        ).json();
-        const bodyB = await (
-            await request.get(`${BASE_URL}/api/notes/?studies=${studyB}`)
-        ).json();
+        const bodyA = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyA}`)).json();
+        const bodyB = await (await request.get(`${BASE_URL}/api/notes/?studies=${studyB}`)).json();
 
         expect(bodyA.studies[studyA].series[sharedSeriesUid].description).toBe('study A view');
         expect(bodyB.studies[studyB].series[sharedSeriesUid].description).toBe('study B view');

@@ -3,7 +3,7 @@
 // Mock Tauri SQL plugin for Playwright desktop tests.
 // Simulates plugin:sql commands using localStorage-backed in-memory tables.
 // Schema mirrors desktop/src-tauri/migrations/ (001 through 007).
-(function () {
+(() => {
     if (typeof window === 'undefined') return;
 
     function clone(value) {
@@ -11,7 +11,10 @@
     }
 
     function normalizeQuery(query) {
-        return String(query || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return String(query || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
     }
 
     function createEmptyDbState() {
@@ -28,8 +31,8 @@
             meta: {
                 lastCommentId: 0,
                 lastOutboxId: 0,
-                loadCalls: 0
-            }
+                loadCalls: 0,
+            },
         };
     }
 
@@ -89,15 +92,13 @@
 
     function sortByAddedAtThenId(items) {
         return items.slice().sort((a, b) => {
-            return (a.added_at || 0) - (b.added_at || 0)
-                || String(a.id || '').localeCompare(String(b.id || ''));
+            return (a.added_at || 0) - (b.added_at || 0) || String(a.id || '').localeCompare(String(b.id || ''));
         });
     }
 
     function sortComments(items) {
         return items.slice().sort((a, b) => {
-            return (a.time || 0) - (b.time || 0)
-                || (a.id || 0) - (b.id || 0);
+            return (a.time || 0) - (b.time || 0) || (a.id || 0) - (b.id || 0);
         });
     }
 
@@ -108,13 +109,13 @@
                 const state = loadState(db, options);
 
                 if (
-                    normalized === 'begin'
-                    || normalized === 'commit'
-                    || normalized === 'rollback'
-                    || normalized.startsWith('create table')
-                    || normalized.startsWith('create unique index')
-                    || normalized.startsWith('create index')
-                    || normalized.startsWith('alter table')
+                    normalized === 'begin' ||
+                    normalized === 'commit' ||
+                    normalized === 'rollback' ||
+                    normalized.startsWith('create table') ||
+                    normalized.startsWith('create unique index') ||
+                    normalized.startsWith('create index') ||
+                    normalized.startsWith('alter table')
                 ) {
                     return { rowsAffected: 0, lastInsertId: null };
                 }
@@ -139,7 +140,7 @@
                         updated_at: updatedAt,
                         deleted_at: null,
                         device_id: null,
-                        sync_version: 0
+                        sync_version: 0,
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
@@ -157,7 +158,9 @@
 
                 if (normalized.startsWith('insert into series_notes')) {
                     const [studyUid, seriesUid, description, updatedAt] = values;
-                    const existing = state.series_notes.find((row) => row.study_uid === studyUid && row.series_uid === seriesUid);
+                    const existing = state.series_notes.find(
+                        (row) => row.study_uid === studyUid && row.series_uid === seriesUid,
+                    );
                     if (existing) {
                         if (normalized.includes('do update')) {
                             existing.description = description;
@@ -171,7 +174,7 @@
                         study_uid: studyUid,
                         series_uid: seriesUid,
                         description,
-                        updated_at: updatedAt
+                        updated_at: updatedAt,
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
@@ -181,7 +184,7 @@
                     const [studyUid, seriesUid] = values;
                     const before = state.series_notes.length;
                     state.series_notes = state.series_notes.filter(
-                        (row) => !(row.study_uid === studyUid && row.series_uid === seriesUid)
+                        (row) => !(row.study_uid === studyUid && row.series_uid === seriesUid),
                     );
                     persistState(db, state);
                     return { rowsAffected: before - state.series_notes.length, lastInsertId: null };
@@ -189,13 +192,17 @@
 
                 // -- comments --
 
-                if (normalized.startsWith('insert into comments') || normalized.startsWith('insert or ignore into comments')) {
+                if (
+                    normalized.startsWith('insert into comments') ||
+                    normalized.startsWith('insert or ignore into comments')
+                ) {
                     const [studyUid, seriesUid, text, time] = values;
                     const existing = state.comments.find(
-                        (row) => row.study_uid === studyUid
-                            && row.series_uid === seriesUid
-                            && row.text === text
-                            && row.time === time
+                        (row) =>
+                            row.study_uid === studyUid &&
+                            row.series_uid === seriesUid &&
+                            row.text === text &&
+                            row.time === time,
                     );
                     if (existing) {
                         return { rowsAffected: 0, lastInsertId: existing.id };
@@ -213,7 +220,7 @@
                         updated_at: time,
                         deleted_at: null,
                         device_id: null,
-                        sync_version: 0
+                        sync_version: 0,
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: id };
@@ -236,7 +243,7 @@
                     const [id, studyUid] = values;
                     const before = state.comments.length;
                     state.comments = state.comments.filter(
-                        (row) => !(row.id === Number(id) && row.study_uid === studyUid)
+                        (row) => !(row.id === Number(id) && row.study_uid === studyUid),
                     );
                     persistState(db, state);
                     return { rowsAffected: before - state.comments.length, lastInsertId: null };
@@ -244,7 +251,10 @@
 
                 // -- reports --
 
-                if (normalized.startsWith('insert into reports') || normalized.startsWith('insert or replace into reports')) {
+                if (
+                    normalized.startsWith('insert into reports') ||
+                    normalized.startsWith('insert or replace into reports')
+                ) {
                     const [id, studyUid, name, type, size, filePath, addedAt, updatedAt] = values;
                     const existing = state.reports.find((row) => String(row.id) === String(id));
                     if (existing) {
@@ -268,7 +278,7 @@
                             content_hash: null,
                             deleted_at: null,
                             device_id: null,
-                            sync_version: 0
+                            sync_version: 0,
                         });
                     }
                     persistState(db, state);
@@ -279,7 +289,7 @@
                     const [id, studyUid] = values;
                     const before = state.reports.length;
                     state.reports = state.reports.filter(
-                        (row) => !(String(row.id) === String(id) && row.study_uid === studyUid)
+                        (row) => !(String(row.id) === String(id) && row.study_uid === studyUid),
                     );
                     persistState(db, state);
                     return { rowsAffected: before - state.reports.length, lastInsertId: null };
@@ -305,16 +315,8 @@
                 if (normalized.startsWith('insert into desktop_scan_cache')) {
                     const stride = 8;
                     for (let index = 0; index < values.length; index += stride) {
-                        const [
-                            path,
-                            rootPath,
-                            size,
-                            modifiedMs,
-                            scannerVersion,
-                            renderable,
-                            metaJson,
-                            updatedAt
-                        ] = values.slice(index, index + stride);
+                        const [path, rootPath, size, modifiedMs, scannerVersion, renderable, metaJson, updatedAt] =
+                            values.slice(index, index + stride);
                         const existing = state.desktop_scan_cache.find((row) => row.path === path);
                         if (existing) {
                             existing.root_path = rootPath;
@@ -333,7 +335,7 @@
                                 scanner_version: scannerVersion,
                                 renderable,
                                 meta_json: metaJson,
-                                updated_at: updatedAt
+                                updated_at: updatedAt,
                             });
                         }
                     }
@@ -357,7 +359,7 @@
                         created_at: createdAt,
                         synced_at: null,
                         attempts: 0,
-                        last_error: null
+                        last_error: null,
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: id };
@@ -393,7 +395,11 @@
 
                 // -- sync_state --
 
-                if (normalized.startsWith('insert into sync_state') || normalized.startsWith('insert or ignore into sync_state') || normalized.startsWith('insert or replace into sync_state')) {
+                if (
+                    normalized.startsWith('insert into sync_state') ||
+                    normalized.startsWith('insert or ignore into sync_state') ||
+                    normalized.startsWith('insert or replace into sync_state')
+                ) {
                     const [key, value, updatedAt] = values;
                     const existing = state.sync_state.find((row) => row.key === key);
                     if (existing) {
@@ -425,7 +431,8 @@
                 // -- import_jobs --
 
                 if (normalized.startsWith('insert into import_jobs')) {
-                    const [id, sourcePath, startedAt, completedAt, importedCount, skippedCount, errorCount, status] = values;
+                    const [id, sourcePath, startedAt, completedAt, importedCount, skippedCount, errorCount, status] =
+                        values;
                     const existing = state.import_jobs.find((row) => row.id === id);
                     if (existing) {
                         return { rowsAffected: 0, lastInsertId: null };
@@ -438,7 +445,7 @@
                         imported_count: importedCount ?? 0,
                         skipped_count: skippedCount ?? 0,
                         error_count: errorCount ?? 0,
-                        status: status || 'running'
+                        status: status || 'running',
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
@@ -485,41 +492,51 @@
                         .map((row) => ({ study_uid: row.study_uid, description: row.description }));
                 }
 
-                if (normalized.startsWith('select study_uid, description from study_notes where study_uid = ? limit 1')) {
+                if (
+                    normalized.startsWith('select study_uid, description from study_notes where study_uid = ? limit 1')
+                ) {
                     const [studyUid] = values;
                     const row = state.study_notes.find((entry) => entry.study_uid === studyUid);
                     return row ? [{ study_uid: row.study_uid, description: row.description }] : [];
                 }
 
-                if (normalized.startsWith('select study_uid, series_uid, description from series_notes where study_uid in')) {
+                if (
+                    normalized.startsWith(
+                        'select study_uid, series_uid, description from series_notes where study_uid in',
+                    )
+                ) {
                     const studyUids = new Set(values);
                     return state.series_notes
                         .filter((row) => studyUids.has(row.study_uid))
                         .map((row) => ({
                             study_uid: row.study_uid,
                             series_uid: row.series_uid,
-                            description: row.description
+                            description: row.description,
                         }));
                 }
 
-                if (normalized.startsWith('select id, study_uid, series_uid, text, time from comments where study_uid in')) {
+                if (
+                    normalized.startsWith(
+                        'select id, study_uid, series_uid, text, time from comments where study_uid in',
+                    )
+                ) {
                     const studyUids = new Set(values);
-                    return sortComments(
-                        state.comments.filter((row) => studyUids.has(row.study_uid))
-                    ).map((row) => ({
+                    return sortComments(state.comments.filter((row) => studyUids.has(row.study_uid))).map((row) => ({
                         id: row.id,
                         study_uid: row.study_uid,
                         series_uid: row.series_uid,
                         text: row.text,
-                        time: row.time
+                        time: row.time,
                     }));
                 }
 
-                if (normalized.startsWith('select id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where study_uid in')) {
+                if (
+                    normalized.startsWith(
+                        'select id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where study_uid in',
+                    )
+                ) {
                     const studyUids = new Set(values);
-                    return sortComments(
-                        state.comments.filter((row) => studyUids.has(row.study_uid))
-                    ).map((row) => ({
+                    return sortComments(state.comments.filter((row) => studyUids.has(row.study_uid))).map((row) => ({
                         id: row.id,
                         record_uuid: row.record_uuid,
                         study_uid: row.study_uid,
@@ -528,29 +545,44 @@
                         time: row.time,
                         created_at: row.created_at,
                         updated_at: row.updated_at,
-                        deleted_at: row.deleted_at
+                        deleted_at: row.deleted_at,
                     }));
                 }
 
-                if (normalized.startsWith('select record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where record_uuid = ? limit 1')) {
+                if (
+                    normalized.startsWith(
+                        'select record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at from comments where record_uuid = ? limit 1',
+                    )
+                ) {
                     const [recordUuid] = values;
                     const row = state.comments.find((entry) => entry.record_uuid === recordUuid);
-                    return row ? [{
-                        record_uuid: row.record_uuid,
-                        study_uid: row.study_uid,
-                        series_uid: row.series_uid,
-                        text: row.text,
-                        time: row.time,
-                        created_at: row.created_at,
-                        updated_at: row.updated_at,
-                        deleted_at: row.deleted_at
-                    }] : [];
+                    return row
+                        ? [
+                              {
+                                  record_uuid: row.record_uuid,
+                                  study_uid: row.study_uid,
+                                  series_uid: row.series_uid,
+                                  text: row.text,
+                                  time: row.time,
+                                  created_at: row.created_at,
+                                  updated_at: row.updated_at,
+                                  deleted_at: row.deleted_at,
+                              },
+                          ]
+                        : [];
                 }
 
-                if (normalized.startsWith('select id, study_uid, name, type, size, added_at, updated_at, file_path from reports where study_uid in')) {
+                if (
+                    normalized.startsWith(
+                        'select id, study_uid, name, type, size, added_at, updated_at, file_path from reports where study_uid in',
+                    )
+                ) {
                     const studyUids = new Set(values);
                     return sortByAddedAtThenId(
-                        state.reports.filter((row) => studyUids.has(row.study_uid) && row.file_path !== null && row.file_path !== undefined)
+                        state.reports.filter(
+                            (row) =>
+                                studyUids.has(row.study_uid) && row.file_path !== null && row.file_path !== undefined,
+                        ),
                     ).map((row) => ({
                         id: row.id,
                         study_uid: row.study_uid,
@@ -559,14 +591,21 @@
                         size: row.size,
                         added_at: row.added_at,
                         updated_at: row.updated_at,
-                        file_path: row.file_path
+                        file_path: row.file_path,
                     }));
                 }
 
-                if (normalized.startsWith('select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, file_path from reports where study_uid in')) {
+                if (
+                    normalized.startsWith(
+                        'select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, file_path from reports where study_uid in',
+                    )
+                ) {
                     const studyUids = new Set(values);
                     return sortByAddedAtThenId(
-                        state.reports.filter((row) => studyUids.has(row.study_uid) && row.file_path !== null && row.file_path !== undefined)
+                        state.reports.filter(
+                            (row) =>
+                                studyUids.has(row.study_uid) && row.file_path !== null && row.file_path !== undefined,
+                        ),
                     ).map((row) => ({
                         id: row.id,
                         study_uid: row.study_uid,
@@ -577,24 +616,32 @@
                         added_at: row.added_at,
                         updated_at: row.updated_at,
                         deleted_at: row.deleted_at || null,
-                        file_path: row.file_path
+                        file_path: row.file_path,
                     }));
                 }
 
-                if (normalized.startsWith('select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at from reports where id = ? limit 1')) {
+                if (
+                    normalized.startsWith(
+                        'select id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at from reports where id = ? limit 1',
+                    )
+                ) {
                     const [id] = values;
                     const row = state.reports.find((entry) => String(entry.id) === String(id));
-                    return row ? [{
-                        id: row.id,
-                        study_uid: row.study_uid,
-                        name: row.name,
-                        type: row.type,
-                        size: row.size,
-                        content_hash: row.content_hash || null,
-                        added_at: row.added_at,
-                        updated_at: row.updated_at,
-                        deleted_at: row.deleted_at || null
-                    }] : [];
+                    return row
+                        ? [
+                              {
+                                  id: row.id,
+                                  study_uid: row.study_uid,
+                                  name: row.name,
+                                  type: row.type,
+                                  size: row.size,
+                                  content_hash: row.content_hash || null,
+                                  added_at: row.added_at,
+                                  updated_at: row.updated_at,
+                                  deleted_at: row.deleted_at || null,
+                              },
+                          ]
+                        : [];
                 }
 
                 if (normalized.startsWith('select file_path, added_at from reports where id = ? limit 1')) {
@@ -606,12 +653,16 @@
                 if (normalized.startsWith('select file_path from reports where id = ? and study_uid = ? limit 1')) {
                     const [id, studyUid] = values;
                     const row = state.reports.find(
-                        (entry) => String(entry.id) === String(id) && entry.study_uid === studyUid
+                        (entry) => String(entry.id) === String(id) && entry.study_uid === studyUid,
                     );
                     return row ? [{ file_path: row.file_path }] : [];
                 }
 
-                if (normalized.startsWith('select path, size, modified_ms, renderable, meta_json from desktop_scan_cache where root_path in')) {
+                if (
+                    normalized.startsWith(
+                        'select path, size, modified_ms, renderable, meta_json from desktop_scan_cache where root_path in',
+                    )
+                ) {
                     const scannerVersion = Number(values[values.length - 1]);
                     const roots = new Set(values.slice(0, -1));
                     return state.desktop_scan_cache
@@ -621,16 +672,18 @@
                             size: row.size,
                             modified_ms: row.modified_ms,
                             renderable: row.renderable,
-                            meta_json: row.meta_json
+                            meta_json: row.meta_json,
                         }));
                 }
 
                 // -- sync_outbox selects --
 
-                if (normalized.startsWith('select') && normalized.includes('sync_outbox') && normalized.includes('synced_at is null')) {
-                    return state.sync_outbox
-                        .filter((row) => row.synced_at === null)
-                        .map((row) => clone(row));
+                if (
+                    normalized.startsWith('select') &&
+                    normalized.includes('sync_outbox') &&
+                    normalized.includes('synced_at is null')
+                ) {
+                    return state.sync_outbox.filter((row) => row.synced_at === null).map((row) => clone(row));
                 }
 
                 if (normalized.startsWith('select') && normalized.includes('sync_outbox')) {
@@ -639,7 +692,11 @@
 
                 // -- sync_state selects --
 
-                if (normalized.startsWith('select') && normalized.includes('sync_state') && normalized.includes('where key = ?')) {
+                if (
+                    normalized.startsWith('select') &&
+                    normalized.includes('sync_state') &&
+                    normalized.includes('where key = ?')
+                ) {
                     const [key] = values;
                     const row = state.sync_state.find((entry) => entry.key === key);
                     return row ? [clone(row)] : [];
@@ -668,7 +725,7 @@
 
             async close() {
                 return true;
-            }
+            },
         };
     }
 
@@ -680,7 +737,7 @@
                 `INSERT INTO study_notes (study_uid, description, updated_at)
                  VALUES (?, ?, ?)
                  ON CONFLICT(study_uid) DO NOTHING`,
-                [row.studyUid, row.description, row.updatedAt]
+                [row.studyUid, row.description, row.updatedAt],
             );
         }
 
@@ -689,14 +746,14 @@
                 `INSERT INTO series_notes (study_uid, series_uid, description, updated_at)
                  VALUES (?, ?, ?, ?)
                  ON CONFLICT(study_uid, series_uid) DO NOTHING`,
-                [row.studyUid, row.seriesUid, row.description, row.updatedAt]
+                [row.studyUid, row.seriesUid, row.description, row.updatedAt],
             );
         }
 
         for (const row of batch?.comments || []) {
             await connection.execute(
                 'INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                [row.studyUid, row.seriesUid, row.text, row.time]
+                [row.studyUid, row.seriesUid, row.text, row.time],
             );
         }
 
@@ -712,7 +769,7 @@
                      file_path = excluded.file_path,
                      added_at = excluded.added_at,
                      updated_at = excluded.updated_at`,
-                [row.id, row.studyUid, row.name, row.type, row.size, row.filePath, row.addedAt, row.updatedAt]
+                [row.id, row.studyUid, row.name, row.type, row.size, row.filePath, row.addedAt, row.updatedAt],
             );
         }
 
@@ -723,7 +780,7 @@
                  ON CONFLICT(key) DO UPDATE SET
                      value = excluded.value,
                      updated_at = excluded.updated_at`,
-                [row.key, row.value, row.updatedAt]
+                [row.key, row.value, row.updatedAt],
             );
         }
 
@@ -743,7 +800,7 @@
                 state.meta.loadCalls += 1;
                 persistState(db, state);
                 return makeConnection(db, options);
-            }
+            },
         };
     };
 

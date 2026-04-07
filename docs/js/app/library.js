@@ -1,5 +1,6 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { state } = app;
     const notesApi = window.NotesAPI;
     const config = window.CONFIG;
@@ -14,7 +15,7 @@
         studiesBody,
         emptyState,
         emptyStateHint,
-        studyCount
+        studyCount,
     } = app.dom;
     const { escapeHtml, formatDate } = app.utils;
     const { getTransferSyntaxInfo } = app.dicom;
@@ -39,9 +40,7 @@
     }
 
     function getSharedParentDirectory(paths) {
-        const normalizedPaths = paths
-            .map(normalizeFinderPath)
-            .filter(Boolean);
+        const normalizedPaths = paths.map(normalizeFinderPath).filter(Boolean);
         if (!normalizedPaths.length) return '';
         if (normalizedPaths.length === 1) return normalizedPaths[0];
 
@@ -55,11 +54,7 @@
         let sharedLength = splitPaths[0].length;
         for (const segments of splitPaths.slice(1)) {
             let index = 0;
-            while (
-                index < sharedLength
-                && index < segments.length
-                && segments[index] === splitPaths[0][index]
-            ) {
+            while (index < sharedLength && index < segments.length && segments[index] === splitPaths[0][index]) {
                 index += 1;
             }
             sharedLength = index;
@@ -105,7 +100,7 @@
     const openPanels = {
         studyPanels: new Set(),
         seriesPanels: new Map(),
-        seriesDropdowns: new Set()
+        seriesDropdowns: new Set(),
     };
 
     const descriptionSaveTimers = new Map();
@@ -173,7 +168,7 @@
         applyLibraryConfigPayload({
             folder,
             folderResolved: folder,
-            source: 'local'
+            source: 'local',
         });
     }
 
@@ -210,10 +205,7 @@
         }
 
         if (state.libraryFolderSource === 'env') {
-            setLibraryFolderStatus(
-                'Currently overridden by DICOM_LIBRARY environment variable.',
-                'warning'
-            );
+            setLibraryFolderStatus('Currently overridden by DICOM_LIBRARY environment variable.', 'warning');
         } else {
             setLibraryFolderStatus('');
         }
@@ -232,7 +224,7 @@
 
         setLibraryFolderMessage(
             `${label} ${stats.processed}/${stats.discovered} files processed (${stats.valid} viewable DICOM).`,
-            'info'
+            'info',
         );
     }
 
@@ -267,7 +259,7 @@
             applyLibraryConfigPayload({
                 folder: payload.folder || '',
                 folderResolved: payload.folder || '',
-                source: 'local'
+                source: 'local',
             });
             return payload;
         }
@@ -305,14 +297,14 @@
                     // Import already ran inside pickAndSetFolder; now rescan the managed library
                     const libraryPath = await app.importPipeline.getLibraryPath();
                     const studies = await app.desktopLibrary.loadStudies(libraryPath, {
-                        onProgress: stats => updateDesktopScanMessage(stats)
+                        onProgress: (stats) => updateDesktopScanMessage(stats),
                     });
                     await applyDesktopLibraryScan(libraryPath, studies);
                     setLibraryFolderMessage('Import complete. Library updated.', 'success');
                 } else {
                     libraryFolderInput.value = folder;
                     const studies = await app.desktopLibrary.loadStudies(folder, {
-                        onProgress: stats => updateDesktopScanMessage(stats)
+                        onProgress: (stats) => updateDesktopScanMessage(stats),
                     });
                     if (await applyDesktopLibraryScan(folder, studies)) {
                         setLibraryFolderMessage('Library folder updated.', 'success');
@@ -331,7 +323,7 @@
             const response = await notesApi.authenticatedFetch('/api/library/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ folder })
+                body: JSON.stringify({ folder }),
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -347,7 +339,7 @@
                 libraryFolderInput.value = folder;
                 setLibraryFolderMessage(
                     'Saved. Will take effect when the DICOM_LIBRARY environment variable is removed.',
-                    'info'
+                    'info',
                 );
             } else {
                 setLibraryFolderMessage('Library folder updated.', 'success');
@@ -383,7 +375,7 @@
                 }
 
                 const studies = await app.desktopLibrary.loadStudies(scanFolder, {
-                    onProgress: stats => updateDesktopScanMessage(stats)
+                    onProgress: (stats) => updateDesktopScanMessage(stats),
                 });
                 await applyDesktopLibraryScan(scanFolder, studies);
                 await displayStudies();
@@ -429,7 +421,8 @@
         if (config?.deploymentMode === 'desktop' && state.managedLibrary) {
             libraryFolderConfig.style.display = 'none';
         } else {
-            libraryFolderConfig.style.display = (state.libraryAvailable || state.libraryConfigReachable) ? 'block' : 'none';
+            libraryFolderConfig.style.display =
+                state.libraryAvailable || state.libraryConfigReachable ? 'block' : 'none';
         }
 
         // Toggle compact drop zone and de-emphasized samples in managed mode
@@ -548,12 +541,15 @@
                 <tr class="series-dropdown-row" data-study-uid="${escapeHtml(study.studyInstanceUid)}" style="display: none;">
                     <td colspan="9">
                         <div class="series-dropdown">
-                            ${seriesArr.map(series => {
-                                if (!Array.isArray(series.comments)) series.comments = [];
-                                const seriesCommentCount = series.comments.length;
-                                const tsInfo = getTransferSyntaxInfo(series.transferSyntax);
-                                const warningIcon = !tsInfo.supported ? `<span class="format-warning" title="${tsInfo.name} - may not display correctly">&#9888;</span>` : '';
-                                return `
+                            ${seriesArr
+                                .map((series) => {
+                                    if (!Array.isArray(series.comments)) series.comments = [];
+                                    const seriesCommentCount = series.comments.length;
+                                    const tsInfo = getTransferSyntaxInfo(series.transferSyntax);
+                                    const warningIcon = !tsInfo.supported
+                                        ? `<span class="format-warning" title="${tsInfo.name} - may not display correctly">&#9888;</span>`
+                                        : '';
+                                    return `
                                     <div class="series-dropdown-item" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}">
                                         <div class="series-main-row">
                                             <span class="series-icon">&#128196;</span>
@@ -582,7 +578,8 @@
                                         </div>
                                     </div>
                                 `;
-                            }).join('')}
+                                })
+                                .join('')}
                         </div>
                     </td>
                 </tr>
@@ -591,18 +588,20 @@
 
         studiesBody.innerHTML = html;
 
-        studiesBody.querySelectorAll('.study-row').forEach(row => {
-            row.onclick = e => {
+        studiesBody.querySelectorAll('.study-row').forEach((row) => {
+            row.onclick = (e) => {
                 if (e.target.closest('.comment-cell') || e.target.closest('.report-cell')) return;
                 const uid = row.dataset.uid;
-                const dropdownRow = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(uid)}"]`);
+                const dropdownRow = studiesBody.querySelector(
+                    `.series-dropdown-row[data-study-uid="${CSS.escape(uid)}"]`,
+                );
                 const icon = row.querySelector('.expand-icon');
                 const isExpanded = dropdownRow.style.display !== 'none';
 
-                studiesBody.querySelectorAll('.series-dropdown-row').forEach(item => {
+                studiesBody.querySelectorAll('.series-dropdown-row').forEach((item) => {
                     item.style.display = 'none';
                 });
-                studiesBody.querySelectorAll('.expand-icon').forEach(item => {
+                studiesBody.querySelectorAll('.expand-icon').forEach((item) => {
                     item.textContent = '\u25B6';
                     item.classList.remove('expanded');
                 });
@@ -617,8 +616,8 @@
             };
         });
 
-        studiesBody.querySelectorAll('.comment-toggle:not(.series-comment-toggle)').forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll('.comment-toggle:not(.series-comment-toggle)').forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 const studyUid = btn.dataset.studyUid;
                 const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
@@ -635,12 +634,14 @@
             };
         });
 
-        studiesBody.querySelectorAll('.series-comment-toggle').forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll('.series-comment-toggle').forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 const studyUid = btn.dataset.studyUid;
                 const seriesUid = btn.dataset.seriesUid;
-                const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+                const panel = studiesBody.querySelector(
+                    `.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+                );
                 const isOpen = panel.style.display !== 'none';
                 panel.style.display = isOpen ? 'none' : 'block';
                 if (isOpen) {
@@ -654,8 +655,8 @@
             };
         });
 
-        studiesBody.querySelectorAll('.series-main-row').forEach(row => {
-            row.onclick = e => {
+        studiesBody.querySelectorAll('.series-main-row').forEach((row) => {
+            row.onclick = (e) => {
                 if (e.target.closest('.comment-toggle')) return;
                 const item = row.closest('.series-dropdown-item');
                 viewer.openViewer(item.dataset.studyUid, item.dataset.seriesUid);
@@ -686,9 +687,7 @@
                     const filePath = getSeriesFilePath(item.dataset.studyUid, item.dataset.seriesUid);
                     if (!filePath) return;
 
-                    app.contextMenu.show(e, [
-                        { label: 'Reveal in Finder', action: () => revealInFinder(filePath) }
-                    ]);
+                    app.contextMenu.show(e, [{ label: 'Reveal in Finder', action: () => revealInFinder(filePath) }]);
                     return;
                 }
 
@@ -696,9 +695,7 @@
                     const folderPath = getStudyFolderPath(studyRow.dataset.uid);
                     if (!folderPath) return;
 
-                    app.contextMenu.show(e, [
-                        { label: 'Reveal in Finder', action: () => revealInFinder(folderPath) }
-                    ]);
+                    app.contextMenu.show(e, [{ label: 'Reveal in Finder', action: () => revealInFinder(folderPath) }]);
                     return;
                 }
             };
@@ -706,7 +703,7 @@
             studiesBody.oncontextmenu = null;
         }
 
-        studiesBody.querySelectorAll('.comment-submit:not([data-series-uid])').forEach(btn => {
+        studiesBody.querySelectorAll('.comment-submit:not([data-series-uid])').forEach((btn) => {
             btn.onclick = () => {
                 const studyUid = btn.dataset.studyUid;
                 const input = studiesBody.querySelector(`.add-study-comment[data-study-uid="${CSS.escape(studyUid)}"]`);
@@ -714,17 +711,19 @@
             };
         });
 
-        studiesBody.querySelectorAll('.comment-submit[data-series-uid]').forEach(btn => {
+        studiesBody.querySelectorAll('.comment-submit[data-series-uid]').forEach((btn) => {
             btn.onclick = () => {
                 const studyUid = btn.dataset.studyUid;
                 const seriesUid = btn.dataset.seriesUid;
-                const input = studiesBody.querySelector(`.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+                const input = studiesBody.querySelector(
+                    `.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+                );
                 commentsUi.addComment(studyUid, seriesUid, input.value);
             };
         });
 
-        studiesBody.querySelectorAll('.comment-input').forEach(input => {
-            input.onkeydown = e => {
+        studiesBody.querySelectorAll('.comment-input').forEach((input) => {
+            input.onkeydown = (e) => {
                 if (e.key === 'Enter') {
                     const studyUid = input.dataset.studyUid;
                     const seriesUid = input.dataset.seriesUid || null;
@@ -733,20 +732,20 @@
             };
         });
 
-        studiesBody.querySelectorAll('.edit-comment').forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll('.edit-comment').forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 commentsUi.editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
             };
         });
-        studiesBody.querySelectorAll('.delete-comment').forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll('.delete-comment').forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 commentsUi.deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
             };
         });
 
-        studiesBody.querySelectorAll('.description-input:not(.series-description)').forEach(textarea => {
+        studiesBody.querySelectorAll('.description-input:not(.series-description)').forEach((textarea) => {
             textarea.oninput = () => {
                 const studyUid = textarea.dataset.studyUid;
                 if (state.studies[studyUid]) {
@@ -758,7 +757,7 @@
             };
         });
 
-        studiesBody.querySelectorAll('.series-description').forEach(textarea => {
+        studiesBody.querySelectorAll('.series-description').forEach((textarea) => {
             textarea.oninput = () => {
                 const studyUid = textarea.dataset.studyUid;
                 const seriesUid = textarea.dataset.seriesUid;
@@ -771,19 +770,27 @@
             };
         });
 
-        openPanels.studyPanels.forEach(studyUid => {
+        openPanels.studyPanels.forEach((studyUid) => {
             const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
             if (panel) panel.style.display = 'table-row';
-            const btn = studiesBody.querySelector(`.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`);
+            const btn = studiesBody.querySelector(
+                `.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`,
+            );
             if (btn) btn.textContent = 'Hide comments';
         });
         openPanels.seriesPanels.forEach((seriesUids, studyUid) => {
-            seriesUids.forEach(seriesUid => {
-                const panel = studiesBody.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+            seriesUids.forEach((seriesUid) => {
+                const panel = studiesBody.querySelector(
+                    `.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+                );
                 if (panel) panel.style.display = 'block';
-                const btn = studiesBody.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+                const btn = studiesBody.querySelector(
+                    `.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+                );
                 if (btn) btn.textContent = 'Hide comments';
-                const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);
+                const dropdown = studiesBody.querySelector(
+                    `.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`,
+                );
                 if (dropdown) dropdown.style.display = 'table-row';
                 const icon = studiesBody.querySelector(`.study-row[data-uid="${CSS.escape(studyUid)}"] .expand-icon`);
                 if (icon) {
@@ -792,8 +799,10 @@
                 }
             });
         });
-        openPanels.seriesDropdowns.forEach(studyUid => {
-            const dropdown = studiesBody.querySelector(`.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`);
+        openPanels.seriesDropdowns.forEach((studyUid) => {
+            const dropdown = studiesBody.querySelector(
+                `.series-dropdown-row[data-study-uid="${CSS.escape(studyUid)}"]`,
+            );
             if (dropdown) dropdown.style.display = 'table-row';
             const icon = studiesBody.querySelector(`.study-row[data-uid="${CSS.escape(studyUid)}"] .expand-icon`);
             if (icon) {
@@ -802,8 +811,8 @@
             }
         });
 
-        studiesBody.querySelectorAll('.report-toggle').forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll('.report-toggle').forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 const studyUid = btn.dataset.studyUid;
                 const panel = studiesBody.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
@@ -817,10 +826,10 @@
             };
         });
 
-        studiesBody.querySelectorAll('.report-upload-btn').forEach(btn => {
+        studiesBody.querySelectorAll('.report-upload-btn').forEach((btn) => {
             const studyUid = btn.dataset.studyUid;
             const fileInput = studiesBody.querySelector(`.report-file-input[data-study-uid="${CSS.escape(studyUid)}"]`);
-            btn.onclick = e => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 fileInput.click();
             };
@@ -833,11 +842,11 @@
             };
         });
 
-        Object.keys(state.studies).forEach(studyUid => {
+        Object.keys(state.studies).forEach((studyUid) => {
             reportsUi.attachReportEventHandlers(studyUid);
         });
 
-        document.querySelectorAll('.sortable').forEach(th => {
+        document.querySelectorAll('.sortable').forEach((th) => {
             const arrow = th.querySelector('.sort-arrow');
             if (!arrow) return;
 
@@ -1026,6 +1035,6 @@
         setLibraryFolderStatus,
         updateDesktopScanMessage,
         updateImportProgress,
-        updateLibraryStatusFooter
+        updateLibraryStatusFooter,
     };
 })();

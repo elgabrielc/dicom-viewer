@@ -4,10 +4,7 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const {
-    createSyntheticDicomFolder,
-    removeSyntheticDicomFolder
-} = require('./dicom-fixture-helper');
+const { createSyntheticDicomFolder, removeSyntheticDicomFolder } = require('./dicom-fixture-helper');
 
 /**
  * Playwright tests for DICOM Viewer - Library View and Navigation
@@ -63,44 +60,46 @@ const CALIBRATION_WARNING_SELECTOR = '#calibrationWarning';
 
 async function waitForViewerReady(page) {
     await page.waitForSelector(CANVAS_SELECTOR, { state: 'visible', timeout: 30000 });
-    await page.waitForFunction(() => {
-        const appState = window.DicomViewerApp?.state;
-        const wlDisplay = document.querySelector('#wlDisplay');
-        const sliceInfo = document.querySelector('#sliceInfo');
-        const imageLoading = document.querySelector('#imageLoading');
-        const sliceText = sliceInfo?.textContent || '';
-        const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
-        const ready = Boolean(
-            appState?.currentStudy
-            && appState?.currentSeries
-            && appState?.baseWindowLevel?.center !== null
-            && appState?.baseWindowLevel?.width !== null
-            &&
-            wlDisplay?.textContent?.includes('C:')
-            && wlDisplay.textContent.includes('W:')
-            && /^\d+\s*\/\s*\d+$/.test(sliceText)
-            && loadingHidden
-        );
-        if (!ready) {
-            window.__dicomViewerReadyStableState = null;
-            return false;
-        }
-        const stableKey = [
-            appState.currentStudy.studyInstanceUid,
-            appState.currentSeries.seriesInstanceUid,
-            appState.currentSliceIndex,
-            appState.baseWindowLevel.center,
-            appState.baseWindowLevel.width,
-            wlDisplay.textContent,
-            sliceText
-        ].join('|');
-        const previous = window.__dicomViewerReadyStableState;
-        if (!previous || previous.key !== stableKey) {
-            window.__dicomViewerReadyStableState = { key: stableKey, since: Date.now() };
-            return false;
-        }
-        return Date.now() - previous.since >= 100;
-    }, { timeout: 30000 });
+    await page.waitForFunction(
+        () => {
+            const appState = window.DicomViewerApp?.state;
+            const wlDisplay = document.querySelector('#wlDisplay');
+            const sliceInfo = document.querySelector('#sliceInfo');
+            const imageLoading = document.querySelector('#imageLoading');
+            const sliceText = sliceInfo?.textContent || '';
+            const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
+            const ready = Boolean(
+                appState?.currentStudy &&
+                    appState?.currentSeries &&
+                    appState?.baseWindowLevel?.center !== null &&
+                    appState?.baseWindowLevel?.width !== null &&
+                    wlDisplay?.textContent?.includes('C:') &&
+                    wlDisplay.textContent.includes('W:') &&
+                    /^\d+\s*\/\s*\d+$/.test(sliceText) &&
+                    loadingHidden,
+            );
+            if (!ready) {
+                window.__dicomViewerReadyStableState = null;
+                return false;
+            }
+            const stableKey = [
+                appState.currentStudy.studyInstanceUid,
+                appState.currentSeries.seriesInstanceUid,
+                appState.currentSliceIndex,
+                appState.baseWindowLevel.center,
+                appState.baseWindowLevel.width,
+                wlDisplay.textContent,
+                sliceText,
+            ].join('|');
+            const previous = window.__dicomViewerReadyStableState;
+            if (!previous || previous.key !== stableKey) {
+                window.__dicomViewerReadyStableState = { key: stableKey, since: Date.now() };
+                return false;
+            }
+            return Date.now() - previous.since >= 100;
+        },
+        { timeout: 30000 },
+    );
 }
 
 async function getSliceInfo(page) {
@@ -120,13 +119,15 @@ async function waitForSliceCurrent(page, expectedCurrent, timeout = 10000) {
             const text = document.querySelector(selector)?.textContent || '';
             const match = text.match(/(\d+)\s*\/\s*(\d+)/);
             const loadingHidden = !imageLoading || window.getComputedStyle(imageLoading).display === 'none';
-            return Boolean(match)
-                && Number(match[1]) === expected
-                && appState?.currentSliceIndex === expected - 1
-                && loadingHidden;
+            return (
+                Boolean(match) &&
+                Number(match[1]) === expected &&
+                appState?.currentSliceIndex === expected - 1 &&
+                loadingHidden
+            );
         },
         { selector: SLICE_INFO_SELECTOR, expected: expectedCurrent },
-        { timeout }
+        { timeout },
     );
 }
 
@@ -145,7 +146,7 @@ async function isButtonActive(page, selector) {
 }
 
 async function getCanvasCursor(page) {
-    return await page.locator(CANVAS_SELECTOR).evaluate(el => {
+    return await page.locator(CANVAS_SELECTOR).evaluate((el) => {
         return window.getComputedStyle(el).cursor;
     });
 }
@@ -196,7 +197,7 @@ test.describe('Test Suite 14: Library View - Home Page Initial State', () => {
 
     test('Home page with ?nolib does not call library studies API', async ({ page }) => {
         const libraryRequests = [];
-        page.on('request', req => {
+        page.on('request', (req) => {
             if (req.url().includes('/api/library/studies')) {
                 libraryRequests.push(req.url());
             }
@@ -209,29 +210,29 @@ test.describe('Test Suite 14: Library View - Home Page Initial State', () => {
 
     test('Library auto-load handles 200 non-JSON config response without crashing', async ({ page }) => {
         const consoleWarnings = [];
-        page.on('console', msg => {
+        page.on('console', (msg) => {
             if (msg.type() === 'warning') {
                 consoleWarnings.push(msg.text());
             }
         });
 
-        await page.route('**/api/library/config', async route => {
+        await page.route('**/api/library/config', async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: 'text/html',
-                body: '<html>proxy error page</html>'
+                body: '<html>proxy error page</html>',
             });
         });
 
-        await page.route('**/api/library/studies', async route => {
+        await page.route('**/api/library/studies', async (route) => {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
                 body: JSON.stringify({
                     available: true,
                     folder: '/tmp/mock-dicom-library',
-                    studies: []
-                })
+                    studies: [],
+                }),
             });
         });
 
@@ -241,9 +242,11 @@ test.describe('Test Suite 14: Library View - Home Page Initial State', () => {
         await expect(page.locator('#refreshLibraryBtn')).toBeVisible();
         await expect(page.locator('#emptyStateHint')).toContainText('No DICOM files found in /tmp/mock-dicom-library.');
 
-        await expect.poll(() => {
-            return consoleWarnings.some(w => w.includes('Failed to load library config:'));
-        }).toBe(true);
+        await expect
+            .poll(() => {
+                return consoleWarnings.some((w) => w.includes('Failed to load library config:'));
+            })
+            .toBe(true);
     });
 
     test('Home page shows study count in header when studies present', async ({ page }) => {
@@ -305,26 +308,29 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
     });
 
     test('Sortable headers toggle order and keep missing values at bottom', async ({ page }) => {
-        await page.route('**/api/test-data/studies', async route => {
+        await page.route('**/api/test-data/studies', async (route) => {
             const response = await route.fetch();
             const originalStudies = await response.json();
             expect(Array.isArray(originalStudies)).toBe(true);
             expect(originalStudies.length).toBeGreaterThan(0);
 
             const baseStudy = originalStudies[0];
-            const fallbackSeries = [{
-                seriesInstanceUid: 'sort-seed-series',
-                seriesDescription: 'Synthetic',
-                modality: 'CT',
-                sliceCount: 1
-            }];
-            const baseSeries = Array.isArray(baseStudy.series) && baseStudy.series.length > 0
-                ? baseStudy.series
-                : fallbackSeries;
+            const fallbackSeries = [
+                {
+                    seriesInstanceUid: 'sort-seed-series',
+                    seriesDescription: 'Synthetic',
+                    modality: 'CT',
+                    sliceCount: 1,
+                },
+            ];
+            const baseSeries =
+                Array.isArray(baseStudy.series) && baseStudy.series.length > 0 ? baseStudy.series : fallbackSeries;
             const baseSeriesCount = baseStudy.seriesCount ?? baseSeries.length;
-            const baseImageCount = baseStudy.imageCount ?? baseSeries.reduce((sum, series) => {
-                return sum + (series.sliceCount || 1);
-            }, 0);
+            const baseImageCount =
+                baseStudy.imageCount ??
+                baseSeries.reduce((sum, series) => {
+                    return sum + (series.sliceCount || 1);
+                }, 0);
 
             const customStudies = [
                 {
@@ -334,7 +340,7 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
                     studyInstanceUid: baseStudy.studyInstanceUid,
                     series: baseSeries,
                     seriesCount: baseSeriesCount,
-                    imageCount: baseImageCount
+                    imageCount: baseImageCount,
                 },
                 {
                     studyInstanceUid: 'sort-test-uid-a',
@@ -344,7 +350,7 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
                     modality: 'CT',
                     seriesCount: 1,
                     imageCount: 1,
-                    series: fallbackSeries
+                    series: fallbackSeries,
                 },
                 {
                     studyInstanceUid: 'sort-test-uid-b',
@@ -354,7 +360,7 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
                     modality: 'CT',
                     seriesCount: 1,
                     imageCount: 1,
-                    series: fallbackSeries
+                    series: fallbackSeries,
                 },
                 {
                     studyInstanceUid: 'sort-test-uid-c',
@@ -364,8 +370,8 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
                     modality: 'CT',
                     seriesCount: 1,
                     imageCount: 1,
-                    series: fallbackSeries
-                }
+                    series: fallbackSeries,
+                },
             ];
 
             await route.fulfill({ response, json: customStudies });
@@ -382,7 +388,7 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
         const getColumnTexts = async (columnIndex) => {
             const cells = page.locator(`${STUDIES_BODY_SELECTOR} .study-row td:nth-child(${columnIndex})`);
             const values = await cells.allInnerTexts();
-            return values.map(v => v.trim());
+            return values.map((v) => v.trim());
         };
 
         // Default sort: date descending
@@ -917,7 +923,7 @@ test.describe('Test Suite 20: Measure Tool', () => {
     test('Draw a measurement on the canvas without errors', async ({ page }) => {
         // Track console errors during measurement drawing
         const consoleErrors = [];
-        page.on('console', msg => {
+        page.on('console', (msg) => {
             if (msg.type() === 'error') {
                 consoleErrors.push(msg.text());
             }
@@ -939,7 +945,7 @@ test.describe('Test Suite 20: Measure Tool', () => {
 
         // Measurement should have been drawn without errors
         // Filter out favicon errors which are unrelated
-        const relevantErrors = consoleErrors.filter(e => !e.includes('favicon'));
+        const relevantErrors = consoleErrors.filter((e) => !e.includes('favicon'));
         expect(relevantErrors).toHaveLength(0);
 
         // Measure tool should still be active
@@ -955,7 +961,7 @@ test.describe('Test Suite 20: Measure Tool', () => {
     test('Delete key removes most recent measurement when measure tool is active', async ({ page }) => {
         // This tests that Delete key handling does not throw errors
         const consoleErrors = [];
-        page.on('console', msg => {
+        page.on('console', (msg) => {
             if (msg.type() === 'error') consoleErrors.push(msg.text());
         });
 
@@ -978,7 +984,7 @@ test.describe('Test Suite 20: Measure Tool', () => {
         await page.waitForTimeout(200);
 
         // No errors should have occurred
-        expect(consoleErrors.filter(e => !e.includes('favicon'))).toHaveLength(0);
+        expect(consoleErrors.filter((e) => !e.includes('favicon'))).toHaveLength(0);
     });
 
     test('Switching from measure to W/L tool deactivates measure', async ({ page }) => {
@@ -1242,7 +1248,7 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
 
         test('POST /api/library/config returns 400 for missing folder', async ({ page }) => {
             const response = await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                data: {}
+                data: {},
             });
             expect(response.status()).toBe(400);
 
@@ -1254,7 +1260,7 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
         test('POST /api/library/config returns 400 for nonexistent folder', async ({ page }) => {
             const missingPath = path.join(os.tmpdir(), `dicom-missing-${Date.now()}-folder`);
             const response = await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                data: { folder: missingPath }
+                data: { folder: missingPath },
             });
             expect(response.status()).toBe(400);
 
@@ -1274,7 +1280,7 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
                 const nextFolder = fs.mkdtempSync(path.join(os.tmpdir(), 'dicom-library-config-'));
                 try {
                     const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                        data: { folder: nextFolder }
+                        data: { folder: nextFolder },
                     });
                     expect(saveResponse.status()).toBe(200);
                     const saveBody = await saveResponse.json();
@@ -1305,18 +1311,17 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
                 } finally {
                     if (before.folderResolved || before.folder) {
                         await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                            data: { folder: before.folderResolved || before.folder }
+                            data: { folder: before.folderResolved || before.folder },
                         });
                     }
                     fs.rmSync(nextFolder, { recursive: true, force: true });
                 }
             });
 
-            test('library API preserves deterministic collision keys and serves slash-bearing composite series IDs', async ({ page }) => {
-                const fixture = createSyntheticDicomFolder([
-                    { description: '' },
-                    { description: 'AP/Upper' }
-                ]);
+            test('library API preserves deterministic collision keys and serves slash-bearing composite series IDs', async ({
+                page,
+            }) => {
+                const fixture = createSyntheticDicomFolder([{ description: '' }, { description: 'AP/Upper' }]);
 
                 const configResponse = await page.request.get('http://127.0.0.1:5001/api/library/config');
                 const previousConfig = await configResponse.json();
@@ -1325,7 +1330,7 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
                     expect(previousConfig.overridden).toBe(false);
 
                     const saveResponse = await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                        data: { folder: fixture.folder }
+                        data: { folder: fixture.folder },
                     });
                     expect(saveResponse.status()).toBe(200);
 
@@ -1335,16 +1340,13 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
 
                     const study = savePayload.studies[0];
                     const seriesIds = study.series.map((series) => series.seriesInstanceUid).sort();
-                    expect(seriesIds).toEqual([
-                        `${fixture.seriesUid}|`,
-                        `${fixture.seriesUid}|AP/Upper`
-                    ]);
+                    expect(seriesIds).toEqual([`${fixture.seriesUid}|`, `${fixture.seriesUid}|AP/Upper`]);
 
                     const slashSeries = study.series.find((series) => series.seriesDescription === 'AP/Upper');
                     expect(slashSeries).toBeDefined();
 
                     const dicomResponse = await page.request.get(
-                        `http://127.0.0.1:5001/api/library/dicom/${encodeURIComponent(study.studyInstanceUid)}/${encodeURIComponent(slashSeries.seriesInstanceUid)}/0`
+                        `http://127.0.0.1:5001/api/library/dicom/${encodeURIComponent(study.studyInstanceUid)}/${encodeURIComponent(slashSeries.seriesInstanceUid)}/0`,
                     );
                     expect(dicomResponse.status()).toBe(200);
                     expect(dicomResponse.headers()['content-type']).toContain('dicom');
@@ -1354,7 +1356,7 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
                 } finally {
                     if (previousConfig.folderResolved || previousConfig.folder) {
                         await page.request.post('http://127.0.0.1:5001/api/library/config', {
-                            data: { folder: previousConfig.folderResolved || previousConfig.folder }
+                            data: { folder: previousConfig.folderResolved || previousConfig.folder },
                         });
                     }
                     removeSyntheticDicomFolder(fixture.folder);
@@ -1413,7 +1415,7 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
         const series = study.series[0];
 
         const dicomResponse = await page.request.get(
-            `http://127.0.0.1:5001/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`
+            `http://127.0.0.1:5001/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/0`,
         );
         expect(dicomResponse.status()).toBe(200);
         expect(dicomResponse.headers()['content-type']).toContain('dicom');
@@ -1431,35 +1433,33 @@ test.describe('Test Suite 24: API Endpoint Health', () => {
 
         // Request slice index way beyond range
         const response = await page.request.get(
-            `http://127.0.0.1:5001/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/99999`
+            `http://127.0.0.1:5001/api/test-data/dicom/${study.studyInstanceUid}/${series.seriesInstanceUid}/99999`,
         );
         expect(response.status()).toBe(404);
     });
 
     test('GET /api/test-data/dicom returns 404 for unknown study', async ({ page }) => {
         const response = await page.request.get(
-            'http://127.0.0.1:5001/api/test-data/dicom/nonexistent-study-id/nonexistent-series-id/0'
+            'http://127.0.0.1:5001/api/test-data/dicom/nonexistent-study-id/nonexistent-series-id/0',
         );
         expect(response.status()).toBe(404);
     });
 
     test('GET /api/test-data/dicom rejects path traversal in study ID', async ({ page }) => {
         const response = await page.request.get(
-            'http://127.0.0.1:5001/api/test-data/dicom/..%2F..%2F..%2Fetc/passwd/0'
+            'http://127.0.0.1:5001/api/test-data/dicom/..%2F..%2F..%2Fetc/passwd/0',
         );
         expect(response.status()).toBe(404);
     });
 
     test('GET /api/library/dicom rejects path traversal in study ID', async ({ page }) => {
-        const response = await page.request.get(
-            'http://127.0.0.1:5001/api/library/dicom/..%2F..%2F..%2Fetc/passwd/0'
-        );
+        const response = await page.request.get('http://127.0.0.1:5001/api/library/dicom/..%2F..%2F..%2Fetc/passwd/0');
         expect(response.status()).toBe(404);
     });
 
     test('GET /api/library/dicom returns 404 for unknown study', async ({ page }) => {
         const response = await page.request.get(
-            'http://127.0.0.1:5001/api/library/dicom/nonexistent-study-id/nonexistent-series-id/0'
+            'http://127.0.0.1:5001/api/library/dicom/nonexistent-study-id/nonexistent-series-id/0',
         );
         expect(response.status()).toBe(404);
     });

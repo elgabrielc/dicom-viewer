@@ -19,7 +19,7 @@ async function initOpenJpegWorker() {
     openjpegModulePromise = (async () => {
         loadOpenJpegWorkerScript();
         return OpenJPEGWASM({
-            locateFile: (path) => resolveOpenJpegWorkerAssetUrl(path)
+            locateFile: (path) => resolveOpenJpegWorkerAssetUrl(path),
         });
     })();
 
@@ -45,12 +45,11 @@ function createPixelArray(bitsPerSample, isSigned, sampleCount) {
 }
 
 function copyDecodedPixels(decoded, frameInfo, bitsAllocated, pixelRepresentation) {
-    const bitsPerSample = Number.isFinite(frameInfo?.bitsPerSample) && frameInfo.bitsPerSample > 0
-        ? frameInfo.bitsPerSample
-        : bitsAllocated;
-    const isSigned = typeof frameInfo?.isSigned === 'boolean'
-        ? frameInfo.isSigned
-        : pixelRepresentation === 1;
+    const bitsPerSample =
+        Number.isFinite(frameInfo?.bitsPerSample) && frameInfo.bitsPerSample > 0
+            ? frameInfo.bitsPerSample
+            : bitsAllocated;
+    const isSigned = typeof frameInfo?.isSigned === 'boolean' ? frameInfo.isSigned : pixelRepresentation === 1;
     // Some parametric maps and NM SUV studies use 32-bit samples; keep them intact.
     const bytesPerSample = Math.max(1, Math.ceil(bitsPerSample / 8));
 
@@ -109,28 +108,23 @@ self.onmessage = async (event) => {
         }
 
         stage = 'pixel-conversion';
-        const pixelData = copyDecodedPixels(
-            decoded,
-            frameInfo,
-            payload.bitsAllocated,
-            payload.pixelRepresentation
-        );
+        const pixelData = copyDecodedPixels(decoded, frameInfo, payload.bitsAllocated, payload.pixelRepresentation);
 
         self.postMessage(
             {
                 type: 'decoded',
                 requestId: payload.requestId,
                 pixelData,
-                frameInfo
+                frameInfo,
             },
-            [pixelData.buffer]
+            [pixelData.buffer],
         );
     } catch (error) {
         self.postMessage({
             type: 'error',
             requestId: payload.requestId,
             stage,
-            message: String(error?.message || error || 'Unknown JPEG 2000 worker error')
+            message: String(error?.message || error || 'Unknown JPEG 2000 worker error'),
         });
     } finally {
         decoder?.delete();

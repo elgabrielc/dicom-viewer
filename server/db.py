@@ -14,7 +14,6 @@ import threading
 
 from flask import g
 
-
 # Notes database storage (SQLite + report files)
 # These are initialized by create_app() and should be treated as read-only after that.
 DATA_DIR = None
@@ -50,10 +49,7 @@ def configure(app_root_path):
     """Set database paths based on app root. Called once from create_app()."""
     global DATA_DIR, DB_PATH, REPORTS_DIR, SETTINGS_PATH
 
-    DATA_DIR = os.environ.get(
-        'DICOM_VIEWER_DATA_DIR',
-        os.path.join(app_root_path, 'data')
-    )
+    DATA_DIR = os.environ.get('DICOM_VIEWER_DATA_DIR', os.path.join(app_root_path, 'data'))
     DB_PATH = os.path.join(DATA_DIR, 'viewer.db')
     REPORTS_DIR = os.path.join(DATA_DIR, 'reports')
     SETTINGS_PATH = os.path.join(DATA_DIR, 'settings.json')
@@ -75,18 +71,14 @@ def _load_settings_unlocked(logger):
             if isinstance(payload, dict):
                 return payload
     except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("Failed to read settings file %s: %s", SETTINGS_PATH, exc)
+        logger.warning('Failed to read settings file %s: %s', SETTINGS_PATH, exc)
     return {}
 
 
 def _save_settings_unlocked(settings):
     """Persist settings atomically (caller must hold SETTINGS_LOCK)."""
     _ensure_data_dirs()
-    fd, temp_path = tempfile.mkstemp(
-        prefix='settings-',
-        suffix='.tmp',
-        dir=DATA_DIR
-    )
+    fd, temp_path = tempfile.mkstemp(prefix='settings-', suffix='.tmp', dir=DATA_DIR)
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(settings, f, indent=2)
@@ -123,7 +115,7 @@ def get_db():
         _ensure_data_dirs()
         conn = sqlite3.connect(DB_PATH, timeout=10)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute('PRAGMA journal_mode=WAL')
         g.db = conn
     return g.db
 
@@ -476,7 +468,14 @@ def init_db():
         db.execute(
             """
             UPDATE comments SET
-                record_uuid = lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || '4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))),
+                record_uuid = (
+                    lower(hex(randomblob(4))) || '-' ||
+                    lower(hex(randomblob(2))) || '-' ||
+                    '4' || substr(lower(hex(randomblob(2))), 2) || '-' ||
+                    substr('89ab', abs(random()) % 4 + 1, 1) ||
+                    substr(lower(hex(randomblob(2))), 2) || '-' ||
+                    lower(hex(randomblob(6)))
+                ),
                 created_at = time,
                 updated_at = time
             WHERE record_uuid IS NULL
@@ -491,12 +490,12 @@ def init_db():
 def _add_column(db, table, column, col_type):
     """Add a column to a table if it does not already exist. Idempotent."""
     try:
-        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+        db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}')
     except sqlite3.OperationalError as exc:
         # "duplicate column name" means it already exists -- safe to ignore
         if 'duplicate column' not in str(exc).lower():
             logging.getLogger(__name__).warning(
-                "Failed to add column %s.%s: %s", table, column, exc
+                'Failed to add column %s.%s: %s', table, column, exc
             )
 
 

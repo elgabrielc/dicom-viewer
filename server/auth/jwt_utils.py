@@ -13,7 +13,6 @@ import time
 
 import jwt
 
-
 # Server secret for signing JWTs. Use environment variable in production,
 # fall back to a per-process random secret for development.
 JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_urlsafe(64))
@@ -22,7 +21,7 @@ JWT_SECRET = os.environ.get('JWT_SECRET', secrets.token_urlsafe(64))
 JWT_ALGORITHM = 'HS256'
 
 # Token lifetimes in seconds
-ACCESS_TOKEN_LIFETIME = 15 * 60       # 15 minutes
+ACCESS_TOKEN_LIFETIME = 15 * 60  # 15 minutes
 REFRESH_TOKEN_LIFETIME = 30 * 24 * 3600  # 30 days
 
 

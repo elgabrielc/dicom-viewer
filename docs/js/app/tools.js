@@ -1,14 +1,8 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { state } = app;
-    const {
-        canvas,
-        wlDisplay,
-        measurementCanvas,
-        measureCtx,
-        calibrationWarning,
-        canvasContainer
-    } = app.dom;
+    const { canvas, wlDisplay, measurementCanvas, measureCtx, calibrationWarning, canvasContainer } = app.dom;
     const { getString, generateUUID } = app.utils;
     let pendingCurrentSliceRender = false;
 
@@ -46,7 +40,7 @@
 
         return {
             x: (canvasX * scaleX - centerX - panX) / zoom + centerX,
-            y: (canvasY * scaleY - centerY - panY) / zoom + centerY
+            y: (canvasY * scaleY - centerY - panY) / zoom + centerY,
         };
     }
 
@@ -91,12 +85,12 @@
             sopInstanceUid: null,
             points: [
                 { x: start.x, y: start.y },
-                { x: end.x, y: end.y }
+                { x: end.x, y: end.y },
             ],
             distanceMm,
             distancePixels,
             createdAt: new Date().toISOString(),
-            label: null
+            label: null,
         };
     }
 
@@ -120,7 +114,7 @@
         if (!key) return false;
 
         const sliceMeasurements = state.measurements.get(key) || [];
-        const index = sliceMeasurements.findIndex(m => m.id === measurementId);
+        const index = sliceMeasurements.findIndex((m) => m.id === measurementId);
         if (index === -1) return false;
 
         sliceMeasurements.splice(index, 1);
@@ -268,7 +262,7 @@
             labelX - textWidth / 2 - padding,
             labelY - textHeight / 2 - padding,
             textWidth + padding * 2,
-            textHeight + padding * 2
+            textHeight + padding * 2,
         );
 
         measureCtx.fillStyle = isActive ? '#ffcc00' : '#00ff00';
@@ -287,7 +281,7 @@
 
     function setTool(tool) {
         state.currentTool = tool;
-        document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+        document.querySelectorAll('.tool-btn[data-tool]').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
         canvas.style.cursor = getCursorForTool(tool, false);
@@ -297,11 +291,16 @@
 
     function getCursorForTool(tool, dragging) {
         switch (tool) {
-            case 'wl': return dragging ? 'ns-resize' : 'crosshair';
-            case 'pan': return dragging ? 'grabbing' : 'grab';
-            case 'zoom': return dragging ? 'ns-resize' : 'zoom-in';
-            case 'measure': return 'crosshair';
-            default: return 'default';
+            case 'wl':
+                return dragging ? 'ns-resize' : 'crosshair';
+            case 'pan':
+                return dragging ? 'grabbing' : 'grab';
+            case 'zoom':
+                return dragging ? 'ns-resize' : 'zoom-in';
+            case 'measure':
+                return 'crosshair';
+            default:
+                return 'default';
         }
     }
 
@@ -329,9 +328,8 @@
         const decoded = state.sliceCache.get(cacheKey);
         if (!decoded) return;
 
-        const wlOverride = (state.windowLevel.center !== null && state.windowLevel.width !== null)
-            ? state.windowLevel
-            : null;
+        const wlOverride =
+            state.windowLevel.center !== null && state.windowLevel.width !== null ? state.windowLevel : null;
         if (decoded.error) {
             app.rendering.renderDecodeError(decoded);
             return;
@@ -476,7 +474,7 @@
         const { distancePixels, distanceMm } = calculateDistance(
             state.activeMeasurement.points[0],
             state.activeMeasurement.points[1],
-            state.pixelSpacing
+            state.pixelSpacing,
         );
         state.activeMeasurement.distancePixels = distancePixels;
         state.activeMeasurement.distanceMm = distanceMm;
@@ -517,6 +515,6 @@
         screenToImage,
         setTool,
         updateCalibrationWarning,
-        updateWLDisplay
+        updateWLDisplay,
     };
 })();

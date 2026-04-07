@@ -17,8 +17,7 @@ fn reveal_in_finder(
     path: String,
     allowed: State<'_, path_util::AllowedPaths>,
 ) -> Result<(), String> {
-    let canonical =
-        crate::path_util::resolve_canonical_path(&path, "reveal")?;
+    let canonical = crate::path_util::resolve_canonical_path(&path, "reveal")?;
     if !allowed.is_within_scope(&canonical) {
         return Err("reveal: path is outside allowed scope".into());
     }
@@ -125,10 +124,7 @@ fn get_debug_settings(settings: tauri::State<'_, DebugSettings>) -> DebugSetting
 }
 
 #[tauri::command]
-fn log_frontend_decode_event(
-    settings: tauri::State<'_, DebugSettings>,
-    message: String,
-) {
+fn log_frontend_decode_event(settings: tauri::State<'_, DebugSettings>, message: String) {
     if settings.frontend_decode_trace {
         eprintln!("[frontend-decode] {message}");
     }

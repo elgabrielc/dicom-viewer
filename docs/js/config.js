@@ -167,7 +167,7 @@ const CONFIG = {
             personal: 'Personal',
         };
         return names[this.deploymentMode] || 'Unknown';
-    }
+    },
 };
 
 // Freeze to prevent modification

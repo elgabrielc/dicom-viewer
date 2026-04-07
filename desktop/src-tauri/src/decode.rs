@@ -342,9 +342,12 @@ pub fn take_decoded_frame(
     decode_id: String,
     store: State<'_, DecodeStore>,
 ) -> DecodeResult<Response> {
-    let pixel_bytes = store
-        .take(&decode_id)
-        .ok_or_else(|| DecodeError::new("pixel-transfer", format!("Decoded frame not found: {decode_id}")))?;
+    let pixel_bytes = store.take(&decode_id).ok_or_else(|| {
+        DecodeError::new(
+            "pixel-transfer",
+            format!("Decoded frame not found: {decode_id}"),
+        )
+    })?;
     Ok(Response::new(pixel_bytes))
 }
 
@@ -393,7 +396,6 @@ fn resolve_cache_paths<R: Runtime>(app: &AppHandle<R>) -> DecodeResult<DecodeCac
     Ok(cache_paths)
 }
 
-
 fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>> {
     let capped_max_bytes = max_bytes.min(MAX_SCAN_HEADER_BYTES);
     if capped_max_bytes == 0 {
@@ -401,10 +403,7 @@ fn read_scan_header_impl(path: &Path, max_bytes: usize) -> DecodeResult<Vec<u8>>
     }
 
     let file = fs::File::open(path).map_err(|error| {
-        DecodeError::new(
-            "scan-header",
-            format!("Failed to open DICOM file: {error}"),
-        )
+        DecodeError::new("scan-header", format!("Failed to open DICOM file: {error}"))
     })?;
     let mut bytes = Vec::with_capacity(capped_max_bytes);
     file.take(capped_max_bytes as u64)
@@ -423,12 +422,13 @@ fn build_decode_frame_with_pixels_response(decoded_frame: DecodedFrame) -> Decod
         metadata,
         mut pixel_bytes,
     } = decoded_frame;
-    let metadata_json = serde_json::to_vec(&DecodeFrameBinaryHeader::from(metadata)).map_err(|error| {
-        DecodeError::new(
-            "pixel-transfer",
-            format!("Failed to serialize decoded frame metadata: {error}"),
-        )
-    })?;
+    let metadata_json =
+        serde_json::to_vec(&DecodeFrameBinaryHeader::from(metadata)).map_err(|error| {
+            DecodeError::new(
+                "pixel-transfer",
+                format!("Failed to serialize decoded frame metadata: {error}"),
+            )
+        })?;
     let metadata_length = u32::try_from(metadata_json.len()).map_err(|_| {
         DecodeError::new(
             "pixel-transfer",
@@ -451,10 +451,7 @@ fn decode_frame_impl_with_cache(
 ) -> DecodeResult<DecodedFrame> {
     let started_at = Instant::now();
     let object = open_file(path).map_err(|error| {
-        DecodeError::new(
-            "decode",
-            format!("Failed to open DICOM file: {error}"),
-        )
+        DecodeError::new("decode", format!("Failed to open DICOM file: {error}"))
     })?;
 
     let cache_key = match build_cache_key(path, &object, frame_index) {
@@ -498,7 +495,11 @@ fn decode_frame_impl_with_cache(
             write_cached_frame(cache_paths, cache_key, &decoded_frame)
         };
         if let Err(error) = cache_write_result {
-            eprintln!("Skipping decode cache write for {}: {}", path.display(), error);
+            eprintln!(
+                "Skipping decode cache write for {}: {}",
+                path.display(),
+                error
+            );
         }
     }
 
@@ -532,10 +533,10 @@ fn build_cache_key(
         .map_err(|error| format!("Invalid file modification time: {error}"))?
         .as_millis()
         .to_string();
-    let sop_instance_uid =
-        get_text(object, tags::SOP_INSTANCE_UID).unwrap_or_else(|| "missing-sop-instance-uid".into());
-    let transfer_syntax =
-        get_text(object, tags::TRANSFER_SYNTAX_UID).unwrap_or_else(|| "missing-transfer-syntax".into());
+    let sop_instance_uid = get_text(object, tags::SOP_INSTANCE_UID)
+        .unwrap_or_else(|| "missing-sop-instance-uid".into());
+    let transfer_syntax = get_text(object, tags::TRANSFER_SYNTAX_UID)
+        .unwrap_or_else(|| "missing-transfer-syntax".into());
 
     let mut hasher = Sha256::new();
     hasher.update(path.as_os_str().as_encoded_bytes());
@@ -684,7 +685,8 @@ fn reconcile_cache_directory(
     for entry in fs::read_dir(&cache_paths.dir)
         .map_err(|error| format!("Failed to read cache directory: {error}"))?
     {
-        let entry = entry.map_err(|error| format!("Failed to inspect cache directory entry: {error}"))?;
+        let entry =
+            entry.map_err(|error| format!("Failed to inspect cache directory entry: {error}"))?;
         let path = entry.path();
         if path == cache_paths.manifest {
             continue;
@@ -731,8 +733,9 @@ fn reconcile_cache_directory(
     for (key, files) in discovered {
         let entry_paths = cache_paths.entry_paths(&key);
         if !files.has_pixels || !files.has_metadata {
-            remove_if_exists(&entry_paths.pixel_bytes)
-                .map_err(|error| format!("Failed to remove partial cached pixel payload: {error}"))?;
+            remove_if_exists(&entry_paths.pixel_bytes).map_err(|error| {
+                format!("Failed to remove partial cached pixel payload: {error}")
+            })?;
             remove_if_exists(&entry_paths.metadata)
                 .map_err(|error| format!("Failed to remove partial cached metadata: {error}"))?;
             continue;
@@ -745,37 +748,44 @@ fn reconcile_cache_directory(
         let metadata_text = match fs::read_to_string(&entry_paths.metadata) {
             Ok(text) => text,
             Err(_) => {
-                remove_if_exists(&entry_paths.pixel_bytes)
-                    .map_err(|error| format!("Failed to remove unreadable cached pixel payload: {error}"))?;
-                remove_if_exists(&entry_paths.metadata)
-                    .map_err(|error| format!("Failed to remove unreadable cached metadata: {error}"))?;
+                remove_if_exists(&entry_paths.pixel_bytes).map_err(|error| {
+                    format!("Failed to remove unreadable cached pixel payload: {error}")
+                })?;
+                remove_if_exists(&entry_paths.metadata).map_err(|error| {
+                    format!("Failed to remove unreadable cached metadata: {error}")
+                })?;
                 continue;
             }
         };
         let metadata: DecodedFrameMetadata = match serde_json::from_str(&metadata_text) {
             Ok(metadata) => metadata,
             Err(_) => {
-                remove_if_exists(&entry_paths.pixel_bytes)
-                    .map_err(|error| format!("Failed to remove invalid cached pixel payload: {error}"))?;
-                remove_if_exists(&entry_paths.metadata)
-                    .map_err(|error| format!("Failed to remove invalid cached metadata: {error}"))?;
+                remove_if_exists(&entry_paths.pixel_bytes).map_err(|error| {
+                    format!("Failed to remove invalid cached pixel payload: {error}")
+                })?;
+                remove_if_exists(&entry_paths.metadata).map_err(|error| {
+                    format!("Failed to remove invalid cached metadata: {error}")
+                })?;
                 continue;
             }
         };
         let pixel_byte_length = match fs::metadata(&entry_paths.pixel_bytes) {
             Ok(metadata_info) => metadata_info.len() as usize,
             Err(_) => {
-                remove_if_exists(&entry_paths.pixel_bytes)
-                    .map_err(|error| format!("Failed to remove missing cached pixel payload: {error}"))?;
-                remove_if_exists(&entry_paths.metadata)
-                    .map_err(|error| format!("Failed to remove missing cached metadata: {error}"))?;
+                remove_if_exists(&entry_paths.pixel_bytes).map_err(|error| {
+                    format!("Failed to remove missing cached pixel payload: {error}")
+                })?;
+                remove_if_exists(&entry_paths.metadata).map_err(|error| {
+                    format!("Failed to remove missing cached metadata: {error}")
+                })?;
                 continue;
             }
         };
 
         if pixel_byte_length != metadata.pixel_data_length {
-            remove_if_exists(&entry_paths.pixel_bytes)
-                .map_err(|error| format!("Failed to remove mismatched cached pixel payload: {error}"))?;
+            remove_if_exists(&entry_paths.pixel_bytes).map_err(|error| {
+                format!("Failed to remove mismatched cached pixel payload: {error}")
+            })?;
             remove_if_exists(&entry_paths.metadata)
                 .map_err(|error| format!("Failed to remove mismatched cached metadata: {error}"))?;
             continue;
@@ -853,10 +863,7 @@ fn current_time_ms() -> u128 {
 #[cfg(test)]
 fn decode_frame_impl(path: &Path, frame_index: u32) -> DecodeResult<DecodedFrame> {
     let object = open_file(path).map_err(|error| {
-        DecodeError::new(
-            "decode",
-            format!("Failed to open DICOM file: {error}"),
-        )
+        DecodeError::new("decode", format!("Failed to open DICOM file: {error}"))
     })?;
     decode_frame_from_object(path, &object, frame_index)
 }
@@ -883,15 +890,17 @@ fn decode_frame_from_object(
         ));
     }
 
-    let decoded = object.decode_pixel_data_frame(frame_index).map_err(|error| {
-        DecodeError::new(
-            "decode",
-            format!(
-                "Failed to decode frame {frame_index} from {}: {error}",
-                path.display()
-            ),
-        )
-    })?;
+    let decoded = object
+        .decode_pixel_data_frame(frame_index)
+        .map_err(|error| {
+            DecodeError::new(
+                "decode",
+                format!(
+                    "Failed to decode frame {frame_index} from {}: {error}",
+                    path.display()
+                ),
+            )
+        })?;
     let pixel_bytes = decoded_pixels_to_bytes(decoded);
 
     Ok(DecodedFrame {
@@ -1058,11 +1067,13 @@ mod tests {
 
         for entry in &manifest.entries {
             let entry_paths = cache_paths.entry_paths(&entry.key);
-            fs::write(&entry_paths.pixel_bytes, [0, 1, 2, 3]).expect("pixel payload should be written");
+            fs::write(&entry_paths.pixel_bytes, [0, 1, 2, 3])
+                .expect("pixel payload should be written");
             fs::write(&entry_paths.metadata, "{}").expect("metadata payload should be written");
         }
 
-        enforce_cache_limits(&cache_paths, &mut manifest, 1, 4, 1).expect("eviction should succeed");
+        enforce_cache_limits(&cache_paths, &mut manifest, 1, 4, 1)
+            .expect("eviction should succeed");
 
         assert_eq!(manifest.entries.len(), 1);
         assert_eq!(manifest.entries[0].key, "newest");
@@ -1080,11 +1091,12 @@ mod tests {
         let first = decode_frame_impl_with_cache(&fixture, 0, &cache_paths, false)
             .expect("first decode should populate cache");
         let object = open_file(&fixture).expect("fixture should be readable");
-        let cache_key =
-            build_cache_key(&fixture, &object, 0).expect("cache key should be computed for fixture");
+        let cache_key = build_cache_key(&fixture, &object, 0)
+            .expect("cache key should be computed for fixture");
         let entry_paths = cache_paths.entry_paths(&cache_key);
         let cached_bytes = vec![7; first.metadata.pixel_data_length];
-        fs::write(&entry_paths.pixel_bytes, &cached_bytes).expect("cached payload should be rewritable");
+        fs::write(&entry_paths.pixel_bytes, &cached_bytes)
+            .expect("cached payload should be rewritable");
 
         let second = decode_frame_impl_with_cache(&fixture, 0, &cache_paths, false)
             .expect("second decode should reuse cached payload");
@@ -1118,7 +1130,9 @@ mod tests {
             pixel_lengths.push(decoded.metadata.pixel_data_length);
         }
 
-        assert!(pixel_lengths.iter().all(|length| *length == pixel_lengths[0]));
+        assert!(pixel_lengths
+            .iter()
+            .all(|length| *length == pixel_lengths[0]));
 
         let _ = fs::remove_dir_all(&cache_paths.dir);
     }
@@ -1189,7 +1203,10 @@ mod tests {
         assert_eq!(decoded.metadata.samples_per_pixel, 1);
         assert_eq!(decoded.metadata.photometric_interpretation, "MONOCHROME2");
         assert_eq!(decoded.metadata.pixel_data_length, 1024 * 1024 * 2);
-        assert_eq!(decoded.pixel_bytes.len(), decoded.metadata.pixel_data_length);
+        assert_eq!(
+            decoded.pixel_bytes.len(),
+            decoded.metadata.pixel_data_length
+        );
     }
 
     #[test]
@@ -1207,7 +1224,11 @@ mod tests {
 
     #[test]
     fn read_scan_header_impl_caps_reads_to_the_maximum_header_size() {
-        let unique = format!("scan-header-cap-{}-{}", std::process::id(), current_time_ms());
+        let unique = format!(
+            "scan-header-cap-{}-{}",
+            std::process::id(),
+            current_time_ms()
+        );
         let path = std::env::temp_dir().join(unique);
         let bytes = vec![9; MAX_SCAN_HEADER_BYTES + 128];
         fs::write(&path, &bytes).expect("scan header cap fixture should be written");
@@ -1219,5 +1240,4 @@ mod tests {
 
         let _ = fs::remove_file(&path);
     }
-
 }

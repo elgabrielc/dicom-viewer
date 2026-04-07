@@ -21,12 +21,14 @@ async function installMockDesktopDecode(page, options = {}) {
             windowWidth: 84,
             rescaleSlope: 1,
             rescaleIntercept: -1024,
-            pixelDataLength: 4
+            pixelDataLength: 4,
         };
         const metadata = { ...defaultMetadata, ...(opts.metadata || {}) };
         const decodedFrames = new Map(
-            (opts.decodedFrames || [['decode-1', [0x34, 0x12, 0x78, 0x56]]])
-                .map(([decodeId, bytes]) => [decodeId, new Uint8Array(bytes).buffer])
+            (opts.decodedFrames || [['decode-1', [0x34, 0x12, 0x78, 0x56]]]).map(([decodeId, bytes]) => [
+                decodeId,
+                new Uint8Array(bytes).buffer,
+            ]),
         );
         const invokeCalls = [];
         const binaryResponseMode = opts.binaryResponseMode || 'data-object';
@@ -42,7 +44,7 @@ async function installMockDesktopDecode(page, options = {}) {
             windowWidth: metadata.windowWidth,
             rescaleSlope: metadata.rescaleSlope,
             rescaleIntercept: metadata.rescaleIntercept,
-            pixelDataLength: metadata.pixelDataLength
+            pixelDataLength: metadata.pixelDataLength,
         };
 
         function createCombinedDecodePayload() {
@@ -66,7 +68,7 @@ async function installMockDesktopDecode(page, options = {}) {
         window.__TAURI_INTERNALS__ = {
             metadata: {
                 currentWindow: { label: 'main' },
-                currentWebview: { label: 'main', windowLabel: 'main' }
+                currentWebview: { label: 'main', windowLabel: 'main' },
             },
             convertFileSrc(filePath, protocol = 'asset') {
                 return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
@@ -141,13 +143,13 @@ async function installMockDesktopDecode(page, options = {}) {
                     default:
                         throw new Error(`Unhandled command: ${cmd}`);
                 }
-            }
+            },
         };
 
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
             unregisterListener(_event, id) {
                 callbacks.delete(id);
-            }
+            },
         };
     }, options);
 }
@@ -163,13 +165,13 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
                 rows: decoded.rows,
                 cols: decoded.cols,
                 bitsAllocated: decoded.bitsAllocated,
-                pixelDataLength: decoded.pixelDataLength
+                pixelDataLength: decoded.pixelDataLength,
             },
             pixelDataType: decoded.pixelData.constructor.name,
             pixelSamples: Array.from(decoded.pixelData),
             invokeCalls: window.__desktopDecodeInvokeCalls
-                .filter(call => call.cmd === 'decode_frame_with_pixels')
-                .map(call => ({ cmd: call.cmd, args: call.args }))
+                .filter((call) => call.cmd === 'decode_frame_with_pixels')
+                .map((call) => ({ cmd: call.cmd, args: call.args })),
         };
     });
 
@@ -177,7 +179,7 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
         rows: 2,
         cols: 1,
         bitsAllocated: 16,
-        pixelDataLength: 4
+        pixelDataLength: 4,
     });
     expect(result.pixelDataType).toBe('Uint16Array');
     expect(result.pixelSamples).toEqual([0x1234, 0x5678]);
@@ -186,18 +188,18 @@ test('desktop decode bridge coerces LE bytes into unsigned 16-bit samples', asyn
             cmd: 'decode_frame_with_pixels',
             args: {
                 path: '/mock/study/MR2_J2KI.dcm',
-                frameIndex: 3
-            }
-        }
+                frameIndex: 3,
+            },
+        },
     ]);
 });
 
 test('desktop decode bridge preserves signed sample types', async ({ page }) => {
     await installMockDesktopDecode(page, {
         metadata: {
-            pixelRepresentation: 1
+            pixelRepresentation: 1,
         },
-        decodedFrames: [['decode-1', [0xfe, 0xff, 0x00, 0x80]]]
+        decodedFrames: [['decode-1', [0xfe, 0xff, 0x00, 0x80]]],
     });
     await page.goto(HOME_URL);
 
@@ -205,7 +207,7 @@ test('desktop decode bridge preserves signed sample types', async ({ page }) => 
         const decoded = await window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/signed.dcm', 0);
         return {
             pixelDataType: decoded.pixelData.constructor.name,
-            pixelSamples: Array.from(decoded.pixelData)
+            pixelSamples: Array.from(decoded.pixelData),
         };
     });
 
@@ -235,7 +237,7 @@ test('desktop decode bridge keeps waiters attached to the correct frame request'
                 windowWidth: 256,
                 rescaleSlope: 1,
                 rescaleIntercept: 0,
-                pixelDataLength: 2
+                pixelDataLength: 2,
             };
             const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
             const pixelBytes = new Uint8Array(2);
@@ -257,12 +259,12 @@ test('desktop decode bridge keeps waiters attached to the correct frame request'
                 pending.push({
                     path: args.path,
                     frameIndex: args.frameIndex,
-                    resolve
+                    resolve,
                 });
             });
         };
 
-        const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
         try {
             const frameA = window.DicomViewerApp.desktopDecode.decodeFrameWithPixels('/mock/study/frame-a.dcm', 0);
@@ -284,11 +286,7 @@ test('desktop decode bridge keeps waiters attached to the correct frame request'
             const [decodedA, decodedB, decodedC] = await Promise.all([frameA, frameB, frameC]);
             return {
                 invokeCalls,
-                pixelSamples: [
-                    decodedA.pixelData[0],
-                    decodedB.pixelData[0],
-                    decodedC.pixelData[0]
-                ]
+                pixelSamples: [decodedA.pixelData[0], decodedB.pixelData[0], decodedC.pixelData[0]],
             };
         } finally {
             window.__TAURI__.core.invoke = originalInvoke;
@@ -300,23 +298,23 @@ test('desktop decode bridge keeps waiters attached to the correct frame request'
             cmd: 'decode_frame_with_pixels',
             args: {
                 path: '/mock/study/frame-a.dcm',
-                frameIndex: 0
-            }
+                frameIndex: 0,
+            },
         },
         {
             cmd: 'decode_frame_with_pixels',
             args: {
                 path: '/mock/study/frame-b.dcm',
-                frameIndex: 1
-            }
+                frameIndex: 1,
+            },
         },
         {
             cmd: 'decode_frame_with_pixels',
             args: {
                 path: '/mock/study/frame-c.dcm',
-                frameIndex: 2
-            }
-        }
+                frameIndex: 2,
+            },
+        },
     ]);
     expect(result.pixelSamples).toEqual([0x1111, 0x2222, 0x3333]);
 });
@@ -331,7 +329,7 @@ test('desktop decode bridge surfaces a runtime-ready error when invoke is unavai
         } catch (error) {
             return {
                 message: String(error?.message || error),
-                stage: error?.stage || null
+                stage: error?.stage || null,
             };
         }
     });
@@ -344,8 +342,8 @@ test('desktop decode bridge preserves structured native error stages', async ({ 
     await installMockDesktopDecode(page, {
         decodeFrameError: {
             stage: 'decode-timeout',
-            message: 'Native decode timed out after 30s.'
-        }
+            message: 'Native decode timed out after 30s.',
+        },
     });
     await page.goto(HOME_URL);
 
@@ -356,7 +354,7 @@ test('desktop decode bridge preserves structured native error stages', async ({ 
         } catch (error) {
             return {
                 message: String(error?.message || error),
-                stage: error?.stage || null
+                stage: error?.stage || null,
             };
         }
     });
@@ -376,7 +374,7 @@ test('desktop decode bridge surfaces invalid decode ids', async ({ page }) => {
         } catch (error) {
             return {
                 message: String(error?.message || error),
-                stage: error?.stage || null
+                stage: error?.stage || null,
             };
         }
     });
@@ -396,7 +394,7 @@ test('desktop decode bridge rejects malformed binary payloads', async ({ page })
         } catch (error) {
             return {
                 message: String(error?.message || error),
-                stage: error?.stage || null
+                stage: error?.stage || null,
             };
         }
     });

@@ -1,5 +1,6 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { createStagedError, normalizeStagedError, getPixelDataArrayType } = app.utils;
     let activeQueuedNativeDecode = null;
     let activeQueuedNativeDecodeRequest = null;
@@ -36,7 +37,7 @@
         if (bytes.byteLength < 4) {
             throw createStagedError(
                 'pixel-transfer',
-                'Native decode payload was too short to include a metadata header.'
+                'Native decode payload was too short to include a metadata header.',
             );
         }
 
@@ -47,7 +48,7 @@
         if (metadataLength === 0 || pixelOffset > bytes.byteLength) {
             throw createStagedError(
                 'pixel-transfer',
-                `Native decode payload declared an invalid metadata header length: ${metadataLength}.`
+                `Native decode payload declared an invalid metadata header length: ${metadataLength}.`,
             );
         }
 
@@ -58,13 +59,13 @@
         } catch (error) {
             throw createStagedError(
                 'pixel-transfer',
-                `Failed to parse native decoded frame metadata: ${error?.message || error}`
+                `Failed to parse native decoded frame metadata: ${error?.message || error}`,
             );
         }
 
         return {
             metadata,
-            pixelBytes: bytes.subarray(pixelOffset)
+            pixelBytes: bytes.subarray(pixelOffset),
         };
     }
 
@@ -88,12 +89,10 @@
         const PixelArrayType = getPixelDataArrayType(
             bitsAllocated,
             pixelRepresentation,
-            'Unsupported Bits Allocated value from native decode'
+            'Unsupported Bits Allocated value from native decode',
         );
         const bytesPerElement = PixelArrayType.BYTES_PER_ELEMENT || 1;
-        const alignedBytes = bytes.byteOffset % bytesPerElement === 0
-            ? bytes
-            : Uint8Array.from(bytes);
+        const alignedBytes = bytes.byteOffset % bytesPerElement === 0 ? bytes : Uint8Array.from(bytes);
         return new PixelArrayType(alignedBytes.buffer, alignedBytes.byteOffset, sampleCount).slice();
     }
 
@@ -106,9 +105,11 @@
             return activeQueuedNativeDecodeRequest;
         }
 
-        return pendingQueuedNativeDecodeRequests.find((request) =>
-            request.path === path && request.frameIndex === frameIndex
-        ) || null;
+        return (
+            pendingQueuedNativeDecodeRequests.find(
+                (request) => request.path === path && request.frameIndex === frameIndex,
+            ) || null
+        );
     }
 
     function drainQueuedNativeDecodes(runtime) {
@@ -124,7 +125,7 @@
                 try {
                     const payload = await runtime.core.invoke('decode_frame_with_pixels', {
                         path: request.path,
-                        frameIndex: request.frameIndex
+                        frameIndex: request.frameIndex,
                     });
                     for (const waiter of request.waiters) {
                         waiter.resolve(payload);
@@ -160,7 +161,7 @@
             pendingQueuedNativeDecodeRequests.push({
                 path,
                 frameIndex,
-                waiters: [{ resolve, reject }]
+                waiters: [{ resolve, reject }],
             });
             void drainQueuedNativeDecodes(runtime);
         });
@@ -172,7 +173,7 @@
             if (typeof tauri?.core?.invoke !== 'function') {
                 throw createStagedError(
                     'codec-init',
-                    'Desktop decode runtime is not ready. Quit and reopen the app if this persists.'
+                    'Desktop decode runtime is not ready. Quit and reopen the app if this persists.',
                 );
             }
             return tauri;
@@ -201,20 +202,20 @@
             if (Number.isFinite(metadata.pixelDataLength) && metadata.pixelDataLength !== pixelBytes.byteLength) {
                 throw createStagedError(
                     'pixel-conversion',
-                    `Decoded frame payload length mismatch: expected ${metadata.pixelDataLength} byte(s), received ${pixelBytes.byteLength}.`
+                    `Decoded frame payload length mismatch: expected ${metadata.pixelDataLength} byte(s), received ${pixelBytes.byteLength}.`,
                 );
             }
 
             const pixelData = coercePixelData(
                 pixelBytes,
                 Number(metadata.bitsAllocated),
-                Number(metadata.pixelRepresentation)
+                Number(metadata.pixelRepresentation),
             );
             return {
                 ...metadata,
-                pixelData
+                pixelData,
             };
-        }
+        },
     };
 
     app.desktopDecode = DesktopDecode;

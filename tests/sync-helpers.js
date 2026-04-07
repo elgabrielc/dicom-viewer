@@ -103,7 +103,7 @@ async function loginUser(request, baseUrl = BASE_URL, email, password) {
  */
 async function registerDevice(request, baseUrl = BASE_URL, token) {
     const response = await request.post(`${baseUrl}/api/auth/devices`, {
-        headers: { 'Authorization': `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` },
         data: {
             device_name: `test-device-${Date.now()}`,
             platform: 'test',
@@ -136,7 +136,7 @@ async function registerDevice(request, baseUrl = BASE_URL, token) {
 async function syncRequest(request, baseUrl = BASE_URL, token, deviceId, cursor, changes = []) {
     return await request.post(`${baseUrl}/api/sync`, {
         headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
         },
         data: {

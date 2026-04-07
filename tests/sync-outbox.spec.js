@@ -56,13 +56,13 @@ async function setupOutboxPage(page) {
                                 if (fProp === 'cloudSync') return true;
                                 // Access from original features via the target's getter
                                 return fTarget[fProp];
-                            }
+                            },
                         });
                     }
                     if (prop === 'isCloudPlatform') return () => true;
                     if (typeof target[prop] === 'function') return target[prop].bind(target);
                     return target[prop];
-                }
+                },
             }),
             configurable: true,
         });
@@ -136,11 +136,14 @@ async function clearOutbox(page) {
  * @returns {Promise<void>}
  */
 async function enqueueChange(page, table, key, operation, data = {}) {
-    await page.evaluate(({ table, key, operation }) => {
-        if (typeof window._SyncOutbox !== 'undefined') {
-            window._SyncOutbox.enqueueChange(table, key, operation, 0);
-        }
-    }, { table, key, operation });
+    await page.evaluate(
+        ({ table, key, operation }) => {
+            if (typeof window._SyncOutbox !== 'undefined') {
+                window._SyncOutbox.enqueueChange(table, key, operation, 0);
+            }
+        },
+        { table, key, operation },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -154,29 +157,33 @@ test.describe('Outbox Collapsing', () => {
 
         const result = await page.evaluate(() => {
             const events = [];
-            window.addEventListener('sync:pending', (event) => {
-                events.push(event.detail || null);
-            }, { once: true });
+            window.addEventListener(
+                'sync:pending',
+                (event) => {
+                    events.push(event.detail || null);
+                },
+                { once: true },
+            );
 
             const entry = window._SyncOutbox.enqueueChange('comments', 'pending-event-comment', 'insert', 0);
             return {
                 entry,
                 events,
-                pending: window._SyncOutbox.readPendingChanges()
+                pending: window._SyncOutbox.readPendingChanges(),
             };
         });
 
         expect(result.entry).toMatchObject({
             table_name: 'comments',
             record_key: 'pending-event-comment',
-            operation: 'insert'
+            operation: 'insert',
         });
         expect(result.events).toEqual([
             {
                 tableName: 'comments',
                 recordKey: 'pending-event-comment',
-                operation: 'insert'
-            }
+                operation: 'insert',
+            },
         ]);
         expect(result.pending).toHaveLength(1);
     });
@@ -195,7 +202,7 @@ test.describe('Outbox Collapsing', () => {
             return {
                 entry,
                 events,
-                pending: window._SyncOutbox.readPendingChanges()
+                pending: window._SyncOutbox.readPendingChanges(),
             };
         });
 
@@ -218,9 +225,7 @@ test.describe('Outbox Collapsing', () => {
         const entries = await getOutboxEntries(page);
 
         // Should collapse to a single update with the latest data
-        const matchingEntries = entries.filter(
-            e => e.table_name === 'study_notes' && e.record_key === key
-        );
+        const matchingEntries = entries.filter((e) => e.table_name === 'study_notes' && e.record_key === key);
         expect(matchingEntries.length).toBe(1);
         expect(matchingEntries[0].operation).toBe('update');
     });
@@ -250,9 +255,7 @@ test.describe('Outbox Collapsing', () => {
         const entries = await getOutboxEntries(page);
 
         // Should collapse to a single insert with the latest data merged
-        const matchingEntries = entries.filter(
-            e => e.table_name === 'comments' && e.record_key === key
-        );
+        const matchingEntries = entries.filter((e) => e.table_name === 'comments' && e.record_key === key);
         expect(matchingEntries.length).toBe(1);
         expect(matchingEntries[0].operation).toBe('insert');
     });
@@ -275,9 +278,7 @@ test.describe('Outbox Collapsing', () => {
         const entries = await getOutboxEntries(page);
 
         // NEW: noop entries are kept in the array with _noop flag
-        const matchingEntries = entries.filter(
-            e => e.table_name === 'comments' && e.record_key === key
-        );
+        const matchingEntries = entries.filter((e) => e.table_name === 'comments' && e.record_key === key);
         expect(matchingEntries.length).toBe(1);
         expect(matchingEntries[0]._noop).toBe(true);
     });
@@ -297,9 +298,7 @@ test.describe('Outbox Collapsing', () => {
 
         const entries = await getOutboxEntries(page);
 
-        const matchingEntries = entries.filter(
-            e => e.table_name === 'comments' && e.record_key === key
-        );
+        const matchingEntries = entries.filter((e) => e.table_name === 'comments' && e.record_key === key);
         expect(matchingEntries.length).toBe(1);
         expect(matchingEntries[0].operation).toBe('delete');
     });
@@ -326,7 +325,7 @@ test.describe('Outbox Enqueue', () => {
         });
 
         const entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeDefined();
         expect(entry.table_name).toBe('comments');
         expect(entry.record_key).toBe(key);
@@ -344,7 +343,7 @@ test.describe('Outbox Enqueue', () => {
         });
 
         const entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeDefined();
         expect(entry.table_name).toBe('study_notes');
         expect(entry.operation).toBe('update');
@@ -359,7 +358,7 @@ test.describe('Outbox Enqueue', () => {
         await enqueueChange(page, 'reports', key, 'delete', {});
 
         const entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeDefined();
         expect(entry.table_name).toBe('reports');
         expect(entry.operation).toBe('delete');
@@ -379,7 +378,7 @@ test.describe('Outbox Enqueue', () => {
         // verifies that the module is loaded but the outbox stays empty when
         // no enqueue call is made.
         const entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeUndefined();
     });
 });
@@ -402,7 +401,7 @@ test.describe('Outbox Entry Fields', () => {
         });
 
         const entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeDefined();
         expect(typeof entry.operation_uuid).toBe('string');
         expect(entry.operation_uuid.length).toBeGreaterThan(0);
@@ -418,7 +417,7 @@ test.describe('Outbox Entry Fields', () => {
         });
 
         const entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeDefined();
         expect(typeof entry.base_sync_version).toBe('number');
     });
@@ -429,14 +428,20 @@ test.describe('Outbox Entry Fields', () => {
 
         // Enqueue entries for different records
         await enqueueChange(page, 'comments', 'key-a', 'insert', {
-            study_uid: 'test', text: 'A', created_at: Date.now(), updated_at: Date.now(),
+            study_uid: 'test',
+            text: 'A',
+            created_at: Date.now(),
+            updated_at: Date.now(),
         });
         await enqueueChange(page, 'comments', 'key-b', 'insert', {
-            study_uid: 'test', text: 'B', created_at: Date.now(), updated_at: Date.now(),
+            study_uid: 'test',
+            text: 'B',
+            created_at: Date.now(),
+            updated_at: Date.now(),
         });
 
         const entries = await getOutboxEntries(page);
-        const uuids = entries.map(e => e.operation_uuid);
+        const uuids = entries.map((e) => e.operation_uuid);
         const uniqueUuids = new Set(uuids);
         expect(uniqueUuids.size).toBe(uuids.length);
     });
@@ -461,14 +466,14 @@ test.describe('Outbox Persistence', () => {
 
         // Verify entry exists before reload
         let entries = await getOutboxEntries(page);
-        expect(entries.find(e => e.record_key === key)).toBeDefined();
+        expect(entries.find((e) => e.record_key === key)).toBeDefined();
 
         // Reload the page and re-setup
         await setupOutboxPage(page);
 
         // Entry should still be there
         entries = await getOutboxEntries(page);
-        const entry = entries.find(e => e.record_key === key);
+        const entry = entries.find((e) => e.record_key === key);
         expect(entry).toBeDefined();
         expect(entry.operation).toBe('insert');
     });
@@ -478,7 +483,10 @@ test.describe('Outbox Persistence', () => {
 
         // Enqueue something
         await enqueueChange(page, 'comments', 'clear-test', 'insert', {
-            study_uid: 'test', text: 'will be cleared', created_at: Date.now(), updated_at: Date.now(),
+            study_uid: 'test',
+            text: 'will be cleared',
+            created_at: Date.now(),
+            updated_at: Date.now(),
         });
 
         // Verify it exists
@@ -507,8 +515,8 @@ test.describe('Outbox Collapsing Edge Cases', () => {
         await enqueueChange(page, 'comments', 'key-y', 'update', { text: 'Y' });
 
         const entries = await getOutboxEntries(page);
-        const xEntries = entries.filter(e => e.record_key === 'key-x');
-        const yEntries = entries.filter(e => e.record_key === 'key-y');
+        const xEntries = entries.filter((e) => e.record_key === 'key-x');
+        const yEntries = entries.filter((e) => e.record_key === 'key-y');
         expect(xEntries.length).toBe(1);
         expect(yEntries.length).toBe(1);
     });
@@ -522,8 +530,8 @@ test.describe('Outbox Collapsing Edge Cases', () => {
         await enqueueChange(page, 'study_notes', sharedKey, 'update', { description: 'note update' });
 
         const entries = await getOutboxEntries(page);
-        const commentEntries = entries.filter(e => e.table_name === 'comments' && e.record_key === sharedKey);
-        const noteEntries = entries.filter(e => e.table_name === 'study_notes' && e.record_key === sharedKey);
+        const commentEntries = entries.filter((e) => e.table_name === 'comments' && e.record_key === sharedKey);
+        const noteEntries = entries.filter((e) => e.table_name === 'study_notes' && e.record_key === sharedKey);
         expect(commentEntries.length).toBe(1);
         expect(noteEntries.length).toBe(1);
     });
@@ -534,17 +542,19 @@ test.describe('Outbox Collapsing Edge Cases', () => {
 
         const key = 'full-lifecycle-noop';
         await enqueueChange(page, 'comments', key, 'insert', {
-            study_uid: 'test', text: 'Created', created_at: Date.now(), updated_at: Date.now(),
+            study_uid: 'test',
+            text: 'Created',
+            created_at: Date.now(),
+            updated_at: Date.now(),
         });
         await enqueueChange(page, 'comments', key, 'update', {
-            text: 'Edited', updated_at: Date.now(),
+            text: 'Edited',
+            updated_at: Date.now(),
         });
         await enqueueChange(page, 'comments', key, 'delete', {});
 
         const entries = await getOutboxEntries(page);
-        const matchingEntries = entries.filter(
-            e => e.table_name === 'comments' && e.record_key === key
-        );
+        const matchingEntries = entries.filter((e) => e.table_name === 'comments' && e.record_key === key);
         // NEW: noop entries are kept in the array with _noop flag
         expect(matchingEntries.length).toBe(1);
         expect(matchingEntries[0]._noop).toBe(true);

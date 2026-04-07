@@ -1,5 +1,6 @@
 (async () => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { state } = app;
     const config = window.CONFIG;
     const {
@@ -17,7 +18,7 @@
         nextBtn,
         backBtn,
         loadSampleCtBtn,
-        loadSampleMriBtn
+        loadSampleMriBtn,
     } = app.dom;
     const { closeReportViewer } = app.reportsUi;
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
@@ -31,19 +32,10 @@
         saveLibraryFolderConfig,
         setLibraryFolderMessage,
         setLibraryFolderStatus,
-        updateDesktopScanMessage
+        updateDesktopScanMessage,
     } = app.library;
-    const {
-        closeViewer,
-        loadSlice,
-        openViewer
-    } = app.viewer;
-    const {
-        loadDroppedStudies,
-        loadDroppedPaths,
-        loadSampleStudies,
-        loadStudiesFromApi
-    } = app.sources;
+    const { closeViewer, loadSlice, openViewer } = app.viewer;
+    const { loadDroppedStudies, loadDroppedPaths, loadSampleStudies, loadStudiesFromApi } = app.sources;
     const {
         applyViewTransform,
         clearSliceMeasurements,
@@ -54,7 +46,7 @@
         onCanvasMouseUp,
         resetView,
         screenToImage,
-        setTool
+        setTool,
     } = app.tools;
 
     const searchParams = new URLSearchParams(window.location.search);
@@ -141,8 +133,8 @@
         if (state.managedLibrary) {
             state.libraryAbort = new AbortController();
             try {
-                const result = await app.desktopLibrary.runImport(paths, {
-                    signal: state.libraryAbort.signal
+                await app.desktopLibrary.runImport(paths, {
+                    signal: state.libraryAbort.signal,
                 });
 
                 // Re-scan the managed library folder to update state.studies
@@ -187,7 +179,7 @@
                     studyUid,
                     seriesUid,
                     sliceCount: series.slices?.length || 0,
-                    imageCount: Number(study.imageCount) || 0
+                    imageCount: Number(study.imageCount) || 0,
                 });
             }
         }
@@ -197,10 +189,12 @@
         }
 
         candidates.sort((a, b) => {
-            return b.sliceCount - a.sliceCount ||
+            return (
+                b.sliceCount - a.sliceCount ||
                 b.imageCount - a.imageCount ||
                 a.studyUid.localeCompare(b.studyUid) ||
-                a.seriesUid.localeCompare(b.seriesUid);
+                a.seriesUid.localeCompare(b.seriesUid)
+            );
         });
 
         return candidates[0];
@@ -227,7 +221,7 @@
             if (!selection) return;
 
             console.log(
-                `Auto-opening test series ${selection.seriesUid} from study ${selection.studyUid} (${selection.sliceCount} slices)`
+                `Auto-opening test series ${selection.seriesUid} from study ${selection.studyUid} (${selection.sliceCount} slices)`,
             );
             openViewer(selection.studyUid, selection.seriesUid);
 
@@ -256,7 +250,7 @@
             return;
         }
 
-        const libraryConfigPromise = loadLibraryConfig().catch(e => {
+        const libraryConfigPromise = loadLibraryConfig().catch((e) => {
             state.libraryConfigReachable = false;
             setLibraryFolderStatus('');
             console.warn('Failed to load library config:', e);
@@ -265,7 +259,7 @@
 
         state.libraryAbort = new AbortController();
         loadStudiesFromApi('/api/library', { signal: state.libraryAbort.signal })
-            .then(async result => {
+            .then(async (result) => {
                 state.libraryAbort = null;
                 await libraryConfigPromise;
                 state.libraryAvailable = !!result.available;
@@ -273,7 +267,7 @@
                 state.studies = result.studies;
                 await displayStudies();
             })
-            .catch(async e => {
+            .catch(async (e) => {
                 state.libraryAbort = null;
                 await libraryConfigPromise;
                 if (e.name === 'AbortError') return;
@@ -335,11 +329,12 @@
 
                 state.studies = {};
 
-                const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
-                    ? 'Refreshing managed library...'
-                    : 'Loading managed library...';
+                const loadLabel =
+                    cachedStudies && Object.keys(cachedStudies).length > 0
+                        ? 'Refreshing managed library...'
+                        : 'Loading managed library...';
                 const studies = await app.desktopLibrary.loadStudies(libraryPath, {
-                    onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
+                    onProgress: (stats) => updateDesktopScanMessage(stats, loadLabel),
                 });
                 await applyDesktopLibraryScan(libraryPath, studies);
             } else {
@@ -360,16 +355,19 @@
 
                 state.studies = {};
 
-                const loadLabel = cachedStudies && Object.keys(cachedStudies).length > 0
-                    ? 'Refreshing saved library folder...'
-                    : 'Loading saved library folder...';
+                const loadLabel =
+                    cachedStudies && Object.keys(cachedStudies).length > 0
+                        ? 'Refreshing saved library folder...'
+                        : 'Loading saved library folder...';
                 const studies = await app.desktopLibrary.loadStudies(state.libraryFolder, {
-                    onProgress: stats => updateDesktopScanMessage(stats, loadLabel)
+                    onProgress: (stats) => updateDesktopScanMessage(stats, loadLabel),
                 });
                 await applyDesktopLibraryScan(state.libraryFolder, studies);
             }
         } catch (e) {
-            try { await app.desktopLibrary.markScanFailed(state.libraryFolder); } catch {}
+            try {
+                await app.desktopLibrary.markScanFailed(state.libraryFolder);
+            } catch {}
             state.libraryAvailable = !!state.libraryFolder;
             setLibraryFolderMessage(e.message || 'Failed to auto-load desktop library.', 'error');
             console.warn('Failed to auto-load desktop library:', e);
@@ -382,29 +380,35 @@
         const eventApi = window.__TAURI__?.event;
         if (!eventApi?.listen) return;
 
-        eventApi.listen('desktop://open-folder', () => {
-            saveLibraryFolderConfig();
-        }).catch(err => {
-            console.warn('Failed to register desktop open-folder menu handler:', err);
-        });
+        eventApi
+            .listen('desktop://open-folder', () => {
+                saveLibraryFolderConfig();
+            })
+            .catch((err) => {
+                console.warn('Failed to register desktop open-folder menu handler:', err);
+            });
 
-        eventApi.listen('desktop://open-help', () => {
-            openHelpViewer();
-        }).catch(err => {
-            console.warn('Failed to register desktop help menu handler:', err);
-        });
+        eventApi
+            .listen('desktop://open-help', () => {
+                openHelpViewer();
+            })
+            .catch((err) => {
+                console.warn('Failed to register desktop help menu handler:', err);
+            });
 
-        eventApi.listen('desktop://show-library-in-finder', async () => {
-            try {
-                if (!state.managedLibrary || !app.importPipeline?.getLibraryPath) return;
-                const libraryPath = await app.importPipeline.getLibraryPath();
-                await window.__TAURI__?.core?.invoke('reveal_in_finder', { path: libraryPath });
-            } catch (err) {
-                console.warn('Failed to reveal library in Finder:', err);
-            }
-        }).catch(err => {
-            console.warn('Failed to register desktop show-library-in-finder menu handler:', err);
-        });
+        eventApi
+            .listen('desktop://show-library-in-finder', async () => {
+                try {
+                    if (!state.managedLibrary || !app.importPipeline?.getLibraryPath) return;
+                    const libraryPath = await app.importPipeline.getLibraryPath();
+                    await window.__TAURI__?.core?.invoke('reveal_in_finder', { path: libraryPath });
+                } catch (err) {
+                    console.warn('Failed to reveal library in Finder:', err);
+                }
+            })
+            .catch((err) => {
+                console.warn('Failed to register desktop show-library-in-finder menu handler:', err);
+            });
     }
 
     async function initializeDesktopRuntimeBridge() {
@@ -423,22 +427,24 @@
             return;
         }
 
-        await registerDragDrop.call(currentWebview, event => {
-            const payload = event.payload;
-            if (payload.type === 'enter' || payload.type === 'over') {
-                setDragActive(true);
-            } else if (payload.type === 'drop') {
-                handleTauriDrop(payload.paths);
-            } else if (payload.type === 'leave' || payload.type === 'cancel') {
-                setDragActive(false);
-            }
-        }).catch(err => {
-            console.warn('Failed to register Tauri drag-drop handler:', err);
-        });
+        await registerDragDrop
+            .call(currentWebview, (event) => {
+                const payload = event.payload;
+                if (payload.type === 'enter' || payload.type === 'over') {
+                    setDragActive(true);
+                } else if (payload.type === 'drop') {
+                    handleTauriDrop(payload.paths);
+                } else if (payload.type === 'leave' || payload.type === 'cancel') {
+                    setDragActive(false);
+                }
+            })
+            .catch((err) => {
+                console.warn('Failed to register Tauri drag-drop handler:', err);
+            });
     }
 
     studiesTableHead.addEventListener('click', handleSortClick);
-    studiesTableHead.addEventListener('keydown', e => {
+    studiesTableHead.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             handleSortClick(e);
@@ -448,18 +454,18 @@
     if (config?.deploymentMode === 'desktop') {
         initializeDesktopRuntimeBridge();
     } else {
-        folderZone.addEventListener('dragover', e => {
+        folderZone.addEventListener('dragover', (e) => {
             e.preventDefault();
             setDragActive(true);
         });
-        folderZone.addEventListener('dragleave', e => {
+        folderZone.addEventListener('dragleave', (e) => {
             e.preventDefault();
             setDragActive(false);
         });
         folderZone.addEventListener('drop', handleDroppedFolder);
     }
 
-    backBtn.onclick = e => {
+    backBtn.onclick = (e) => {
         e.preventDefault();
         clearPendingSliderLoad();
         closeViewer();
@@ -485,10 +491,14 @@
     loadSampleCtBtn.onclick = () => handleSampleLoad('sample', loadSampleCtBtn, 'CT Scan');
     loadSampleMriBtn.onclick = () => handleSampleLoad('sample-mri', loadSampleMriBtn, 'MRI Scan');
 
-    document.addEventListener('keydown', e => {
+    document.addEventListener('keydown', (e) => {
         const activeElement = document.activeElement;
         const activeTag = activeElement ? activeElement.tagName : '';
-        const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT' || !!activeElement?.isContentEditable;
+        const isTyping =
+            activeTag === 'INPUT' ||
+            activeTag === 'TEXTAREA' ||
+            activeTag === 'SELECT' ||
+            !!activeElement?.isContentEditable;
 
         if (!isTyping && e.key.toLowerCase() === 'h') {
             e.preventDefault();
@@ -557,7 +567,7 @@
     canvas.addEventListener('mousemove', onCanvasMouseMove);
     canvas.addEventListener('mouseup', onCanvasMouseUp);
     canvas.addEventListener('mouseleave', onCanvasMouseUp);
-    canvas.addEventListener('contextmenu', e => {
+    canvas.addEventListener('contextmenu', (e) => {
         if (state.currentTool !== 'measure') return;
 
         e.preventDefault();
@@ -567,7 +577,7 @@
             app.tools.deleteMeasurement(measurement.id);
         }
     });
-    canvas.addEventListener('wheel', e => {
+    canvas.addEventListener('wheel', (e) => {
         e.preventDefault();
         if (state.currentTool === 'zoom') {
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
@@ -585,19 +595,19 @@
         }
     });
 
-    document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+    document.querySelectorAll('.tool-btn[data-tool]').forEach((btn) => {
         btn.addEventListener('click', () => setTool(btn.dataset.tool));
     });
     resetViewBtn.addEventListener('click', resetView);
     $('closeReportViewer').addEventListener('click', closeReportViewer);
     $('closeHelpViewer').addEventListener('click', closeHelpViewer);
-    document.querySelectorAll('.help-btn').forEach(btn => {
+    document.querySelectorAll('.help-btn').forEach((btn) => {
         btn.addEventListener('click', openHelpViewer);
     });
 
     refreshLibraryBtn.addEventListener('click', refreshLibrary);
     saveLibraryFolderBtn.addEventListener('click', saveLibraryFolderConfig);
-    libraryFolderInput.addEventListener('keydown', e => {
+    libraryFolderInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             saveLibraryFolderConfig();

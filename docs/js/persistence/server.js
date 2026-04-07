@@ -135,7 +135,7 @@ const _NotesServer = (() => {
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/description`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description })
+                body: JSON.stringify({ description }),
             });
         },
 
@@ -144,7 +144,7 @@ const _NotesServer = (() => {
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/series/${encodeId(seriesUid)}/description`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ description })
+                body: JSON.stringify({ description }),
             });
         },
 
@@ -153,7 +153,7 @@ const _NotesServer = (() => {
             const result = await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
             // Promote record_uuid to id for canonical identifier usage
             if (result && result.record_uuid) {
@@ -167,14 +167,14 @@ const _NotesServer = (() => {
             return await requestJson(`${baseUrl}/${encodeId(studyUid)}/comments/${encodeId(commentId)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
         },
 
         async deleteComment(studyUid, commentId) {
             if (!studyUid || commentId === undefined || commentId === null) return false;
             return await requestOk(`${baseUrl}/${encodeId(studyUid)}/comments/${encodeId(commentId)}`, {
-                method: 'DELETE'
+                method: 'DELETE',
             });
         },
 
@@ -200,7 +200,7 @@ const _NotesServer = (() => {
                     const res = await fetch(`${baseUrl}/${encodeId(studyUid)}/reports`, {
                         method: 'POST',
                         headers,
-                        body: form
+                        body: form,
                     });
                     if (res.status === 401 && !retried) {
                         sessionToken = null;
@@ -225,7 +225,7 @@ const _NotesServer = (() => {
         async deleteReport(studyUid, reportId) {
             if (!studyUid || !reportId) return false;
             return await requestOk(`${baseUrl}/${encodeId(studyUid)}/reports/${encodeId(reportId)}`, {
-                method: 'DELETE'
+                method: 'DELETE',
             });
         },
 
@@ -233,14 +233,14 @@ const _NotesServer = (() => {
             return await requestJson(`${baseUrl}/migrate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
             });
         },
 
         getReportFileUrl(reportId) {
             if (!reportId) return '';
             return `${baseUrl}/reports/${encodeId(reportId)}/file`;
-        }
+        },
     };
 
     /**
@@ -251,9 +251,7 @@ const _NotesServer = (() => {
      */
     async function authenticatedFetch(url, options = {}, retried = false) {
         await ensureSessionToken();
-        const headers = options.headers instanceof Headers
-            ? options.headers
-            : new Headers(options.headers || {});
+        const headers = options.headers instanceof Headers ? options.headers : new Headers(options.headers || {});
         if (sessionToken) {
             headers.set('X-Session-Token', sessionToken);
         }
@@ -271,7 +269,9 @@ const _NotesServer = (() => {
         ServerBackend,
         authenticatedFetch,
         // Exposed for dispatcher's withFallback to check circuit-breaker state
-        get serverAvailable() { return serverAvailable; }
+        get serverAvailable() {
+            return serverAvailable;
+        },
     };
 })();
 

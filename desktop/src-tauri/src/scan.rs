@@ -41,8 +41,12 @@ fn read_scan_manifest_impl(
 ) -> Result<Vec<ScanManifestEntry>, String> {
     let mut entries = Vec::new();
     for root_path in roots {
-        let metadata = fs::symlink_metadata(root_path)
-            .map_err(|error| format!("scan-manifest: failed to stat {}: {error}", root_path.display()))?;
+        let metadata = fs::symlink_metadata(root_path).map_err(|error| {
+            format!(
+                "scan-manifest: failed to stat {}: {error}",
+                root_path.display()
+            )
+        })?;
         if metadata.file_type().is_symlink() {
             continue;
         }
@@ -115,7 +119,11 @@ fn collect_directory_entries(
     Ok(())
 }
 
-fn build_manifest_entry(root_path: &Path, path: &Path, metadata: &fs::Metadata) -> ScanManifestEntry {
+fn build_manifest_entry(
+    root_path: &Path,
+    path: &Path,
+    metadata: &fs::Metadata,
+) -> ScanManifestEntry {
     let modified_ms = metadata
         .modified()
         .ok()
@@ -167,18 +175,31 @@ mod tests {
         let deep_entries = read_scan_manifest_impl(std::slice::from_ref(&root), 2)
             .expect("scan manifest should succeed");
 
-        let shallow_paths = shallow.iter().map(|entry| entry.path.clone()).collect::<Vec<_>>();
+        let shallow_paths = shallow
+            .iter()
+            .map(|entry| entry.path.clone())
+            .collect::<Vec<_>>();
         let deep_paths = deep_entries
             .iter()
             .map(|entry| entry.path.clone())
             .collect::<Vec<_>>();
 
-        assert_eq!(shallow_paths, vec![root.join("root.dcm").to_string_lossy().to_string()]);
+        assert_eq!(
+            shallow_paths,
+            vec![root.join("root.dcm").to_string_lossy().to_string()]
+        );
         assert_eq!(
             deep_paths,
             vec![
-                root.join("nested").join("deep").join("deep.dcm").to_string_lossy().to_string(),
-                root.join("nested").join("nested.dcm").to_string_lossy().to_string(),
+                root.join("nested")
+                    .join("deep")
+                    .join("deep.dcm")
+                    .to_string_lossy()
+                    .to_string(),
+                root.join("nested")
+                    .join("nested.dcm")
+                    .to_string_lossy()
+                    .to_string(),
                 root.join("root.dcm").to_string_lossy().to_string(),
             ]
         );

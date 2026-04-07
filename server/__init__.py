@@ -20,22 +20,22 @@ import os
 from flask import Flask, jsonify
 
 from server import db as db_module
+from server.audit import audit_after_request
+from server.maintenance import run_startup_maintenance
+from server.routes.auth import auth_bp
+from server.routes.comments import comments_bp
+from server.routes.library import init_library_sources, library_bp
+from server.routes.maintenance import maintenance_bp
+from server.routes.reports import reports_bp
+from server.routes.study_notes import study_notes_bp
+from server.routes.sync import sync_bp
+from server.routes.test_data import test_data_bp
 from server.security import (
     SESSION_TOKEN,
     csrf_origin_check,
     session_token_check,
     set_security_headers,
 )
-from server.audit import audit_after_request
-from server.routes.library import library_bp, init_library_sources
-from server.routes.test_data import test_data_bp
-from server.routes.study_notes import study_notes_bp
-from server.routes.comments import comments_bp
-from server.routes.reports import reports_bp
-from server.routes.auth import auth_bp
-from server.routes.sync import sync_bp
-from server.routes.maintenance import maintenance_bp
-from server.maintenance import run_startup_maintenance
 
 # Project root is the parent of this package directory. The original app.py
 # lived at the project root, so Flask's root_path was the project root.

@@ -88,7 +88,7 @@ async function stopServer(proc) {
     try {
         await Promise.race([
             once(proc, 'exit'),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
         ]);
     } catch {
         proc.kill('SIGKILL');
@@ -121,9 +121,9 @@ app.run(host="127.0.0.1", port=${port})
             ...process.env,
             DICOM_VIEWER_DATA_DIR: dataDir,
             FLASK_DEBUG: 'false',
-            PYTHONUNBUFFERED: '1'
+            PYTHONUNBUFFERED: '1',
         },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     proc.stdout.on('data', (chunk) => {
@@ -155,7 +155,7 @@ test.describe('Maintenance restore', () => {
 
             const backupResponse = await server.api.post(`${server.baseUrl}/api/maintenance/backup`, {
                 headers: sameOriginHeaders(server.baseUrl, { 'X-Session-Token': token }),
-                data: {}
+                data: {},
             });
             expect(backupResponse.status()).toBe(200);
             const backupBody = await backupResponse.json();
@@ -164,12 +164,12 @@ test.describe('Maintenance restore', () => {
             const studyUid = uniqueStudyUid();
             const writeResponse = await server.api.put(`${server.baseUrl}/api/notes/${studyUid}/description`, {
                 headers: sameOriginHeaders(server.baseUrl, { 'X-Session-Token': token }),
-                data: { description: 'rolled back by restore' }
+                data: { description: 'rolled back by restore' },
             });
             expect(writeResponse.status()).toBe(200);
 
             const beforeRestore = await server.api.get(`${server.baseUrl}/api/notes/?studies=${studyUid}`, {
-                headers: { 'X-Session-Token': token }
+                headers: { 'X-Session-Token': token },
             });
             expect(beforeRestore.status()).toBe(200);
             const beforeBody = await beforeRestore.json();
@@ -177,12 +177,12 @@ test.describe('Maintenance restore', () => {
 
             const restoreResponse = await server.api.post(`${server.baseUrl}/api/maintenance/restore`, {
                 headers: sameOriginHeaders(server.baseUrl, { 'X-Session-Token': token }),
-                data: { backup_name: backupName }
+                data: { backup_name: backupName },
             });
             expect(restoreResponse.status()).toBe(200);
 
             const afterRestore = await server.api.get(`${server.baseUrl}/api/notes/?studies=${studyUid}`, {
-                headers: { 'X-Session-Token': token }
+                headers: { 'X-Session-Token': token },
             });
             expect(afterRestore.status()).toBe(200);
             const afterBody = await afterRestore.json();

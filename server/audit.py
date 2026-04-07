@@ -16,7 +16,6 @@ from flask import g, request
 
 from server.db import get_db
 
-
 logger = logging.getLogger(__name__)
 
 # Route prefixes that carry PHI and must be audit-logged.
@@ -29,9 +28,7 @@ _AUDIT_PREFIXES = (
 
 # Regex to extract study UIDs from known URL patterns.
 # Matches DICOM UIDs: sequences of digits and dots (e.g., 1.2.840.113619.2.55.3).
-_STUDY_UID_PATTERN = re.compile(
-    r'/api/notes/([0-9][0-9.]+)'
-)
+_STUDY_UID_PATTERN = re.compile(r'/api/notes/([0-9][0-9.]+)')
 
 
 def _should_audit(path):
@@ -124,7 +121,7 @@ def audit_after_request(response):
         db.commit()
     except Exception:
         # Audit logging must never break the request. Log and continue.
-        logger.exception("Failed to write audit log entry")
+        logger.exception('Failed to write audit log entry')
 
     return response
 
@@ -139,14 +136,14 @@ def cleanup_audit_log(days=90):
     try:
         db = get_db()
         cursor = db.execute(
-            "DELETE FROM audit_log WHERE timestamp < ?",
+            'DELETE FROM audit_log WHERE timestamp < ?',
             (cutoff_ms,),
         )
         db.commit()
         deleted = cursor.rowcount
         if deleted > 0:
-            logger.info("Audit log cleanup: deleted %d entries older than %d days", deleted, days)
+            logger.info('Audit log cleanup: deleted %d entries older than %d days', deleted, days)
         return deleted
     except Exception:
-        logger.exception("Failed to clean up audit log")
+        logger.exception('Failed to clean up audit log')
         return 0

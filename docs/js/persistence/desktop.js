@@ -20,7 +20,7 @@ const _NotesDesktop = (() => {
         ensureSeries,
         normalizeReportId,
         sanitizeFilenamePart,
-        getDesktopTauriApis
+        getDesktopTauriApis,
     } = window._NotesInternals;
 
     const DESKTOP_DB_URL = 'sqlite:viewer.db';
@@ -37,7 +37,7 @@ const _NotesDesktop = (() => {
     const REPORT_FILE_EXTENSIONS = Object.freeze({
         pdf: 'pdf',
         png: 'png',
-        jpg: 'jpg'
+        jpg: 'jpg',
     });
 
     let desktopDbPromise = null;
@@ -57,13 +57,17 @@ const _NotesDesktop = (() => {
             folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
             lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
             managedLibrary: config?.managedLibrary !== false,
-            importHistory: Array.isArray(config?.importHistory) ? config.importHistory.filter(entry =>
-                entry && typeof entry === 'object'
-                && typeof entry.sourcePath === 'string'
-                && typeof entry.importedAt === 'string'
-                && typeof entry.fileCount === 'number'
-                && typeof entry.studyCount === 'number'
-            ) : []
+            importHistory: Array.isArray(config?.importHistory)
+                ? config.importHistory.filter(
+                      (entry) =>
+                          entry &&
+                          typeof entry === 'object' &&
+                          typeof entry.sourcePath === 'string' &&
+                          typeof entry.importedAt === 'string' &&
+                          typeof entry.fileCount === 'number' &&
+                          typeof entry.studyCount === 'number',
+                  )
+                : [],
         };
     }
 
@@ -93,12 +97,18 @@ const _NotesDesktop = (() => {
         return (Array.isArray(stores) ? stores.slice() : []).sort((left, right) => {
             const leftModified = Number.isFinite(Number(left?.modifiedMs))
                 ? Number(left.modifiedMs)
-                : (Number.isFinite(Number(left?.modified_ms)) ? Number(left.modified_ms) : -1);
+                : Number.isFinite(Number(left?.modified_ms))
+                  ? Number(left.modified_ms)
+                  : -1;
             const rightModified = Number.isFinite(Number(right?.modifiedMs))
                 ? Number(right.modifiedMs)
-                : (Number.isFinite(Number(right?.modified_ms)) ? Number(right.modified_ms) : -1);
-            return leftModified - rightModified
-                || String(left?.sourcePath || '').localeCompare(String(right?.sourcePath || ''));
+                : Number.isFinite(Number(right?.modified_ms))
+                  ? Number(right.modified_ms)
+                  : -1;
+            return (
+                leftModified - rightModified ||
+                String(left?.sourcePath || '').localeCompare(String(right?.sourcePath || ''))
+            );
         });
     }
 
@@ -123,17 +133,17 @@ const _NotesDesktop = (() => {
             seriesNotes: [],
             comments: [],
             reports: [],
-            appConfig: []
+            appConfig: [],
         };
     }
 
     function hasDesktopMigrationRows(batch) {
         return !!(
-            batch.studyNotes.length
-            || batch.seriesNotes.length
-            || batch.comments.length
-            || batch.reports.length
-            || batch.appConfig.length
+            batch.studyNotes.length ||
+            batch.seriesNotes.length ||
+            batch.comments.length ||
+            batch.reports.length ||
+            batch.appConfig.length
         );
     }
 
@@ -147,7 +157,7 @@ const _NotesDesktop = (() => {
         const deadline = performance.now() + 5000;
         while (performance.now() < deadline) {
             if (window.__TAURI__?.sql?.load) return window.__TAURI__;
-            await new Promise(r => setTimeout(r, 50));
+            await new Promise((r) => setTimeout(r, 50));
         }
         return window.__TAURI__ || null;
     }
@@ -181,10 +191,7 @@ const _NotesDesktop = (() => {
 
     async function getDesktopAppConfigValue(key) {
         const db = await getDesktopDb();
-        const rows = await db.select(
-            'SELECT value FROM app_config WHERE key = ? LIMIT 1',
-            [key]
-        );
+        const rows = await db.select('SELECT value FROM app_config WHERE key = ? LIMIT 1', [key]);
         return rows[0]?.value ?? null;
     }
 
@@ -196,7 +203,7 @@ const _NotesDesktop = (() => {
              ON CONFLICT(key) DO UPDATE SET
                  value = excluded.value,
                  updated_at = excluded.updated_at`,
-            [key, value, Date.now()]
+            [key, value, Date.now()],
         );
         return value;
     }
@@ -210,19 +217,18 @@ const _NotesDesktop = (() => {
     async function saveDesktopLibraryConfig(config) {
         const normalized = normalizeDesktopLibraryConfig(config);
         await initializeDesktopPersistence();
-        await setDesktopAppConfigValue(
-            DESKTOP_LIBRARY_CONFIG_KEY,
-            JSON.stringify(normalized)
-        );
+        await setDesktopAppConfigValue(DESKTOP_LIBRARY_CONFIG_KEY, JSON.stringify(normalized));
         return normalized;
     }
 
     async function loadDesktopScanCache(rootPaths, scannerVersion = DESKTOP_SCAN_CACHE_VERSION) {
-        const roots = Array.from(new Set(
-            (Array.isArray(rootPaths) ? rootPaths : [rootPaths]).filter(
-                (rootPath) => typeof rootPath === 'string' && rootPath
-            )
-        ));
+        const roots = Array.from(
+            new Set(
+                (Array.isArray(rootPaths) ? rootPaths : [rootPaths]).filter(
+                    (rootPath) => typeof rootPath === 'string' && rootPath,
+                ),
+            ),
+        );
         if (!roots.length) return [];
 
         await initializeDesktopPersistence();
@@ -232,18 +238,18 @@ const _NotesDesktop = (() => {
             `SELECT path, size, modified_ms, renderable, meta_json
              FROM desktop_scan_cache
              WHERE root_path IN (${placeholders}) AND scanner_version = ?`,
-            [...roots, scannerVersion]
+            [...roots, scannerVersion],
         );
     }
 
     async function saveDesktopScanCacheEntries(entries, scannerVersion = DESKTOP_SCAN_CACHE_VERSION) {
         const rows = (Array.isArray(entries) ? entries : []).filter((entry) => {
             return !!(
-                entry
-                && typeof entry.path === 'string'
-                && entry.path
-                && typeof entry.rootPath === 'string'
-                && entry.rootPath
+                entry &&
+                typeof entry.path === 'string' &&
+                entry.path &&
+                typeof entry.rootPath === 'string' &&
+                entry.rootPath
             );
         });
         if (!rows.length) return 0;
@@ -266,7 +272,7 @@ const _NotesDesktop = (() => {
                     scannerVersion,
                     row.renderable ? 1 : 0,
                     typeof row.metaJson === 'string' ? row.metaJson : null,
-                    Date.now()
+                    Date.now(),
                 );
             }
 
@@ -289,7 +295,7 @@ const _NotesDesktop = (() => {
                     renderable = excluded.renderable,
                     meta_json = excluded.meta_json,
                     updated_at = excluded.updated_at`,
-                values
+                values,
             );
             totalRowsAffected += Number(result?.rowsAffected) || chunk.length;
         }
@@ -314,8 +320,8 @@ const _NotesDesktop = (() => {
                 parseInteger(job.imported_count, 0),
                 parseInteger(job.skipped_count, 0),
                 parseInteger(job.error_count, 0),
-                typeof job.status === 'string' && job.status ? job.status : 'running'
-            ]
+                typeof job.status === 'string' && job.status ? job.status : 'running',
+            ],
         );
         return job;
     }
@@ -351,10 +357,7 @@ const _NotesDesktop = (() => {
         }
         if (!setClauses.length) return;
         values.push(id);
-        await db.execute(
-            `UPDATE import_jobs SET ${setClauses.join(', ')} WHERE id = ?`,
-            values
-        );
+        await db.execute(`UPDATE import_jobs SET ${setClauses.join(', ')} WHERE id = ?`, values);
     }
 
     async function loadRecentImportJobs(limit) {
@@ -363,7 +366,7 @@ const _NotesDesktop = (() => {
         const db = await getDesktopDb();
         return await db.select(
             'SELECT id, source_path, started_at, completed_at, imported_count, skipped_count, error_count, status FROM import_jobs ORDER BY started_at DESC LIMIT ?',
-            [rowLimit]
+            [rowLimit],
         );
     }
 
@@ -426,7 +429,7 @@ const _NotesDesktop = (() => {
                 batch.studyNotes.push({
                     studyUid,
                     description,
-                    updatedAt: now
+                    updatedAt: now,
                 });
             }
 
@@ -437,7 +440,7 @@ const _NotesDesktop = (() => {
                     studyUid,
                     seriesUid: '',
                     text,
-                    time: parseInteger(comment?.time, now)
+                    time: parseInteger(comment?.time, now),
                 });
             }
 
@@ -449,7 +452,7 @@ const _NotesDesktop = (() => {
                             studyUid,
                             seriesUid,
                             description: seriesDescription,
-                            updatedAt: now
+                            updatedAt: now,
                         });
                     }
 
@@ -460,7 +463,7 @@ const _NotesDesktop = (() => {
                             studyUid,
                             seriesUid,
                             text,
-                            time: parseInteger(comment?.time, now)
+                            time: parseInteger(comment?.time, now),
                         });
                     }
                 }
@@ -486,7 +489,7 @@ const _NotesDesktop = (() => {
                     size: parseInteger(report.size, 0),
                     filePath: report.filePath,
                     addedAt: parseInteger(report.addedAt, now),
-                    updatedAt: parseInteger(report.updatedAt, now)
+                    updatedAt: parseInteger(report.updatedAt, now),
                 });
             }
         }
@@ -505,7 +508,7 @@ const _NotesDesktop = (() => {
                 batch.studyNotes.push({
                     studyUid,
                     description,
-                    updatedAt: now
+                    updatedAt: now,
                 });
             }
 
@@ -516,26 +519,22 @@ const _NotesDesktop = (() => {
                     studyUid,
                     seriesUid: '',
                     text,
-                    time: parseInteger(comment?.time, now)
+                    time: parseInteger(comment?.time, now),
                 });
             }
 
             const seriesBlob = stored.series || {};
             if (seriesBlob && typeof seriesBlob === 'object') {
                 for (const [seriesUid, seriesData] of Object.entries(seriesBlob)) {
-                    const seriesDescription = Array.isArray(seriesData)
-                        ? ''
-                        : (seriesData?.description || '').trim();
-                    const seriesComments = Array.isArray(seriesData)
-                        ? seriesData
-                        : (seriesData?.comments || []);
+                    const seriesDescription = Array.isArray(seriesData) ? '' : (seriesData?.description || '').trim();
+                    const seriesComments = Array.isArray(seriesData) ? seriesData : seriesData?.comments || [];
 
                     if (seriesDescription) {
                         batch.seriesNotes.push({
                             studyUid,
                             seriesUid,
                             description: seriesDescription,
-                            updatedAt: now
+                            updatedAt: now,
                         });
                     }
 
@@ -546,7 +545,7 @@ const _NotesDesktop = (() => {
                             studyUid,
                             seriesUid,
                             text,
-                            time: parseInteger(comment?.time, now)
+                            time: parseInteger(comment?.time, now),
                         });
                     }
                 }
@@ -560,7 +559,7 @@ const _NotesDesktop = (() => {
         batch.appConfig.push({
             key: DESKTOP_LIBRARY_CONFIG_KEY,
             value: JSON.stringify(normalized),
-            updatedAt: Date.now()
+            updatedAt: Date.now(),
         });
     }
 
@@ -585,7 +584,7 @@ const _NotesDesktop = (() => {
                         failures += 1;
                         console.warn(
                             `DesktopBackend: failed to migrate legacy report blob ${report.id} for ${studyUid}:`,
-                            error
+                            error,
                         );
                     }
                 }
@@ -607,7 +606,7 @@ const _NotesDesktop = (() => {
 
         return await invoke('apply_desktop_migration', {
             db: DESKTOP_DB_URL,
-            batch
+            batch,
         });
     }
 
@@ -629,7 +628,7 @@ const _NotesDesktop = (() => {
         const currentStore = safeJsonParse(safeLocalStorageGet('dicom-viewer-notes-v3'), createEmptyStore());
         const legacyPayload = safeJsonParse(safeLocalStorageGet(LEGACY_STORAGE_KEY), null);
         const libraryConfig = normalizeDesktopLibraryConfig(
-            safeJsonParse(safeLocalStorageGet(DESKTOP_LIBRARY_CONFIG_STORAGE_KEY), {})
+            safeJsonParse(safeLocalStorageGet(DESKTOP_LIBRARY_CONFIG_STORAGE_KEY), {}),
         );
 
         const hasCurrentStore = Object.values(currentStore?.studies || {}).some(hasStudyNotes);
@@ -656,7 +655,7 @@ const _NotesDesktop = (() => {
             const blobFailures = await migrateLegacyReportBlobs(legacyPayload, db);
             if (blobFailures > 0) {
                 console.warn(
-                    `DesktopBackend: deferred completion of legacy localStorage migration after ${blobFailures} legacy report blob failure(s).`
+                    `DesktopBackend: deferred completion of legacy localStorage migration after ${blobFailures} legacy report blob failure(s).`,
                 );
                 return true;
             }
@@ -680,9 +679,7 @@ const _NotesDesktop = (() => {
         const batch = createEmptyDesktopMigrationBatch();
         for (const store of stores) {
             const notesStore = safeJsonParse(store?.notesJson, createEmptyStore());
-            const libraryConfig = normalizeDesktopLibraryConfig(
-                safeJsonParse(store?.libraryConfigJson, {})
-            );
+            const libraryConfig = normalizeDesktopLibraryConfig(safeJsonParse(store?.libraryConfigJson, {}));
 
             await appendCurrentStoreToDesktopMigration(batch, notesStore, fs);
             if (libraryConfig.folder || libraryConfig.lastScan) {
@@ -742,10 +739,9 @@ const _NotesDesktop = (() => {
         const finalPath = await path.join(reportsDir, `${filenameBase}.${extension}`);
         const tempPath = await path.join(reportsDir, `${filenameBase}.${extension}.tmp-${Date.now()}`);
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const existingRows = await db.select(
-            'SELECT file_path, added_at FROM reports WHERE id = ? LIMIT 1',
-            [reportId]
-        );
+        const existingRows = await db.select('SELECT file_path, added_at FROM reports WHERE id = ? LIMIT 1', [
+            reportId,
+        ]);
         const existing = existingRows[0] || null;
         const now = Date.now();
         const addedAt = parseInteger(report.addedAt, parseInteger(existing?.added_at, now));
@@ -791,7 +787,7 @@ const _NotesDesktop = (() => {
                      file_path = excluded.file_path,
                      added_at = excluded.added_at,
                      updated_at = excluded.updated_at`,
-                [reportId, studyUid, name, type, size, finalPath, addedAt, updatedAt]
+                [reportId, studyUid, name, type, size, finalPath, addedAt, updatedAt],
             );
         } catch (error) {
             try {
@@ -837,7 +833,7 @@ const _NotesDesktop = (() => {
             size,
             filePath: finalPath,
             addedAt,
-            updatedAt
+            updatedAt,
         };
     }
 
@@ -862,20 +858,20 @@ const _NotesDesktop = (() => {
                     `SELECT study_uid, description
                      FROM study_notes
                      WHERE study_uid IN (${placeholders})`,
-                    list
+                    list,
                 ),
                 db.select(
                     `SELECT study_uid, series_uid, description
                      FROM series_notes
                      WHERE study_uid IN (${placeholders})`,
-                    list
+                    list,
                 ),
                 db.select(
                     `SELECT id, record_uuid, study_uid, series_uid, text, time, created_at, updated_at, deleted_at
                      FROM comments
                      WHERE study_uid IN (${placeholders})
                      ORDER BY time ASC, id ASC`,
-                    list
+                    list,
                 ),
                 db.select(
                     `SELECT id, study_uid, name, type, size, content_hash, added_at, updated_at, deleted_at, file_path
@@ -883,8 +879,8 @@ const _NotesDesktop = (() => {
                      WHERE study_uid IN (${placeholders})
                      AND file_path IS NOT NULL
                      ORDER BY added_at ASC, id ASC`,
-                    list
-                )
+                    list,
+                ),
             ]);
 
             const notes = createEmptyStore();
@@ -908,7 +904,7 @@ const _NotesDesktop = (() => {
                     time: row.time,
                     created_at: row.created_at || row.time,
                     updated_at: row.updated_at || row.time,
-                    deletedAt: null
+                    deletedAt: null,
                 });
             }
 
@@ -923,7 +919,7 @@ const _NotesDesktop = (() => {
                     filePath: row.file_path,
                     addedAt: row.added_at,
                     updatedAt: row.updated_at,
-                    deletedAt: null
+                    deletedAt: null,
                 });
                 desktopReportPathCache.set(normalizeReportId(row.id), row.file_path);
             }
@@ -943,13 +939,10 @@ const _NotesDesktop = (() => {
                      ON CONFLICT(study_uid) DO UPDATE SET
                          description = excluded.description,
                          updated_at = excluded.updated_at`,
-                    [studyUid, value, Date.now()]
+                    [studyUid, value, Date.now()],
                 );
             } else {
-                await db.execute(
-                    'DELETE FROM study_notes WHERE study_uid = ?',
-                    [studyUid]
-                );
+                await db.execute('DELETE FROM study_notes WHERE study_uid = ?', [studyUid]);
             }
             return { description: value, comments: [], series: {}, reports: [] };
         },
@@ -966,13 +959,13 @@ const _NotesDesktop = (() => {
                      ON CONFLICT(study_uid, series_uid) DO UPDATE SET
                          description = excluded.description,
                          updated_at = excluded.updated_at`,
-                    [studyUid, seriesUid, value, Date.now()]
+                    [studyUid, seriesUid, value, Date.now()],
                 );
             } else {
-                await db.execute(
-                    'DELETE FROM series_notes WHERE study_uid = ? AND series_uid = ?',
-                    [studyUid, seriesUid]
-                );
+                await db.execute('DELETE FROM series_notes WHERE study_uid = ? AND series_uid = ?', [
+                    studyUid,
+                    seriesUid,
+                ]);
             }
             return { description: value, comments: [] };
         },
@@ -987,12 +980,12 @@ const _NotesDesktop = (() => {
             const time = parseInteger(payload.time, Date.now());
             const result = await db.execute(
                 'INSERT INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                [studyUid, seriesUid, text, time]
+                [studyUid, seriesUid, text, time],
             );
             return {
                 id: result?.lastInsertId ?? null,
                 text,
-                time
+                time,
             };
         },
 
@@ -1003,15 +996,17 @@ const _NotesDesktop = (() => {
             const text = (payload.text || '').trim();
             if (!text) return null;
             const time = parseInteger(payload.time, Date.now());
-            const result = await db.execute(
-                'UPDATE comments SET text = ?, time = ? WHERE id = ? AND study_uid = ?',
-                [text, time, normalizeCommentId(commentId), studyUid]
-            );
+            const result = await db.execute('UPDATE comments SET text = ?, time = ? WHERE id = ? AND study_uid = ?', [
+                text,
+                time,
+                normalizeCommentId(commentId),
+                studyUid,
+            ]);
             if (!result?.rowsAffected) return null;
             return {
                 id: normalizeCommentId(commentId),
                 text,
-                time
+                time,
             };
         },
 
@@ -1019,10 +1014,10 @@ const _NotesDesktop = (() => {
             if (!studyUid || commentId === undefined || commentId === null) return false;
             await initializeDesktopPersistence();
             const db = await getDesktopDb();
-            await db.execute(
-                'DELETE FROM comments WHERE id = ? AND study_uid = ?',
-                [normalizeCommentId(commentId), studyUid]
-            );
+            await db.execute('DELETE FROM comments WHERE id = ? AND study_uid = ?', [
+                normalizeCommentId(commentId),
+                studyUid,
+            ]);
             return true;
         },
 
@@ -1041,19 +1036,19 @@ const _NotesDesktop = (() => {
                 await initializeDesktopPersistence();
                 const db = await getDesktopDb();
                 const { fs } = getDesktopTauriApis();
-                const rows = await db.select(
-                    'SELECT file_path FROM reports WHERE id = ? AND study_uid = ? LIMIT 1',
-                    [normalizeReportId(reportId), studyUid]
-                );
+                const rows = await db.select('SELECT file_path FROM reports WHERE id = ? AND study_uid = ? LIMIT 1', [
+                    normalizeReportId(reportId),
+                    studyUid,
+                ]);
                 if (!rows.length) {
                     desktopReportPathCache.delete(normalizeReportId(reportId));
                     return true;
                 }
 
-                await db.execute(
-                    'DELETE FROM reports WHERE id = ? AND study_uid = ?',
-                    [normalizeReportId(reportId), studyUid]
-                );
+                await db.execute('DELETE FROM reports WHERE id = ? AND study_uid = ?', [
+                    normalizeReportId(reportId),
+                    studyUid,
+                ]);
                 desktopReportPathCache.delete(normalizeReportId(reportId));
 
                 const filePath = rows[0]?.file_path;
@@ -1091,7 +1086,7 @@ const _NotesDesktop = (() => {
 
         getReportFilePath(reportId) {
             return desktopReportPathCache.get(normalizeReportId(reportId)) || '';
-        }
+        },
     };
 
     async function initializeDesktopStorage() {
@@ -1109,7 +1104,7 @@ const _NotesDesktop = (() => {
         updateImportJob,
         loadRecentImportJobs,
         getDesktopDb,
-        initializeDesktopPersistence
+        initializeDesktopPersistence,
     };
 })();
 

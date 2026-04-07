@@ -1,10 +1,11 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { $ } = app.dom;
     const { escapeHtml } = app.utils;
 
     function setActiveHelpTocItem(sectionId) {
-        document.querySelectorAll('.help-toc-item').forEach(item => {
+        document.querySelectorAll('.help-toc-item').forEach((item) => {
             item.classList.toggle('active', item.dataset.sectionId === sectionId);
         });
     }
@@ -35,22 +36,26 @@
         const contentEl = $('helpContent');
         if (!tocEl || !contentEl || !Array.isArray(HELP_SECTIONS)) return;
 
-        tocEl.innerHTML = HELP_SECTIONS.map(section => `
+        tocEl.innerHTML = HELP_SECTIONS.map(
+            (section) => `
             <a href="#help-${escapeHtml(section.id)}" class="help-toc-item" data-section-id="${escapeHtml(section.id)}">
                 ${escapeHtml(section.title)}
             </a>
-        `).join('');
+        `,
+        ).join('');
 
         // HELP_SECTIONS content is authored static HTML from help-content.js, not user input.
-        contentEl.innerHTML = HELP_SECTIONS.map(section => `
+        contentEl.innerHTML = HELP_SECTIONS.map(
+            (section) => `
             <section id="help-${escapeHtml(section.id)}" class="help-section" data-section-id="${escapeHtml(section.id)}">
                 <h2>${escapeHtml(section.title)}</h2>
                 ${section.content}
             </section>
-        `).join('');
+        `,
+        ).join('');
 
-        tocEl.querySelectorAll('.help-toc-item').forEach(item => {
-            item.addEventListener('click', e => {
+        tocEl.querySelectorAll('.help-toc-item').forEach((item) => {
+            item.addEventListener('click', (e) => {
                 e.preventDefault();
                 const sectionId = item.dataset.sectionId;
                 const target = contentEl.querySelector(`#help-${CSS.escape(sectionId)}`);
@@ -79,6 +84,6 @@
 
     app.helpViewer = {
         closeHelpViewer,
-        openHelpViewer
+        openHelpViewer,
     };
 })();

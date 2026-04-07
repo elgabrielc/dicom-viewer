@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Divergent Health Technologies
 
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { state } = app;
     const config = window.CONFIG;
     const notesApi = window.NotesAPI;
@@ -19,7 +20,7 @@
             year: 'numeric',
             hour: 'numeric',
             minute: '2-digit',
-            hour12: true
+            hour12: true,
         });
     }
 
@@ -43,7 +44,7 @@
             }
             if (Array.isArray(entry.comments)) {
                 study.comments = entry.comments;
-                study.comments.forEach(comment => {
+                study.comments.forEach((comment) => {
                     if (comment.id === undefined || comment.id === null) {
                         comment.id = generateLocalCommentId();
                     }
@@ -62,7 +63,7 @@
                     }
                     if (Array.isArray(seriesEntry.comments)) {
                         series.comments = seriesEntry.comments;
-                        series.comments.forEach(comment => {
+                        series.comments.forEach((comment) => {
                             if (comment.id === undefined || comment.id === null) {
                                 comment.id = generateLocalCommentId();
                             }
@@ -75,7 +76,7 @@
 
     async function openLegacyReportsDB() {
         if (!('indexedDB' in window)) return null;
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             const request = indexedDB.open(LEGACY_REPORTS_DB, 1);
             request.onerror = () => resolve(null);
             request.onsuccess = () => {
@@ -93,7 +94,7 @@
 
     async function getLegacyReportBlob(db, reportId) {
         if (!db) return null;
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             const tx = db.transaction(LEGACY_REPORTS_STORE, 'readonly');
             const request = tx.objectStore(LEGACY_REPORTS_STORE).get(reportId);
             request.onsuccess = () => resolve(request.result?.blob || null);
@@ -143,13 +144,15 @@
                 const reports = stored?.reports || [];
                 for (const report of reports) {
                     if (!report?.id) continue;
-                    uploadTasks.push((async () => {
-                        const blob = await getLegacyReportBlob(db, report.id);
-                        if (!blob) return;
-                        const filename = report.name || 'report';
-                        const file = new File([blob], filename, { type: blob.type || '' });
-                        await notesApi.uploadReport(studyUid, file, report);
-                    })());
+                    uploadTasks.push(
+                        (async () => {
+                            const blob = await getLegacyReportBlob(db, report.id);
+                            if (!blob) return;
+                            const filename = report.name || 'report';
+                            const file = new File([blob], filename, { type: blob.type || '' });
+                            await notesApi.uploadReport(studyUid, file, report);
+                        })(),
+                    );
                 }
             }
 
@@ -157,7 +160,7 @@
 
             if (uploadTasks.length) {
                 const results = await Promise.allSettled(uploadTasks);
-                if (results.every(result => result.status === 'fulfilled')) {
+                if (results.every((result) => result.status === 'fulfilled')) {
                     localStorage.setItem(MIGRATION_FLAG_KEY, '1');
                 }
                 return;
@@ -171,6 +174,6 @@
         formatTimestamp,
         generateLocalCommentId,
         loadNotesForStudies,
-        migrateIfNeeded
+        migrateIfNeeded,
     };
 })();

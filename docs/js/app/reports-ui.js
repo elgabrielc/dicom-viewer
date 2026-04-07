@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Divergent Health Technologies
 
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { state } = app;
     const notesApi = window.NotesAPI;
     const { $, studiesBody } = app.dom;
@@ -46,7 +47,7 @@
             size: file.size,
             addedAt: now,
             updatedAt: now,
-            blob: null
+            blob: null,
         };
 
         const saved = await notesApi.uploadReport(studyUid, file, report);
@@ -64,7 +65,7 @@
         const reports = state.studies[studyUid].reports;
         if (!reports) return;
 
-        const idx = reports.findIndex(report => report.id === reportId);
+        const idx = reports.findIndex((report) => report.id === reportId);
         if (idx === -1) return;
 
         const removed = reports.splice(idx, 1)[0];
@@ -80,14 +81,15 @@
 
     function renderReports(reports, studyUid) {
         // Filter out soft-deleted reports before rendering
-        const activeReports = (reports || []).filter(report => !report.deletedAt);
+        const activeReports = (reports || []).filter((report) => !report.deletedAt);
         if (activeReports.length === 0) {
             return '<p class="report-empty">No reports attached</p>';
         }
 
-        return activeReports.map(report => {
-            const icon = report.type === 'pdf' ? '&#128196;' : '&#128247;';
-            return `
+        return activeReports
+            .map((report) => {
+                const icon = report.type === 'pdf' ? '&#128196;' : '&#128247;';
+                return `
                 <div class="report-item" data-report-id="${escapeHtml(report.id)}">
                     <span class="report-icon">${icon}</span>
                     <span class="report-name">${escapeHtml(report.name)}</span>
@@ -98,7 +100,8 @@
                     </span>
                 </div>
             `;
-        }).join('');
+            })
+            .join('');
     }
 
     function updateReportListUI(studyUid) {
@@ -110,13 +113,13 @@
 
         const btn = document.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
         if (btn) {
-            const count = (state.studies[studyUid].reports || []).filter(r => !r.deletedAt).length;
+            const count = (state.studies[studyUid].reports || []).filter((r) => !r.deletedAt).length;
             btn.textContent = count > 0 ? `${count} report${count > 1 ? 's' : ''}` : 'Add report';
         }
     }
 
     async function viewReport(studyUid, reportId) {
-        const report = state.studies[studyUid].reports?.find(item => item.id === reportId);
+        const report = state.studies[studyUid].reports?.find((item) => item.id === reportId);
         if (!report) return;
 
         const viewer = $('reportViewer');
@@ -230,7 +233,7 @@
                 menu.style.top = `${y}px`;
                 menu.style.visibility = '';
                 activeMenu = menu;
-            }
+            },
         };
 
         document.addEventListener('click', () => app.contextMenu.dismiss());
@@ -275,7 +278,7 @@
                     console.error('Failed to reveal in Finder:', err);
                     return false;
                 }
-            }
+            },
         };
     }
 
@@ -295,7 +298,7 @@
     }
 
     function showReportContextMenu(e, studyUid, reportId) {
-        const report = state.studies[studyUid]?.reports?.find(r => r.id === reportId);
+        const report = state.studies[studyUid]?.reports?.find((r) => r.id === reportId);
         if (!report) return;
 
         const isDesktop = typeof CONFIG !== 'undefined' && CONFIG.deploymentMode === 'desktop';
@@ -321,15 +324,15 @@
     }
 
     function attachReportEventHandlers(studyUid) {
-        studiesBody.querySelectorAll(`.view-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll(`.view-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 viewReport(studyUid, btn.dataset.reportId);
             };
         });
 
-        studiesBody.querySelectorAll(`.delete-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach(btn => {
-            btn.onclick = e => {
+        studiesBody.querySelectorAll(`.delete-report[data-study-uid="${CSS.escape(studyUid)}"]`).forEach((btn) => {
+            btn.onclick = (e) => {
                 e.stopPropagation();
                 if (confirm('Delete this report?')) {
                     deleteReport(studyUid, btn.dataset.reportId);
@@ -337,8 +340,8 @@
             };
         });
 
-        studiesBody.querySelectorAll(`.report-item[data-report-id]`).forEach(item => {
-            item.oncontextmenu = e => {
+        studiesBody.querySelectorAll(`.report-item[data-report-id]`).forEach((item) => {
+            item.oncontextmenu = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const reportId = item.dataset.reportId;
@@ -351,11 +354,11 @@
         // Right-click on the "1 report" toggle button
         const toggle = studiesBody.querySelector(`.report-toggle[data-study-uid="${CSS.escape(studyUid)}"]`);
         if (toggle) {
-            toggle.oncontextmenu = e => {
+            toggle.oncontextmenu = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
 
-                const reports = (state.studies[studyUid]?.reports || []).filter(r => !r.deletedAt);
+                const reports = (state.studies[studyUid]?.reports || []).filter((r) => !r.deletedAt);
                 if (reports.length === 0) return;
 
                 // Single report: show context menu directly
@@ -376,6 +379,6 @@
         closeReportViewer,
         deleteReport,
         renderReports,
-        viewReport
+        viewReport,
     };
 })();

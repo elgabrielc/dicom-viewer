@@ -104,22 +104,19 @@ async function insertReportWithFile(request, token, deviceId, cursor, fileConten
     const syncVersion = result.accepted[0].sync_version;
 
     // Upload the file blob
-    const uploadResponse = await request.post(
-        `${BASE_URL}/api/sync/reports/${reportId}/file`,
-        {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Hash': `sha256:${contentHash}`,
+    const uploadResponse = await request.post(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+        headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Hash': `sha256:${contentHash}`,
+        },
+        multipart: {
+            file: {
+                name: 'report.pdf',
+                mimeType: 'application/pdf',
+                buffer: pdfContent,
             },
-            multipart: {
-                file: {
-                    name: 'report.pdf',
-                    mimeType: 'application/pdf',
-                    buffer: pdfContent,
-                },
-            },
-        }
-    );
+        },
+    });
     expect(uploadResponse.status()).toBe(200);
 
     return { reportId, contentHash, syncVersion, cursor: result.delta_cursor };
@@ -174,7 +171,7 @@ test.describe('E2E Authentication Flow', () => {
         // Verify the access token works by making an authenticated request
         const syncResponse = await request.post(`${BASE_URL}/api/sync`, {
             headers: {
-                'Authorization': `Bearer ${body.access_token}`,
+                Authorization: `Bearer ${body.access_token}`,
                 'Content-Type': 'application/json',
             },
             data: {
@@ -195,7 +192,7 @@ test.describe('E2E Authentication Flow', () => {
         const { access_token } = await loginUser(request, BASE_URL, email, password);
 
         const response = await request.post(`${BASE_URL}/api/auth/devices`, {
-            headers: { 'Authorization': `Bearer ${access_token}` },
+            headers: { Authorization: `Bearer ${access_token}` },
             data: {
                 device_name: 'E2E Test Device',
                 platform: 'test-e2e',
@@ -209,9 +206,7 @@ test.describe('E2E Authentication Flow', () => {
         expect(body.device_id.length).toBeGreaterThan(0);
 
         // Verify the device_id is usable in a sync request
-        const syncResult = await syncAndExpectOk(
-            request, BASE_URL, access_token, body.device_id, null, []
-        );
+        const syncResult = await syncAndExpectOk(request, BASE_URL, access_token, body.device_id, null, []);
         expect(syncResult).toHaveProperty('delta_cursor');
     });
 
@@ -234,9 +229,7 @@ test.describe('E2E Authentication Flow', () => {
         // (not strictly required by all JWT implementations, but expected)
         // More importantly, verify the new token works
         const { device_id } = await registerDevice(request, BASE_URL, body.access_token);
-        const syncResult = await syncAndExpectOk(
-            request, BASE_URL, body.access_token, device_id, null, []
-        );
+        const syncResult = await syncAndExpectOk(request, BASE_URL, body.access_token, device_id, null, []);
         expect(syncResult).toHaveProperty('delta_cursor');
     });
 
@@ -261,27 +254,25 @@ test.describe('E2E Two-Device Sync', () => {
         const deviceB = await setupSecondDevice(request, deviceA.email, deviceA.password);
 
         // Device B does an initial sync to establish a cursor
-        const initialSync = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const initialSync = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Device A adds a comment
         const commentText = `Comment from Device A at ${Date.now()}`;
         const studyUid = uniqueStudyUid();
         const change = commentInsertChange({ studyUid, text: commentText });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [change]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [change]);
 
         // Device B syncs and should receive the comment
         const pullResult = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            initialSync.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            initialSync.delta_cursor,
+            [],
         );
 
-        const found = pullResult.remote_changes.find(
-            rc => rc.key === change.key && rc.table === 'comments'
-        );
+        const found = pullResult.remote_changes.find((rc) => rc.key === change.key && rc.table === 'comments');
         expect(found).toBeDefined();
         expect(found.data.text).toBe(commentText);
         expect(found.data.study_uid).toBe(studyUid);
@@ -300,34 +291,33 @@ test.describe('E2E Two-Device Sync', () => {
             description: 'Initial description',
             baseSyncVersion: 0,
         });
-        const insertResult = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insertChange]
-        );
+        const insertResult = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [
+            insertChange,
+        ]);
 
         // Device B does initial sync to get cursor (will see the initial description)
-        const bInitial = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const bInitial = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Device A updates the description
         const updateChange = studyNoteUpdateChange(studyUid, {
             description,
             baseSyncVersion: insertResult.accepted[0].sync_version,
         });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            insertResult.delta_cursor, [updateChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, insertResult.delta_cursor, [
+            updateChange,
+        ]);
 
         // Device B syncs from its cursor and should see the updated description
         const pullResult = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bInitial.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bInitial.delta_cursor,
+            [],
         );
 
-        const found = pullResult.remote_changes.find(
-            rc => rc.key === studyUid && rc.table === 'study_notes'
-        );
+        const found = pullResult.remote_changes.find((rc) => rc.key === studyUid && rc.table === 'study_notes');
         expect(found).toBeDefined();
         expect(found.data.description).toBe(description);
     });
@@ -352,78 +342,85 @@ test.describe('E2E Two-Device Sync', () => {
                 updated_at: Date.now(),
             },
         };
-        const insertResult = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insertChange]
-        );
+        const insertResult = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [
+            insertChange,
+        ]);
 
         // Device B does initial sync -- should see the report
-        const bInitial = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
-        const reportOnB = bInitial.remote_changes.find(
-            rc => rc.key === reportId && rc.table === 'reports'
-        );
+        const bInitial = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
+        const reportOnB = bInitial.remote_changes.find((rc) => rc.key === reportId && rc.table === 'reports');
         expect(reportOnB).toBeDefined();
 
         // Device A soft-deletes the report
         const deleteChange = reportDeleteChange(reportId, {
             baseSyncVersion: insertResult.accepted[0].sync_version,
         });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            insertResult.delta_cursor, [deleteChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, insertResult.delta_cursor, [
+            deleteChange,
+        ]);
 
         // Device B syncs again -- should see the tombstone
         const pullResult = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bInitial.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bInitial.delta_cursor,
+            [],
         );
 
-        const tombstoned = pullResult.remote_changes.find(
-            rc => rc.key === reportId && rc.table === 'reports'
-        );
+        const tombstoned = pullResult.remote_changes.find((rc) => rc.key === reportId && rc.table === 'reports');
         expect(tombstoned).toBeDefined();
         expect(tombstoned.data.deleted_at).toBeDefined();
         expect(tombstoned.data.deleted_at).not.toBeNull();
         expect(typeof tombstoned.data.deleted_at).toBe('number');
     });
 
-    test('both devices make non-conflicting changes, both receive each other\'s changes after sync', async ({ request }) => {
+    test("both devices make non-conflicting changes, both receive each other's changes after sync", async ({
+        request,
+    }) => {
         const deviceA = await setupDevice(request);
         const deviceB = await setupSecondDevice(request, deviceA.email, deviceA.password);
 
         // Both devices do initial sync to establish cursors
-        const aInitial = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, []
-        );
-        const bInitial = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const aInitial = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, []);
+        const bInitial = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Device A adds a comment on study 1
         const studyUid1 = uniqueStudyUid();
         const changeA = commentInsertChange({ studyUid: studyUid1, text: 'Comment from A' });
         const aResult = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            aInitial.delta_cursor, [changeA]
+            request,
+            BASE_URL,
+            deviceA.access_token,
+            deviceA.device_id,
+            aInitial.delta_cursor,
+            [changeA],
         );
 
         // Device B adds a comment on a different study
         const studyUid2 = uniqueStudyUid();
         const changeB = commentInsertChange({ studyUid: studyUid2, text: 'Comment from B' });
         const bResult = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bInitial.delta_cursor, [changeB]
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bInitial.delta_cursor,
+            [changeB],
         );
-        const changeAOnBPush = bResult.remote_changes.find(rc => rc.key === changeA.key);
+        const changeAOnBPush = bResult.remote_changes.find((rc) => rc.key === changeA.key);
 
         // Device A syncs again -- should receive Device B's comment
         const aPull = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            aResult.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceA.access_token,
+            deviceA.device_id,
+            aResult.delta_cursor,
+            [],
         );
-        const foundBonA = aPull.remote_changes.find(rc => rc.key === changeB.key);
+        const foundBonA = aPull.remote_changes.find((rc) => rc.key === changeB.key);
         expect(foundBonA).toBeDefined();
         expect(foundBonA.data.text).toBe('Comment from B');
 
@@ -431,11 +428,14 @@ test.describe('E2E Two-Device Sync', () => {
         // that pushes B's own change, because remote_changes are computed from the
         // provided cursor before the new cursor is issued.
         const bPull = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bResult.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bResult.delta_cursor,
+            [],
         );
-        const foundAonB = changeAOnBPush
-            || bPull.remote_changes.find(rc => rc.key === changeA.key);
+        const foundAonB = changeAOnBPush || bPull.remote_changes.find((rc) => rc.key === changeA.key);
         expect(foundAonB).toBeDefined();
         expect(foundAonB.data.text).toBe('Comment from A');
     });
@@ -457,18 +457,14 @@ test.describe('E2E Conflict Resolution', () => {
             description: 'Original description',
             baseSyncVersion: 0,
         });
-        const insertResult = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insertChange]
-        );
+        const insertResult = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [
+            insertChange,
+        ]);
         const baseVersion = insertResult.accepted[0].sync_version;
 
         // Device B syncs to get the current state
-        const bSync = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
-        const bNote = bSync.remote_changes.find(
-            rc => rc.key === studyUid && rc.table === 'study_notes'
-        );
+        const bSync = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
+        const bNote = bSync.remote_changes.find((rc) => rc.key === studyUid && rc.table === 'study_notes');
         expect(bNote).toBeDefined();
         expect(bNote.sync_version).toBe(baseVersion);
 
@@ -478,8 +474,12 @@ test.describe('E2E Conflict Resolution', () => {
             baseSyncVersion: baseVersion,
         });
         const aUpdate = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            insertResult.delta_cursor, [changeA]
+            request,
+            BASE_URL,
+            deviceA.access_token,
+            deviceA.device_id,
+            insertResult.delta_cursor,
+            [changeA],
         );
         expect(aUpdate.accepted.length).toBe(1);
         const aNewVersion = aUpdate.accepted[0].sync_version;
@@ -490,8 +490,12 @@ test.describe('E2E Conflict Resolution', () => {
             baseSyncVersion: baseVersion, // stale -- Device A already advanced it
         });
         const bUpdate = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bSync.delta_cursor, [changeB]
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bSync.delta_cursor,
+            [changeB],
         );
 
         // Device B's change should be rejected
@@ -504,7 +508,7 @@ test.describe('E2E Conflict Resolution', () => {
         expect(rejected.current_data.description).toBe('Device A wins');
     });
 
-    test('the second device to sync gets its change rejected with the first device\'s data', async ({ request }) => {
+    test("the second device to sync gets its change rejected with the first device's data", async ({ request }) => {
         const deviceA = await setupDevice(request);
         const deviceB = await setupSecondDevice(request, deviceA.email, deviceA.password);
 
@@ -515,38 +519,31 @@ test.describe('E2E Conflict Resolution', () => {
             description: 'Base value',
             baseSyncVersion: 0,
         });
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insert]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insert]);
         const baseVersion = r1.accepted[0].sync_version;
 
         // Device B sees the base value
-        await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Device A updates
         const updateA = studyNoteUpdateChange(studyUid, {
             description: 'First writer',
             baseSyncVersion: baseVersion,
         });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            r1.delta_cursor, [updateA]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, r1.delta_cursor, [updateA]);
 
         // Device B attempts update with stale version
         const updateB = studyNoteUpdateChange(studyUid, {
             description: 'Second writer',
             baseSyncVersion: baseVersion,
         });
-        const bResult = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, [updateB]
-        );
+        const bResult = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, [
+            updateB,
+        ]);
 
         // The rejected entry should contain Device A's data so Device B can resolve
         expect(bResult.rejected.length).toBeGreaterThanOrEqual(1);
-        const rej = bResult.rejected.find(r => r.key === studyUid);
+        const rej = bResult.rejected.find((r) => r.key === studyUid);
         expect(rej).toBeDefined();
         expect(rej.reason).toBe('stale');
         expect(rej.current_data.description).toBe('First writer');
@@ -564,15 +561,11 @@ test.describe('E2E Conflict Resolution', () => {
             description: 'Original',
             baseSyncVersion: 0,
         });
-        const r1 = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insert]
-        );
+        const r1 = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [insert]);
         const baseVersion = r1.accepted[0].sync_version;
 
         // Device B syncs to see the note
-        const bSync1 = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const bSync1 = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Device A updates first
         const updateA = studyNoteUpdateChange(studyUid, {
@@ -580,8 +573,12 @@ test.describe('E2E Conflict Resolution', () => {
             baseSyncVersion: baseVersion,
         });
         const aResult = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            r1.delta_cursor, [updateA]
+            request,
+            BASE_URL,
+            deviceA.access_token,
+            deviceA.device_id,
+            r1.delta_cursor,
+            [updateA],
         );
 
         // Device B's update is rejected (stale)
@@ -590,11 +587,15 @@ test.describe('E2E Conflict Resolution', () => {
             baseSyncVersion: baseVersion,
         });
         const bResult = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bSync1.delta_cursor, [updateB]
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bSync1.delta_cursor,
+            [updateB],
         );
         expect(bResult.rejected.length).toBeGreaterThanOrEqual(1);
-        const rejected = bResult.rejected.find(r => r.key === studyUid);
+        const rejected = bResult.rejected.find((r) => r.key === studyUid);
         expect(rejected).toBeDefined();
 
         // Device B resolves the conflict by accepting server state and re-applying
@@ -605,28 +606,38 @@ test.describe('E2E Conflict Resolution', () => {
             baseSyncVersion: resolvedVersion,
         });
         const bResolve = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bResult.delta_cursor, [resolveChange]
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bResult.delta_cursor,
+            [resolveChange],
         );
         expect(bResolve.accepted.length).toBe(1);
         const finalVersion = bResolve.accepted[0].sync_version;
 
         // Device A syncs and sees the resolved value
         const aPull = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            aResult.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceA.access_token,
+            deviceA.device_id,
+            aResult.delta_cursor,
+            [],
         );
-        const aNote = aPull.remote_changes.find(
-            rc => rc.key === studyUid && rc.table === 'study_notes'
-        );
+        const aNote = aPull.remote_changes.find((rc) => rc.key === studyUid && rc.table === 'study_notes');
         expect(aNote).toBeDefined();
         expect(aNote.data.description).toBe('Resolved final value');
         expect(aNote.sync_version).toBe(finalVersion);
 
         // Device B syncs again -- no more changes, converged
         const bFinal = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bResolve.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bResolve.delta_cursor,
+            [],
         );
         // No new remote changes since Device B already has the latest
         expect(bFinal.remote_changes.length).toBe(0);
@@ -644,9 +655,7 @@ test.describe('E2E Offline/Online Transitions', () => {
         const device = await setupDevice(request);
 
         // Device establishes a cursor (it was online initially)
-        const initial = await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id, null, []
-        );
+        const initial = await syncAndExpectOk(request, BASE_URL, device.access_token, device.device_id, null, []);
 
         // "Offline" period: device queues three changes without syncing
         const studyUid = uniqueStudyUid();
@@ -661,16 +670,18 @@ test.describe('E2E Offline/Online Transitions', () => {
 
         // "Online" again: all queued changes are pushed in a single sync
         const result = await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id,
-            initial.delta_cursor, offlineChanges
+            request,
+            BASE_URL,
+            device.access_token,
+            device.device_id,
+            initial.delta_cursor,
+            offlineChanges,
         );
 
         // All three changes should be accepted
         expect(result.accepted.length).toBe(3);
         for (const change of offlineChanges) {
-            const accepted = result.accepted.find(
-                a => a.operation_uuid === change.operation_uuid
-            );
+            const accepted = result.accepted.find((a) => a.operation_uuid === change.operation_uuid);
             expect(accepted).toBeDefined();
             expect(accepted.sync_version).toBeGreaterThan(0);
         }
@@ -683,12 +694,8 @@ test.describe('E2E Offline/Online Transitions', () => {
         const deviceB = await setupSecondDevice(request, deviceA.email, deviceA.password);
 
         // Both devices establish cursors
-        const aInit = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, []
-        );
-        const bInit = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const aInit = await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, []);
+        const bInit = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Device A goes "offline" and makes changes
         const studyUid = uniqueStudyUid();
@@ -702,25 +709,31 @@ test.describe('E2E Offline/Online Transitions', () => {
 
         // Device A comes back "online" and drains its outbox
         const aDrain = await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            aInit.delta_cursor, offlineChanges
+            request,
+            BASE_URL,
+            deviceA.access_token,
+            deviceA.device_id,
+            aInit.delta_cursor,
+            offlineChanges,
         );
         expect(aDrain.accepted.length).toBe(2);
 
         // Device B syncs and should see both changes
         const bPull = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id,
-            bInit.delta_cursor, []
+            request,
+            BASE_URL,
+            deviceB.access_token,
+            deviceB.device_id,
+            bInit.delta_cursor,
+            [],
         );
 
         const comment = bPull.remote_changes.find(
-            rc => rc.table === 'comments' && rc.data.text === 'Made while offline'
+            (rc) => rc.table === 'comments' && rc.data.text === 'Made while offline',
         );
         expect(comment).toBeDefined();
 
-        const note = bPull.remote_changes.find(
-            rc => rc.table === 'study_notes' && rc.key === studyUid
-        );
+        const note = bPull.remote_changes.find((rc) => rc.table === 'study_notes' && rc.key === studyUid);
         expect(note).toBeDefined();
         expect(note.data.description).toBe('Offline description');
     });
@@ -730,9 +743,7 @@ test.describe('E2E Offline/Online Transitions', () => {
         // then syncs. The outbox collapses them, so only the final state is sent.
         const device = await setupDevice(request);
 
-        const initial = await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id, null, []
-        );
+        const initial = await syncAndExpectOk(request, BASE_URL, device.access_token, device.device_id, null, []);
 
         const studyUid = uniqueStudyUid();
 
@@ -742,8 +753,12 @@ test.describe('E2E Offline/Online Transitions', () => {
             baseSyncVersion: 0,
         });
         const createResult = await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id,
-            initial.delta_cursor, [createChange]
+            request,
+            BASE_URL,
+            device.access_token,
+            device.device_id,
+            initial.delta_cursor,
+            [createChange],
         );
         const baseVersion = createResult.accepted[0].sync_version;
 
@@ -757,8 +772,12 @@ test.describe('E2E Offline/Online Transitions', () => {
         });
 
         const result = await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id,
-            createResult.delta_cursor, [collapsedChange]
+            request,
+            BASE_URL,
+            device.access_token,
+            device.device_id,
+            createResult.delta_cursor,
+            [collapsedChange],
         );
 
         expect(result.accepted.length).toBe(1);
@@ -766,12 +785,8 @@ test.describe('E2E Offline/Online Transitions', () => {
 
         // Verify the server has the collapsed value via a second device
         const deviceB = await setupSecondDevice(request, device.email, device.password);
-        const bPull = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
-        const note = bPull.remote_changes.find(
-            rc => rc.key === studyUid && rc.table === 'study_notes'
-        );
+        const bPull = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
+        const note = bPull.remote_changes.find((rc) => rc.key === studyUid && rc.table === 'study_notes');
         expect(note).toBeDefined();
         expect(note.data.description).toBe('Final offline value (collapsed)');
     });
@@ -788,25 +803,22 @@ test.describe('E2E Report File Sync', () => {
 
         // Device A creates and uploads a report
         const pdfContent = minimalPdfBuffer();
-        const { reportId, contentHash, cursor: aCursor } = await insertReportWithFile(
-            request, deviceA.access_token, deviceA.device_id, null, pdfContent
-        );
+        const {
+            reportId,
+            contentHash,
+            cursor: aCursor,
+        } = await insertReportWithFile(request, deviceA.access_token, deviceA.device_id, null, pdfContent);
 
         // Device B syncs to learn about the report
-        const bSync = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
-        const reportOnB = bSync.remote_changes.find(
-            rc => rc.key === reportId && rc.table === 'reports'
-        );
+        const bSync = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
+        const reportOnB = bSync.remote_changes.find((rc) => rc.key === reportId && rc.table === 'reports');
         expect(reportOnB).toBeDefined();
         expect(reportOnB.data.content_hash).toBe(contentHash);
 
         // Device B downloads the report file
-        const downloadResponse = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${deviceB.access_token}` } }
-        );
+        const downloadResponse = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${deviceB.access_token}` },
+        });
         expect(downloadResponse.status()).toBe(200);
 
         const downloadedBytes = await downloadResponse.body();
@@ -822,24 +834,23 @@ test.describe('E2E Report File Sync', () => {
         const expectedHash = sha256Hex(pdfContent);
 
         const { reportId } = await insertReportWithFile(
-            request, deviceA.access_token, deviceA.device_id, null, pdfContent
+            request,
+            deviceA.access_token,
+            deviceA.device_id,
+            null,
+            pdfContent,
         );
 
         // Device B syncs and verifies the hash in metadata matches
-        const bSync = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
-        const reportMeta = bSync.remote_changes.find(
-            rc => rc.key === reportId && rc.table === 'reports'
-        );
+        const bSync = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
+        const reportMeta = bSync.remote_changes.find((rc) => rc.key === reportId && rc.table === 'reports');
         expect(reportMeta).toBeDefined();
         expect(reportMeta.data.content_hash).toBe(expectedHash);
 
         // Device B downloads the file and independently verifies the hash
-        const downloadResponse = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${deviceB.access_token}` } }
-        );
+        const downloadResponse = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${deviceB.access_token}` },
+        });
         expect(downloadResponse.status()).toBe(200);
 
         const downloadedBytes = await downloadResponse.body();
@@ -853,13 +864,16 @@ test.describe('E2E Report File Sync', () => {
 
         const pdfContent = minimalPdfBuffer();
         const { reportId } = await insertReportWithFile(
-            request, deviceA.access_token, deviceA.device_id, null, pdfContent
+            request,
+            deviceA.access_token,
+            deviceA.device_id,
+            null,
+            pdfContent,
         );
 
-        const downloadResponse = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${userB.access_token}` } }
-        );
+        const downloadResponse = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${userB.access_token}` },
+        });
 
         expect(downloadResponse.status()).toBe(404);
     });
@@ -869,38 +883,35 @@ test.describe('E2E Report File Sync', () => {
 
         // Create and upload a report
         const { reportId, syncVersion, cursor } = await insertReportWithFile(
-            request, deviceA.access_token, deviceA.device_id, null
+            request,
+            deviceA.access_token,
+            deviceA.device_id,
+            null,
         );
 
         // Verify the file is downloadable before deletion
-        const beforeDelete = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${deviceA.access_token}` } }
-        );
+        const beforeDelete = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${deviceA.access_token}` },
+        });
         expect(beforeDelete.status()).toBe(200);
 
         // Soft-delete the report
         const deleteChange = reportDeleteChange(reportId, {
             baseSyncVersion: syncVersion,
         });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id,
-            cursor, [deleteChange]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, cursor, [deleteChange]);
 
         // After deletion, download should return 404
-        const afterDelete = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${deviceA.access_token}` } }
-        );
+        const afterDelete = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${deviceA.access_token}` },
+        });
         expect(afterDelete.status()).toBe(404);
 
         // Verify from a second device too
         const deviceB = await setupSecondDevice(request, deviceA.email, deviceA.password);
-        const bDownload = await request.get(
-            `${BASE_URL}/api/sync/reports/${reportId}/file`,
-            { headers: { 'Authorization': `Bearer ${deviceB.access_token}` } }
-        );
+        const bDownload = await request.get(`${BASE_URL}/api/sync/reports/${reportId}/file`, {
+            headers: { Authorization: `Bearer ${deviceB.access_token}` },
+        });
         expect(bDownload.status()).toBe(404);
     });
 });
@@ -923,19 +934,15 @@ test.describe('E2E Cursor Management', () => {
                 baseSyncVersion: 0,
             }),
         ];
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, changes
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, changes);
 
         // A brand new device syncs with null cursor -- should get everything
         const deviceB = await setupSecondDevice(request, deviceA.email, deviceA.password);
-        const fullSync = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const fullSync = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
 
         // Verify all three records appear
         for (const change of changes) {
-            const found = fullSync.remote_changes.find(rc => rc.key === change.key);
+            const found = fullSync.remote_changes.find((rc) => rc.key === change.key);
             expect(found).toBeDefined();
         }
         expect(typeof fullSync.delta_cursor).toBe('string');
@@ -948,35 +955,27 @@ test.describe('E2E Cursor Management', () => {
 
         // Phase 1: Device A creates a comment, Device B syncs to get cursor
         const change1 = commentInsertChange({ text: 'Phase 1 comment' });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [change1]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [change1]);
 
-        const bSync1 = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []
-        );
+        const bSync1 = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
         const cursor1 = bSync1.delta_cursor;
 
         // Phase 1 comment should be in the full sync
-        const phase1Found = bSync1.remote_changes.find(rc => rc.key === change1.key);
+        const phase1Found = bSync1.remote_changes.find((rc) => rc.key === change1.key);
         expect(phase1Found).toBeDefined();
 
         // Phase 2: Device A creates another comment
         const change2 = commentInsertChange({ text: 'Phase 2 comment' });
-        await syncAndExpectOk(
-            request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [change2]
-        );
+        await syncAndExpectOk(request, BASE_URL, deviceA.access_token, deviceA.device_id, null, [change2]);
 
         // Device B syncs with cursor -- should only get Phase 2 comment
-        const bSync2 = await syncAndExpectOk(
-            request, BASE_URL, deviceB.access_token, deviceB.device_id, cursor1, []
-        );
+        const bSync2 = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, cursor1, []);
 
-        const phase2Found = bSync2.remote_changes.find(rc => rc.key === change2.key);
+        const phase2Found = bSync2.remote_changes.find((rc) => rc.key === change2.key);
         expect(phase2Found).toBeDefined();
 
         // Phase 1 comment should NOT appear (it was before the cursor)
-        const phase1Again = bSync2.remote_changes.find(rc => rc.key === change1.key);
+        const phase1Again = bSync2.remote_changes.find((rc) => rc.key === change1.key);
         expect(phase1Again).toBeUndefined();
     });
 
@@ -985,8 +984,12 @@ test.describe('E2E Cursor Management', () => {
 
         // Use a fabricated expired cursor
         const response = await syncRequest(
-            request, BASE_URL, device.access_token, device.device_id,
-            'clearly-expired-cursor-abc123', []
+            request,
+            BASE_URL,
+            device.access_token,
+            device.device_id,
+            'clearly-expired-cursor-abc123',
+            [],
         );
         expect(response.status()).toBe(410);
 
@@ -997,22 +1000,16 @@ test.describe('E2E Cursor Management', () => {
         // Recovery: client does a full resync with null cursor
         const studyUid = uniqueStudyUid();
         const change = commentInsertChange({ studyUid, text: 'Before full resync' });
-        await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id, null, [change]
-        );
+        await syncAndExpectOk(request, BASE_URL, device.access_token, device.device_id, null, [change]);
 
         // Full resync (null cursor) works and returns the data
-        const fullResync = await syncAndExpectOk(
-            request, BASE_URL, device.access_token, device.device_id, null, []
-        );
+        const fullResync = await syncAndExpectOk(request, BASE_URL, device.access_token, device.device_id, null, []);
         expect(typeof fullResync.delta_cursor).toBe('string');
 
         // A second device should see the data via full resync too
         const device2 = await setupSecondDevice(request, device.email, device.password);
-        const d2Sync = await syncAndExpectOk(
-            request, BASE_URL, device2.access_token, device2.device_id, null, []
-        );
-        const found = d2Sync.remote_changes.find(rc => rc.key === change.key);
+        const d2Sync = await syncAndExpectOk(request, BASE_URL, device2.access_token, device2.device_id, null, []);
+        const found = d2Sync.remote_changes.find((rc) => rc.key === change.key);
         expect(found).toBeDefined();
     });
 });

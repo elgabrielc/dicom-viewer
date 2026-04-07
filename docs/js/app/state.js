@@ -1,5 +1,6 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
 
     /**
      * Least Recently Used cache backed by a Map.
@@ -69,9 +70,9 @@
         libraryFolderSource: '',
         libraryConfigReachable: false,
         importInProgress: false,
-        importProgress: null,     // {phase, discovered, processed, copied, skipped, invalid, errors, collisions, currentPath}
-        importResult: null,        // {imported, skipped, invalid, errors, collisions, duration}
-        managedLibrary: false,     // mirrors config.managedLibrary
+        importProgress: null, // {phase, discovered, processed, copied, skipped, invalid, errors, collisions, currentPath}
+        importResult: null, // {imported, skipped, invalid, errors, collisions, duration}
+        managedLibrary: false, // mirrors config.managedLibrary
         studySort: { column: 'date', direction: 'desc' },
         currentTool: 'wl',
         viewTransform: { panX: 0, panY: 0, zoom: 1 },
@@ -82,7 +83,7 @@
         dragStart: { x: 0, y: 0 },
         measurements: new Map(),
         activeMeasurement: null,
-        pixelSpacing: null
+        pixelSpacing: null,
     };
 
     app.state = state;

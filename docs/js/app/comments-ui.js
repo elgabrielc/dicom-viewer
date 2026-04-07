@@ -3,7 +3,8 @@
 // Copyright (c) 2026 Divergent Health Technologies
 
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { state } = app;
     const notesApi = window.NotesAPI;
     const { escapeHtml } = app.utils;
@@ -29,7 +30,7 @@
         const target = normalizeCommentId(commentId);
         if (target === null) return -1;
         // Match against both record_uuid and id for backward compat
-        return comments.findIndex(comment => {
+        return comments.findIndex((comment) => {
             if (comment.record_uuid && normalizeCommentId(comment.record_uuid) === target) return true;
             return normalizeCommentId(comment.id) === target;
         });
@@ -38,11 +39,12 @@
     function renderComments(comments, studyUid, seriesUid = null) {
         if (!comments || comments.length === 0) return '';
         // Filter out soft-deleted comments (tombstones kept for sync replication)
-        const visible = comments.filter(c => !c.deletedAt);
+        const visible = comments.filter((c) => !c.deletedAt);
         if (visible.length === 0) return '';
-        return visible.map(comment => {
-            const cid = commentIdentifier(comment);
-            return `
+        return visible
+            .map((comment) => {
+                const cid = commentIdentifier(comment);
+                return `
             <div class="comment-item" data-comment-id="${escapeHtml(cid)}">
                 <div class="comment-header">
                     <span class="comment-time">${formatTimestamp(comment.time)}</span>
@@ -54,7 +56,8 @@
                 <div class="comment-text">${escapeHtml(comment.text)}</div>
             </div>
         `;
-        }).join('');
+            })
+            .join('');
     }
 
     function updateCommentListUI(studyUid, seriesUid) {
@@ -64,7 +67,9 @@
 
         let commentList;
         if (seriesUid) {
-            const panel = document.querySelector(`.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+            const panel = document.querySelector(
+                `.series-comment-panel[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+            );
             commentList = panel?.querySelector('.comment-list');
         } else {
             const panel = document.querySelector(`.comment-panel-row[data-study-uid="${CSS.escape(studyUid)}"]`);
@@ -73,26 +78,30 @@
 
         if (commentList) {
             commentList.innerHTML = renderComments(comments, studyUid, seriesUid);
-            commentList.querySelectorAll('.edit-comment').forEach(btn => {
-                btn.onclick = e => {
+            commentList.querySelectorAll('.edit-comment').forEach((btn) => {
+                btn.onclick = (e) => {
                     e.stopPropagation();
                     editComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
                 };
             });
-            commentList.querySelectorAll('.delete-comment').forEach(btn => {
-                btn.onclick = e => {
+            commentList.querySelectorAll('.delete-comment').forEach((btn) => {
+                btn.onclick = (e) => {
                     e.stopPropagation();
                     deleteComment(btn.dataset.studyUid, btn.dataset.seriesUid || null, btn.dataset.commentId);
                 };
             });
         }
 
-        const count = comments.filter(c => !c.deletedAt).length;
+        const count = comments.filter((c) => !c.deletedAt).length;
         let btn;
         if (seriesUid) {
-            btn = document.querySelector(`.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+            btn = document.querySelector(
+                `.series-comment-toggle[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+            );
         } else {
-            btn = document.querySelector(`.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`);
+            btn = document.querySelector(
+                `.comment-toggle[data-study-uid="${CSS.escape(studyUid)}"]:not(.series-comment-toggle)`,
+            );
         }
         if (btn && btn.textContent !== 'Hide comments') {
             btn.textContent = count > 0 ? `${count} comment${count > 1 ? 's' : ''}` : 'Add comment';
@@ -100,7 +109,9 @@
 
         let input;
         if (seriesUid) {
-            input = document.querySelector(`.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`);
+            input = document.querySelector(
+                `.add-series-comment[data-study-uid="${CSS.escape(studyUid)}"][data-series-uid="${CSS.escape(seriesUid)}"]`,
+            );
         } else {
             input = document.querySelector(`.add-study-comment[data-study-uid="${CSS.escape(studyUid)}"]`);
         }
@@ -130,7 +141,7 @@
         const saved = await notesApi.addComment(studyUid, {
             text: comment.text,
             time: comment.time,
-            seriesUid
+            seriesUid,
         });
         if (saved) {
             // Promote record_uuid (or id) from server response as canonical identifier
@@ -176,7 +187,7 @@
             if (!String(commentId).startsWith('local-')) {
                 await notesApi.updateComment(studyUid, commentId, {
                     text: comments[idx].text,
-                    time: comments[idx].time
+                    time: comments[idx].time,
                 });
             }
         }
@@ -186,6 +197,6 @@
         addComment,
         deleteComment,
         editComment,
-        renderComments
+        renderComments,
     };
 })();

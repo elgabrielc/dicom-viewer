@@ -1,5 +1,6 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
     const { canvas, ctx } = app.dom;
     const { getString, getNumber, createStagedError, normalizeStagedError } = app.utils;
 
@@ -87,7 +88,7 @@
             }
 
             console.warn(
-                'Falling back to fragment-concatenated encapsulated frame decode for single-frame image with empty Basic Offset Table.'
+                'Falling back to fragment-concatenated encapsulated frame decode for single-frame image with empty Basic Offset Table.',
             );
             return dicomParser.readEncapsulatedPixelData(dataSet, pixelDataElement, frameIndex);
         }
@@ -127,9 +128,9 @@
                     rows,
                     cols,
                     numberOfFrames,
-                    hasPixelData: !!pixelDataElement && rows > 0 && cols > 0
+                    hasPixelData: !!pixelDataElement && rows > 0 && cols > 0,
                 },
-                error: null
+                error: null,
             };
         } catch (error) {
             return { meta: null, error };
@@ -168,15 +169,13 @@
             const byteArray = await toDicomByteArray(input);
             const dataSet = dicomParser.parseDicom(byteArray);
             const directoryRecordSequence = dataSet.elements?.x00041220;
-            const recordItems = Array.isArray(directoryRecordSequence?.items)
-                ? directoryRecordSequence.items
-                : [];
+            const recordItems = Array.isArray(directoryRecordSequence?.items) ? directoryRecordSequence.items : [];
 
             if (!recordItems.length) {
                 return {
                     entries: [],
                     indexedPaths: [],
-                    error: new Error('DICOMDIR did not contain a directory record sequence.')
+                    error: new Error('DICOMDIR did not contain a directory record sequence.'),
                 };
             }
 
@@ -196,7 +195,7 @@
                 switch (recordType) {
                     case 'PATIENT':
                         currentPatient = {
-                            patientName: getString(itemDataSet, 'x00100010')
+                            patientName: getString(itemDataSet, 'x00100010'),
                         };
                         currentStudy = null;
                         currentSeries = null;
@@ -207,7 +206,7 @@
                             studyDate: getString(itemDataSet, 'x00080020'),
                             studyDescription: getString(itemDataSet, 'x00081030'),
                             studyInstanceUid: getString(itemDataSet, 'x0020000d'),
-                            modality: ''
+                            modality: '',
                         };
                         currentSeries = null;
                         break;
@@ -216,7 +215,7 @@
                             seriesDescription: getString(itemDataSet, 'x0008103e'),
                             seriesInstanceUid: getString(itemDataSet, 'x0020000e'),
                             seriesNumber: getString(itemDataSet, 'x00200011'),
-                            modality: getString(itemDataSet, 'x00080060')
+                            modality: getString(itemDataSet, 'x00080060'),
                         };
                         if (currentStudy && !currentStudy.modality && currentSeries.modality) {
                             currentStudy.modality = currentSeries.modality;
@@ -225,13 +224,9 @@
                     case 'IMAGE': {
                         const referencedPath = resolveDicomDirReferencedPath(
                             dicomDirPath,
-                            getString(itemDataSet, 'x00041500')
+                            getString(itemDataSet, 'x00041500'),
                         );
-                        if (
-                            !currentStudy?.studyInstanceUid
-                            || !currentSeries?.seriesInstanceUid
-                            || !referencedPath
-                        ) {
+                        if (!currentStudy?.studyInstanceUid || !currentSeries?.seriesInstanceUid || !referencedPath) {
                             break;
                         }
 
@@ -239,7 +234,7 @@
                         entries.push({
                             source: {
                                 kind: 'path',
-                                path: referencedPath
+                                path: referencedPath,
                             },
                             meta: {
                                 patientName: currentStudy.patientName,
@@ -250,10 +245,11 @@
                                 seriesInstanceUid: currentSeries.seriesInstanceUid,
                                 seriesNumber: currentSeries.seriesNumber,
                                 modality: currentSeries.modality || currentStudy.modality,
-                                sopInstanceUid: getString(itemDataSet, 'x00041511') || getString(itemDataSet, 'x00080018'),
+                                sopInstanceUid:
+                                    getString(itemDataSet, 'x00041511') || getString(itemDataSet, 'x00080018'),
                                 instanceNumber: getMetadataNumber(itemDataSet, 'x00200013', 0),
-                                sliceLocation: getMetadataNumber(itemDataSet, 'x00201041', 0)
-                            }
+                                sliceLocation: getMetadataNumber(itemDataSet, 'x00201041', 0),
+                            },
                         });
                         break;
                     }
@@ -265,13 +261,13 @@
             return {
                 entries,
                 indexedPaths,
-                error: null
+                error: null,
             };
         } catch (error) {
             return {
                 entries: [],
                 indexedPaths: [],
-                error
+                error,
             };
         }
     }
@@ -282,14 +278,8 @@
     }
 
     function isRenderableImageMetadata(meta) {
-        return !!(
-            meta?.studyInstanceUid &&
-            meta?.hasPixelData &&
-            meta?.rows > 0 &&
-            meta?.cols > 0
-        );
+        return !!(meta?.studyInstanceUid && meta?.hasPixelData && meta?.rows > 0 && meta?.cols > 0);
     }
-
 
     // =====================================================================
     // TRANSFER SYNTAX SUPPORT
@@ -305,24 +295,29 @@
     function isCompressed(transferSyntax) {
         if (!transferSyntax) return false;
         // JPEG Lossless, JPEG 2000, JPEG Baseline, RLE, etc.
-        return transferSyntax.startsWith('1.2.840.10008.1.2.4') ||
-               transferSyntax === '1.2.840.10008.1.2.5'; // RLE
+        return transferSyntax.startsWith('1.2.840.10008.1.2.4') || transferSyntax === '1.2.840.10008.1.2.5'; // RLE
     }
 
     function isJpegLossless(transferSyntax) {
         // JPEG Lossless transfer syntaxes
-        return transferSyntax === '1.2.840.10008.1.2.4.57' || // JPEG Lossless
-               transferSyntax === '1.2.840.10008.1.2.4.70';   // JPEG Lossless First-Order
+        return (
+            transferSyntax === '1.2.840.10008.1.2.4.57' || // JPEG Lossless
+            transferSyntax === '1.2.840.10008.1.2.4.70'
+        ); // JPEG Lossless First-Order
     }
 
     function isJpegBaseline(transferSyntax) {
-        return transferSyntax === '1.2.840.10008.1.2.4.50' || // JPEG Baseline
-               transferSyntax === '1.2.840.10008.1.2.4.51';   // JPEG Extended
+        return (
+            transferSyntax === '1.2.840.10008.1.2.4.50' || // JPEG Baseline
+            transferSyntax === '1.2.840.10008.1.2.4.51'
+        ); // JPEG Extended
     }
 
     function isJpeg2000(transferSyntax) {
-        return transferSyntax === '1.2.840.10008.1.2.4.90' || // JPEG 2000 Lossless
-               transferSyntax === '1.2.840.10008.1.2.4.91';   // JPEG 2000 Lossy
+        return (
+            transferSyntax === '1.2.840.10008.1.2.4.90' || // JPEG 2000 Lossless
+            transferSyntax === '1.2.840.10008.1.2.4.91'
+        ); // JPEG 2000 Lossy
     }
 
     // Transfer syntax names and support status
@@ -379,16 +374,16 @@
      * Other modalities have their own ranges
      */
     const MODALITY_DEFAULTS = {
-        'CT': { windowCenter: 40, windowWidth: 400 },      // Soft tissue window
-        'MR': { windowCenter: 512, windowWidth: 1024 },    // Mid-range for typical MRI
-        'PT': { windowCenter: 256, windowWidth: 512 },     // PET
-        'NM': { windowCenter: 256, windowWidth: 512 },     // Nuclear Medicine
-        'US': { windowCenter: 128, windowWidth: 256 },     // Ultrasound (8-bit typical)
-        'CR': { windowCenter: 2048, windowWidth: 4096 },   // Computed Radiography
-        'DX': { windowCenter: 2048, windowWidth: 4096 },   // Digital X-Ray
-        'MG': { windowCenter: 2048, windowWidth: 4096 },   // Mammography
-        'XA': { windowCenter: 128, windowWidth: 256 },     // X-Ray Angiography
-        'RF': { windowCenter: 128, windowWidth: 256 },     // Radiofluoroscopy
+        CT: { windowCenter: 40, windowWidth: 400 }, // Soft tissue window
+        MR: { windowCenter: 512, windowWidth: 1024 }, // Mid-range for typical MRI
+        PT: { windowCenter: 256, windowWidth: 512 }, // PET
+        NM: { windowCenter: 256, windowWidth: 512 }, // Nuclear Medicine
+        US: { windowCenter: 128, windowWidth: 256 }, // Ultrasound (8-bit typical)
+        CR: { windowCenter: 2048, windowWidth: 4096 }, // Computed Radiography
+        DX: { windowCenter: 2048, windowWidth: 4096 }, // Digital X-Ray
+        MG: { windowCenter: 2048, windowWidth: 4096 }, // Mammography
+        XA: { windowCenter: 128, windowWidth: 256 }, // X-Ray Angiography
+        RF: { windowCenter: 128, windowWidth: 256 }, // Radiofluoroscopy
     };
 
     /**
@@ -410,8 +405,10 @@
      */
     function calculateAutoWindowLevel(pixelData, rescaleSlope = 1, rescaleIntercept = 0) {
         // Sample pixels for speed (every 10th pixel)
-        let min = Infinity, max = -Infinity;
-        let sum = 0, count = 0;
+        let min = Infinity,
+            max = -Infinity;
+        let sum = 0,
+            count = 0;
 
         for (let i = 0; i < pixelData.length; i += 10) {
             const value = pixelData[i] * rescaleSlope + rescaleIntercept;
@@ -430,7 +427,7 @@
 
         // Use percentile-based windowing to handle outliers
         // Center at mean, width covers most of the dynamic range
-        const windowWidth = Math.max(range * 0.9, 1);  // 90% of range
+        const windowWidth = Math.max(range * 0.9, 1); // 90% of range
         const windowCenter = mean;
 
         return { windowCenter: Math.round(windowCenter), windowWidth: Math.round(windowWidth), isBlank };
@@ -445,7 +442,8 @@
      */
     function isBlankSlice(pixelData, rescaleSlope = 1, rescaleIntercept = 0) {
         // Sample pixels for speed (every 10th pixel)
-        let min = Infinity, max = -Infinity;
+        let min = Infinity,
+            max = -Infinity;
 
         for (let i = 0; i < pixelData.length; i += 10) {
             const value = pixelData[i] * rescaleSlope + rescaleIntercept;
@@ -455,7 +453,7 @@
             if (max - min >= 1) return false;
         }
 
-        return (max - min) < 1;
+        return max - min < 1;
     }
 
     /**
@@ -499,20 +497,26 @@
                 let offset = pixelDataElement.dataOffset;
 
                 // Skip the basic offset table item
-                const itemTag1 = byteArray[offset] | (byteArray[offset+1] << 8);
-                const itemTag2 = byteArray[offset+2] | (byteArray[offset+3] << 8);
+                const itemTag1 = byteArray[offset] | (byteArray[offset + 1] << 8);
+                const itemTag2 = byteArray[offset + 2] | (byteArray[offset + 3] << 8);
 
-                if (itemTag1 === 0xFFFE && itemTag2 === 0xE000) {
-                    const botLength = byteArray[offset+4] | (byteArray[offset+5] << 8) |
-                                     (byteArray[offset+6] << 16) | (byteArray[offset+7] << 24);
+                if (itemTag1 === 0xfffe && itemTag2 === 0xe000) {
+                    const botLength =
+                        byteArray[offset + 4] |
+                        (byteArray[offset + 5] << 8) |
+                        (byteArray[offset + 6] << 16) |
+                        (byteArray[offset + 7] << 24);
                     offset += 8 + botLength;
 
-                    const fragTag1 = byteArray[offset] | (byteArray[offset+1] << 8);
-                    const fragTag2 = byteArray[offset+2] | (byteArray[offset+3] << 8);
+                    const fragTag1 = byteArray[offset] | (byteArray[offset + 1] << 8);
+                    const fragTag2 = byteArray[offset + 2] | (byteArray[offset + 3] << 8);
 
-                    if (fragTag1 === 0xFFFE && fragTag2 === 0xE000) {
-                        const fragLength = byteArray[offset+4] | (byteArray[offset+5] << 8) |
-                                          (byteArray[offset+6] << 16) | (byteArray[offset+7] << 24);
+                    if (fragTag1 === 0xfffe && fragTag2 === 0xe000) {
+                        const fragLength =
+                            byteArray[offset + 4] |
+                            (byteArray[offset + 5] << 8) |
+                            (byteArray[offset + 6] << 16) |
+                            (byteArray[offset + 7] << 24);
                         offset += 8;
                         frameData = new Uint8Array(byteArray.buffer, byteArray.byteOffset + offset, fragLength);
                     }
@@ -548,7 +552,7 @@
         worker: null,
         workerUrl: null,
         activeRequest: null,
-        queue: []
+        queue: [],
     };
 
     function resolveOpenJpegAssetUrl(fileName, runtime = window) {
@@ -627,7 +631,7 @@
                     jpeg2000WorkerState.activeRequest = null;
                     disposeJpeg2000Worker();
                     activeRequest.reject(
-                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an unexpected response.')
+                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an unexpected response.'),
                     );
                     pumpJpeg2000WorkerQueue();
                     return;
@@ -638,8 +642,8 @@
                     activeRequest.reject(
                         createStagedError(
                             payload.stage || 'decode',
-                            payload.message || 'JPEG 2000 worker decode failed'
-                        )
+                            payload.message || 'JPEG 2000 worker decode failed',
+                        ),
                     );
                     pumpJpeg2000WorkerQueue();
                     return;
@@ -649,26 +653,34 @@
                     jpeg2000WorkerState.activeRequest = null;
                     disposeJpeg2000Worker();
                     activeRequest.reject(
-                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an invalid response.')
+                        createStagedError('pixel-conversion', 'JPEG 2000 worker returned an invalid response.'),
                     );
                     pumpJpeg2000WorkerQueue();
                     return;
                 }
 
-                if (payload.frameInfo?.width && activeRequest.expectedCols && payload.frameInfo.width !== activeRequest.expectedCols) {
+                if (
+                    payload.frameInfo?.width &&
+                    activeRequest.expectedCols &&
+                    payload.frameInfo.width !== activeRequest.expectedCols
+                ) {
                     console.warn(
                         'JPEG 2000 worker width mismatch:',
                         payload.frameInfo.width,
                         'expected',
-                        activeRequest.expectedCols
+                        activeRequest.expectedCols,
                     );
                 }
-                if (payload.frameInfo?.height && activeRequest.expectedRows && payload.frameInfo.height !== activeRequest.expectedRows) {
+                if (
+                    payload.frameInfo?.height &&
+                    activeRequest.expectedRows &&
+                    payload.frameInfo.height !== activeRequest.expectedRows
+                ) {
                     console.warn(
                         'JPEG 2000 worker height mismatch:',
                         payload.frameInfo.height,
                         'expected',
-                        activeRequest.expectedRows
+                        activeRequest.expectedRows,
                     );
                 }
 
@@ -703,8 +715,8 @@
             request.reject(
                 createStagedError(
                     'decode-timeout',
-                    `JPEG 2000 decode timeout (${JPEG2000_DECODE_TIMEOUT_MS / 1000}s, ${request.frameByteLength} bytes)`
-                )
+                    `JPEG 2000 decode timeout (${JPEG2000_DECODE_TIMEOUT_MS / 1000}s, ${request.frameByteLength} bytes)`,
+                ),
             );
             pumpJpeg2000WorkerQueue();
         }, JPEG2000_DECODE_TIMEOUT_MS);
@@ -718,9 +730,9 @@
                     bitsAllocated: request.bitsAllocated,
                     pixelRepresentation: request.pixelRepresentation,
                     expectedRows: request.expectedRows,
-                    expectedCols: request.expectedCols
+                    expectedCols: request.expectedCols,
                 },
-                [request.frameData.buffer]
+                [request.frameData.buffer],
             );
         } catch (error) {
             clearTimeout(request.timeoutId);
@@ -751,7 +763,7 @@
                 expectedCols,
                 resolve,
                 reject,
-                timeoutId: null
+                timeoutId: null,
             });
             pumpJpeg2000WorkerQueue();
         });
@@ -768,7 +780,15 @@
      * @param {number} pixelRepresentation - 0=unsigned, 1=signed
      * @returns {Promise<TypedArray>} Decoded pixel data
      */
-    async function decodeJpeg2000(dataSet, pixelDataElement, rows, cols, bitsAllocated, pixelRepresentation, frameIndex = 0) {
+    async function decodeJpeg2000(
+        dataSet,
+        pixelDataElement,
+        rows,
+        cols,
+        bitsAllocated,
+        pixelRepresentation,
+        frameIndex = 0,
+    ) {
         try {
             console.log('Attempting JPEG 2000 decode for', rows, 'x', cols, 'image');
 
@@ -788,19 +808,12 @@
             } catch (error) {
                 throw createStagedError(
                     'frame-extraction',
-                    String(error?.message || error || 'Failed to extract encapsulated JPEG 2000 frame data.')
+                    String(error?.message || error || 'Failed to extract encapsulated JPEG 2000 frame data.'),
                 );
             }
             console.log('JPEG 2000 data length:', j2kData.length, 'bytes');
 
-            return await decodeJ2KInWorker(
-                j2kData,
-                bitsAllocated,
-                pixelRepresentation,
-                rows,
-                cols
-            );
-
+            return await decodeJ2KInWorker(j2kData, bitsAllocated, pixelRepresentation, rows, cols);
         } catch (e) {
             console.error('JPEG 2000 decode error:', e);
             throw normalizeStagedError(e, 'decode');
@@ -858,11 +871,9 @@
                 const pixelData = new Uint8Array(pixelCount);
                 for (let i = 0; i < pixelCount; i++) {
                     const rgbaIndex = i * 4;
-                    pixelData[i] = Math.round((
-                        imageData.data[rgbaIndex] +
-                        imageData.data[rgbaIndex + 1] +
-                        imageData.data[rgbaIndex + 2]
-                    ) / 3);
+                    pixelData[i] = Math.round(
+                        (imageData.data[rgbaIndex] + imageData.data[rgbaIndex + 1] + imageData.data[rgbaIndex + 2]) / 3,
+                    );
                 }
                 return {
                     pixelData,
@@ -871,7 +882,7 @@
                     samplesPerPixel: 1,
                     planarConfiguration: 0,
                     photometricInterpretation,
-                    skipWindowLevel: true
+                    skipWindowLevel: true,
                 };
             }
 
@@ -891,14 +902,13 @@
                 samplesPerPixel: 3,
                 planarConfiguration: 0,
                 photometricInterpretation: 'RGB',
-                skipWindowLevel: true
+                skipWindowLevel: true,
             };
         } catch (e) {
             console.error('JPEG Baseline decode error:', e);
             throw normalizeStagedError(e, 'decode');
         }
     }
-
 
     app.dicom = {
         parseDicomMetadata,
@@ -925,6 +935,6 @@
         decodeJpegBaseline,
         isRenderableImageMetadata,
         resolveOpenJpegAssetUrl,
-        resolveJpeg2000WorkerUrl
+        resolveJpeg2000WorkerUrl,
     };
 })();

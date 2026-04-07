@@ -18,7 +18,6 @@
  */
 
 const _SyncEngine = (() => {
-
     // Default sync interval per contract: 30 seconds
     const DEFAULT_INTERVAL_MS = 30000;
 
@@ -104,7 +103,7 @@ const _SyncEngine = (() => {
                 console.warn('SyncEngine: sync failed:', err.message || err);
                 this._dispatchSyncEvent('sync:error', {
                     message: err.message || String(err),
-                    consecutiveErrors: this._consecutiveErrors
+                    consecutiveErrors: this._consecutiveErrors,
                 });
                 return { error: true, message: err.message || String(err) };
             } finally {
@@ -194,14 +193,15 @@ const _SyncEngine = (() => {
             // 2. Read and collapse pending outbox entries.
             // Prefer the async path (reads SQLite on desktop) over the
             // synchronous localStorage-only fallback.
-            const pending = typeof outbox.readPendingChangesAsync === 'function'
-                ? await outbox.readPendingChangesAsync()
-                : outbox.readPendingChanges();
+            const pending =
+                typeof outbox.readPendingChangesAsync === 'function'
+                    ? await outbox.readPendingChangesAsync()
+                    : outbox.readPendingChanges();
             const collapsed = outbox.collapseChanges(pending);
 
             // Separate no-ops (insert+delete pairs) from real changes
-            const noops = collapsed.filter(entry => entry._noop);
-            const changes = collapsed.filter(entry => !entry._noop);
+            const noops = collapsed.filter((entry) => entry._noop);
+            const changes = collapsed.filter((entry) => !entry._noop);
 
             // Mark no-ops as synced immediately (they never need to reach the server)
             for (const noop of noops) {
@@ -213,9 +213,10 @@ const _SyncEngine = (() => {
             // 3. Build request payload per contract
             const requestChanges = [];
             for (const entry of changes) {
-                const recordState = typeof outbox.readRecordStateAsync === 'function'
-                    ? await outbox.readRecordStateAsync(entry.table_name, entry.record_key)
-                    : outbox.readRecordState(entry.table_name, entry.record_key);
+                const recordState =
+                    typeof outbox.readRecordStateAsync === 'function'
+                        ? await outbox.readRecordStateAsync(entry.table_name, entry.record_key)
+                        : outbox.readRecordState(entry.table_name, entry.record_key);
                 const data = recordState || {};
 
                 requestChanges.push({
@@ -224,7 +225,7 @@ const _SyncEngine = (() => {
                     key: entry.record_key,
                     operation: entry.operation,
                     base_sync_version: entry.base_sync_version,
-                    data: entry.operation === 'delete' ? {} : data
+                    data: entry.operation === 'delete' ? {} : data,
                 });
             }
 
@@ -235,7 +236,7 @@ const _SyncEngine = (() => {
             const requestBody = {
                 device_id: deviceId,
                 delta_cursor: deltaCursor,
-                changes: requestChanges
+                changes: requestChanges,
             };
 
             let response;
@@ -248,7 +249,7 @@ const _SyncEngine = (() => {
                 // the backoff loop without penalising entries.
                 const isTransient = /network error|rate limited \(429\)/i.test(fetchError.message);
                 if (!isTransient && changes.length > 0) {
-                    const failedIds = changes.flatMap(e => e._entry_ids || [e.id]);
+                    const failedIds = changes.flatMap((e) => e._entry_ids || [e.id]);
                     outbox.markFailed(failedIds, fetchError.message || String(fetchError));
                 }
                 throw fetchError;
@@ -271,10 +272,10 @@ const _SyncEngine = (() => {
                 res = await fetch(this.syncUrl, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${accessToken}`,
-                        'Content-Type': 'application/json'
+                        Authorization: `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify(body),
                 });
             } catch (networkError) {
                 // Network failure (offline, DNS, etc.)
@@ -352,9 +353,7 @@ const _SyncEngine = (() => {
                 const entry = entryByOpUuid.get(acc.operation_uuid);
                 if (entry) {
                     // Update local sync_version for this record
-                    this._updateLocalSyncVersion(
-                        entry.table_name, entry.record_key, acc.sync_version, studyLookup
-                    );
+                    this._updateLocalSyncVersion(entry.table_name, entry.record_key, acc.sync_version, studyLookup);
                     // Collect all original entry IDs for this collapsed entry
                     const ids = entry._entry_ids || [entry.id];
                     acceptedIds.push(...ids);
@@ -374,7 +373,7 @@ const _SyncEngine = (() => {
                         entry.table_name,
                         entry.record_key,
                         rej.current_data,
-                        rej.current_sync_version
+                        rej.current_sync_version,
                     );
                     const ids = entry._entry_ids || [entry.id];
                     rejectedIds.push(...ids);
@@ -387,12 +386,7 @@ const _SyncEngine = (() => {
 
             // 5c. Process remote changes (from other devices)
             for (const remote of remoteChanges) {
-                this._applyRemoteData(
-                    remote.table,
-                    remote.key,
-                    remote.data,
-                    remote.sync_version
-                );
+                this._applyRemoteData(remote.table, remote.key, remote.data, remote.sync_version);
             }
 
             // 6. Store new delta_cursor
@@ -407,7 +401,7 @@ const _SyncEngine = (() => {
                 rejectedCount: rejected.length,
                 remoteChanges,
                 remoteChangeCount: remoteChanges.length,
-                noopsCleaned: noopCount
+                noopsCleaned: noopCount,
             };
         }
 
@@ -566,7 +560,7 @@ const _SyncEngine = (() => {
                         time: createdAt,
                         created_at: createdAt,
                         updated_at: data.updated_at || createdAt,
-                        sync_version: syncVersion
+                        sync_version: syncVersion,
                     });
                 }
                 saveStore(store);
@@ -584,9 +578,7 @@ const _SyncEngine = (() => {
                     // Remote tombstone -- only act if study and report exist locally
                     const existingStudy = store.studies[studyUid];
                     if (!existingStudy) return;
-                    const idx = existingStudy.reports.findIndex(
-                        r => normalizeReportId(r?.id) === targetId
-                    );
+                    const idx = existingStudy.reports.findIndex((r) => normalizeReportId(r?.id) === targetId);
                     if (idx !== -1) {
                         existingStudy.reports[idx].deletedAt = deletedAt;
                         existingStudy.reports[idx].sync_version = syncVersion;
@@ -596,9 +588,7 @@ const _SyncEngine = (() => {
                 }
 
                 const studyEntry = ensureStudy(store, studyUid);
-                const existingIdx = studyEntry.reports.findIndex(
-                    r => normalizeReportId(r?.id) === targetId
-                );
+                const existingIdx = studyEntry.reports.findIndex((r) => normalizeReportId(r?.id) === targetId);
 
                 if (existingIdx !== -1) {
                     // Update existing report metadata
@@ -620,7 +610,7 @@ const _SyncEngine = (() => {
                         size: data.size || 0,
                         addedAt: data.added_at ? new Date(data.added_at).toISOString() : new Date().toISOString(),
                         updatedAt: data.updated_at ? new Date(data.updated_at).toISOString() : new Date().toISOString(),
-                        sync_version: syncVersion
+                        sync_version: syncVersion,
                     });
                 }
                 saveStore(store);
@@ -637,16 +627,14 @@ const _SyncEngine = (() => {
          */
         _findCommentByKey(studyEntry, recordKey) {
             if (Array.isArray(studyEntry.comments)) {
-                const found = studyEntry.comments.find(c =>
-                    c.record_uuid === recordKey || c.id === recordKey
-                );
+                const found = studyEntry.comments.find((c) => c.record_uuid === recordKey || c.id === recordKey);
                 if (found) return found;
             }
             if (studyEntry.series && typeof studyEntry.series === 'object') {
                 for (const seriesEntry of Object.values(studyEntry.series)) {
                     if (Array.isArray(seriesEntry.comments)) {
-                        const found = seriesEntry.comments.find(c =>
-                            c.record_uuid === recordKey || c.id === recordKey
+                        const found = seriesEntry.comments.find(
+                            (c) => c.record_uuid === recordKey || c.id === recordKey,
                         );
                         if (found) return found;
                     }
@@ -663,15 +651,15 @@ const _SyncEngine = (() => {
          */
         _removeCommentFromStudy(studyEntry, recordKey) {
             if (Array.isArray(studyEntry.comments)) {
-                studyEntry.comments = studyEntry.comments.filter(c =>
-                    c.record_uuid !== recordKey && c.id !== recordKey
+                studyEntry.comments = studyEntry.comments.filter(
+                    (c) => c.record_uuid !== recordKey && c.id !== recordKey,
                 );
             }
             if (studyEntry.series && typeof studyEntry.series === 'object') {
                 for (const seriesEntry of Object.values(studyEntry.series)) {
                     if (Array.isArray(seriesEntry.comments)) {
-                        seriesEntry.comments = seriesEntry.comments.filter(c =>
-                            c.record_uuid !== recordKey && c.id !== recordKey
+                        seriesEntry.comments = seriesEntry.comments.filter(
+                            (c) => c.record_uuid !== recordKey && c.id !== recordKey,
                         );
                     }
                 }

@@ -1,8 +1,11 @@
 (() => {
-    const app = window.DicomViewerApp = window.DicomViewerApp || {};
+    const app = window.DicomViewerApp || {};
+    window.DicomViewerApp = app;
+    const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
+    const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
 
     const utils = {
-        formatDate: s => s?.length === 8 ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : s || '-',
+        formatDate: (s) => (s?.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s || '-'),
         escapeHtml(str) {
             if (str == null) return '';
             return String(str)
@@ -28,9 +31,9 @@
             }
         },
         generateUUID() {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-                const r = Math.random() * 16 | 0;
-                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                const r = (Math.random() * 16) | 0;
+                return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
             });
         },
         createStagedError(stage, message, extra = {}) {
@@ -51,7 +54,7 @@
                 return utils.createStagedError(
                     typeof error.stage === 'string' && error.stage ? error.stage : fallbackStage,
                     String(error.message || 'Unknown decode error'),
-                    { details: error.details }
+                    { details: error.details },
                 );
             }
 
@@ -87,7 +90,7 @@
             if (Array.isArray(bytes)) {
                 return Uint8Array.from(bytes);
             }
-            if (depth < 3 && bytes && Object.prototype.hasOwnProperty.call(bytes, 'data')) {
+            if (depth < 3 && bytes && hasOwn(bytes, 'data')) {
                 return utils.normalizeBinaryResponse(bytes.data, depth + 1);
             }
             return null;
@@ -105,7 +108,7 @@
                 meta?.sopClassUid ||
                 meta?.sopInstanceUid
             );
-        }
+        },
     };
 
     app.utils = utils;

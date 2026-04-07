@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 
 from flask import jsonify, request
 
-
 # Per-process session token for browser-session authentication.
 # Generated once at startup; the frontend fetches it via GET /api/session.
 # This prevents browser CSRF and casual unauthenticated access to PHI routes.
@@ -56,7 +55,7 @@ def csrf_origin_check():
             referer = request.headers.get('Referer')
             if referer:
                 parsed = urlparse(referer)
-                origin = f"{parsed.scheme}://{parsed.netloc}"
+                origin = f'{parsed.scheme}://{parsed.netloc}'
 
         if origin:
             origin_host = urlparse(origin).netloc
