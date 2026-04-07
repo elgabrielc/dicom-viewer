@@ -803,10 +803,13 @@ test.describe('E2E Report File Sync', () => {
 
         // Device A creates and uploads a report
         const pdfContent = minimalPdfBuffer();
-        const {
-            reportId,
-            contentHash,
-        } = await insertReportWithFile(request, deviceA.access_token, deviceA.device_id, null, pdfContent);
+        const { reportId, contentHash } = await insertReportWithFile(
+            request,
+            deviceA.access_token,
+            deviceA.device_id,
+            null,
+            pdfContent,
+        );
 
         // Device B syncs to learn about the report
         const bSync = await syncAndExpectOk(request, BASE_URL, deviceB.access_token, deviceB.device_id, null, []);
