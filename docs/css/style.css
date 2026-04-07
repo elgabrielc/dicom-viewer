@@ -43,6 +43,26 @@
  */
 
 /* ==========================================================================
+   SELF-HOSTED FONTS (Tauri CSP blocks Google Fonts CDN)
+   ========================================================================== */
+
+@font-face {
+    font-family: 'Lora';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: block;
+    src: url('../fonts/lora/Lora-variable.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: block;
+    src: url('../fonts/inter/Inter-variable.woff2') format('woff2');
+}
+
+/* ==========================================================================
    0. DESIGN TOKENS
    ========================================================================== */
 
