@@ -282,7 +282,7 @@
 
             try {
                 return await parseDicomHeaderDataSet(headerBytes);
-            } catch (error) {
+            } catch {
                 if (headerBytes.byteLength < requestedBytes) {
                     return null;
                 }
@@ -772,14 +772,7 @@
         }
     }
 
-    async function processDesktopPathDicomDirFile(
-        fileEntry,
-        studies,
-        indexedFilePaths,
-        stats,
-        onProgress,
-        availablePaths = null,
-    ) {
+    async function processDesktopPathDicomDirFile(fileEntry, stats, onProgress, availablePaths = null) {
         const sourcePath = fileEntry?.source?.path || '';
         const shouldTimeReads = typeof stats.readFileMs === 'number';
         let indexedCount = 0;
@@ -1193,14 +1186,7 @@
                             queuedFilePaths.add(currentPath);
                         }
                         stats.discovered++;
-                        await processDesktopPathDicomDirFile(
-                            fileEntry,
-                            studies,
-                            indexedFilePaths,
-                            stats,
-                            onProgress,
-                            manifestPathSet,
-                        );
+                        await processDesktopPathDicomDirFile(fileEntry, stats, onProgress, manifestPathSet);
                         continue;
                     }
 
@@ -1316,8 +1302,6 @@
                                 source: { kind: 'path', path: entryPath },
                                 rootPath: current.rootPath,
                             },
-                            studies,
-                            indexedFilePaths,
                             stats,
                             onProgress,
                         );

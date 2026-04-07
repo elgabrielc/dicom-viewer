@@ -305,7 +305,7 @@ const _SyncEngine = (() => {
                 const retryAfter = res.headers.get('Retry-After');
                 if (retryAfter) {
                     const seconds = parseInt(retryAfter, 10);
-                    if (!isNaN(seconds)) {
+                    if (!Number.isNaN(seconds)) {
                         this._retryAfterMs = seconds * 1000;
                     }
                 }

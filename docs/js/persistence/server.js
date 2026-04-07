@@ -156,7 +156,7 @@ const _NotesServer = (() => {
                 body: JSON.stringify(payload),
             });
             // Promote record_uuid to id for canonical identifier usage
-            if (result && result.record_uuid) {
+            if (result?.record_uuid) {
                 result.id = result.record_uuid;
             }
             return result;

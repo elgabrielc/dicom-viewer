@@ -31,7 +31,6 @@
     const { resetViewForNewSeries, updateWLDisplay } = app.tools;
 
     const VIEWER_PRELOAD_RADIUS = config?.deploymentMode === 'desktop' ? 1 : 3;
-    const MAX_SHARED_PATH_DATASETS = 1;
     let loadGeneration = 0;
     let activeLoadRequestId = 0;
     const inFlightLoads = new Map();
@@ -142,7 +141,7 @@
 
     function rememberSharedPathDataSet(path, entry) {
         if (!path) return entry;
-        // MAX_SHARED_PATH_DATASETS is 1, so just keep the latest
+        // Only retain the latest shared-path dataset entry.
         sharedPathDataSets.clear();
         sharedPathDataSets.set(path, entry);
         return entry;
@@ -412,7 +411,7 @@
     }
 
     function updateSliceMetadata(info, slice, index, totalSlices) {
-        if (info && info.isBlank) {
+        if (info?.isBlank) {
             metadataContent.innerHTML = `
                 <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${totalSlices}</div></div>
                 <div class="metadata-item"><div class="label">Modality</div><div class="value">${escapeHtml(info.modality || '-')}</div></div>
@@ -459,7 +458,7 @@
             return;
         }
 
-        if (info && info.error) {
+        if (info?.error) {
             metadataContent.innerHTML = `
                 <div class="metadata-item"><div class="label">Slice</div><div class="value">${index + 1} / ${totalSlices}</div></div>
                 <div class="metadata-item"><div class="label">Status</div><div class="value" style="color: #f0ad4e;">Decode Error</div></div>
