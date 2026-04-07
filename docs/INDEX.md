@@ -72,6 +72,12 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [AWS HealthLake Imaging](./planning/RESEARCH-aws-healthlake-imaging.md) | Infrastructure | HTJ2K encoding, DICOMweb + OIDC, progressive loading via TLM Proxy, cloud storage for ADR 004 |
 | [EasyRadiology](./planning/RESEARCH-easyradiology.md) | Competitive | easyRadiology AG architecture, market positioning, 35% German market share |
 | [Word + OneDrive Sync](./planning/RESEARCH-word-onedrive-sync-prompt_2026-03-25_1124.md) | Infrastructure | Microsoft Word and OneDrive sync architecture, conflict resolution, informing cloud sync design |
+| [Instrumentation: Todoist/Bitmapist](./planning/RESEARCH-instrumentation.md) | Instrumentation | Todoist analytics benchmarking, Bitmapist, Karma system, consent-first model |
+| [Instrumentation: Sublime Text](./planning/RESEARCH-sublime-instrumentation-prompt_2026-04-06_1333.md) | Instrumentation | Sublime Text near-zero telemetry benchmarking, Panic privacy policy as template |
+| [Instrumentation: Claude/Anthropic](./planning/RESEARCH-claude-instrumentation-prompt_2026-04-06_1345.md) | Instrumentation | Claude two-stream architecture, HIPAA BAA, enterprise compliance deep dive |
+| [Instrumentation: Spotify/Wrapped](./planning/RESEARCH-spotify-instrumentation-prompt_2026-04-06_1358.md) | Instrumentation | Spotify data-as-feature, Wrapped viral model, event taxonomy at scale |
+| [DICOM Sharing Compliance](./planning/RESEARCH-dicom-sharing-compliance-prompt_2026-04-06_1425.md) | Compliance | HIPAA/FTC classification, DICOMweb standards, Epic/Ambra integration paths |
+| [Healthcare Compliance Costs](./planning/RESEARCH-healthcare-compliance-costs-prompt_2026-04-06_1445.md) | Compliance | Itemized SOC 2/HITRUST/Epic/Ambra costs, three scenarios, startup examples |
 
 ### For Decisions
 
@@ -84,6 +90,10 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [ADR 004: Cloud Platform Rendering Architecture](./decisions/004-cloud-platform-rendering-architecture.md) | docs/decisions/ | Decision record for client-side vs server-side rendering in the future authenticated cloud platform |
 | [ADR 005: Native Desktop Persistence](./decisions/005-native-desktop-persistence.md) | docs/decisions/ | Decision record for native SQLite persistence for notes, reports, and library config in the Tauri desktop app |
 | [ADR 006: Cloud Sync Storage Architecture](./decisions/006-cloud-sync-storage-architecture.md) | docs/decisions/ | Decision record for cloud sync storage architecture across deployment modes |
+| [ADR 007: Copy-on-Import Library](./decisions/007-multi-source-library.md) | docs/decisions/ | Decision record for copy-on-import managed library folder |
+| [ADR 008: Local-First Instrumentation](./decisions/008-local-first-instrumentation.md) | docs/decisions/ | Decision record for local usage counters with user-visible stats panel, two-stream architecture |
+| [ADR 009: Brand Design System](./decisions/009-brand-design-system.md) | docs/decisions/ | Decision record for emerald design system and brand identity |
+| [ADR 010: Patient-to-Provider Image Sharing](./decisions/010-patient-provider-image-sharing.md) | docs/decisions/ | Decision record for DICOMweb-based patient-to-provider sharing, compliance, and phased rollout |
 
 ---
 
@@ -175,7 +185,11 @@ docs/decisions/
 ├── 003-tauri-desktop-shell-with-shared-web-core.md  # Decision record for the Tauri desktop direction
 ├── 004-cloud-platform-rendering-architecture.md     # Decision record for cloud rendering architecture
 ├── 005-native-desktop-persistence.md       # Decision record for native SQLite persistence in Tauri
-└── 006-cloud-sync-storage-architecture.md  # Decision record for cloud sync storage architecture
+├── 006-cloud-sync-storage-architecture.md  # Decision record for cloud sync storage architecture
+├── 007-multi-source-library.md             # Decision record for copy-on-import managed library folder
+├── 008-local-first-instrumentation.md      # Decision record for local usage counters, two-stream architecture
+├── 009-brand-design-system.md              # Decision record for emerald design system and brand identity
+└── 010-patient-provider-image-sharing.md   # Decision record for DICOMweb patient-to-provider sharing
 ```
 
 ---
@@ -310,4 +324,4 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 
 ---
 
-*Last updated: 2026-03-26*
+*Last updated: 2026-04-06*
