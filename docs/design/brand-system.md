@@ -36,17 +36,18 @@ This file captures the durable visual system for Divergent Health and myRadOne.
 
 ### Viewer-Dark Atmosphere
 
-Current token file values:
+Current approved values:
 
 | Token | Value |
 | --- | --- |
-| `--color-viewer-bg` | `#161E17` |
-| `--color-viewer-panel` | `#1C261E` |
-| `--color-viewer-header` | `#0F160F` |
+| `--color-viewer-bg` | `#0F1E14` |
+| `--color-viewer-panel` | `#14281A` |
+| `--color-viewer-header` | `#0A160E` |
 | `--color-viewer-text` | `#EEEEEE` |
 
-Use these as the present working values for dark surfaces while the older navy
-CSS is retired.
+These values match ADR 009 and the committed app CSS. Older exploration files
+under `design/colors/` still contain nearby but superseded dark values from the
+sage branch of the system.
 
 ## Typography
 
@@ -126,7 +127,9 @@ The icon should feel like a product asset, not a generic emoji substitute.
 ## Known Migration Gaps
 
 - The current repo still contains older blue / navy styling in checked-in CSS.
-- The font strategy in code has not fully caught up to the self-hosted target.
-- Some selected brand assets currently exist only in local exploration folders.
+- The font strategy in code has not fully caught up to the self-hosted target,
+  and some surfaces still fall back to system fonts.
+- Some selected brand assets still have both committed and local exploration
+  homes that should be rationalized over time.
 
 Those gaps are implementation debt, not unresolved brand direction.

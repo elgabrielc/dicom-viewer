@@ -27,6 +27,7 @@ claude 0/                          # Workspace/inbox - drop files here for Claud
 | `AGENT_WORKTREES.md` | Parallel AI agent workflow rules: one agent per branch and worktree, `local/WIP` as integration branch, and helper scripts for create/list/retire |
 | `AGENT_WORKTREES_EXPLAINER.md` | Detailed beginner walkthrough of the multi-agent cleanup, why the workflow changed, and how to avoid shared-checkout collisions |
 | `RESEARCH_POLICY.md` | Policy for which benchmark and planning research belongs in git, what should stay local, and when research docs should be PRs |
+| `design/` | Persistent design handbook: bootstrap, brand system, surfaces, patterns, decisions, open questions, and session closeout template |
 | `BUGS.md` | Bug tracking and known issues |
 | `CODE_REVIEWS.md` | PR review findings and resolution tracking |
 | `DEPLOY.md` | Deployment guide: local dev, GitHub Pages, CI/CD workflow |
@@ -107,6 +108,25 @@ asks to preserve the research process itself.
 
 ---
 
+## Committed Design Explorations (`dicom-viewer/design/`)
+
+Historical exploration artifacts that remain in git as reference material. These
+files are not the canonical design spec; `docs/design/` now holds durable
+project truth.
+
+| Path | Description |
+|------|-------------|
+| `design/brand/brand-archive.html` | Committed overview of brand exploration history |
+| `design/brand/landing.html` | Divergent landing explorations |
+| `design/brand/logos*.html` | Parent-brand mark and integrated lockup explorations |
+| `design/colors/design-system-emerald.html` | Emerald design-system exploration |
+| `design/colors/design-system-sage.html` | Sage design-system exploration |
+| `design/colors/tokens.css` | Historical exploration token export |
+| `design/colors/app-icon-*.html` | App icon exploration rounds |
+| `design/colors/logo-variants-*.html` | Product logo exploration rounds |
+
+---
+
 ## Decisions (`dicom-viewer/docs/decisions/`)
 
 Architecture Decision Records (ADRs) for significant project decisions and rationale.
@@ -140,10 +160,12 @@ dicom-viewer/
 │   ├── sample-mri/        # Demo MRI scan
 │   ├── planning/          # Research and feature planning
 │   ├── decisions/         # ADRs and architecture rationale
+│   ├── design/            # Persistent design handbook and closeout workflow
 │   ├── BUGS.md            # Bug tracking
 │   ├── DEPLOY.md          # Deployment guide
 │   ├── DEVELOPMENT_PHILOSOPHY.md  # Why we work this way
 │   └── TESTING.md         # Test documentation
+├── design/                # Committed historical design explorations and archives
 ├── tests/                 # Playwright E2E tests, including mocked desktop integration checks
 ├── test-fixtures/         # Minimal DICOM data for CI
 └── uploads/               # Server upload destination
@@ -169,4 +191,4 @@ dicom-viewer/
 
 ---
 
-*Last updated: 2026-03-10*
+*Last updated: 2026-04-06*

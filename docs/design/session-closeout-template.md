@@ -11,7 +11,11 @@ The goal is simple:
 
 ## Private Scratch Location
 
-Write or update:
+Write or update the active workspace scratch note:
+
+`<workspace-private-memory>/sessions/YYYY-MM-DD.md`
+
+For this project, the default path is:
 
 `~/.claude/agent-memory/divergent-designer/workspaces/dicom-viewer/sessions/YYYY-MM-DD.md`
 
@@ -71,7 +75,7 @@ Write or update:
 
 ```text
 Before this session compacts, run design closeout:
-1. Write or update today's session scratch note under ~/.claude/agent-memory/divergent-designer/workspaces/dicom-viewer/sessions/YYYY-MM-DD.md using docs/design/session-closeout-template.md.
+1. Write or update today's session scratch note at <workspace-private-memory>/sessions/YYYY-MM-DD.md (for this project: ~/.claude/agent-memory/divergent-designer/workspaces/dicom-viewer/sessions/YYYY-MM-DD.md) using docs/design/session-closeout-template.md.
 2. Promote approved durable decisions into the right docs/design files.
 3. Save only collaboration preferences to private memory.
 4. Tell me exactly what you saved and where.

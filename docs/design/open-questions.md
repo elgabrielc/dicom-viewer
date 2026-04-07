@@ -21,7 +21,8 @@ and the window title. Decide when the shipped shell should become `myRadOne`.
 ## Self-Hosted Font Completion
 
 The durable rule is self-hosted fonts for shipped surfaces, but the current repo
-state is incomplete. Decide the final font packaging plan and timing.
+state is incomplete and some desktop-facing surfaces still fall back to system
+fonts. Decide the final packaging plan, migration order, and timing.
 
 ## Viewer-Dark Finalization
 

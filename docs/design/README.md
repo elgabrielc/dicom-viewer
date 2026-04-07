@@ -42,6 +42,9 @@ This handbook covers:
 The current design system has been assembled from a mix of committed files and
 local exploration artifacts, especially:
 
+- `design/colors/tokens.css`
+- `design/colors/design-system-emerald.html`
+- `design/brand/brand-archive.html`
 - `~/claude 0/colors/tokens.css`
 - `~/claude 0/colors/logo-final/README.md`
 - `~/claude 0/divergent-landing/brand-archive.html`
