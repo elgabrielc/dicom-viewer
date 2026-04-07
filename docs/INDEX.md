@@ -34,6 +34,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [Agent Launchers](./AGENT_LAUNCHERS.md) | docs/ | Session launcher scripts for creating worktrees and starting AI sessions safely |
 | [Parallel Execution Process](./PARALLEL_EXECUTION.md) | docs/ | Process for planning, staging, and executing large features using parallel AI agents |
 | [Research Documentation Policy](./RESEARCH_POLICY.md) | docs/ | Policy for what benchmark and planning research belongs in git, what should stay local, and when research docs should be PRs |
+| [Design Handbook](./design/README.md) | docs/design/ | Persistent product and brand design canon: bootstrap, brand system, surfaces, decisions, and closeout workflow |
 | [Deployment Guide](./DEPLOY.md) | docs/ | Local development, GitHub Pages, custom domains, troubleshooting |
 | [Contributing](../CONTRIBUTING.md) | Root | Code style, git workflow, pull request process, issue templates |
 | [Bug Tracking](./BUGS.md) | docs/ | Known issues, resolved bugs with root cause analysis, bug template |
@@ -129,6 +130,7 @@ docs/
 ├── AGENT_LAUNCHERS.md     # Session launcher scripts for worktree creation
 ├── PARALLEL_EXECUTION.md  # Parallel agent execution process for large features
 ├── RESEARCH_POLICY.md     # Policy for benchmark/planning research docs and PRs
+├── design/                # Persistent design handbook and session closeout template
 ├── INDEX.md               # This file - master documentation index
 ├── API.md                 # REST API reference
 ├── CONFIG.md              # Configuration reference
@@ -275,6 +277,11 @@ Beginner-friendly walkthrough of the cleanup that led to the current workflow. E
 
 **BUGS.md**
 Bug tracking with full context. Each bug includes how it was encountered, root cause analysis, solution, why that solution was chosen, and prevention controls. Uses a standard template for consistency.
+
+**docs/design/**
+Persistent design handbook. Holds the canonical design bootstrap, brand system,
+surface guidance, durable decisions, open questions, and the session closeout
+template used to flush design context before handoff or compaction.
 
 ### Planning Documentation
 
