@@ -64,7 +64,7 @@ Fonts are self-hosted under `docs/fonts/` because Tauri's CSP blocks Google Font
 
 ### myRadOne App Icon Candidates
 
-Explored extensively. Current favorites use amber gradient background with Lora "mR" + Inter superscript/inline "1" in white. Final selection pending.
+**Selected**: Amber gradient background (145deg, #F5A83A -> #F08C00 -> #D67D00), Lora 400 white "mR" + Inter 600 superscript white "1". Rounded rect (22% radius). Generated at 1024px RGBA base, resized to all Tauri-required sizes.
 
 ### Divergent Health Logo
 
