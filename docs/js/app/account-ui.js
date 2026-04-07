@@ -258,7 +258,7 @@
             const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
             const json = atob(base64);
             return JSON.parse(json);
-        } catch (e) {
+        } catch {
             return null;
         }
     }
@@ -561,11 +561,6 @@
             statusEl.classList.remove('signed-in');
             statusEl.title = 'Click to sign in';
         }
-    }
-
-    function hideAccountStatus() {
-        if (!statusEl) return;
-        statusEl.style.display = 'none';
     }
 
     // ---- Auth Flows ----

@@ -13,9 +13,7 @@
 const _NotesDesktop = (() => {
     const {
         createEmptyStore,
-        clone,
         normalizeCommentId,
-        loadStore,
         ensureStudy,
         ensureSeries,
         normalizeReportId,
@@ -179,14 +177,10 @@ const _NotesDesktop = (() => {
                 throw error;
             });
         }
-        try {
-            const db = await desktopDbPromise;
-            desktopDbFailure = null;
-            desktopDbRetryAt = 0;
-            return db;
-        } catch (error) {
-            throw error;
-        }
+        const db = await desktopDbPromise;
+        desktopDbFailure = null;
+        desktopDbRetryAt = 0;
+        return db;
     }
 
     async function getDesktopAppConfigValue(key) {

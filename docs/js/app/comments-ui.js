@@ -180,8 +180,9 @@
         if (idx === -1) return;
 
         const newText = prompt('Edit comment:', comments[idx].text);
-        if (newText !== null && newText.trim()) {
-            comments[idx].text = newText.trim();
+        const trimmedText = newText?.trim();
+        if (trimmedText) {
+            comments[idx].text = trimmedText;
             comments[idx].time = Date.now();
             updateCommentListUI(studyUid, seriesUid);
             if (!String(commentId).startsWith('local-')) {

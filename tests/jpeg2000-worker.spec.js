@@ -240,7 +240,6 @@ test('decodeJpeg2000 decodes a real JPEG 2000 DICOM to the same pixels as its un
 
             const decodedPixels = await window.DicomViewerApp.dicom.decodeJpeg2000(
                 jpeg2000DataSet,
-                jpeg2000DataSet.elements.x7fe00010,
                 rows,
                 cols,
                 bitsAllocated,

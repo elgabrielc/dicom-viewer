@@ -41,7 +41,7 @@ const _UpdateUI = (() => {
         if (initialized) return;
 
         const config = window.CONFIG;
-        if (!config || !config.features || !config.features.autoUpdate) {
+        if (!config?.features?.autoUpdate) {
             return;
         }
 

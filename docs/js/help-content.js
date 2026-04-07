@@ -1,6 +1,6 @@
 // If you edit this file, also update USER_GUIDE.md to keep the in-app help in sync.
 
-const HELP_SECTIONS = [
+window.HELP_SECTIONS = [
     {
         id: 'introduction',
         title: 'Introduction',

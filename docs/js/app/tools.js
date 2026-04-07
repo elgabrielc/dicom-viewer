@@ -23,7 +23,7 @@
 
         const row = parseFloat(parts[0]);
         const col = parseFloat(parts[1]);
-        if (isNaN(row) || isNaN(col) || row <= 0 || col <= 0) return null;
+        if (Number.isNaN(row) || Number.isNaN(col) || row <= 0 || col <= 0) return null;
 
         return { row, col };
     }
@@ -374,7 +374,7 @@
         applyViewTransform();
     }
 
-    function handleZoomDrag(dx, dy) {
+    function handleZoomDrag(dy) {
         const sensitivity = 0.005;
         const delta = -dy * sensitivity;
         state.viewTransform.zoom = Math.max(0.1, Math.min(10, state.viewTransform.zoom + delta));
@@ -434,7 +434,7 @@
                 handlePanDrag(dx, dy);
                 break;
             case 'zoom':
-                handleZoomDrag(dx, dy);
+                handleZoomDrag(dy);
                 break;
         }
 
