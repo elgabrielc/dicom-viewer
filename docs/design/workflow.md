@@ -58,6 +58,8 @@ Before making design recommendations or changes:
 - If nothing was approved yet, still capture the current frontier and the best
   next starting point in session scratch.
 - Report back what was saved to repo docs and what was saved to private memory.
+- If an automated closeout reminder appears, treat closeout as the next task
+  instead of normal work continuation.
 
 ## Promotion Loop
 
@@ -71,9 +73,39 @@ Use this after each real design session.
    in `docs/design/patterns/`.
 5. Periodically compress `docs/design/core.md` so it stays short and useful.
 
-## Pre-Compaction Flush
+## Automated Closeout Hooks
 
-Use this explicit prompt when a design session may compact or end:
+This project can use machine-local Claude hooks to reduce the chance of losing
+design state across compaction boundaries.
+
+- `UserPromptSubmit` can inject a proactive reminder when the transcript gets
+  large and recent design work is detected.
+- `PreCompact` can capture mechanical state into a marker file before
+  compaction.
+- `SessionStart` with `source=compact` can re-inject a recovery reminder after
+  compaction by pointing the agent at the marker and transcript path.
+
+The marker lives under:
+
+`~/.claude/agent-memory/divergent-designer/workspaces/dicom-viewer/pending-closeout/`
+
+Marker states:
+
+- `pending`: design signal detected, closeout not yet completed
+- `reminded`: a proactive or post-compaction reminder was injected
+- `resolved`: closeout completed and recorded
+- `stale`: unresolved marker older than the local TTL and no longer active
+
+Important notes:
+
+- The transcript-size threshold is only a heuristic and may need recalibration.
+- The local `.claude/` hook files are machine-local in this clone family because
+  `.git/info/exclude` ignores `.claude/`; that is not a global repo guarantee.
+
+## Manual Flush Prompt
+
+Use this explicit prompt when a design session may compact or end, or whenever
+the local hooks are not configured:
 
 ```text
 Before this session compacts, run design closeout:
