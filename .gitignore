@@ -31,12 +31,15 @@ data/
 # Environment variables
 .env
 .env.local
+.dev.vars
+.dev.vars.*
 
 # Build outputs
 dist/
 build/
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
+.wrangler/
 
 # Testing
 .coverage

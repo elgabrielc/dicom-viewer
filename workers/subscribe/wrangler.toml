@@ -1,0 +1,13 @@
+name = "myradone-subscribe"
+main = "src/index.mjs"
+compatibility_date = "2026-04-07"
+workers_dev = false
+preview_urls = false
+
+[vars]
+ALLOWED_ORIGINS = "https://myradone.com,https://www.myradone.com,https://divergent.health,https://www.divergent.health"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "myradone-subscribers"
+database_id = "33a16c5c-0618-47a8-b351-7af2f4f979e9"
