@@ -5,6 +5,42 @@ const { test, expect } = require('@playwright/test');
 
 const BASE_URL = 'http://127.0.0.1:5001/?nolib';
 
+async function setupSyncEnginePage(page) {
+    await page.goto(BASE_URL);
+    await page.waitForFunction(() => typeof window._SyncEngine?.SyncEngine === 'function', null, {
+        timeout: 10000,
+    });
+
+    await page.evaluate(() => {
+        window.__SYNC_TEST_STORE = { studies: {} };
+
+        function ensureStudy(store, studyUid) {
+            if (!store.studies[studyUid]) {
+                store.studies[studyUid] = {
+                    description: '',
+                    comments: [],
+                    reports: [],
+                    series: {},
+                };
+            }
+            return store.studies[studyUid];
+        }
+
+        window._NotesInternals = {
+            loadStore() {
+                return structuredClone(window.__SYNC_TEST_STORE);
+            },
+            saveStore(store) {
+                window.__SYNC_TEST_STORE = structuredClone(store);
+            },
+            ensureStudy,
+            normalizeReportId(id) {
+                return String(id || '').trim();
+            },
+        };
+    });
+}
+
 test.describe('Sync Engine', () => {
     test('successful sync updates comment sync_version and emits lifecycle events', async ({ page }) => {
         await page.goto(BASE_URL);
@@ -244,5 +280,125 @@ test.describe('Sync Engine', () => {
             type: 'png',
             size: 84,
         });
+    });
+
+    test('remote report inserts do not create phantom studies', async ({ page }) => {
+        await setupSyncEnginePage(page);
+
+        const store = await page.evaluate(() => {
+            const engine = new window._SyncEngine.SyncEngine({
+                getAccessToken: async () => 'valid-access-token',
+                onAuthRequired: () => {},
+            });
+            engine._applyRemoteData(
+                'reports',
+                'remote-report-1',
+                {
+                    study_uid: 'missing-study',
+                    name: 'Remote report',
+                    type: 'pdf',
+                    size: 1024,
+                },
+                7,
+            );
+            return window.__SYNC_TEST_STORE;
+        });
+
+        expect(store).toEqual({ studies: {} });
+    });
+
+    test('remote report inserts still apply when the study already exists', async ({ page }) => {
+        await setupSyncEnginePage(page);
+
+        const reports = await page.evaluate(() => {
+            window.__SYNC_TEST_STORE = {
+                studies: {
+                    'known-study': {
+                        description: '',
+                        comments: [],
+                        reports: [],
+                        series: {},
+                    },
+                },
+            };
+
+            const engine = new window._SyncEngine.SyncEngine({
+                getAccessToken: async () => 'valid-access-token',
+                onAuthRequired: () => {},
+            });
+            engine._applyRemoteData(
+                'reports',
+                'remote-report-2',
+                {
+                    study_uid: 'known-study',
+                    name: 'Known study report',
+                    type: 'pdf',
+                    size: 2048,
+                },
+                9,
+            );
+
+            return window.__SYNC_TEST_STORE.studies['known-study'].reports;
+        });
+
+        expect(reports).toHaveLength(1);
+        expect(reports[0]).toMatchObject({
+            id: 'remote-report-2',
+            name: 'Known study report',
+            type: 'pdf',
+            size: 2048,
+            sync_version: 9,
+        });
+    });
+
+    test('remote comment updates preserve created time instead of overwriting it with updated_at', async ({
+        page,
+    }) => {
+        await setupSyncEnginePage(page);
+
+        const comment = await page.evaluate(() => {
+            window.__SYNC_TEST_STORE = {
+                studies: {
+                    'study-1': {
+                        description: '',
+                        comments: [
+                            {
+                                id: 'comment-1',
+                                record_uuid: 'comment-1',
+                                text: 'Original',
+                                time: 111,
+                                created_at: 111,
+                                updated_at: 111,
+                                sync_version: 1,
+                            },
+                        ],
+                        reports: [],
+                        series: {},
+                    },
+                },
+            };
+
+            const engine = new window._SyncEngine.SyncEngine({
+                getAccessToken: async () => 'valid-access-token',
+                onAuthRequired: () => {},
+            });
+            engine._applyRemoteData(
+                'comments',
+                'comment-1',
+                {
+                    study_uid: 'study-1',
+                    text: 'Edited remotely',
+                    created_at: 111,
+                    updated_at: 222,
+                },
+                5,
+            );
+
+            return window.__SYNC_TEST_STORE.studies['study-1'].comments[0];
+        });
+
+        expect(comment.time).toBe(111);
+        expect(comment.updated_at).toBe(222);
+        expect(comment.sync_version).toBe(5);
     });
 });

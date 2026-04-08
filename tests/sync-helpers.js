@@ -65,7 +65,7 @@ async function createTestUser(request, baseUrl = BASE_URL) {
     const response = await request.post(`${baseUrl}/api/auth/signup`, {
         data: { email, password, name },
     });
-    expect(response.status()).toBe(201);
+    expect(response.status()).toBe(202);
 
     return { email, password, name };
 }

@@ -202,7 +202,7 @@ def get_max_sync_version(db, user_id=None):
 def _next_sync_version(db, table, key, device_id, user_id):
     """Allocate the next sync_version for a user-scoped record."""
     now = int(time.time())
-    new_version = get_max_sync_version(db) + 1
+    new_version = get_max_sync_version(db, user_id) + 1
     db.execute(
         """
         INSERT INTO sync_server_versions (

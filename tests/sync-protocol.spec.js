@@ -820,6 +820,26 @@ test.describe('Sync Cross-User Isolation', () => {
         expect(userAStudyNote?.data?.description).toBe('User A private note');
         expect(userBStudyNote?.data?.description).toBe('User B private note');
     });
+
+    test('sync versions are allocated independently per user', async ({ request }) => {
+        const userA = await setupSyncUser(request);
+        const userB = await setupSyncUser(request);
+
+        const changeA = commentInsertChange({ text: 'User A first change' });
+        const changeB = commentInsertChange({ text: 'User B first change' });
+
+        const resultA = await syncAndExpectOk(
+            request, BASE_URL, userA.access_token, userA.device_id, null, [changeA]
+        );
+        const resultB = await syncAndExpectOk(
+            request, BASE_URL, userB.access_token, userB.device_id, null, [changeB]
+        );
+
+        expect(resultA.accepted).toHaveLength(1);
+        expect(resultB.accepted).toHaveLength(1);
+        expect(resultA.accepted[0].sync_version).toBe(1);
+        expect(resultB.accepted[0].sync_version).toBe(1);
+    });
 });
 
 // ---------------------------------------------------------------------------

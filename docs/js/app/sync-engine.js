@@ -546,9 +546,7 @@ const _SyncEngine = (() => {
                     // Update existing comment
                     existing.text = data.text || '';
                     existing.updated_at = data.updated_at || Date.now();
-                    // Keep time in sync with the remote timestamp so the UI
-                    // shows the correct display time for this comment
-                    existing.time = data.updated_at || existing.time || Date.now();
+                    existing.time = data.created_at || existing.time || Date.now();
                     existing.sync_version = syncVersion;
                 } else {
                     // Insert new comment from remote
@@ -570,6 +568,7 @@ const _SyncEngine = (() => {
             if (tableName === 'reports') {
                 const studyUid = data.study_uid;
                 if (!studyUid) return;
+                if (!store.studies[studyUid]) return;
                 const deletedAt = data.deletedAt || data.deleted_at || null;
                 const { normalizeReportId } = window._NotesInternals;
                 const targetId = normalizeReportId(recordKey);

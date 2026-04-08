@@ -52,6 +52,10 @@ function uniqueStudyUid() {
     return `test-auth-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function uniqueEmail() {
+    return `auth-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+}
+
 function sameOriginHeaders(extra = {}) {
     return {
         Origin: BASE_URL,
@@ -232,6 +236,13 @@ test.describe('Test Suite 38: Test-Mode Bypass', () => {
         const response = await request.get(`${BASE_URL}/api/test-data/studies`);
         // 200 if test data exists, but should not be 401 regardless
         expect(response.status()).not.toBe(401);
+    });
+
+    test('X-Test-Mode bypasses PHI auth only in the explicit test environment', async ({ request }) => {
+        const response = await request.get(`${BASE_URL}/api/notes/`, {
+            headers: { 'X-Test-Mode': '1' },
+        });
+        expect(response.status()).toBe(200);
     });
 });
 
@@ -490,5 +501,57 @@ test.describe('Test Suite 42: Static File Serving - No Auth Required', () => {
 
         const contentType = response.headers()['content-type'] || '';
         expect(contentType).toContain('text/html');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Test Suite 43: Auth Endpoint Hardening
+// ---------------------------------------------------------------------------
+
+test.describe('Test Suite 43: Auth Endpoint Hardening', () => {
+    test('login is rate limited after repeated failures for the same email', async ({ request }) => {
+        const email = uniqueEmail();
+        const headers = sameOriginHeaders();
+
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+            const response = await request.post(`${BASE_URL}/api/auth/login`, {
+                headers,
+                data: { email, password: 'wrong-password' },
+            });
+            expect(response.status()).toBe(401);
+        }
+
+        const limited = await request.post(`${BASE_URL}/api/auth/login`, {
+            headers,
+            data: { email, password: 'wrong-password' },
+        });
+        expect(limited.status()).toBe(429);
+        expect(Number(limited.headers()['retry-after'] || '0')).toBeGreaterThan(0);
+    });
+
+    test('signup returns the same accepted response for new and duplicate emails', async ({ request }) => {
+        const email = uniqueEmail();
+        const payload = {
+            email,
+            password: 'TestPassword123!',
+            name: 'Auth Security Test',
+        };
+        const headers = sameOriginHeaders();
+
+        const first = await request.post(`${BASE_URL}/api/auth/signup`, {
+            headers,
+            data: payload,
+        });
+        const second = await request.post(`${BASE_URL}/api/auth/signup`, {
+            headers,
+            data: payload,
+        });
+        const firstBody = await first.json();
+        const secondBody = await second.json();
+
+        expect(first.status()).toBe(202);
+        expect(second.status()).toBe(202);
+        expect(firstBody).toEqual({ accepted: true });
+        expect(secondBody).toEqual({ accepted: true });
     });
 });

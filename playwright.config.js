@@ -88,7 +88,7 @@ module.exports = defineConfig({
    * - CI environment: Always start fresh to ensure clean, reproducible state
    */
   webServer: {
-    command: './venv/bin/flask run --host=127.0.0.1 --port=5001',
+    command: 'FLASK_ENV=test ./venv/bin/flask run --host=127.0.0.1 --port=5001',
     url: 'http://127.0.0.1:5001/api/test-data/info',
     reuseExistingServer: !process.env.CI,
     timeout: 60000,
