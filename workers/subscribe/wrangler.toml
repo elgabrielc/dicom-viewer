@@ -11,3 +11,11 @@ ALLOWED_ORIGINS = "https://myradone.com,https://www.myradone.com,https://diverge
 binding = "DB"
 database_name = "myradone-subscribers"
 database_id = "33a16c5c-0618-47a8-b351-7af2f4f979e9"
+
+[[ratelimits]]
+name = "SUBSCRIBE_RATE_LIMIT"
+namespace_id = "2026040801"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

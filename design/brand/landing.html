@@ -625,13 +625,7 @@
                         throw new Error(data.error || 'Please try again.');
                     }
 
-                    if (data.reactivated) {
-                        setStatus("You're back on the list. We'll keep you posted.", 'success');
-                    } else if (data.already) {
-                        setStatus("You're already on the list.", 'success');
-                    } else {
-                        setStatus("Thanks. We'll be in touch.", 'success');
-                    }
+                    setStatus("Thanks. We'll be in touch.", 'success');
 
                     form.reset();
                     emailInput.focus();
