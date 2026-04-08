@@ -2,6 +2,7 @@
 
 mod decode;
 mod path_util;
+mod persistence;
 mod scan;
 mod secure_store;
 
@@ -307,6 +308,8 @@ fn main() {
             decode::decode_frame_with_pixels,
             decode::take_decoded_frame,
             decode::read_scan_header,
+            persistence::apply_desktop_migration,
+            persistence::load_legacy_desktop_browser_stores,
             scan::read_scan_manifest,
             secure_store::load_secure_auth_state,
             secure_store::store_secure_auth_state,

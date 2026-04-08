@@ -127,7 +127,7 @@ async function insertReportWithFile(request, token, deviceId, cursor, fileConten
 // ---------------------------------------------------------------------------
 
 test.describe('E2E Authentication Flow', () => {
-    test('signup creates account and returns tokens', async ({ request }) => {
+    test('signup creates account and allows a subsequent login', async ({ request }) => {
         const email = uniqueEmail();
         const password = 'SecurePass123!';
         const name = 'E2E Test User';
@@ -136,7 +136,7 @@ test.describe('E2E Authentication Flow', () => {
         const signupResponse = await request.post(`${BASE_URL}/api/auth/signup`, {
             data: { email, password, name },
         });
-        expect(signupResponse.status()).toBe(201);
+        expect(signupResponse.status()).toBe(202);
 
         // Verify we can now log in with those credentials
         const loginResponse = await request.post(`${BASE_URL}/api/auth/login`, {

@@ -4,6 +4,7 @@ Security middleware: CSRF origin check, session token auth, security headers.
 Copyright (c) 2026 Divergent Health Technologies
 """
 
+import os
 import secrets
 from urllib.parse import urlparse
 
@@ -30,6 +31,8 @@ def _is_test_mode_request():
     on the page load signals test mode. For direct API requests (Playwright's
     request fixture), we check for the X-Test-Mode header instead.
     """
+    if os.environ.get('FLASK_ENV') != 'test':
+        return False
     if request.args.get('test') is not None:
         return True
     return request.headers.get('X-Test-Mode') == '1'

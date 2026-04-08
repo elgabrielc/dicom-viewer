@@ -12,10 +12,7 @@ use tauri_plugin_sql::{DbInstances, DbPool};
 const CURRENT_STORE_KEY: &str = "dicom-viewer-notes-v3";
 const LIBRARY_CONFIG_KEY: &str = "dicom-viewer-library-config";
 const LEGACY_WEBKIT_SCAN_MAX_DEPTH: usize = 12;
-const LEGACY_WEBKIT_PROFILES: &[&str] = &[
-    "health.divergent.dicomviewer",
-    "dicom-viewer-desktop",
-];
+const LEGACY_WEBKIT_PROFILES: &[&str] = &["health.divergent.dicomviewer", "dicom-viewer-desktop"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -439,7 +436,12 @@ mod tests {
         collect_localstorage_dbs, decode_webkit_localstorage_blob, modified_ms,
         sort_localstorage_db_paths, LEGACY_WEBKIT_SCAN_MAX_DEPTH,
     };
-    use std::{collections::BTreeSet, fs, path::PathBuf, time::{Duration, SystemTime, UNIX_EPOCH}};
+    use std::{
+        collections::BTreeSet,
+        fs,
+        path::PathBuf,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
