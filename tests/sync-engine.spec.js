@@ -351,9 +351,7 @@ test.describe('Sync Engine', () => {
         });
     });
 
-    test('remote comment updates preserve created time instead of overwriting it with updated_at', async ({
-        page,
-    }) => {
+    test('remote comment updates preserve created time instead of overwriting it with updated_at', async ({ page }) => {
         await setupSyncEnginePage(page);
 
         const comment = await page.evaluate(() => {

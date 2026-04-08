@@ -828,12 +828,8 @@ test.describe('Sync Cross-User Isolation', () => {
         const changeA = commentInsertChange({ text: 'User A first change' });
         const changeB = commentInsertChange({ text: 'User B first change' });
 
-        const resultA = await syncAndExpectOk(
-            request, BASE_URL, userA.access_token, userA.device_id, null, [changeA]
-        );
-        const resultB = await syncAndExpectOk(
-            request, BASE_URL, userB.access_token, userB.device_id, null, [changeB]
-        );
+        const resultA = await syncAndExpectOk(request, BASE_URL, userA.access_token, userA.device_id, null, [changeA]);
+        const resultB = await syncAndExpectOk(request, BASE_URL, userB.access_token, userB.device_id, null, [changeB]);
 
         expect(resultA.accepted).toHaveLength(1);
         expect(resultB.accepted).toHaveLength(1);
