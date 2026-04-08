@@ -276,8 +276,7 @@ fn write_macos_icon_refresh_attempt_state(
     path: &std::path::Path,
     state: &MacosIconRefreshAttemptState,
 ) -> std::io::Result<()> {
-    let json = serde_json::to_vec(state)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+    let json = serde_json::to_vec(state).map_err(std::io::Error::other)?;
     std::fs::write(path, json)
 }
 
