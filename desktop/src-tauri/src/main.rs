@@ -249,6 +249,97 @@ fn desktop_db_migrations() -> Vec<Migration> {
     ]
 }
 
+#[cfg(target_os = "macos")]
+fn maybe_refresh_macos_icon_registration<R: Runtime, M: Manager<R>>(manager: &M) {
+    let current_version = manager.package_info().version.to_string();
+    let app_data = match manager.path().app_data_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!(
+                "[desktop-updater] BUG-009: unable to resolve app data dir for icon refresh: {error}"
+            );
+            return;
+        }
+    };
+    let version_file = app_data.join(".last_lsregister_version");
+    let last_version = std::fs::read_to_string(&version_file).unwrap_or_default();
+    if last_version.trim() == current_version {
+        return;
+    }
+
+    let exe = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!(
+                "[desktop-updater] BUG-009: unable to resolve current executable for icon refresh: {error}"
+            );
+            return;
+        }
+    };
+    let Some(bundle) = exe
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+    else {
+        eprintln!(
+            "[desktop-updater] BUG-009: unable to resolve .app bundle from executable path {}",
+            exe.display()
+        );
+        return;
+    };
+
+    if bundle.extension().and_then(|ext| ext.to_str()) != Some("app") || !bundle.is_dir() {
+        return;
+    }
+
+    // BUG-009: Best-effort workaround for stale macOS app icons after updater installs.
+    // `lsregister -f` re-registers the bundle with LaunchServices, which may prompt
+    // Icon Services to re-read the .icns after a version change. This is not a
+    // guaranteed cache flush, so we only run once per version and log failures.
+    let candidates = [
+        "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    ];
+    let Some(lsregister) = candidates
+        .into_iter()
+        .find(|path| std::path::Path::new(path).exists())
+    else {
+        eprintln!("[desktop-updater] BUG-009: lsregister binary not found");
+        return;
+    };
+
+    match std::process::Command::new(lsregister)
+        .arg("-f")
+        .arg(bundle)
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            eprintln!(
+                "[desktop-updater] BUG-009: lsregister -f succeeded for {}",
+                bundle.display()
+            );
+            let _ = std::fs::create_dir_all(&app_data);
+            if let Err(error) = std::fs::write(&version_file, &current_version) {
+                eprintln!(
+                    "[desktop-updater] BUG-009: lsregister succeeded but failed to persist version gate: {error}"
+                );
+            }
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!(
+                "[desktop-updater] BUG-009: lsregister -f exited {} for {}: {}",
+                output.status,
+                bundle.display(),
+                stderr.trim()
+            );
+        }
+        Err(error) => {
+            eprintln!("[desktop-updater] BUG-009: failed to run lsregister -f: {error}");
+        }
+    }
+}
+
 fn main() {
     let debug_settings = parse_debug_settings();
     if debug_settings.decode_mode != "auto"
@@ -288,6 +379,9 @@ fn main() {
                     }
                 }
             }
+
+            #[cfg(target_os = "macos")]
+            maybe_refresh_macos_icon_registration(app);
 
             Ok(())
         })

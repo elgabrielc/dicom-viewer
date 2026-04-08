@@ -6,7 +6,22 @@ Known issues, bugs, and their resolution status.
 
 ## Open Bugs
 
-*No open bugs currently tracked.*
+### BUG-009: macOS dock icon not updated after app update
+
+| Field | Value |
+|-------|-------|
+| **Status** | Fix implemented, awaiting updater QA |
+| **Priority** | Medium |
+| **Found** | 2026-04-07 |
+| **Root Cause** | macOS Icon Services caches rendered bitmaps separately from LaunchServices metadata. Tauri updater currently replaces the bundle and runs `touch`, which does not reliably refresh the rendered icon cache. |
+| **Fix** | Best-effort interim fix: run `lsregister -f` once per app version at startup, gated to packaged `.app` bundles, and retry on the next launch if the command fails. |
+| **Follow-up** | Replace the `lsregister` shell-out with `LSRegisterURL` FFI so the app uses the public CoreServices API directly. |
+| **Verification needed** | Test with the real in-app updater flow, then confirm the icon refreshes after restart and that the version gate prevents repeated runs on later launches. |
+| **Workaround** | `lsregister -f /Applications/myradone.app && killall Finder && killall Dock` |
+
+**Notes:**
+- The startup workaround skips dev-mode binaries automatically because it only runs for resolved `.app` bundle paths.
+- `lsregister -f` is the strongest available best-effort signal today, but it still cannot guarantee an immediate Icon Services bitmap refresh on every macOS version.
 
 ---
 
