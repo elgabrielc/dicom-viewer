@@ -19,7 +19,23 @@
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://challenges.cloudflare.com">
     <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        window.MYRADONE_SIGNUP_CONFIG = {
+            apiEndpoint: 'https://api.myradone.com/subscribe',
+            turnstileSiteKey: '1x00000000000000000000AA'
+        };
+
+        window.onSignupTurnstileLoad = function () {
+            window.dispatchEvent(new Event('signup-turnstile-ready'));
+        };
+    </script>
+    <script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onSignupTurnstileLoad"
+        async
+        defer
+    ></script>
 
     <!-- Copyright (c) 2026 Divergent Health Technologies -->
     <style>
@@ -236,6 +252,126 @@
             transform: translateX(3px);
         }
 
+        .signup-section {
+            margin: 2.8rem auto 0;
+            padding-top: 2.25rem;
+            max-width: 560px;
+            border-top: 1px solid rgba(61, 58, 54, 0.08);
+            opacity: 0;
+            animation: fadeIn 1s ease 1.95s forwards;
+        }
+
+        .signup-eyebrow {
+            margin-bottom: 0.7rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+
+        .signup-copy {
+            margin: 0 auto 1.35rem;
+            max-width: 480px;
+            color: var(--text-dim);
+            font-size: 0.95rem;
+        }
+
+        .signup-form {
+            display: grid;
+            gap: 0.95rem;
+        }
+
+        .signup-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .signup-row input {
+            width: 100%;
+            min-height: 3rem;
+            padding: 0.82rem 1rem;
+            border: 1px solid rgba(61, 58, 54, 0.14);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.82);
+            color: var(--text);
+            font: inherit;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .signup-row input:focus {
+            outline: none;
+            border-color: rgba(240, 140, 0, 0.45);
+            box-shadow: 0 0 0 4px rgba(240, 140, 0, 0.12);
+        }
+
+        .signup-row button {
+            min-height: 3rem;
+            padding: 0.82rem 1.25rem;
+            border: 0;
+            border-radius: 12px;
+            background: var(--accent);
+            color: #fff8f3;
+            font: inherit;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+        }
+
+        .signup-row button:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 12px 24px rgba(240, 140, 0, 0.22);
+        }
+
+        .signup-row button:disabled {
+            cursor: wait;
+            opacity: 0.72;
+        }
+
+        .signup-consent {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.75rem;
+            align-items: start;
+            text-align: left;
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            line-height: 1.55;
+        }
+
+        .signup-consent input {
+            margin-top: 0.18rem;
+            accent-color: var(--accent);
+        }
+
+        .signup-consent a {
+            color: var(--text);
+            text-underline-offset: 0.16em;
+        }
+
+        .signup-turnstile {
+            display: flex;
+            justify-content: center;
+        }
+
+        .signup-status {
+            min-height: 1.5rem;
+            margin-top: 0.15rem;
+            font-size: 0.86rem;
+            color: var(--text-dim);
+        }
+
+        .signup-status.success {
+            color: #2d6a4f;
+        }
+
+        .signup-status.error {
+            color: #a15400;
+        }
+
         /* Footer */
         footer {
             padding: 2.5rem 2rem;
@@ -295,6 +431,19 @@
                 font-size: 0.95rem;
                 margin-bottom: 3rem;
             }
+
+            .signup-section {
+                margin-top: 2.35rem;
+                padding-top: 1.85rem;
+            }
+
+            .signup-row {
+                grid-template-columns: 1fr;
+            }
+
+            .signup-row button {
+                width: 100%;
+            }
         }
     </style>
 </head>
@@ -330,11 +479,171 @@
                     Try the viewer <span>&rarr;</span>
                 </a>
             </div>
+
+            <div class="signup-section" aria-labelledby="signupTitle">
+                <p class="signup-eyebrow">myRadOne Updates</p>
+                <p class="signup-copy" id="signupTitle">
+                    Get launch notes, product updates, and early access news without waiting for the full release.
+                </p>
+
+                <form class="signup-form" id="signupForm">
+                    <div class="signup-row">
+                        <input
+                            type="email"
+                            id="signupEmail"
+                            name="email"
+                            placeholder="Your email"
+                            autocomplete="email"
+                            required
+                        >
+                        <button type="submit" id="signupButton">Stay updated</button>
+                    </div>
+
+                    <label class="signup-consent" for="signupConsent">
+                        <input type="checkbox" id="signupConsent" required>
+                        <span>
+                            I'd like to receive periodic emails about myRadOne updates and developments. Unsubscribe anytime.
+                            See the <a href="./privacy.html">Privacy Policy</a>.
+                        </span>
+                    </label>
+
+                    <div class="signup-turnstile" id="signupTurnstile"></div>
+                </form>
+
+                <p class="signup-status" id="signupStatus" aria-live="polite"></p>
+            </div>
         </div>
     </main>
 
     <footer>
         <p>&copy; 2026 Divergent Health Technologies</p>
     </footer>
+    <script>
+        (function () {
+            const config = window.MYRADONE_SIGNUP_CONFIG || {};
+            const form = document.getElementById('signupForm');
+            const emailInput = document.getElementById('signupEmail');
+            const consentInput = document.getElementById('signupConsent');
+            const submitButton = document.getElementById('signupButton');
+            const status = document.getElementById('signupStatus');
+            const turnstileContainer = document.getElementById('signupTurnstile');
+            const defaultTestSiteKey = '1x00000000000000000000AA';
+            let widgetId = null;
+            let turnstileToken = '';
+
+            function setStatus(message, type) {
+                status.textContent = message;
+                status.className = type ? `signup-status ${type}` : 'signup-status';
+            }
+
+            function resetTurnstile() {
+                turnstileToken = '';
+                if (widgetId !== null && window.turnstile) {
+                    window.turnstile.reset(widgetId);
+                }
+            }
+
+            function renderTurnstile() {
+                if (!window.turnstile || widgetId !== null) return;
+
+                if (!config.turnstileSiteKey) {
+                    turnstileContainer.hidden = true;
+                    submitButton.disabled = true;
+                    setStatus('Signup is not configured yet. Add a Turnstile site key to enable submissions.', 'error');
+                    return;
+                }
+
+                widgetId = window.turnstile.render('#signupTurnstile', {
+                    sitekey: config.turnstileSiteKey,
+                    theme: 'light',
+                    size: 'compact',
+                    callback: function (token) {
+                        turnstileToken = token;
+                        if (status.classList.contains('error')) {
+                            setStatus('', '');
+                        }
+                    },
+                    'expired-callback': function () {
+                        turnstileToken = '';
+                    },
+                    'error-callback': function () {
+                        turnstileToken = '';
+                        setStatus('Security check failed to load. Refresh and try again.', 'error');
+                    }
+                });
+
+                if (
+                    config.turnstileSiteKey === defaultTestSiteKey &&
+                    !['localhost', '127.0.0.1'].includes(window.location.hostname)
+                ) {
+                    console.warn('Cloudflare Turnstile is still using the test site key.');
+                }
+            }
+
+            window.addEventListener('signup-turnstile-ready', renderTurnstile);
+            if (window.turnstile) {
+                renderTurnstile();
+            }
+
+            form.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                setStatus('', '');
+
+                if (!consentInput.checked) {
+                    setStatus('Please confirm that you want product updates.', 'error');
+                    consentInput.focus();
+                    return;
+                }
+
+                if (!turnstileToken && widgetId !== null && window.turnstile) {
+                    turnstileToken = window.turnstile.getResponse(widgetId);
+                }
+
+                if (!turnstileToken) {
+                    setStatus('Please complete the security check.', 'error');
+                    return;
+                }
+
+                submitButton.disabled = true;
+
+                try {
+                    const response = await fetch(config.apiEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: emailInput.value,
+                            turnstileToken,
+                            source: 'landing',
+                            consentVersion: 'v1',
+                            consentAccepted: consentInput.checked
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.ok) {
+                        throw new Error(data.error || 'Please try again.');
+                    }
+
+                    if (data.reactivated) {
+                        setStatus("You're back on the list. We'll keep you posted.", 'success');
+                    } else if (data.already) {
+                        setStatus("You're already on the list.", 'success');
+                    } else {
+                        setStatus("Thanks. We'll be in touch.", 'success');
+                    }
+
+                    form.reset();
+                    emailInput.focus();
+                    resetTurnstile();
+                } catch (error) {
+                    setStatus(error.message || 'Something went wrong. Try again.', 'error');
+                    resetTurnstile();
+                } finally {
+                    submitButton.disabled = false;
+                }
+            });
+        }());
+    </script>
 </body>
 </html>
