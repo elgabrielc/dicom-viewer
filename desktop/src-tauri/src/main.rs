@@ -6,7 +6,7 @@ mod persistence;
 mod scan;
 mod secure_store;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
     AppHandle, Emitter, Manager, Runtime, State,
@@ -249,6 +249,195 @@ fn desktop_db_migrations() -> Vec<Migration> {
     ]
 }
 
+#[cfg(target_os = "macos")]
+const MACOS_ICON_REFRESH_MAX_ATTEMPTS: u32 = 3;
+#[cfg(target_os = "macos")]
+const MACOS_ICON_REFRESH_VERSION_FILE: &str = ".last_lsregister_version";
+#[cfg(target_os = "macos")]
+const MACOS_ICON_REFRESH_ATTEMPT_FILE: &str = ".lsregister_attempt_state.json";
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct MacosIconRefreshAttemptState {
+    version: String,
+    attempts: u32,
+}
+
+#[cfg(target_os = "macos")]
+fn read_macos_icon_refresh_attempt_state(path: &std::path::Path) -> MacosIconRefreshAttemptState {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn write_macos_icon_refresh_attempt_state(
+    path: &std::path::Path,
+    state: &MacosIconRefreshAttemptState,
+) -> std::io::Result<()> {
+    let json = serde_json::to_vec(state).map_err(std::io::Error::other)?;
+    std::fs::write(path, json)
+}
+
+#[cfg(target_os = "macos")]
+fn maybe_refresh_macos_icon_registration<R: Runtime, M: Manager<R>>(manager: &M) {
+    let current_version = manager.package_info().version.to_string();
+    let app_data = match manager.path().app_data_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!(
+                "[desktop-updater] BUG-009: unable to resolve app data dir for icon refresh: {error}"
+            );
+            return;
+        }
+    };
+    let version_file = app_data.join(MACOS_ICON_REFRESH_VERSION_FILE);
+    let last_version = std::fs::read_to_string(&version_file).unwrap_or_default();
+    if last_version.trim() == current_version {
+        return;
+    }
+    let attempt_file = app_data.join(MACOS_ICON_REFRESH_ATTEMPT_FILE);
+    let attempt_state = read_macos_icon_refresh_attempt_state(&attempt_file);
+    if attempt_state.version == current_version
+        && attempt_state.attempts >= MACOS_ICON_REFRESH_MAX_ATTEMPTS
+    {
+        eprintln!(
+            "[desktop-updater] BUG-009: skipping lsregister after {} failed attempts for version {}",
+            attempt_state.attempts,
+            current_version
+        );
+        return;
+    }
+    let next_attempt = if attempt_state.version == current_version {
+        attempt_state.attempts.saturating_add(1)
+    } else {
+        1
+    };
+
+    let exe = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(error) => {
+            eprintln!(
+                "[desktop-updater] BUG-009: unable to resolve current executable for icon refresh: {error}"
+            );
+            return;
+        }
+    };
+    let Some(bundle) = exe
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+    else {
+        eprintln!(
+            "[desktop-updater] BUG-009: unable to resolve .app bundle from executable path {}",
+            exe.display()
+        );
+        return;
+    };
+
+    if bundle.extension().and_then(|ext| ext.to_str()) != Some("app") || !bundle.is_dir() {
+        return;
+    }
+
+    // BUG-009: Best-effort workaround for stale macOS app icons after updater installs.
+    // `lsregister -f` re-registers the bundle with LaunchServices, which may prompt
+    // Icon Services to re-read the .icns after a version change. This is not a
+    // guaranteed cache flush, so we run it in the background with a per-version
+    // retry cap and persist success only after the command completes.
+    if let Err(error) = std::fs::create_dir_all(&app_data) {
+        eprintln!(
+            "[desktop-updater] BUG-009: unable to create app data dir for retry state: {error}"
+        );
+    } else {
+        let next_state = MacosIconRefreshAttemptState {
+            version: current_version.clone(),
+            attempts: next_attempt,
+        };
+        if let Err(error) = write_macos_icon_refresh_attempt_state(&attempt_file, &next_state) {
+            eprintln!(
+                "[desktop-updater] BUG-009: unable to persist lsregister retry state: {error}"
+            );
+        }
+    }
+
+    let candidates = [
+        "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister",
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+    ];
+    let Some(lsregister) = candidates
+        .into_iter()
+        .find(|path| std::path::Path::new(path).exists())
+    else {
+        eprintln!(
+            "[desktop-updater] BUG-009: lsregister binary not found on attempt {} of {}",
+            next_attempt, MACOS_ICON_REFRESH_MAX_ATTEMPTS
+        );
+        return;
+    };
+
+    let app_data = app_data.clone();
+    let attempt_file = attempt_file.clone();
+    let bundle = bundle.to_path_buf();
+    let current_version = current_version.clone();
+    let lsregister = String::from(lsregister);
+    let version_file = version_file.clone();
+
+    if let Err(error) = std::thread::Builder::new()
+        .name(String::from("macos-icon-refresh"))
+        .spawn(move || {
+            match std::process::Command::new(&lsregister)
+                .arg("-f")
+                .arg(&bundle)
+                .output()
+            {
+                Ok(output) if output.status.success() => {
+                    eprintln!(
+                        "[desktop-updater] BUG-009: lsregister -f succeeded for {}",
+                        bundle.display()
+                    );
+                    if let Err(error) = std::fs::create_dir_all(&app_data) {
+                        eprintln!(
+                            "[desktop-updater] BUG-009: unable to create app data dir after lsregister success: {error}"
+                        );
+                        return;
+                    }
+                    if let Err(error) = std::fs::write(&version_file, &current_version) {
+                        eprintln!(
+                            "[desktop-updater] BUG-009: lsregister succeeded but failed to persist version gate: {error}"
+                        );
+                        return;
+                    }
+                    let _ = std::fs::remove_file(&attempt_file);
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    eprintln!(
+                        "[desktop-updater] BUG-009: lsregister -f attempt {} of {} exited {} for {}: {}",
+                        next_attempt,
+                        MACOS_ICON_REFRESH_MAX_ATTEMPTS,
+                        output.status,
+                        bundle.display(),
+                        stderr.trim()
+                    );
+                }
+                Err(error) => {
+                    eprintln!(
+                        "[desktop-updater] BUG-009: failed to run lsregister -f attempt {} of {}: {}",
+                        next_attempt,
+                        MACOS_ICON_REFRESH_MAX_ATTEMPTS,
+                        error
+                    );
+                }
+            }
+        })
+    {
+        eprintln!(
+            "[desktop-updater] BUG-009: unable to spawn background lsregister thread: {error}"
+        );
+    }
+}
+
 fn main() {
     let debug_settings = parse_debug_settings();
     if debug_settings.decode_mode != "auto"
@@ -288,6 +477,9 @@ fn main() {
                     }
                 }
             }
+
+            #[cfg(target_os = "macos")]
+            maybe_refresh_macos_icon_registration(app);
 
             Ok(())
         })

@@ -12,6 +12,60 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-009: macOS dock icon not updated after app update
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | Medium |
+| **Found** | 2026-04-07 |
+| **Resolved** | 2026-04-08 |
+| **PR** | #73 |
+
+**How Encountered:**
+After a packaged macOS updater install changed the app icon, Finder and the Dock could
+continue showing the stale rendered bitmap even though the updated `.icns` was already
+present inside the new app bundle.
+
+**Root Cause:**
+macOS Icon Services caches rendered bitmaps separately from LaunchServices metadata.
+Tauri's updater currently replaces the bundle and runs `touch`, which updates the
+bundle timestamp but does not reliably invalidate Icon Services' cached icon bitmap.
+
+**Solution:**
+- Added a macOS-only startup helper in `desktop/src-tauri/src/main.rs` that resolves
+  packaged `.app` bundles, then schedules `lsregister -f` on a background thread so
+  the app window is not blocked during launch.
+- Kept the existing per-version success gate in `$APPDATA/.last_lsregister_version`.
+- Added a per-version retry cap in `$APPDATA/.lsregister_attempt_state.json` so a
+  future permanent failure will stop retrying after three attempts.
+
+**Why This Solution:**
+Alternatives considered:
+- *Run `lsregister` inline during startup* - Rejected; it fixes the cache issue but can
+  stall first launch after an update.
+- *Retry on every launch until success* - Rejected; a future macOS restriction could
+  turn that into unbounded startup work forever.
+
+Chose a background best-effort refresh with capped retries because it preserves the
+validated icon fix while keeping launch responsive and failure mode bounded.
+
+**Verification:**
+- Validated with a real packaged in-app update from a disposable `0.3.0` QA app
+  (amber `A` icon) to `0.3.1` (blue `B` icon) over an HTTPS updater feed.
+- Finder showed the new icon after the updated app launched.
+- `.last_lsregister_version` advanced to `0.3.1`.
+- The version-gate marker timestamp stayed unchanged on the following launch, proving
+  the helper did not re-run after a successful refresh.
+
+**Follow-up:**
+- Replace the `lsregister` shell-out with `LSRegisterURL` FFI so the app uses the
+  public CoreServices API directly.
+
+**Files Changed:**
+- `desktop/src-tauri/src/main.rs`
+- `docs/BUGS.md`
+
 ### BUG-008: Desktop native decode bridge crashed on unaligned typed-array payloads
 
 | Field | Value |
