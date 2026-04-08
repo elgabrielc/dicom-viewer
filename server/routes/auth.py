@@ -102,9 +102,7 @@ def _clear_auth_failures(action, email):
 def _log_auth_event(action, email, event, retry_after=None):
     normalized = _normalize_email(email)
     hashed_email = (
-        hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:12]
-        if normalized
-        else '-'
+        hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:12] if normalized else '-'
     )
     current_app.logger.warning(
         'auth_%s action=%s ip=%s email_hash=%s retry_after=%s',
