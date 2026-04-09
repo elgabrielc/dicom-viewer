@@ -318,10 +318,14 @@ test.describe('Instrumentation: studiesImported counter', () => {
         await page.goto(TEST_URL);
 
         // Wait for test mode to load and open a study.
-        await page.waitForFunction(() => {
-            const appState = window.DicomViewerApp?.state;
-            return appState?.currentStudy && appState?.currentSeries;
-        }, null, { timeout: 30000 });
+        await page.waitForFunction(
+            () => {
+                const appState = window.DicomViewerApp?.state;
+                return appState?.currentStudy && appState?.currentSeries;
+            },
+            null,
+            { timeout: 30000 },
+        );
 
         // Give instrumentation time to flush the session increment.
         await waitForStats(page, (stats) => stats.sessions >= 1);
