@@ -126,12 +126,30 @@ const Instrumentation = (() => {
         return protocol === 'tauri:' || hostname === 'tauri.localhost';
     }
 
+    async function waitForDesktopRuntime() {
+        const ready = window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || window.__DICOM_VIEWER_TAURI_READY__;
+        if (ready && typeof ready.then === 'function') {
+            await ready;
+        }
+        if (window.__TAURI__?.sql?.load) return window.__TAURI__;
+
+        const deadline = performance.now() + 5000;
+        while (performance.now() < deadline) {
+            if (window.__TAURI__?.sql?.load) return window.__TAURI__;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        return window.__TAURI__ || null;
+    }
+
     async function getDesktopDb() {
-        if (!window.__TAURI__?.sql?.load) {
-            throw new Error('Desktop SQL runtime not available');
+        const runtime = await waitForDesktopRuntime();
+        const sql = runtime?.sql;
+        if (!sql?.load) {
+            throw new Error('Desktop SQL runtime is not ready');
         }
         if (!desktopDbPromise) {
-            desktopDbPromise = window.__TAURI__.sql.load(DESKTOP_DB_URL).catch((error) => {
+            desktopDbPromise = sql.load(DESKTOP_DB_URL).catch((error) => {
                 desktopDbPromise = null;
                 throw error;
             });
@@ -204,18 +222,10 @@ const Instrumentation = (() => {
     // =====================================================================
 
     async function loadStats() {
-        let blob = null;
-
         if (useDesktopSql) {
-            blob = await loadFromDesktopSql();
+            return migrateStats(await loadFromDesktopSql());
         }
-
-        // Fall back to localStorage if desktop SQL returned nothing
-        if (!blob) {
-            blob = loadFromLocalStorage();
-        }
-
-        return migrateStats(blob);
+        return migrateStats(loadFromLocalStorage());
     }
 
     async function saveStats() {
@@ -410,8 +420,8 @@ const Instrumentation = (() => {
                 await ensureDesktopDb();
                 useDesktopSql = true;
             } catch (error) {
-                console.warn('Instrumentation: desktop SQL not available, falling back to localStorage:', error);
-                useDesktopSql = false;
+                console.warn('Instrumentation: desktop SQL not available, disabling instrumentation:', error);
+                return;
             }
         }
 
