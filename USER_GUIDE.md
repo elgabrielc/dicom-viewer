@@ -458,6 +458,23 @@ This viewer processes everything directly in your web browser. Your medical imag
 
 This design was intentional - medical images contain sensitive personal health information, and you should be able to view your own images without worrying about where they might be sent.
 
+### Usage Stats
+
+The desktop app and local personal mode keep a small set of local-only usage counters so you can see how much you have used the viewer. Open the help guide (click the **?** button on the library view, or press **H**) and scroll to the **Usage Stats** section to view them.
+
+The panel shows:
+
+- **Using since** - the date you first opened the app
+- **Last opened** - the date of your most recent session
+- **Sessions** - how many times you have opened the app
+- **Studies imported** - how many distinct studies you have added to your library
+
+These counters live on your own machine -- in the desktop app's local database, or in your browser's local storage in personal mode. They are not tied to an account and they do not contain any patient data, file paths, or image contents.
+
+**Sharing is off by default.** The panel has a single checkbox, *Share anonymous usage stats*, which is unchecked on a fresh install. If you opt in, only the counters above (plus an anonymous per-installation ID so the same install isn't double-counted) are sent to Divergent Health to help improve the app. We never send medical images, patient data, file paths, study contents, DICOM identifiers, or anything from your notes and reports. Uncheck the box at any time to stop sharing.
+
+The demo site (on GitHub Pages) does not track or share any usage stats at all. The Usage Stats section is hidden there entirely.
+
 ---
 
 ## Browser Support
