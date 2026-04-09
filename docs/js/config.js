@@ -110,6 +110,11 @@ const CONFIG = {
             // Analytics (future feature)
             // Only on cloud platform
             analytics: mode === 'cloud',
+
+            // Local-first instrumentation (ADR 008)
+            // Usage counters stored locally, shown in help modal
+            // Enabled in desktop and personal modes only
+            instrumentation: mode === 'desktop' || mode === 'personal',
         };
     },
 

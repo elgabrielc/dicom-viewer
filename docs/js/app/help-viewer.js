@@ -34,8 +34,15 @@
     function renderHelpContent() {
         const tocEl = $('helpToc');
         const contentEl = $('helpContent');
-        const helpSections = window.HELP_SECTIONS;
-        if (!tocEl || !contentEl || !Array.isArray(helpSections)) return;
+        const allSections = window.HELP_SECTIONS;
+        if (!tocEl || !contentEl || !Array.isArray(allSections)) return;
+
+        // Filter out usage-stats section when instrumentation is disabled
+        const config = window.CONFIG;
+        const instrumentationEnabled = config?.features?.instrumentation === true;
+        const helpSections = instrumentationEnabled
+            ? allSections
+            : allSections.filter((section) => section.id !== 'usage-stats');
 
         tocEl.innerHTML = helpSections
             .map(
@@ -58,6 +65,14 @@
         `,
             )
             .join('');
+
+        // Populate the usage stats panel dynamically if the section was rendered
+        if (instrumentationEnabled) {
+            const statsContainer = contentEl.querySelector('#usageStatsPanel');
+            if (statsContainer && window.Instrumentation?.renderStatsPanel) {
+                window.Instrumentation.renderStatsPanel(statsContainer);
+            }
+        }
 
         tocEl.querySelectorAll('.help-toc-item').forEach((item) => {
             item.addEventListener('click', (e) => {

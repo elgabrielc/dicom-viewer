@@ -378,6 +378,12 @@
                     console.warn('DesktopLibrary: failed to update import job completion:', error);
                 }
 
+                // Instrumentation: count newly imported studies (delta only, ADR 008)
+                const newStudyCount = Object.keys(result.studies || {}).length;
+                if (newStudyCount > 0) {
+                    window.Instrumentation?.trackStudiesImported(newStudyCount);
+                }
+
                 return result;
             } catch (error) {
                 state.importInProgress = false;

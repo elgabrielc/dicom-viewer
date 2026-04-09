@@ -120,6 +120,11 @@
 
         try {
             state.studies = await loadDroppedStudies(e.dataTransfer.items);
+            // Instrumentation: count all distinct studies in the drop result (ADR 008)
+            const importedCount = Object.keys(state.studies || {}).length;
+            if (importedCount > 0) {
+                window.Instrumentation?.trackStudiesImported(importedCount);
+            }
             await displayStudies();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -153,6 +158,11 @@
 
         try {
             state.studies = await loadDroppedPaths(paths);
+            // Instrumentation: count all distinct studies in the drop result (ADR 008)
+            const importedCount = Object.keys(state.studies || {}).length;
+            if (importedCount > 0) {
+                window.Instrumentation?.trackStudiesImported(importedCount);
+            }
             await displayStudies();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -644,6 +654,9 @@
             engine.stop();
         }
     });
+
+    // ---- Instrumentation: track app open (ADR 008) ----
+    window.Instrumentation?.trackAppOpen();
 
     // ---- App initialization ----
 

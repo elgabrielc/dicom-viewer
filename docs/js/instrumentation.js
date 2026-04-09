@@ -1,0 +1,485 @@
+/**
+ * Instrumentation - Minimal usage tracking (ADR 008)
+ *
+ * Copyright (c) 2026 Divergent Health Technologies
+ * https://divergent.health/
+ */
+
+const Instrumentation = (() => {
+    // =====================================================================
+    // CONSTANTS
+    // =====================================================================
+
+    const STORAGE_KEY = 'dicom-viewer-instrumentation-v1';
+    const FLUSH_INTERVAL_MS = 30_000;
+    const PHONE_HOME_DEBOUNCE_MS = 5_000;
+    const PHONE_HOME_URL = 'https://api.myradone.com/api/stats';
+    const SCHEMA_VERSION = 1;
+
+    // Desktop SQL table and DB
+    const DESKTOP_DB_URL = 'sqlite:viewer.db';
+    const DESKTOP_TABLE = 'instrumentation';
+
+    // =====================================================================
+    // STATE
+    // =====================================================================
+
+    let stats = null;
+    let dirty = false;
+    let flushTimer = null;
+    let phoneHomeTimer = null;
+    let desktopDbPromise = null;
+    let useDesktopSql = false;
+
+    // =====================================================================
+    // SCHEMA
+    // =====================================================================
+
+    function createDefaultStats() {
+        return {
+            version: SCHEMA_VERSION,
+            revision: 0,
+            installationId: crypto.randomUUID(),
+            firstSeen: new Date().toISOString(),
+            lastSeen: new Date().toISOString(),
+            sessions: 0,
+            studiesImported: 0,
+            shareEnabled: false,
+        };
+    }
+
+    /**
+     * Migrate a loaded stats blob to the current schema.
+     * Adds missing fields with sensible defaults. Never removes fields.
+     */
+    function migrateStats(blob) {
+        if (!blob || typeof blob !== 'object') {
+            return createDefaultStats();
+        }
+
+        const now = new Date().toISOString();
+        const migrated = { ...blob };
+
+        // Ensure all required fields exist
+        if (typeof migrated.version !== 'number') migrated.version = SCHEMA_VERSION;
+        if (typeof migrated.revision !== 'number') migrated.revision = 0;
+        if (typeof migrated.installationId !== 'string' || !migrated.installationId) {
+            migrated.installationId = crypto.randomUUID();
+        }
+        if (typeof migrated.firstSeen !== 'string' || !migrated.firstSeen) {
+            migrated.firstSeen = now;
+        }
+        if (typeof migrated.lastSeen !== 'string' || !migrated.lastSeen) {
+            migrated.lastSeen = now;
+        }
+        if (typeof migrated.sessions !== 'number' || !Number.isFinite(migrated.sessions)) {
+            migrated.sessions = 0;
+        }
+        if (typeof migrated.studiesImported !== 'number' || !Number.isFinite(migrated.studiesImported)) {
+            migrated.studiesImported = 0;
+        }
+        if (typeof migrated.shareEnabled !== 'boolean') {
+            migrated.shareEnabled = false;
+        }
+
+        migrated.version = SCHEMA_VERSION;
+        return migrated;
+    }
+
+    // =====================================================================
+    // STORE: localStorage
+    // =====================================================================
+
+    function loadFromLocalStorage() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (error) {
+            console.warn('Instrumentation: failed to load from localStorage:', error);
+            return null;
+        }
+    }
+
+    function saveToLocalStorage(blob) {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
+        } catch (error) {
+            console.warn('Instrumentation: failed to save to localStorage:', error);
+        }
+    }
+
+    // =====================================================================
+    // STORE: Desktop SQL (Tauri)
+    // =====================================================================
+
+    function isDesktopRuntime() {
+        if (typeof window === 'undefined') return false;
+        if (window.__TAURI__) return true;
+        const protocol = window.location?.protocol || '';
+        const hostname = window.location?.hostname || '';
+        return protocol === 'tauri:' || hostname === 'tauri.localhost';
+    }
+
+    async function getDesktopDb() {
+        if (!window.__TAURI__?.sql?.load) {
+            throw new Error('Desktop SQL runtime not available');
+        }
+        if (!desktopDbPromise) {
+            desktopDbPromise = window.__TAURI__.sql.load(DESKTOP_DB_URL).catch((error) => {
+                desktopDbPromise = null;
+                throw error;
+            });
+        }
+        return desktopDbPromise;
+    }
+
+    async function ensureDesktopTable() {
+        const db = await getDesktopDb();
+        await db.execute(`
+            CREATE TABLE IF NOT EXISTS ${DESKTOP_TABLE} (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                version INTEGER NOT NULL DEFAULT 1,
+                revision INTEGER NOT NULL DEFAULT 0,
+                installation_id TEXT NOT NULL,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                sessions INTEGER NOT NULL DEFAULT 0,
+                studies_imported INTEGER NOT NULL DEFAULT 0,
+                share_enabled INTEGER NOT NULL DEFAULT 0
+            )
+        `);
+    }
+
+    async function loadFromDesktopSql() {
+        try {
+            const db = await getDesktopDb();
+            const rows = await db.select(`SELECT * FROM ${DESKTOP_TABLE} WHERE id = 1 LIMIT 1`);
+            if (!rows || !rows.length) return null;
+            const row = rows[0];
+            return {
+                version: row.version,
+                revision: row.revision,
+                installationId: row.installation_id,
+                firstSeen: row.first_seen,
+                lastSeen: row.last_seen,
+                sessions: row.sessions,
+                studiesImported: row.studies_imported,
+                shareEnabled: row.share_enabled === 1,
+            };
+        } catch (error) {
+            console.warn('Instrumentation: failed to load from desktop SQL:', error);
+            return null;
+        }
+    }
+
+    async function saveToDesktopSql(blob) {
+        try {
+            const db = await getDesktopDb();
+            await db.execute(
+                `INSERT INTO ${DESKTOP_TABLE} (id, version, revision, installation_id, first_seen, last_seen, sessions, studies_imported, share_enabled)
+                 VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(id) DO UPDATE SET
+                     version = excluded.version,
+                     revision = excluded.revision,
+                     installation_id = excluded.installation_id,
+                     first_seen = excluded.first_seen,
+                     last_seen = excluded.last_seen,
+                     sessions = excluded.sessions,
+                     studies_imported = excluded.studies_imported,
+                     share_enabled = excluded.share_enabled`,
+                [
+                    blob.version,
+                    blob.revision,
+                    blob.installationId,
+                    blob.firstSeen,
+                    blob.lastSeen,
+                    blob.sessions,
+                    blob.studiesImported,
+                    blob.shareEnabled ? 1 : 0,
+                ],
+            );
+        } catch (error) {
+            console.warn('Instrumentation: failed to save to desktop SQL:', error);
+        }
+    }
+
+    // =====================================================================
+    // STORE: Unified load/save
+    // =====================================================================
+
+    async function loadStats() {
+        let blob = null;
+
+        if (useDesktopSql) {
+            blob = await loadFromDesktopSql();
+        }
+
+        // Fall back to localStorage if desktop SQL returned nothing
+        if (!blob) {
+            blob = loadFromLocalStorage();
+        }
+
+        return migrateStats(blob);
+    }
+
+    async function saveStats() {
+        if (!stats) return;
+
+        stats.revision += 1;
+
+        if (useDesktopSql) {
+            await saveToDesktopSql(stats);
+        } else {
+            saveToLocalStorage(stats);
+        }
+
+        dirty = false;
+        schedulePhoneHome();
+    }
+
+    // =====================================================================
+    // TRANSPORT: Phone home (fire-and-forget POST)
+    // =====================================================================
+
+    function buildPayload() {
+        if (!stats) return null;
+        return {
+            version: stats.version,
+            revision: stats.revision,
+            installationId: stats.installationId,
+            firstSeen: stats.firstSeen,
+            lastSeen: stats.lastSeen,
+            sessions: stats.sessions,
+            studiesImported: stats.studiesImported,
+        };
+    }
+
+    function sendPhoneHome() {
+        if (!stats?.shareEnabled) return;
+
+        const payload = buildPayload();
+        if (!payload) return;
+
+        try {
+            fetch(PHONE_HOME_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            }).catch(() => {
+                // Fire-and-forget: silent on failure
+            });
+        } catch {
+            // Fire-and-forget: silent on failure
+        }
+    }
+
+    function schedulePhoneHome() {
+        if (!stats?.shareEnabled) return;
+
+        if (phoneHomeTimer) {
+            clearTimeout(phoneHomeTimer);
+        }
+
+        phoneHomeTimer = setTimeout(() => {
+            phoneHomeTimer = null;
+            sendPhoneHome();
+        }, PHONE_HOME_DEBOUNCE_MS);
+    }
+
+    // =====================================================================
+    // REDUCE: Event handlers
+    // =====================================================================
+
+    function trackAppOpen() {
+        if (!stats) return;
+
+        stats.sessions += 1;
+        stats.lastSeen = new Date().toISOString();
+        dirty = true;
+
+        // Flush immediately on app open so the session count persists
+        void flush();
+    }
+
+    function trackStudiesImported(count) {
+        if (!stats) return;
+        if (!Number.isInteger(count) || count <= 0) return;
+
+        stats.studiesImported += count;
+        stats.lastSeen = new Date().toISOString();
+        dirty = true;
+    }
+
+    function getStats() {
+        if (!stats) return null;
+        // Return a defensive copy
+        return { ...stats };
+    }
+
+    function resetStats() {
+        if (!stats) return;
+
+        // Preserve installationId and shareEnabled across reset
+        const preservedId = stats.installationId;
+        const preservedShare = stats.shareEnabled;
+
+        const fresh = createDefaultStats();
+        fresh.installationId = preservedId;
+        fresh.shareEnabled = preservedShare;
+
+        stats = fresh;
+        dirty = true;
+        void flush();
+    }
+
+    function setShareEnabled(enabled) {
+        if (!stats) return;
+
+        const value = !!enabled;
+        const wasEnabled = stats.shareEnabled;
+        stats.shareEnabled = value;
+        dirty = true;
+        void flush();
+
+        // Enabling sharing sends one immediate POST of current persisted state
+        if (value && !wasEnabled) {
+            // Clear any pending debounced POST and send immediately
+            if (phoneHomeTimer) {
+                clearTimeout(phoneHomeTimer);
+                phoneHomeTimer = null;
+            }
+            // Wait a tick for flush to complete, then send
+            setTimeout(() => sendPhoneHome(), 100);
+        }
+    }
+
+    function isShareEnabled() {
+        return stats?.shareEnabled === true;
+    }
+
+    // =====================================================================
+    // LIFECYCLE
+    // =====================================================================
+
+    async function flush() {
+        if (!dirty && stats) return;
+        await saveStats();
+    }
+
+    async function init() {
+        const config = window.CONFIG;
+        if (!config?.features?.instrumentation) return;
+
+        // Detect desktop SQL availability
+        if (isDesktopRuntime()) {
+            try {
+                await ensureDesktopTable();
+                useDesktopSql = true;
+            } catch (error) {
+                console.warn('Instrumentation: desktop SQL not available, falling back to localStorage:', error);
+                useDesktopSql = false;
+            }
+        }
+
+        stats = await loadStats();
+
+        // Start periodic flush
+        flushTimer = setInterval(() => {
+            if (dirty) {
+                void flush();
+            }
+        }, FLUSH_INTERVAL_MS);
+
+        // Best-effort flush on page unload
+        window.addEventListener('beforeunload', () => {
+            if (dirty && stats) {
+                stats.revision += 1;
+                // Use synchronous localStorage for beforeunload reliability
+                saveToLocalStorage(stats);
+                dirty = false;
+            }
+        });
+    }
+
+    // =====================================================================
+    // HELP MODAL: Stats panel rendering
+    // =====================================================================
+
+    function formatDate(isoString) {
+        if (!isoString) return 'Unknown';
+        try {
+            const date = new Date(isoString);
+            return date.toLocaleDateString(undefined, {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+            });
+        } catch {
+            return isoString;
+        }
+    }
+
+    function renderStatsPanel(container) {
+        if (!container || !stats) {
+            if (container) {
+                container.innerHTML = '<p>Usage stats are not available.</p>';
+            }
+            return;
+        }
+
+        const usingSince = formatDate(stats.firstSeen);
+        const lastOpened = formatDate(stats.lastSeen);
+        const sessionsCount = stats.sessions;
+        const studiesCount = stats.studiesImported;
+        const shareChecked = stats.shareEnabled ? ' checked' : '';
+
+        container.innerHTML =
+            '<table class="help-stats-table">' +
+            '<tbody>' +
+            `<tr><td>Using since</td><td>${usingSince}</td></tr>` +
+            `<tr><td>Last opened</td><td>${lastOpened}</td></tr>` +
+            `<tr><td>Sessions</td><td>${sessionsCount}</td></tr>` +
+            `<tr><td>Studies imported</td><td>${studiesCount}</td></tr>` +
+            '</tbody>' +
+            '</table>' +
+            '<label class="help-stats-share-label">' +
+            `<input type="checkbox" id="statsShareToggle"${shareChecked}> ` +
+            'Share anonymous usage stats' +
+            '</label>' +
+            '<p class="help-stats-disclosure">' +
+            'Anonymous usage stats (app opens and studies imported) are shared with ' +
+            'Divergent Health to help improve the app. No medical images, patient data, ' +
+            'file paths, or study contents are ever included. Uncheck to stop sharing.' +
+            '</p>';
+
+        const toggle = container.querySelector('#statsShareToggle');
+        if (toggle) {
+            toggle.addEventListener('change', () => {
+                setShareEnabled(toggle.checked);
+            });
+        }
+    }
+
+    // =====================================================================
+    // PUBLIC API
+    // =====================================================================
+
+    // Initialize immediately (non-blocking)
+    const initPromise = init();
+
+    return {
+        trackAppOpen,
+        trackStudiesImported,
+        getStats,
+        resetStats,
+        setShareEnabled,
+        isShareEnabled,
+        renderStatsPanel,
+        ready: initPromise,
+    };
+})();
+
+if (typeof window !== 'undefined') {
+    window.Instrumentation = Instrumentation;
+}
