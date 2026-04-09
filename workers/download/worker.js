@@ -4,6 +4,31 @@
 const REPO = 'elgabrielc/dicom-viewer';
 const CACHE_TTL = 300; // 5 minutes
 const CACHE_KEY = 'https://myradone.com/_internal/download-url';
+const GITHUB_LATEST_RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
+
+function extractTagName(location) {
+  if (!location) return '';
+
+  const match = location.match(/\/releases\/tag\/([^/?#]+)/);
+  return match?.[1] || '';
+}
+
+async function resolveLatestDmgUrl() {
+  const latestReleaseResp = await fetch(GITHUB_LATEST_RELEASE_URL, {
+    headers: {
+      'User-Agent': 'myradone-download-worker',
+    },
+    redirect: 'manual',
+  });
+
+  const tagName = extractTagName(latestReleaseResp.headers.get('location'));
+  if (!tagName) {
+    throw new Error('Could not resolve latest release tag');
+  }
+
+  const version = tagName.startsWith('v') ? tagName.slice(1) : tagName;
+  return `https://github.com/${REPO}/releases/download/${tagName}/myradone_${version}_aarch64.dmg`;
+}
 
 export default {
   async fetch(request) {
@@ -22,31 +47,19 @@ export default {
       return Response.redirect(dmgUrl, 302);
     }
 
-    const apiUrl = `https://api.github.com/repos/${REPO}/releases/latest`;
-    const resp = await fetch(apiUrl, {
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'User-Agent': 'myradone-download-worker',
-      },
-    });
-
-    if (!resp.ok) {
+    let dmgUrl = '';
+    try {
+      dmgUrl = await resolveLatestDmgUrl();
+    } catch (_error) {
       return new Response('Could not fetch release info', { status: 502 });
     }
 
-    const release = await resp.json();
-    const dmg = release.assets.find(a => a.name.endsWith('_aarch64.dmg'));
-
-    if (!dmg) {
-      return new Response('DMG not found in latest release', { status: 404 });
-    }
-
     // Store the URL string so the Cache API can actually cache it
-    const cacheResp = new Response(dmg.browser_download_url, {
+    const cacheResp = new Response(dmgUrl, {
       headers: { 'Cache-Control': `public, max-age=${CACHE_TTL}` },
     });
     await cache.put(CACHE_KEY, cacheResp);
 
-    return Response.redirect(dmg.browser_download_url, 302);
+    return Response.redirect(dmgUrl, 302);
   },
 };
