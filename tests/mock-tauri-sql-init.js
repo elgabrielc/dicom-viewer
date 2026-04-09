@@ -30,8 +30,9 @@
             import_jobs: [],
             // ADR 008: Local-first instrumentation. Singleton row (id = 1).
             // Desktop tests that do not exercise instrumentation still need
-            // this table present so the module's ensureDesktopTable() call
-            // does not error out on load.
+            // this table present so desktop SQL selects do not error out.
+            // The canonical schema lives in
+            // desktop/src-tauri/migrations/008_instrumentation.sql.
             instrumentation: [],
             meta: {
                 lastCommentId: 0,

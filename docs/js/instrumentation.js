@@ -139,21 +139,11 @@ const Instrumentation = (() => {
         return desktopDbPromise;
     }
 
-    async function ensureDesktopTable() {
-        const db = await getDesktopDb();
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS ${DESKTOP_TABLE} (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                version INTEGER NOT NULL DEFAULT 1,
-                revision INTEGER NOT NULL DEFAULT 0,
-                installation_id TEXT NOT NULL,
-                first_seen TEXT NOT NULL,
-                last_seen TEXT NOT NULL,
-                sessions INTEGER NOT NULL DEFAULT 0,
-                studies_imported INTEGER NOT NULL DEFAULT 0,
-                share_enabled INTEGER NOT NULL DEFAULT 0
-            )
-        `);
+    async function ensureDesktopDb() {
+        // The instrumentation table is created by Rust migration 008
+        // (desktop/src-tauri/migrations/008_instrumentation.sql), which is
+        // the canonical schema. We only need to confirm the DB handle loads.
+        await getDesktopDb();
     }
 
     async function loadFromDesktopSql() {
@@ -406,7 +396,7 @@ const Instrumentation = (() => {
     // =====================================================================
 
     async function flush() {
-        if (!dirty && stats) return;
+        if (!dirty || !stats) return;
         await saveStats();
     }
 
@@ -417,7 +407,7 @@ const Instrumentation = (() => {
         // Detect desktop SQL availability
         if (isDesktopRuntime()) {
             try {
-                await ensureDesktopTable();
+                await ensureDesktopDb();
                 useDesktopSql = true;
             } catch (error) {
                 console.warn('Instrumentation: desktop SQL not available, falling back to localStorage:', error);
@@ -474,42 +464,60 @@ const Instrumentation = (() => {
     function renderStatsPanel(container) {
         if (!container || !stats) {
             if (container) {
-                container.innerHTML = '<p>Usage stats are not available.</p>';
+                container.textContent = 'Usage stats are not available.';
             }
             return;
         }
 
-        const usingSince = formatDate(stats.firstSeen);
-        const lastOpened = formatDate(stats.lastSeen);
-        const sessionsCount = stats.sessions;
-        const studiesCount = stats.studiesImported;
-        const shareChecked = stats.shareEnabled ? ' checked' : '';
+        // Build the panel via DOM construction + textContent rather than
+        // innerHTML interpolation. stats.firstSeen and stats.lastSeen come
+        // from persistent storage (localStorage or SQLite) and formatDate
+        // falls back to the raw ISO string if parsing fails -- any process
+        // with write access to app storage could otherwise inject HTML.
+        container.textContent = '';
 
-        container.innerHTML =
-            '<table class="help-stats-table">' +
-            '<tbody>' +
-            `<tr><td>Using since</td><td>${usingSince}</td></tr>` +
-            `<tr><td>Last opened</td><td>${lastOpened}</td></tr>` +
-            `<tr><td>Sessions</td><td>${sessionsCount}</td></tr>` +
-            `<tr><td>Studies imported</td><td>${studiesCount}</td></tr>` +
-            '</tbody>' +
-            '</table>' +
-            '<label class="help-stats-share-label">' +
-            `<input type="checkbox" id="statsShareToggle"${shareChecked}> ` +
-            'Share anonymous usage stats' +
-            '</label>' +
-            '<p class="help-stats-disclosure">' +
+        const table = document.createElement('table');
+        table.className = 'help-stats-table';
+        const tbody = document.createElement('tbody');
+        table.appendChild(tbody);
+        container.appendChild(table);
+
+        const addRow = (label, value) => {
+            const tr = document.createElement('tr');
+            const th = document.createElement('td');
+            th.textContent = label;
+            const td = document.createElement('td');
+            td.textContent = String(value);
+            tr.appendChild(th);
+            tr.appendChild(td);
+            tbody.appendChild(tr);
+        };
+
+        addRow('Using since', formatDate(stats.firstSeen));
+        addRow('Last opened', formatDate(stats.lastSeen));
+        addRow('Sessions', stats.sessions);
+        addRow('Studies imported', stats.studiesImported);
+
+        const label = document.createElement('label');
+        label.className = 'help-stats-share-label';
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.id = 'statsShareToggle';
+        toggle.checked = !!stats.shareEnabled;
+        toggle.addEventListener('change', () => {
+            setShareEnabled(toggle.checked);
+        });
+        label.appendChild(toggle);
+        label.appendChild(document.createTextNode(' Share anonymous usage stats'));
+        container.appendChild(label);
+
+        const disclosure = document.createElement('p');
+        disclosure.className = 'help-stats-disclosure';
+        disclosure.textContent =
             'Anonymous usage stats (app opens and studies imported) are shared with ' +
             'Divergent Health to help improve the app. No medical images, patient data, ' +
-            'file paths, or study contents are ever included. Uncheck to stop sharing.' +
-            '</p>';
-
-        const toggle = container.querySelector('#statsShareToggle');
-        if (toggle) {
-            toggle.addEventListener('change', () => {
-                setShareEnabled(toggle.checked);
-            });
-        }
+            'file paths, or study contents are ever included. Uncheck to stop sharing.';
+        container.appendChild(disclosure);
     }
 
     // =====================================================================
