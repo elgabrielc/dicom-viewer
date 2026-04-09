@@ -6,11 +6,25 @@ const CACHE_TTL = 300; // 5 minutes
 const CACHE_KEY = 'https://myradone.com/_internal/download-url';
 const GITHUB_LATEST_RELEASE_URL = `https://github.com/${REPO}/releases/latest`;
 
+function formatHttpStatus(response) {
+  const status = Number(response?.status);
+  const statusText = String(response?.statusText || '').trim();
+  if (!Number.isFinite(status)) return statusText || 'request failed';
+  return statusText ? `${status} ${statusText}` : `HTTP ${status}`;
+}
+
 function extractTagName(location) {
   if (!location) return '';
 
   const match = location.match(/\/releases\/tag\/([^/?#]+)/);
   return match?.[1] || '';
+}
+
+// Keep this naming in sync with the release workflow, which publishes the
+// public arm64 installer under myradone_${version}_aarch64.dmg.
+function buildPublishedDmgUrl(tagName) {
+  const version = tagName.startsWith('v') ? tagName.slice(1) : tagName;
+  return `https://github.com/${REPO}/releases/download/${tagName}/myradone_${version}_aarch64.dmg`;
 }
 
 async function resolveLatestDmgUrl() {
@@ -21,13 +35,18 @@ async function resolveLatestDmgUrl() {
     redirect: 'manual',
   });
 
+  if (latestReleaseResp.status !== 302) {
+    throw new Error(
+      `Unexpected response from ${GITHUB_LATEST_RELEASE_URL} (${formatHttpStatus(latestReleaseResp)}).`,
+    );
+  }
+
   const tagName = extractTagName(latestReleaseResp.headers.get('location'));
   if (!tagName) {
     throw new Error('Could not resolve latest release tag');
   }
 
-  const version = tagName.startsWith('v') ? tagName.slice(1) : tagName;
-  return `https://github.com/${REPO}/releases/download/${tagName}/myradone_${version}_aarch64.dmg`;
+  return buildPublishedDmgUrl(tagName);
 }
 
 export default {
@@ -50,7 +69,8 @@ export default {
     let dmgUrl = '';
     try {
       dmgUrl = await resolveLatestDmgUrl();
-    } catch (_error) {
+    } catch (error) {
+      console.error('Failed to resolve latest release DMG URL', error);
       return new Response('Could not fetch release info', { status: 502 });
     }
 

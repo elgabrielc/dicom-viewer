@@ -1148,6 +1148,44 @@ test.describe('Test Suite 22A: Sample CT Loader Resilience', () => {
         expect(maxInFlight).toBeLessThanOrEqual(SAMPLE_FETCH_BATCH_SIZE);
     });
 
+    test('Sample CT loader surfaces non-Error failures instead of "undefined"', async ({ page }) => {
+        await page.addInitScript(() => {
+            const app = window.DicomViewerApp || {};
+            let sourcesValue = app.sources;
+            Object.defineProperty(app, 'sources', {
+                configurable: true,
+                enumerable: true,
+                get() {
+                    return sourcesValue;
+                },
+                set(value) {
+                    sourcesValue = {
+                        ...value,
+                        loadSampleStudies: async () => {
+                            throw 'synthetic non-error';
+                        },
+                    };
+                },
+            });
+            window.DicomViewerApp = app;
+        });
+
+        await page.goto(HOME_URL);
+
+        const dialogPromise = page.waitForEvent('dialog');
+        await page.locator('#loadSampleCtBtn').evaluate((button) => {
+            setTimeout(() => button.click(), 0);
+        });
+        const dialog = await dialogPromise;
+
+        expect(dialog.message()).toContain('Error loading sample: synthetic non-error');
+        expect(dialog.message()).not.toContain('undefined');
+        await dialog.accept();
+
+        await expect(page.locator('#loadSampleCtBtn')).toHaveText('CT Scan');
+        await expect(page.locator('#loadSampleCtBtn')).toBeEnabled();
+    });
+
     test('Sample CT loader reports which sample file failed to download', async ({ page }) => {
         await page.route('**/sample/manifest.json', async (route) => {
             await route.fulfill({ json: ['02510.dcm', '02511.dcm'] });
