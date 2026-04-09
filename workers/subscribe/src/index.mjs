@@ -36,7 +36,7 @@ export function normalizeSource(value) {
 
 export function normalizeConsentVersion(value) {
     if (typeof value !== 'string') return 'v1';
-    const normalized = value.trim().toLowerCase();
+    const normalized = value.trim().toLowerCase().slice(0, 64);
     return normalized || 'v1';
 }
 
@@ -66,6 +66,18 @@ function isOriginAllowed(request, env) {
     const origin = request.headers.get('Origin');
     if (!origin) return true;
     return parseAllowedOrigins(env.ALLOWED_ORIGINS).has(origin);
+}
+
+async function isRateLimited(request, env) {
+    if (!env.SUBSCRIBE_RATE_LIMIT?.limit) {
+        return false;
+    }
+
+    const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+    const { success } = await env.SUBSCRIBE_RATE_LIMIT.limit({
+        key: `${SUBSCRIBE_PATH}:${ip}`
+    });
+    return !success;
 }
 
 export async function verifyTurnstileToken(token, request, env, fetchImpl = fetch) {
@@ -140,16 +152,20 @@ export async function handleSubscribe(request, env, fetchImpl = fetch) {
         return jsonResponse({ error: 'Not found' }, 404, headers);
     }
 
-    if (!isOriginAllowed(request, env)) {
-        return jsonResponse({ error: 'Origin not allowed' }, 403, headers);
-    }
-
     if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers });
     }
 
+    if (!isOriginAllowed(request, env)) {
+        return jsonResponse({ error: 'Origin not allowed' }, 403, headers);
+    }
+
     if (request.method !== 'POST') {
         return jsonResponse({ error: 'Method not allowed' }, 405, headers);
+    }
+
+    if (await isRateLimited(request, env)) {
+        return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, headers);
     }
 
     let payload;
@@ -179,15 +195,7 @@ export async function handleSubscribe(request, env, fetchImpl = fetch) {
         consentVersion: normalizeConsentVersion(payload?.consentVersion)
     });
 
-    return jsonResponse(
-        {
-            ok: true,
-            already: result === 'already',
-            reactivated: result === 'reactivated'
-        },
-        200,
-        headers
-    );
+    return jsonResponse({ ok: true }, 200, headers);
 }
 
 export default {
