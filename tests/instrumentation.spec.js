@@ -42,6 +42,7 @@ const { test, expect } = require('@playwright/test');
 const APP_URL = 'http://127.0.0.1:5001/?nolib';
 const TEST_URL = 'http://127.0.0.1:5001/?test';
 const STORAGE_KEY = 'dicom-viewer-instrumentation-v1';
+const DESKTOP_RUNTIME_WAIT_TIMEOUT_MS = 5_000;
 
 /**
  * Playwright gives each test a fresh browser context with empty localStorage
@@ -145,7 +146,7 @@ test.describe('Instrumentation: personal mode counters', () => {
 
         await page.waitForFunction(() => {
             return window.__instrumentationTestDbState?.row?.sessions === 1;
-        });
+        }, { timeout: DESKTOP_RUNTIME_WAIT_TIMEOUT_MS });
 
         const localRaw = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
         expect(localRaw).toBeNull();

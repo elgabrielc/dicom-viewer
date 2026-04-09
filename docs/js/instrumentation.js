@@ -15,6 +15,7 @@ const Instrumentation = (() => {
     const PHONE_HOME_DEBOUNCE_MS = 5_000;
     const PHONE_HOME_URL = 'https://api.myradone.com/api/stats';
     const SCHEMA_VERSION = 1;
+    const DESKTOP_RUNTIME_TIMEOUT_MS = 5_000;
 
     // Desktop SQL table and DB
     const DESKTOP_DB_URL = 'sqlite:viewer.db';
@@ -133,7 +134,7 @@ const Instrumentation = (() => {
         }
         if (window.__TAURI__?.sql?.load) return window.__TAURI__;
 
-        const deadline = performance.now() + 5000;
+        const deadline = performance.now() + DESKTOP_RUNTIME_TIMEOUT_MS;
         while (performance.now() < deadline) {
             if (window.__TAURI__?.sql?.load) return window.__TAURI__;
             await new Promise((resolve) => setTimeout(resolve, 50));
