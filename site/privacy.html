@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Divergent Health Technologies Privacy</title>
+    <meta name="description" content="Privacy details for Divergent Health Technologies and myRadOne launch updates.">
+    <meta name="theme-color" content="#FFF8F3">
+    <style>
+        @font-face {
+            font-family: 'Inter';
+            src: url('fonts/Inter-variable.woff2') format('woff2');
+            font-weight: 100 900;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Lora';
+            src: url('fonts/Lora-variable.woff2') format('woff2');
+            font-weight: 400 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            --bg: #fff8f3;
+            --surface: rgba(255, 255, 255, 0.72);
+            --text: #3d3a36;
+            --text-dim: #6b6660;
+            --accent: #f08c00;
+            --accent-soft: rgba(240, 140, 0, 0.12);
+            --border: rgba(61, 58, 54, 0.1);
+            --serif: 'Lora', Georgia, serif;
+            --sans: 'Inter', system-ui, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: var(--sans);
+            background:
+                radial-gradient(circle at top, rgba(240, 140, 0, 0.08), transparent 38%),
+                var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+
+        main {
+            width: min(760px, calc(100vw - 2.5rem));
+            margin: 0 auto;
+            padding: 4rem 0 5rem;
+        }
+
+        .eyebrow {
+            margin: 0 0 1.2rem;
+            color: var(--accent);
+            font-size: 0.76rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            margin: 0 0 1rem;
+            font-family: var(--serif);
+            font-style: italic;
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 500;
+            line-height: 1.12;
+        }
+
+        .intro,
+        .back-link {
+            color: var(--text-dim);
+        }
+
+        .back-link {
+            display: inline-flex;
+            margin-bottom: 2rem;
+            text-decoration: none;
+        }
+
+        .back-link:hover {
+            color: var(--text);
+        }
+
+        .policy-grid {
+            display: grid;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .policy-card {
+            padding: 1.35rem 1.4rem;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            backdrop-filter: blur(10px);
+            border-radius: 18px;
+        }
+
+        .policy-card h2 {
+            margin: 0 0 0.55rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .policy-card p,
+        .policy-card ul {
+            margin: 0;
+            color: var(--text-dim);
+            font-size: 0.98rem;
+        }
+
+        .policy-card ul {
+            padding-left: 1.2rem;
+        }
+
+        .policy-card strong {
+            color: var(--text);
+        }
+
+        .contact-note {
+            margin-top: 2rem;
+            padding: 1rem 1.2rem;
+            background: var(--accent-soft);
+            border-radius: 16px;
+            color: var(--text);
+        }
+
+        a {
+            color: inherit;
+        }
+
+        @media (max-width: 640px) {
+            main {
+                width: min(100vw - 1.5rem, 760px);
+                padding: 2.75rem 0 3.5rem;
+            }
+
+            .policy-card {
+                border-radius: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <a class="back-link" href="./">&larr; Back to landing page</a>
+        <p class="eyebrow">Privacy</p>
+        <h1>Privacy for myRadOne launch updates</h1>
+        <p class="intro">
+            Divergent Health Technologies uses this signup form to collect launch-interest emails for myRadOne. This page covers that marketing signup flow, not the future handling of clinical imaging data.
+        </p>
+
+        <div class="policy-grid">
+            <section class="policy-card">
+                <h2>What we collect</h2>
+                <p>
+                    If you subscribe, we store your <strong>email address</strong>, the <strong>date you subscribed</strong>, the <strong>page source</strong>, and the <strong>consent text version</strong> you agreed to.
+                </p>
+            </section>
+
+            <section class="policy-card">
+                <h2>What we do not collect here</h2>
+                <p>
+                    This signup flow is for newsletter-style updates only. We do <strong>not</strong> ask for medical images, health records, passwords, or other patient data in this form.
+                </p>
+            </section>
+
+            <section class="policy-card">
+                <h2>How we use it</h2>
+                <p>
+                    We use your email to send occasional updates about myRadOne, product availability, and launch news. We do not sell this list to data brokers or ad networks.
+                </p>
+            </section>
+
+            <section class="policy-card">
+                <h2>Storage and protection</h2>
+                <p>
+                    Signup records are stored in infrastructure we control on Cloudflare. The form is protected by Cloudflare Turnstile to reduce spam and automated abuse.
+                </p>
+            </section>
+
+            <section class="policy-card">
+                <h2>Unsubscribing</h2>
+                <p>
+                    Every update email should include a way to unsubscribe. You can also request removal by emailing us directly.
+                </p>
+            </section>
+
+            <section class="policy-card">
+                <h2>Questions</h2>
+                <ul>
+                    <li>Email: <a href="mailto:info@divergent.health">info@divergent.health</a></li>
+                    <li>Company: Divergent Health Technologies</li>
+                </ul>
+            </section>
+        </div>
+
+        <p class="contact-note">
+            If the signup copy changes later, we version that consent text in our subscriber records so we can trace which wording each subscriber agreed to.
+        </p>
+    </main>
+</body>
+</html>
