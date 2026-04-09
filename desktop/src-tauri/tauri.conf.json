@@ -30,8 +30,8 @@
       "capabilities": [
         "main-capability"
       ],
-      "csp": "default-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' 'wasm-unsafe-eval'",
-      "devCsp": "default-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' 'wasm-unsafe-eval'"
+      "csp": "default-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.myradone.com; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' 'wasm-unsafe-eval'",
+      "devCsp": "default-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.myradone.com; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' 'wasm-unsafe-eval'"
     }
   },
   "bundle": {
