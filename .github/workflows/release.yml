@@ -6,8 +6,10 @@
 # as GitHub prereleases so they don't become the /releases/latest endpoint.
 #
 # Creates a draft GitHub Release with signed + notarized DMGs and updater
-# artifacts for both aarch64 and x86_64. Publish the draft manually after
-# verifying the artifacts.
+# artifacts for both aarch64 and x86_64. The Tauri action notarizes and staples
+# the `.app`; this workflow adds a post-pass that notarizes and staples the DMG
+# container too before publishing. Publish the draft manually after verifying
+# the artifacts.
 
 name: Release
 
@@ -135,3 +137,44 @@ jobs:
           releaseDraft: true
           prerelease: ${{ steps.meta.outputs.prerelease }}
           args: --target x86_64-apple-darwin
+
+      - name: Notarize and staple DMG artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          notarize_and_upload_dmg() {
+            local target_triple="$1"
+            local asset_suffix="$2"
+            local dmg_path="src-tauri/target/${target_triple}/release/bundle/dmg/myradone_${VERSION}_${asset_suffix}.dmg"
+            local dmg_name
+            dmg_name="$(basename "$dmg_path")"
+
+            if [[ ! -f "$dmg_path" ]]; then
+              echo "::error::Expected DMG not found: $dmg_path"
+              exit 1
+            fi
+
+            echo "Notarizing ${dmg_name}..."
+            xcrun notarytool submit "$dmg_path" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+
+            echo "Stapling ${dmg_name}..."
+            xcrun stapler staple "$dmg_path"
+
+            echo "Validating stapled ticket for ${dmg_name}..."
+            xcrun stapler validate "$dmg_path"
+
+            gh release delete-asset "$GITHUB_REF_NAME" "$dmg_name" --yes || true
+            gh release upload "$GITHUB_REF_NAME" "$dmg_path"
+          }
+
+          notarize_and_upload_dmg "aarch64-apple-darwin" "aarch64"
+          notarize_and_upload_dmg "x86_64-apple-darwin" "x64"

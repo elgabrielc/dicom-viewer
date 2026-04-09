@@ -13,6 +13,7 @@ Copyright 2026 Divergent Health Technologies
 ### Fixed
 - Sample CT/MRI demo loads now surface real errors instead of `undefined`
 - Sample downloads are batched to reduce memory pressure on constrained devices
+- macOS release DMGs are now notarized and stapled in CI, not just the app bundle
 
 ## [2026-02-01]
 
