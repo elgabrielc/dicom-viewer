@@ -22,6 +22,7 @@
     } = app.dom;
     const { closeReportViewer } = app.reportsUi;
     const { openHelpViewer, closeHelpViewer } = app.helpViewer;
+    const { getErrorMessage } = app.utils;
     const {
         applyDesktopLibraryScan,
         applyDesktopLibrarySnapshot,
@@ -128,7 +129,9 @@
             }
             await displayStudies();
         } catch (err) {
-            alert(`Error: ${err.message}`);
+            if (err?.name === 'AbortError') return;
+            console.error('Dropped folder load failed:', err);
+            alert(`Error: ${getErrorMessage(err)}`);
         }
     }
 
@@ -157,7 +160,8 @@
                 await displayStudies();
             } catch (err) {
                 if (err.name !== 'AbortError') {
-                    alert(`Error: ${err.message}`);
+                    console.error('Managed library drop failed:', err);
+                    alert(`Error: ${getErrorMessage(err)}`);
                 }
             } finally {
                 state.libraryAbort = null;
@@ -175,7 +179,9 @@
             }
             await displayStudies();
         } catch (err) {
-            alert(`Error: ${err.message}`);
+            if (err?.name === 'AbortError') return;
+            console.error('Tauri drop fallback failed:', err);
+            alert(`Error: ${getErrorMessage(err)}`);
         }
     }
 
@@ -186,7 +192,9 @@
             state.studies = await loadSampleStudies(samplePath, button, buttonLabel);
             await displayStudies();
         } catch (err) {
-            alert(`Error loading sample: ${err.message}`);
+            if (err?.name === 'AbortError') return;
+            console.error('Sample load failed:', err);
+            alert(`Error loading sample: ${getErrorMessage(err)}`);
         }
     }
 

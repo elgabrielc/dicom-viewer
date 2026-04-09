@@ -735,7 +735,7 @@ dependencies = [
 
 [[package]]
 name = "dicom-viewer-desktop"
-version = "0.3.0"
+version = "0.3.2"
 dependencies = [
  "dicom-core",
  "dicom-dictionary-std",

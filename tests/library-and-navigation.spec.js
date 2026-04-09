@@ -30,6 +30,11 @@ const { createSyntheticDicomFolder, removeSyntheticDicomFolder } = require('./di
 const TEST_URL = 'http://127.0.0.1:5001/?test';
 const APP_URL = 'http://127.0.0.1:5001/';
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
+const SAMPLE_FETCH_BATCH_SIZE = 20;
+const SAMPLE_CT_MANIFEST = JSON.parse(
+    fs.readFileSync(path.join(__dirname, '..', 'docs', 'sample', 'manifest.json'), 'utf8'),
+);
+const SAMPLE_CT_BATCH_TEST_FILES = SAMPLE_CT_MANIFEST.slice(0, SAMPLE_FETCH_BATCH_SIZE + 5);
 
 // Selectors - kept consistent with viewing-tools.spec.js
 const CANVAS_SELECTOR = '#imageCanvas';
@@ -1109,6 +1114,104 @@ test.describe('Test Suite 22: Sample MRI Button', () => {
 
         // Toolbar should be visible
         await expect(page.locator(TOOLBAR_SELECTOR)).toBeVisible();
+    });
+});
+
+// ============================================================================
+// Test Suite 22A: Sample CT Loader Resilience
+// ============================================================================
+
+test.describe('Test Suite 22A: Sample CT Loader Resilience', () => {
+    test('Sample CT loader limits concurrent sample downloads', async ({ page }) => {
+        let inFlight = 0;
+        let maxInFlight = 0;
+
+        await page.route('**/sample/manifest.json', async (route) => {
+            await route.fulfill({ json: SAMPLE_CT_BATCH_TEST_FILES });
+        });
+        await page.route('**/sample/*.dcm', async (route) => {
+            inFlight++;
+            maxInFlight = Math.max(maxInFlight, inFlight);
+            try {
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                await route.continue();
+            } finally {
+                inFlight--;
+            }
+        });
+
+        await page.goto(HOME_URL);
+        await page.locator('#loadSampleCtBtn').click();
+
+        await page.waitForSelector('#studiesTable', { state: 'visible', timeout: 60000 });
+        await expect(page.locator('#studiesBody tr').first()).toBeVisible({ timeout: 10000 });
+        expect(maxInFlight).toBeLessThanOrEqual(SAMPLE_FETCH_BATCH_SIZE);
+    });
+
+    test('Sample CT loader surfaces non-Error failures instead of "undefined"', async ({ page }) => {
+        await page.addInitScript(() => {
+            const app = window.DicomViewerApp || {};
+            let sourcesValue = app.sources;
+            Object.defineProperty(app, 'sources', {
+                configurable: true,
+                enumerable: true,
+                get() {
+                    return sourcesValue;
+                },
+                set(value) {
+                    sourcesValue = {
+                        ...value,
+                        loadSampleStudies: async () => {
+                            throw 'synthetic non-error';
+                        },
+                    };
+                },
+            });
+            window.DicomViewerApp = app;
+        });
+
+        await page.goto(HOME_URL);
+
+        const dialogPromise = page.waitForEvent('dialog');
+        await page.locator('#loadSampleCtBtn').evaluate((button) => {
+            setTimeout(() => button.click(), 0);
+        });
+        const dialog = await dialogPromise;
+
+        expect(dialog.message()).toContain('Error loading sample: synthetic non-error');
+        expect(dialog.message()).not.toContain('undefined');
+        await dialog.accept();
+
+        await expect(page.locator('#loadSampleCtBtn')).toHaveText('CT Scan');
+        await expect(page.locator('#loadSampleCtBtn')).toBeEnabled();
+    });
+
+    test('Sample CT loader reports which sample file failed to download', async ({ page }) => {
+        await page.route('**/sample/manifest.json', async (route) => {
+            await route.fulfill({ json: ['02510.dcm', '02511.dcm'] });
+        });
+        await page.route('**/sample/02511.dcm', async (route) => {
+            await route.fulfill({
+                status: 500,
+                contentType: 'text/plain',
+                body: 'sample download failed',
+            });
+        });
+
+        await page.goto(HOME_URL);
+
+        const dialogPromise = page.waitForEvent('dialog');
+        await page.locator('#loadSampleCtBtn').click();
+        const dialog = await dialogPromise;
+
+        expect(dialog.message()).toMatch(
+            /Error loading sample: Unable to download sample\/02511\.dcm \((?:500 Internal Server Error|HTTP 500)\)\./,
+        );
+        expect(dialog.message()).not.toContain('undefined');
+        await dialog.accept();
+
+        await expect(page.locator('#loadSampleCtBtn')).toHaveText('CT Scan');
+        await expect(page.locator('#loadSampleCtBtn')).toBeEnabled();
     });
 });
 

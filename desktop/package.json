@@ -1,7 +1,7 @@
 {
   "name": "dicom-viewer-desktop",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "myradone -- your medical imaging library",
   "scripts": {
     "build:plain-dmg": "./scripts/build-plain-dmg.sh",
