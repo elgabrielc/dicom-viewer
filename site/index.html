@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myRadOne -- One place for all your medical imaging</title>
+    <meta name="description" content="Import, organize, and view your CT scans, MRIs, and X-rays. Privacy-first medical imaging that works offline.">
+    <meta name="theme-color" content="#FFF8F3">
+    <!-- Copyright (c) 2026 Divergent Health Technologies -->
+
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 32 32' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='32' height='32' rx='7' fill='%23F08C00'/%3E%3Ctext x='4' y='23' font-family='Georgia,serif' font-size='20' font-weight='400' fill='white'%3EmR%3C/text%3E%3Ctext x='22' y='16' font-family='system-ui' font-size='12' font-weight='600' fill='white'%3E1%3C/text%3E%3C/svg%3E">
+
+    <style>
+        @font-face {
+            font-family: 'Inter';
+            src: url('fonts/Inter-variable.woff2') format('woff2');
+            font-weight: 100 900;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'Lora';
+            src: url('fonts/Lora-variable.woff2') format('woff2');
+            font-weight: 400 700;
+            font-style: normal;
+            font-display: swap;
+        }
+    </style>
+
+    <style>
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #FFF8F3;
+            --bg-surface: #FFFFFF;
+            --text: #3D3A36;
+            --text-dim: #6B6660;
+            --text-muted: #A09B8F;
+            --stone: #C4BFB3;
+            --sand: #E5E0D4;
+            --dawn: #F2F0E2;
+            --accent: #F08C00;
+            --accent-hover: #D67D00;
+            --accent-glow: rgba(240, 140, 0, 0.06);
+            --accent-border: rgba(240, 140, 0, 0.3);
+            --serif: 'Lora', Georgia, serif;
+            --sans: 'Inter', system-ui, sans-serif;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--sans);
+            font-weight: 300;
+            line-height: 1.7;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Warm ambient glow */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(
+                ellipse 80% 60% at 50% 30%,
+                rgba(240, 140, 0, 0.025) 0%,
+                transparent 70%
+            );
+            pointer-events: none;
+        }
+
+        /* Scan line on load */
+        .scan-line {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(
+                90deg,
+                transparent 5%,
+                rgba(240, 140, 0, 0.35) 50%,
+                transparent 95%
+            );
+            animation: scan 3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        @keyframes scan {
+            0%   { top: 0; opacity: 0; }
+            8%   { opacity: 1; }
+            85%  { opacity: 0.3; }
+            100% { top: 100vh; opacity: 0; }
+        }
+
+        /* ---- Hero ---- */
+
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 1.5rem 2rem 1.5rem;
+            position: relative;
+            z-index: 1;
+            overflow-x: hidden;
+        }
+
+        .hero-content {
+            max-width: 100%;
+            width: 100%;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--serif);
+            font-size: clamp(3rem, 8vw, 4.5rem);
+            line-height: 1;
+            margin-bottom: 1.5rem;
+            opacity: 0;
+            animation: fadeUp 1s ease 0.3s forwards;
+        }
+
+        .logo-rad {
+            font-weight: 400;
+            color: var(--accent);
+        }
+
+        .logo-one {
+            font-weight: 500;
+            color: var(--stone);
+        }
+
+        .tagline {
+            font-family: var(--sans);
+            font-size: clamp(1rem, 2.5vw, 1.2rem);
+            font-weight: 300;
+            color: var(--text-muted);
+            letter-spacing: 0.02em;
+            margin-bottom: 1.5rem;
+            opacity: 0;
+            animation: fadeUp 1s ease 0.5s forwards;
+        }
+
+        /* ---- App preview: split screenshots ---- */
+
+        .app-preview {
+            margin: 0 auto 0;
+            width: 85vw;
+            max-width: 1000px;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+            opacity: 0;
+            animation: fadeUp 1s ease 0.7s forwards;
+        }
+
+        .preview-frame {
+            flex: 1 1 50%;
+            min-width: 0;
+            transition: flex 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .preview-img {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.06),
+                0 12px 48px rgba(0, 0, 0, 0.08);
+            transition: box-shadow 0.5s ease;
+        }
+
+        .app-preview.has-focus .preview-frame {
+            flex: 0 1 25%;
+        }
+
+        .app-preview.has-focus .preview-frame.is-active {
+            flex: 1 1 70%;
+        }
+
+        .app-preview.has-focus .preview-frame.is-active .preview-img {
+            box-shadow:
+                0 4px 16px rgba(0, 0, 0, 0.1),
+                0 24px 64px rgba(0, 0, 0, 0.14);
+        }
+
+        .preview-frame--library .preview-img {
+            border: 1px solid var(--sand);
+        }
+
+        .preview-frame--viewer .preview-img {
+            border: 1px solid rgba(50, 50, 50, 0.6);
+        }
+
+        .preview-frame img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+
+        /* Labels below each frame */
+        .preview-label {
+            font-family: var(--sans);
+            font-size: 0.95rem;
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            text-align: center;
+            color: var(--text-muted);
+            padding-top: 0.6rem;
+            transition: opacity 0.3s ease;
+        }
+
+        .app-preview.has-focus .preview-frame:not(.is-active) .preview-label {
+            opacity: 0;
+        }
+
+        /* ---- CTAs ---- */
+
+        .ctas {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 1.2rem;
+            flex-wrap: wrap;
+            padding-top: 2.5rem;
+            padding-bottom: 2rem;
+            flex-shrink: 0;
+            opacity: 0;
+            animation: fadeIn 1s ease 1s forwards;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+        .app-preview.has-focus ~ .ctas {
+            opacity: 0;
+            transform: translateY(2rem);
+            pointer-events: none;
+        }
+
+        .cta-primary-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .cta-note {
+            position: absolute;
+            bottom: -1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .cta-primary {
+            display: inline-block;
+            background: var(--accent);
+            color: #FFFFFF;
+            text-decoration: none;
+            font-size: 0.92rem;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            padding: 0.85rem 2.4rem;
+            border-radius: 3px;
+            border: 1px solid var(--accent);
+            transition: all 0.3s ease;
+        }
+
+        .cta-primary:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 4px 24px rgba(240, 140, 0, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .cta-secondary {
+            display: inline-flex;
+            align-items: center;
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.92rem;
+            font-weight: 400;
+            letter-spacing: 0.02em;
+            padding: 0.85rem 2.4rem;
+            border: 1px solid var(--sand);
+            border-radius: 3px;
+            background: var(--bg-surface);
+            transition: all 0.3s ease;
+        }
+
+        .cta-secondary:hover {
+            border-color: var(--stone);
+            color: var(--text);
+        }
+
+        .cta-arrow {
+            display: inline-block;
+            transition: transform 0.3s ease;
+            margin-left: 0.3em;
+        }
+
+        .cta-secondary:hover .cta-arrow {
+            transform: translateX(3px);
+        }
+
+        /* ---- Features ---- */
+
+        .features {
+            padding: 6rem 2rem 8rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .features-inner {
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        .features-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--stone);
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        .feature-list {
+            display: flex;
+            flex-direction: column;
+            gap: 3rem;
+        }
+
+        .feature {
+            display: flex;
+            align-items: flex-start;
+            gap: 1.5rem;
+            opacity: 0;
+            transform: translateY(16px);
+        }
+
+        .feature.visible {
+            animation: fadeUp 0.8s ease forwards;
+        }
+
+        .feature-marker {
+            flex-shrink: 0;
+            width: 3px;
+            height: 48px;
+            background: linear-gradient(180deg, var(--accent) 0%, rgba(240, 140, 0, 0.15) 100%);
+            border-radius: 2px;
+            margin-top: 0.2rem;
+        }
+
+        .feature-title {
+            font-family: var(--serif);
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text);
+            margin-bottom: 0.35rem;
+        }
+
+        .feature-desc {
+            font-size: 0.95rem;
+            font-weight: 300;
+            color: var(--text-dim);
+            line-height: 1.6;
+        }
+
+        /* ---- Privacy callout ---- */
+
+        .privacy {
+            text-align: center;
+            padding: 0 2rem 6rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .privacy-text {
+            font-family: var(--serif);
+            font-style: italic;
+            font-size: 1.15rem;
+            color: var(--stone);
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        .privacy-text strong {
+            color: var(--text-dim);
+            font-weight: 500;
+            font-style: normal;
+        }
+
+        /* ---- Contact ---- */
+
+        .contact {
+            text-align: center;
+            padding: 0 2rem 4rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .contact-text {
+            color: var(--text-dim);
+            font-size: 1rem;
+            font-weight: 300;
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
+        .contact-text a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .contact-text a:hover {
+            text-decoration: underline;
+        }
+
+        /* ---- Footer ---- */
+
+        footer {
+            padding: 3rem 2rem;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            border-top: 1px solid var(--dawn);
+        }
+
+        .footer-brand {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            letter-spacing: 0.03em;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-brand a {
+            color: var(--text-dim);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .footer-brand a:hover {
+            color: var(--accent);
+        }
+
+        .footer-copy {
+            font-size: 0.68rem;
+            color: var(--stone);
+            letter-spacing: 0.04em;
+        }
+
+        /* ---- Fixed contact button ---- */
+
+        .talk-wrap {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 20;
+            opacity: 0;
+            animation: fadeIn 0.8s ease 2s forwards;
+        }
+
+        .talk-btn {
+            display: inline-flex;
+            align-items: center;
+            background: var(--accent);
+            color: #FFFFFF;
+            font-family: var(--sans);
+            font-size: 0.82rem;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+            padding: 0.65rem 1.4rem;
+            border-radius: 3px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 12px rgba(240, 140, 0, 0.15);
+        }
+
+        .talk-btn:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 4px 20px rgba(240, 140, 0, 0.25);
+            transform: translateY(-1px);
+        }
+
+        .talk-wrap {
+            text-align: right;
+        }
+
+        .talk-dropdown {
+            display: none;
+            flex-direction: column;
+            margin-top: 0.5rem;
+            margin-left: auto;
+            background: var(--bg-surface);
+            border: 1px solid var(--sand);
+            border-radius: 6px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .talk-wrap:hover .talk-dropdown,
+        .talk-wrap.open .talk-dropdown {
+            display: flex;
+        }
+
+        .talk-option {
+            padding: 0.75rem 1.2rem;
+            font-family: var(--sans);
+            font-size: 0.8rem;
+            font-weight: 400;
+            color: var(--text-dim);
+            text-decoration: none;
+            text-align: center;
+            transition: background 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .talk-option:hover {
+            background: var(--dawn);
+            color: var(--text);
+        }
+
+        .talk-option + .talk-option {
+            border-top: 1px solid var(--dawn);
+        }
+
+        /* ---- Signup overlay ---- */
+
+        .signup-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.3);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .signup-overlay.visible { display: flex; }
+
+        .signup-card {
+            background: var(--bg-surface);
+            border-radius: 10px;
+            padding: 2.5rem;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+            text-align: center;
+        }
+
+        .signup-title {
+            font-family: var(--serif);
+            font-size: 1.3rem;
+            color: var(--text);
+            margin-bottom: 0.5rem;
+        }
+
+        .signup-subtitle {
+            font-family: var(--sans);
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .signup-input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 1px solid var(--sand);
+            border-radius: 3px;
+            font-family: var(--sans);
+            font-size: 0.9rem;
+            margin-bottom: 0.75rem;
+            outline: none;
+        }
+
+        .signup-consent {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            font-family: var(--sans);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: left;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+        }
+
+        .signup-consent input { margin-top: 0.15rem; }
+
+        .signup-submit {
+            width: 100%;
+            padding: 0.7rem;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            font-family: var(--sans);
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .signup-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .signup-status {
+            font-family: var(--sans);
+            font-size: 0.85rem;
+            margin-top: 0.75rem;
+            min-height: 1.2em;
+        }
+
+        .signup-status.success { color: var(--accent); font-weight: 500; }
+        .signup-status.error { color: #c0392b; }
+
+        /* ---- Animations ---- */
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-delay: 0.01ms !important;
+            }
+            .scan-line { display: none; }
+        }
+
+        /* ---- Responsive ---- */
+
+        @media (max-width: 640px) {
+            .hero { padding: 3rem 1.5rem; }
+            .logo { margin-bottom: 1rem; }
+            .app-preview {
+                flex-direction: column;
+                max-width: 400px;
+            }
+            .app-preview.has-focus .preview-frame { flex: 1 1 50%; }
+            .app-preview.has-focus .preview-frame.is-active { flex: 1 1 50%; }
+            .ctas {
+                flex-direction: column;
+                gap: 0.8rem;
+            }
+            .cta-primary, .cta-secondary {
+                width: 100%;
+                text-align: center;
+            }
+            .feature { gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="talk-wrap">
+        <button class="talk-btn">Get in touch</button>
+        <div class="talk-dropdown">
+            <a href="mailto:info@divergent.health" class="talk-option">Email us at info@divergent.health</a>
+            <a href="#signup" class="talk-option" id="signup-trigger">Sign up for updates</a>
+        </div>
+    </div>
+    <div class="scan-line" aria-hidden="true"></div>
+
+    <section class="hero">
+        <div class="hero-content">
+            <h1 class="logo" aria-label="myRadOne">
+                <span class="logo-rad">myRad</span><span class="logo-one">One</span>
+            </h1>
+
+            <p class="tagline">One place for all your medical imaging</p>
+
+            <div class="app-preview">
+                <div class="preview-frame preview-frame--library">
+                    <div class="preview-img">
+                        <img src="library-screenshot.png" alt="myRadOne library view showing organized medical studies with patient info, dates, and modality types" loading="eager">
+                    </div>
+                    <div class="preview-label">Organize</div>
+                </div>
+                <div class="preview-frame preview-frame--viewer">
+                    <div class="preview-img">
+                        <img src="viewer-screenshot.png" alt="myRadOne viewer showing an MRI brain scan with clinical tools, series navigation, and slice metadata" loading="eager">
+                    </div>
+                    <div class="preview-label">View</div>
+                </div>
+            </div>
+
+            <div class="ctas">
+                <div class="cta-primary-wrap">
+                    <a href="/download" class="cta-primary">Download for Mac</a>
+                    <span class="cta-note">Windows coming soon</span>
+                </div>
+                <a href="https://elgabrielc.github.io/dicom-viewer/" class="cta-secondary" target="_blank" rel="noopener">
+                    Try in browser<span class="cta-arrow">&rarr;</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <section class="features">
+        <div class="features-inner">
+            <p class="features-label">What you get</p>
+
+            <div class="feature-list">
+                <div class="feature">
+                    <div class="feature-marker"></div>
+                    <div>
+                        <p class="feature-title">Add a folder, done</p>
+                        <p class="feature-desc">Import your imaging folder and myRadOne reads every file, groups by study and series, and builds your library automatically. No manual sorting. No more running CDs.</p>
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-marker"></div>
+                    <div>
+                        <p class="feature-title">Reports</p>
+                        <p class="feature-desc">If you have a clinical report in MyChart or another software from your doctor, you might not have the images in the same place. If you picked up a CD of your images from medical records, it probably doesn't have your final report on it. Now you can easily keep the radiologist's words together with the very images they describe.</p>
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-marker"></div>
+                    <div>
+                        <p class="feature-title">Comments and notes</p>
+                        <p class="feature-desc">This can all get pretty complicated. Write down whatever's on your mind, and check back whenever you like.</p>
+                    </div>
+                </div>
+
+                <div class="feature">
+                    <div class="feature-marker"></div>
+                    <div>
+                        <p class="feature-title">View your images</p>
+                        <p class="feature-desc">Accurate image viewing and simple tools built-in, so you (or your next doctor) can take a closer look.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+
+    <div class="contact">
+        <p class="contact-text">
+            If you have questions, feedback, or would like to connect, please reach out to
+            <a href="mailto:info@divergent.health">info@divergent.health</a>.
+            We'd love to hear from you.
+        </p>
+        <hr style="border:none;border-top:1px solid var(--sand);max-width:200px;margin:2rem auto;">
+        <p class="contact-text">
+            Built with love, offered for free. If you care to support, you can buy us a "coffee" <a href="https://buymeacoffee.com/myradone" target="_blank" rel="noopener">here</a>.
+        </p>
+    </div>
+
+    <footer>
+        <p class="footer-brand">A <a href="https://divergent.health">Divergent Health Technologies</a> product</p>
+        <p class="footer-copy">&copy; 2026 Divergent Health Technologies</p>
+    </footer>
+
+    <script>
+        // -- Preview hover (JS-controlled to prevent flicker) --
+        const preview = document.querySelector('.app-preview');
+        const frames = preview.querySelectorAll('.preview-frame');
+
+        function resetPreview() {
+            preview.classList.remove('has-focus');
+            frames.forEach(f => f.classList.remove('is-active'));
+        }
+
+        frames.forEach(frame => {
+            frame.addEventListener('mouseenter', () => {
+                preview.classList.add('has-focus');
+                frames.forEach(f => f.classList.remove('is-active'));
+                frame.classList.add('is-active');
+            });
+            frame.addEventListener('mouseleave', resetPreview);
+        });
+
+        // -- Feature scroll animation --
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.2 });
+
+        document.querySelectorAll('.feature').forEach((el, i) => {
+            el.style.animationDelay = `${i * 0.15}s`;
+            observer.observe(el);
+        });
+
+        // -- Dropdown: keyboard accessible --
+        const talkBtn = document.querySelector('.talk-btn');
+        const talkWrap = document.querySelector('.talk-wrap');
+
+        talkBtn.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                talkWrap.classList.toggle('open');
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') talkWrap.classList.remove('open');
+        });
+
+        // -- Signup overlay --
+        const signupOverlay = document.getElementById('signup-form');
+        const signupTrigger = document.getElementById('signup-trigger');
+        const signupFormInner = document.getElementById('signup-form-inner');
+        const signupEmail = document.getElementById('signup-email');
+        const signupConsent = document.getElementById('signup-consent-check');
+        const signupStatus = document.getElementById('signup-status');
+        const signupSubmit = signupFormInner.querySelector('.signup-submit');
+
+        const SUBSCRIBE_API = 'https://api.myradone.com/subscribe';
+        const TURNSTILE_SITE_KEY = '0x4AAAAAAC2XG7qabjWJnaYQ';
+        let turnstileWidgetId = null;
+        let turnstileToken = null;
+
+        signupTrigger.addEventListener('click', (e) => {
+            e.preventDefault();
+            talkWrap.classList.remove('open');
+            signupOverlay.classList.add('visible');
+            if (typeof turnstile !== 'undefined' && turnstileWidgetId === null) {
+                turnstileWidgetId = turnstile.render('#turnstile-container', {
+                    sitekey: TURNSTILE_SITE_KEY,
+                    callback: (token) => { turnstileToken = token; },
+                });
+            }
+        });
+
+        signupOverlay.addEventListener('click', (e) => {
+            if (e.target === signupOverlay) signupOverlay.classList.remove('visible');
+        });
+
+        signupFormInner.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            signupStatus.textContent = '';
+            signupStatus.className = 'signup-status';
+
+            const email = signupEmail.value.trim().toLowerCase();
+            if (!email) return;
+            if (!signupConsent.checked) {
+                signupStatus.textContent = 'Please accept to continue.';
+                signupStatus.classList.add('error');
+                return;
+            }
+            if (!turnstileToken) {
+                signupStatus.textContent = 'Please complete the security check.';
+                signupStatus.classList.add('error');
+                return;
+            }
+
+            signupSubmit.disabled = true;
+            signupSubmit.textContent = 'Signing up...';
+
+            try {
+                const resp = await fetch(SUBSCRIBE_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        consentAccepted: true,
+                        consentVersion: 'v1',
+                        source: 'landing',
+                        turnstileToken: turnstileToken,
+                    }),
+                });
+
+                if (resp.ok) {
+                    signupStatus.textContent = 'Thanks! We will be in touch.';
+                    signupStatus.classList.add('success');
+                    signupSubmit.style.display = 'none';
+                    signupEmail.style.display = 'none';
+                    signupConsent.parentElement.style.display = 'none';
+                    document.getElementById('turnstile-container').style.display = 'none';
+                } else {
+                    const data = await resp.json().catch(() => ({}));
+                    signupStatus.textContent = data.error || 'Something went wrong. Please try again.';
+                    signupStatus.classList.add('error');
+                    signupSubmit.disabled = false;
+                    signupSubmit.textContent = 'Sign up';
+                    if (typeof turnstile !== 'undefined') {
+                        turnstile.reset(turnstileWidgetId);
+                        turnstileToken = null;
+                    }
+                }
+            } catch {
+                signupStatus.textContent = 'Network error. Please try again.';
+                signupStatus.classList.add('error');
+                signupSubmit.disabled = false;
+                signupSubmit.textContent = 'Sign up';
+            }
+        });
+    </script>
+
+    <!-- Signup overlay -->
+    <div id="signup-form" class="signup-overlay">
+        <div class="signup-card">
+            <h3 class="signup-title">Stay in the loop</h3>
+            <p class="signup-subtitle">Get notified about new features and releases.</p>
+            <form id="signup-form-inner">
+                <input type="email" id="signup-email" required placeholder="your@email.com" class="signup-input">
+                <label class="signup-consent">
+                    <input type="checkbox" id="signup-consent-check" required>
+                    <span>I agree to receive occasional product updates</span>
+                </label>
+                <div id="turnstile-container"></div>
+                <button type="submit" class="signup-submit">Sign up</button>
+                <p id="signup-status" class="signup-status"></p>
+            </form>
+        </div>
+    </div>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+</body>
+</html>
