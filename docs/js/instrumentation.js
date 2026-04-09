@@ -30,6 +30,11 @@ const Instrumentation = (() => {
     let phoneHomeTimer = null;
     let desktopDbPromise = null;
     let useDesktopSql = false;
+    // initPromise is assigned at the bottom of the IIFE once init() is invoked.
+    // Declared up here so the track* functions can await it regardless of
+    // call order during the startup race between module load and the first
+    // caller in main.js.
+    let initPromise = null;
 
     // =====================================================================
     // SCHEMA
@@ -291,7 +296,25 @@ const Instrumentation = (() => {
     // REDUCE: Event handlers
     // =====================================================================
 
-    function trackAppOpen() {
+    /**
+     * Track an app-open session.
+     *
+     * Awaits init() before reading stats. Without this wait, a caller that
+     * runs synchronously during module load (e.g. main.js at line 659) would
+     * observe stats === null and silently drop the first session on every
+     * fresh start.
+     */
+    async function trackAppOpen() {
+        // Wait for init() to finish loading stats from storage before mutating.
+        if (initPromise) {
+            try {
+                await initPromise;
+            } catch {
+                // init() never throws, but be defensive.
+            }
+        }
+
+        // stats is null when instrumentation is disabled (demo mode); skip silently.
         if (!stats) return;
 
         stats.sessions += 1;
@@ -299,16 +322,36 @@ const Instrumentation = (() => {
         dirty = true;
 
         // Flush immediately on app open so the session count persists
-        void flush();
+        await flush();
     }
 
-    function trackStudiesImported(count) {
+    /**
+     * Track imported studies. Await init before reading stats for the same
+     * reason as trackAppOpen -- the caller fires this synchronously from
+     * drop handlers that may race with the init promise on fresh starts.
+     *
+     * Flushes immediately after incrementing (matching trackAppOpen) so the
+     * counter persists promptly instead of waiting up to 30s for the periodic
+     * flush. Drop imports are user-visible events; the cost of one extra
+     * localStorage/SQLite write per import is negligible compared to the
+     * surprise of a stats panel that lags by half a minute.
+     */
+    async function trackStudiesImported(count) {
+        if (initPromise) {
+            try {
+                await initPromise;
+            } catch {
+                // init() never throws, but be defensive.
+            }
+        }
+
         if (!stats) return;
         if (!Number.isInteger(count) || count <= 0) return;
 
         stats.studiesImported += count;
         stats.lastSeen = new Date().toISOString();
         dirty = true;
+        await flush();
     }
 
     function getStats() {
@@ -391,14 +434,22 @@ const Instrumentation = (() => {
             }
         }, FLUSH_INTERVAL_MS);
 
-        // Best-effort flush on page unload
+        // Best-effort flush on page unload.
+        //
+        // Desktop mode intentionally skips the beforeunload write: SQLite
+        // writes are async and cannot be reliably awaited during unload, and
+        // writing to localStorage here would create a stale second source of
+        // truth that later desktop launches would silently ignore (SQLite is
+        // read first). Accept up to FLUSH_INTERVAL_MS (30s) of data loss on
+        // crash/close in exchange for a single consistent store.
+        //
+        // Browser/personal mode can safely use synchronous localStorage here.
         window.addEventListener('beforeunload', () => {
-            if (dirty && stats) {
-                stats.revision += 1;
-                // Use synchronous localStorage for beforeunload reliability
-                saveToLocalStorage(stats);
-                dirty = false;
-            }
+            if (!dirty || !stats) return;
+            if (useDesktopSql) return;
+            stats.revision += 1;
+            saveToLocalStorage(stats);
+            dirty = false;
         });
     }
 
@@ -465,8 +516,10 @@ const Instrumentation = (() => {
     // PUBLIC API
     // =====================================================================
 
-    // Initialize immediately (non-blocking)
-    const initPromise = init();
+    // Initialize immediately (non-blocking). initPromise is assigned to the
+    // outer `let` declared at the top of the IIFE so the track* functions
+    // can reference it during the startup race window.
+    initPromise = init();
 
     return {
         trackAppOpen,

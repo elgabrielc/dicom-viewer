@@ -28,6 +28,11 @@
             sync_outbox: [],
             sync_state: [],
             import_jobs: [],
+            // ADR 008: Local-first instrumentation. Singleton row (id = 1).
+            // Desktop tests that do not exercise instrumentation still need
+            // this table present so the module's ensureDesktopTable() call
+            // does not error out on load.
+            instrumentation: [],
             meta: {
                 lastCommentId: 0,
                 lastOutboxId: 0,
@@ -63,6 +68,7 @@
         if (!Array.isArray(normalized.sync_outbox)) normalized.sync_outbox = [];
         if (!Array.isArray(normalized.sync_state)) normalized.sync_state = [];
         if (!Array.isArray(normalized.import_jobs)) normalized.import_jobs = [];
+        if (!Array.isArray(normalized.instrumentation)) normalized.instrumentation = [];
         if (!normalized.meta || typeof normalized.meta !== 'object') {
             normalized.meta = { lastCommentId: 0, lastOutboxId: 0, loadCalls: 0 };
         }
@@ -472,6 +478,49 @@
                     return { rowsAffected: 1, lastInsertId: null };
                 }
 
+                // -- instrumentation (ADR 008) --
+                //
+                // Singleton row keyed on id = 1. Supports the upsert pattern
+                // used by docs/js/instrumentation.js saveToDesktopSql().
+
+                if (normalized.startsWith('insert into instrumentation')) {
+                    const [
+                        version,
+                        revision,
+                        installationId,
+                        firstSeen,
+                        lastSeen,
+                        sessions,
+                        studiesImported,
+                        shareEnabled,
+                    ] = values;
+                    const existing = state.instrumentation.find((row) => row.id === 1);
+                    if (existing) {
+                        existing.version = version;
+                        existing.revision = revision;
+                        existing.installation_id = installationId;
+                        existing.first_seen = firstSeen;
+                        existing.last_seen = lastSeen;
+                        existing.sessions = sessions;
+                        existing.studies_imported = studiesImported;
+                        existing.share_enabled = shareEnabled;
+                    } else {
+                        state.instrumentation.push({
+                            id: 1,
+                            version,
+                            revision,
+                            installation_id: installationId,
+                            first_seen: firstSeen,
+                            last_seen: lastSeen,
+                            sessions,
+                            studies_imported: studiesImported,
+                            share_enabled: shareEnabled,
+                        });
+                    }
+                    persistState(db, state);
+                    return { rowsAffected: 1, lastInsertId: null };
+                }
+
                 throw new Error(`Unhandled mock SQL execute: ${query}`);
             },
 
@@ -718,6 +767,16 @@
                     const limitMatch = normalized.match(/limit\s+\?/);
                     const limitValue = limitMatch ? Number(values[values.length - 1]) : rows.length;
                     return rows.slice(0, limitValue).map((row) => clone(row));
+                }
+
+                // -- instrumentation selects (ADR 008) --
+
+                if (normalized.startsWith('select') && normalized.includes('from instrumentation')) {
+                    const rows = state.instrumentation
+                        .filter((row) => row.id === 1)
+                        .slice(0, 1)
+                        .map((row) => clone(row));
+                    return rows;
                 }
 
                 throw new Error(`Unhandled mock SQL select: ${query}`);
