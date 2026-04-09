@@ -28,6 +28,24 @@ docs/
 
 ---
 
+## myRadOne Landing Page (Cloudflare Pages)
+
+The public `myradone.com` marketing site is a separate static bundle in `site/`.
+
+- `site/index.html` is the landing page
+- `site/privacy.html` is the signup privacy page
+- `site/fonts/`, `site/library-screenshot.png`, and `site/viewer-screenshot.png` are part of the deployable asset set
+
+Deploy it to the Cloudflare Pages project named `myradone` with:
+
+```bash
+npx wrangler pages deploy site --project-name myradone
+```
+
+This project is currently deployed manually, so merging a PR does not update `myradone.com` by itself.
+
+---
+
 ## Local Development
 
 ### Option 1: Flask Server (Recommended for Development)

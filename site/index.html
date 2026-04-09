@@ -609,6 +609,15 @@
 
         .signup-consent input { margin-top: 0.15rem; }
 
+        .signup-consent a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .signup-consent a:hover {
+            text-decoration: underline;
+        }
+
         .signup-submit {
             width: 100%;
             padding: 0.7rem;
@@ -785,6 +794,7 @@
     </footer>
 
     <script>
+        document.addEventListener('DOMContentLoaded', () => {
         // -- Preview hover (JS-controlled to prevent flicker) --
         const preview = document.querySelector('.app-preview');
         const frames = preview.querySelectorAll('.preview-frame');
@@ -830,7 +840,10 @@
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') talkWrap.classList.remove('open');
+            if (e.key === 'Escape') {
+                talkWrap.classList.remove('open');
+                signupOverlay.classList.remove('visible');
+            }
         });
 
         // -- Signup overlay --
@@ -847,16 +860,24 @@
         let turnstileWidgetId = null;
         let turnstileToken = null;
 
+        function renderTurnstileIfReady() {
+            if (!signupOverlay.classList.contains('visible')) return;
+            if (turnstileWidgetId !== null) return;
+            if (typeof turnstile === 'undefined') return;
+
+            turnstileWidgetId = turnstile.render('#turnstile-container', {
+                sitekey: TURNSTILE_SITE_KEY,
+                callback: (token) => { turnstileToken = token; },
+            });
+        }
+
+        window.onMyRadOneTurnstileLoad = renderTurnstileIfReady;
+
         signupTrigger.addEventListener('click', (e) => {
             e.preventDefault();
             talkWrap.classList.remove('open');
             signupOverlay.classList.add('visible');
-            if (typeof turnstile !== 'undefined' && turnstileWidgetId === null) {
-                turnstileWidgetId = turnstile.render('#turnstile-container', {
-                    sitekey: TURNSTILE_SITE_KEY,
-                    callback: (token) => { turnstileToken = token; },
-                });
-            }
+            renderTurnstileIfReady();
         });
 
         signupOverlay.addEventListener('click', (e) => {
@@ -898,7 +919,7 @@
                 });
 
                 if (resp.ok) {
-                    signupStatus.textContent = 'Thanks! We will be in touch.';
+                    signupStatus.textContent = "Thanks. We'll be in touch.";
                     signupStatus.classList.add('success');
                     signupSubmit.style.display = 'none';
                     signupEmail.style.display = 'none';
@@ -922,6 +943,7 @@
                 signupSubmit.textContent = 'Sign up';
             }
         });
+        });
     </script>
 
     <!-- Signup overlay -->
@@ -933,7 +955,7 @@
                 <input type="email" id="signup-email" required placeholder="your@email.com" class="signup-input">
                 <label class="signup-consent">
                     <input type="checkbox" id="signup-consent-check" required>
-                    <span>I agree to receive occasional product updates</span>
+                    <span>I'd like to receive occasional myRadOne updates. Unsubscribe anytime. See the <a href="./privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</span>
                 </label>
                 <div id="turnstile-container"></div>
                 <button type="submit" class="signup-submit">Sign up</button>
@@ -941,6 +963,6 @@
             </form>
         </div>
     </div>
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onMyRadOneTurnstileLoad" async defer></script>
 </body>
 </html>
