@@ -1,0 +1,30 @@
+name = "myradone-stats"
+main = "src/index.mjs"
+compatibility_date = "2026-04-07"
+workers_dev = false
+preview_urls = false
+
+# Allowed CORS origins. Tauri desktop sends no Origin header, so it is allowed
+# implicitly by the worker. Demo mode (github.io) has instrumentation disabled
+# and intentionally is not listed here. Localhost origins are matched by
+# pattern in the worker code, not configured here.
+[vars]
+ALLOWED_ORIGINS = "https://myradone.com,https://www.myradone.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "myradone-stats"
+# Placeholder: the deployer must create the D1 database with
+#   npx wrangler d1 create myradone-stats
+# and paste the returned UUID here before running `wrangler deploy`.
+database_id = "TBD_RUN_WRANGLER_D1_CREATE"
+
+[[ratelimits]]
+name = "STATS_RATE_LIMIT"
+# Placeholder: create a new rate-limit namespace in the Cloudflare dashboard
+# (or let `wrangler deploy` provision it) and paste the numeric ID here.
+namespace_id = "TBD_CREATE_RATELIMIT_NAMESPACE"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60

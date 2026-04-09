@@ -328,6 +328,20 @@
             const state = app.state;
             const jobId = this.generateImportJobId();
 
+            // Instrumentation snapshot: capture the set of StudyInstanceUIDs
+            // already in the library BEFORE running the import (ADR 008).
+            //
+            // The import pipeline's result.studies includes an entry for every
+            // file it touched, which overcounts: files belonging to studies
+            // already in the library are not "newly imported". The correct
+            // count is the set difference between the after-import library
+            // UIDs and this before-import snapshot. See issue #3 in the
+            // Stage 1 fix PR.
+            //
+            // state.studies is the current in-memory view of the library and
+            // is the source of truth for "what was here before this import".
+            const beforeStudyUids = new Set(Object.keys(state.studies || {}));
+
             // Record import job start
             try {
                 await notesApi.saveImportJob({
@@ -376,6 +390,41 @@
                     });
                 } catch (error) {
                     console.warn('DesktopLibrary: failed to update import job completion:', error);
+                }
+
+                // Instrumentation: count newly introduced studies (delta only, ADR 008).
+                //
+                // We compute the after-set by rescanning the library folder
+                // rather than trusting result.studies (which only covers files
+                // touched by this import, not the full library). A rescan is
+                // the only way to get a ground-truth "after" snapshot that
+                // reflects deduped files, skipped files, and files that were
+                // already present from a previous import.
+                //
+                // The rescanned studies are attached to the result as
+                // `result.rescannedStudies` so callers can use them directly
+                // instead of rescanning again. Callers that skip this field
+                // and rescan on their own will double-scan, which is correct
+                // but wasteful. Failures here must not break the import --
+                // the diff is best-effort instrumentation.
+                try {
+                    const libraryPath = await app.importPipeline.getLibraryPath();
+                    if (libraryPath) {
+                        const afterStudies = await this.loadStudies(libraryPath);
+                        result.rescannedStudies = afterStudies;
+                        const afterStudyUids = new Set(Object.keys(afterStudies || {}));
+                        let newStudyCount = 0;
+                        for (const uid of afterStudyUids) {
+                            if (!beforeStudyUids.has(uid)) {
+                                newStudyCount += 1;
+                            }
+                        }
+                        if (newStudyCount > 0) {
+                            void window.Instrumentation?.trackStudiesImported(newStudyCount);
+                        }
+                    }
+                } catch (diffError) {
+                    console.warn('DesktopLibrary: failed to compute instrumentation diff:', diffError);
                 }
 
                 return result;

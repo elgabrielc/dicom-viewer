@@ -1,7 +1,7 @@
 # ADR 008: Local-First Instrumentation
 
 ## Status
-Proposed
+Accepted (Stage 1 implemented)
 
 ## Context
 
@@ -74,30 +74,25 @@ Implement local-only usage counters that are stored in app-data and surfaced to 
 
 These streams share no storage, no API, and no persistence layer. The separation is architectural, not just policy.
 
-### What to track (telemetry stream only)
+### What to track (Stage 1)
 
-**Session metrics:**
-- Session count (app opens)
-- Cumulative usage duration (hours)
-- First use date, last use date
+Stage 1 ships with a deliberately minimal counter set. The event taxonomy will grow in later stages, but the storage schema, transport, and privacy boundary are fixed now.
 
-**Feature usage counters:**
-- Studies loaded
-- Series viewed
-- Measurement tool used
-- Notes created/edited
-- Reports generated
-- Window/level adjusted
-- Zoom/pan used
+**Identity and timing:**
+- `installationId` -- per-installation UUID via `crypto.randomUUID()`. Survives `resetStats()` so a reset does not invalidate the cloud mapping. Will later be mapped to account IDs in cloud mode.
+- `firstSeen` -- ISO timestamp of the first app open (members-since date).
+- `lastSeen` -- ISO timestamp of the most recent mutation.
 
-**Content metrics:**
-- Modality breakdown (CT, MR, US, CR/DX, other)
-- Total slices rendered
-- Studies imported (desktop)
+**Usage counters:**
+- `sessions` -- incremented once per app open (`trackAppOpen()`).
+- `studiesImported` -- incremented by user-initiated imports only (`trackStudiesImported(count)`). This counter does NOT increase for viewer opens, refreshes, rescans, auto-loads, or sample-data loads.
 
-**Error metrics:**
-- Decode failures by type (unsupported transfer syntax, corrupt file, etc.)
-- Unsupported format encounters
+**Schema bookkeeping:**
+- `version` -- schema version (currently 1). `migrateStats()` runs on every read and adds missing fields with zero defaults; fields are never removed.
+- `revision` -- monotonic integer incremented on every `saveStats()` call. The server will upsert only if `incoming.revision > stored.revision`, preventing stale writes from overwriting newer local state.
+- `shareEnabled` -- boolean toggle for phone-home. Stored locally; not included in phone-home payloads.
+
+Additional counters (feature usage, modality breakdown, errors) are deferred to a later stage. The sealed API means new counters are added via new helpers, not by opening a generic `trackEvent(category, action)` surface.
 
 ### What NOT to track (enforced by architecture, not just policy)
 
@@ -111,23 +106,30 @@ These streams share no storage, no API, and no persistence layer. The separation
 
 ### Storage
 
-- Desktop: JSON file in Tauri app-data directory (alongside existing persistence)
-- Web (personal mode): localStorage
-- Demo mode: disabled (stateless, no persistence)
-- Cloud mode (future): server-side collection with local cache
+- Desktop: SQLite `instrumentation` table (single row enforced by `CHECK (id = 1)`), created by migration `008_instrumentation.sql`. Shares the existing `viewer.db` database.
+- Personal (localhost Flask): `localStorage` under the key `dicom-viewer-instrumentation-v1`.
+- Demo (GitHub Pages): disabled. No storage writes, no network requests, no stats section in the help modal.
+- Preview (Vercel PR previews): disabled. Same behavior as demo so preview builds don't touch production state.
+- Cloud (future): server-side collection with local cache (the cloud API will upsert by `installationId` using `revision` as the conflict resolver).
+
+Feature gating is driven by `CONFIG.features.instrumentation`, which is enabled only in `desktop` and `personal` modes. The older `CONFIG.features.analytics` flag is unrelated and remains reserved for future cloud analytics; both flags coexist in `config.js`.
 
 ### User-facing panel
 
-A "Usage Stats" view accessible from settings or about, showing:
-- Total sessions and hours used
-- Feature usage breakdown
-- Modality distribution
-- Member-since date
+The stats panel is a section in the existing help modal (opened via the `?` button on the library view), not a standalone settings page. `help-viewer.js` filters out the `usage-stats` section when `CONFIG.features.instrumentation` is false, so the panel is invisible in demo and preview modes.
 
-This is not gamification (no levels, no points, no streaks). It is a transparent accounting of what the app knows about how it has been used. Framing should be positive and identity-affirming (Spotify's lesson): "You've reviewed 847 studies across 5 modalities" rather than raw counter tables.
+Stage 1 shows:
+- **Using since** -- formatted `firstSeen` date
+- **Last opened** -- formatted `lastSeen` date
+- **Sessions** -- the `sessions` counter
+- **Studies imported** -- the `studiesImported` counter
+- **Share anonymous usage stats** -- checkbox bound to `setShareEnabled()`; off by default
+- A short disclosure paragraph explaining exactly what is and is not shared
+
+This is not gamification (no levels, no points, no streaks). It is a transparent accounting of what the app knows about how it has been used. As counters are added in later stages, the panel grows inline -- the goal is a positive, identity-affirming portrait of the user's workflow rather than raw counter tables.
 
 The stats panel serves a dual purpose:
-1. **For the user**: transparency about what is tracked, a personal portrait of their workflow
+1. **For the user**: transparency about what is tracked, a personal portrait of their workflow.
 2. **For the company**: when users can see exactly what is collected, there is no hidden surveillance to explain. The panel is the privacy policy.
 
 ### Future: server-side instrumentation (web-first)
@@ -140,7 +142,9 @@ The local-first model is a stepping stone, not the long-term architecture. The p
 - Real-time dashboards for product decisions
 - Admin analytics (Claude's model: active users, feature adoption, spend by tier)
 
-The `trackEvent(category, action)` API stays the same; only the persistence layer changes. The event taxonomy and categories designed now must survive this transition.
+The sealed per-counter API (`trackAppOpen`, `trackStudiesImported`, and any helpers added in later stages) stays the same; only the persistence layer changes. The schema is versioned via the `version` field and guarded by `migrateStats()`, so new counters can ship without breaking existing installs.
+
+The `installationId` is the stable key the cloud API will use to reconcile local state with a user account. On the first cloud sign-in, the server upserts by `installationId` and maps it to the account ID; subsequent writes use `revision` to drop stale updates.
 
 The user-facing stats panel survives the transition. It becomes a view into the user's own slice of server-side data, preserving the transparency principle regardless of where computation happens.
 
@@ -180,59 +184,120 @@ The two-stream separation built now makes compliance tractable later: the teleme
 
 ### Module structure
 
-A single `instrumentation.js` module with:
-- `trackEvent(category, action)` -- increment a counter
-- `trackSessionStart()` / `trackSessionEnd()` -- manage session timing
-- `getStats()` -- return the full stats object for the UI panel
-- `resetStats()` -- clear all counters (user-initiated only)
+A single `docs/js/instrumentation.js` module, organized in three internal layers inside one IIFE (see the section banners in the file):
 
-The module must enforce the two-stream boundary: it accepts only predefined event categories (feature counters, modality tags, error types) and rejects any attempt to pass PHI or free-text content.
+- **reduce** -- the event handlers that mutate stats in memory: `trackAppOpen`, `trackStudiesImported`, `getStats`, `resetStats`, `setShareEnabled`, `isShareEnabled`.
+- **store** -- load and save helpers for the active backend: `loadFromLocalStorage` / `saveToLocalStorage` or `loadFromDesktopSql` / `saveToDesktopSql`, unified behind `loadStats()` / `saveStats()`.
+- **transport** -- the fire-and-forget phone-home POST: `buildPayload`, `sendPhoneHome`, `schedulePhoneHome`.
 
-### Persistence
+The module deliberately does NOT expose a free-form `trackEvent(category, action)` surface. Every counter has a dedicated, sealed helper so the schema stays reviewable and the PHI boundary cannot be widened by a caller passing arbitrary strings. Adding a counter means adding a new helper plus a schema migration, not passing a new string.
 
-Stats object is a flat JSON blob:
+**Public API:**
+
+| Function | Notes |
+|---|---|
+| `trackAppOpen()` | Async. Awaits `initPromise`, increments `sessions`, updates `lastSeen`, flushes immediately so the session count persists before the next page navigation. |
+| `trackStudiesImported(count)` | Async. Awaits `initPromise`, validates `count` is a positive integer, increments `studiesImported`, updates `lastSeen`, flushes immediately. |
+| `getStats()` | Returns a defensive copy of the stats object, or `null` if instrumentation is disabled. |
+| `resetStats()` | Resets counters but preserves `installationId` and `shareEnabled`. |
+| `setShareEnabled(bool)` / `isShareEnabled()` | Phone-home toggle. Enabling (false to true) triggers one immediate POST after the flush settles. |
+| `renderStatsPanel(container)` | Renders the stats table, share toggle, and disclosure paragraph into the help modal section. |
+| `ready` | Promise that resolves when `init()` has loaded stats from storage. Exposed for tests and for any caller that needs deterministic startup ordering. |
+
+`trackAppOpen()` and `trackStudiesImported()` both await `initPromise` internally. This closes a startup race where `main.js` fires them synchronously during module load: without the await, the first session on a fresh install would be dropped.
+
+### Persistence schema
 
 ```json
 {
   "version": 1,
-  "firstSeen": "2026-04-06",
-  "lastSeen": "2026-04-06",
-  "sessions": 42,
-  "totalMinutes": 1260,
-  "features": {
-    "studiesLoaded": 150,
-    "seriesViewed": 430,
-    "measurementUsed": 25,
-    "notesCreated": 12,
-    "reportsGenerated": 3,
-    "windowLevelAdjusted": 890,
-    "zoomPanUsed": 340
-  },
-  "modalities": {
-    "CT": 80,
-    "MR": 55,
-    "US": 10,
-    "other": 5
-  },
-  "errors": {
-    "decodeFailed": 3,
-    "unsupportedFormat": 7
-  }
+  "revision": 42,
+  "installationId": "e54ce9f8-2d2e-4c6b-9a7b-5a1c3b8b8c7a",
+  "firstSeen": "2026-04-06T14:30:00.000Z",
+  "lastSeen": "2026-04-08T09:17:22.341Z",
+  "sessions": 17,
+  "studiesImported": 6,
+  "shareEnabled": false
 }
 ```
 
+`migrateStats(blob)` runs on every read. Missing fields are added with zero/default values. Fields are never removed so old installs never lose data. The `version` field is rewritten to the current schema version on every load.
+
+**Desktop SQLite schema** (migration `desktop/src-tauri/migrations/008_instrumentation.sql`):
+
+```sql
+CREATE TABLE IF NOT EXISTS instrumentation (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL DEFAULT 1,
+    revision INTEGER NOT NULL DEFAULT 0,
+    installation_id TEXT NOT NULL,
+    first_seen TEXT NOT NULL,
+    last_seen TEXT NOT NULL,
+    sessions INTEGER NOT NULL DEFAULT 0,
+    studies_imported INTEGER NOT NULL DEFAULT 0,
+    share_enabled INTEGER NOT NULL DEFAULT 0
+);
+```
+
+The `CHECK (id = 1)` guarantees a single row; writes use `INSERT ... ON CONFLICT(id) DO UPDATE`.
+
+### Write debouncing and flush lifecycle
+
+Mutations are buffered in memory and flushed on a periodic timer:
+
+- `setInterval(flush, 30_000)` runs a periodic write when the in-memory `dirty` flag is set.
+- `trackAppOpen()` and `trackStudiesImported()` each trigger an immediate flush after incrementing, so user-visible counters are persisted without waiting up to 30 seconds.
+- `beforeunload` runs a best-effort synchronous write, but **only in browser/personal mode**. Desktop mode intentionally skips the unload write because SQLite writes are async and cannot be awaited during unload, and writing to localStorage here would create a stale second source of truth that the next desktop launch would silently ignore (SQLite is read first). The tradeoff is up to 30 seconds of data loss on a desktop crash in exchange for a single consistent store.
+
+Every `saveStats()` call increments `revision` before writing. The server-side upsert (when cloud mode ships) will only accept writes where `incoming.revision > stored.revision`, which prevents stale writes from overwriting newer local state during races or replays.
+
+### Managed-library import delta
+
+On desktop, `runImport()` does not trust `result.studies` as the new-import count. `result.studies` only reflects files touched by the current import, which overcounts when new files are added to a study that already exists (the whole study would be counted again). Instead, the import pipeline computes a `before`/`after` `StudyInstanceUID` set difference by rescanning the library folder after the import completes, and passes the delta to `trackStudiesImported()`. Failures during the diff are best-effort -- they log and return without breaking the import.
+
+Personal mode uses the raw new-study count from the drop handler, which is already a per-import snapshot without the managed-library double-count problem.
+
+### Phone-home transport
+
+Phone-home is off by default. Enabling the toggle in the stats panel (`setShareEnabled(true)`):
+
+1. Persists `shareEnabled = true` via a normal flush.
+2. Sends one immediate POST of the current persisted state.
+3. From then on, every subsequent `saveStats()` schedules a debounced POST 5 seconds later (debounced so a burst of saves produces a single network request).
+
+The endpoint is `https://api.myradone.com/api/stats` (allowlisted in Tauri CSP `connect-src`). Requests are fire-and-forget: failures are silent and never surface to the UI. The payload is:
+
+```json
+{
+  "version": 1,
+  "revision": 42,
+  "installationId": "e54ce9f8-...",
+  "firstSeen": "2026-04-06T14:30:00.000Z",
+  "lastSeen": "2026-04-08T09:17:22.341Z",
+  "sessions": 17,
+  "studiesImported": 6
+}
+```
+
+`shareEnabled` is deliberately NOT in the payload. It is a local UI preference; the server does not need to know whether the client has the checkbox checked, only that a request arrived.
+
 ### Integration points
 
-Instrumentation calls are added at existing code paths -- no new UI flows or user interactions required for collection. The only new UI is the stats panel.
+Stage 1 integration is minimal:
+- `main.js` calls `trackAppOpen()` on startup.
+- Personal-mode drop handlers call `trackStudiesImported(newStudyCount)` after `loadDroppedStudies` populates `state.studies`.
+- Desktop `runImport()` calls `trackStudiesImported(delta)` using the rescanned-library diff described above.
+- `help-viewer.js` filters the `usage-stats` section when `CONFIG.features.instrumentation` is false, and calls `renderStatsPanel()` when the modal is opened.
 
 ### Deployment mode behavior
 
 | Mode | Collection | Storage | User panel |
-|------|-----------|---------|------------|
-| Demo | Disabled | None | Hidden |
-| Personal | Enabled | localStorage | Visible |
-| Desktop | Enabled | App-data JSON | Visible |
-| Cloud (future) | Enabled | Server-side + local cache | Visible |
+|---|---|---|---|
+| Demo (GitHub Pages) | Disabled | None | Hidden (filtered out of help modal) |
+| Preview (Vercel) | Disabled | None | Hidden (filtered out of help modal) |
+| Personal (localhost Flask) | Enabled | `localStorage` key `dicom-viewer-instrumentation-v1` | Visible in help modal |
+| Desktop (Tauri) | Enabled | SQLite `instrumentation` table in `viewer.db` | Visible in help modal |
+| Cloud (future) | Enabled | Server-side, keyed by `installationId`, with local cache | Visible |
 
 ## Consequences
 

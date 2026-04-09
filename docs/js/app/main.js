@@ -120,6 +120,12 @@
 
         try {
             state.studies = await loadDroppedStudies(e.dataTransfer.items);
+            // Instrumentation: count all distinct studies in the drop result (ADR 008).
+            // Fire-and-forget; trackStudiesImported is async and awaits init internally.
+            const importedCount = Object.keys(state.studies || {}).length;
+            if (importedCount > 0) {
+                void window.Instrumentation?.trackStudiesImported(importedCount);
+            }
             await displayStudies();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -133,13 +139,21 @@
         if (state.managedLibrary) {
             state.libraryAbort = new AbortController();
             try {
-                await app.desktopLibrary.runImport(paths, {
+                const importResult = await app.desktopLibrary.runImport(paths, {
                     signal: state.libraryAbort.signal,
                 });
 
-                // Re-scan the managed library folder to update state.studies
-                const libraryPath = await app.importPipeline.getLibraryPath();
-                state.studies = await app.desktopLibrary.loadStudies(libraryPath);
+                // runImport already rescanned the library to compute the
+                // instrumentation diff (ADR 008). Reuse its rescan result to
+                // avoid a second filesystem scan. Fall back to an explicit
+                // rescan if the field is missing (e.g. the diff step failed
+                // internally).
+                if (importResult?.rescannedStudies) {
+                    state.studies = importResult.rescannedStudies;
+                } else {
+                    const libraryPath = await app.importPipeline.getLibraryPath();
+                    state.studies = await app.desktopLibrary.loadStudies(libraryPath);
+                }
                 await displayStudies();
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -153,6 +167,12 @@
 
         try {
             state.studies = await loadDroppedPaths(paths);
+            // Instrumentation: count all distinct studies in the drop result (ADR 008).
+            // Fire-and-forget; trackStudiesImported is async and awaits init internally.
+            const importedCount = Object.keys(state.studies || {}).length;
+            if (importedCount > 0) {
+                void window.Instrumentation?.trackStudiesImported(importedCount);
+            }
             await displayStudies();
         } catch (err) {
             alert(`Error: ${err.message}`);
@@ -644,6 +664,11 @@
             engine.stop();
         }
     });
+
+    // ---- Instrumentation: track app open (ADR 008) ----
+    // Fire-and-forget. trackAppOpen awaits the module's init promise
+    // internally so the first session is not dropped during the startup race.
+    void window.Instrumentation?.trackAppOpen();
 
     // ---- App initialization ----
 

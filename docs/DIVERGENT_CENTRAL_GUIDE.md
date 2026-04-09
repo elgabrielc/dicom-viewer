@@ -74,11 +74,12 @@ See [ADR 007](decisions/007-multi-source-library.md) for the full decision recor
 ### Privacy by Default
 
 Medical imaging is sensitive data. The architecture reflects this:
-- Client-side DICOM processing -- pixel data is decoded in the browser/app, not on a server. This is our biggest compliance asset.
+- **Medical images stay on the device.** Pixel data is decoded in the browser/app, not on a server. No images or pixel data ever leave the machine. This is our biggest compliance asset.
 - No third-party analytics SDKs, no external telemetry, no data brokers.
-- Local-only usage counters surfaced in a user-visible stats panel -- the user sees exactly what the app tracks. The stats panel is the privacy policy. ([ADR 008](decisions/008-local-first-instrumentation.md))
-- PHI (patient data, DICOM UIDs, file paths) never touches the telemetry stream. Product data and telemetry are architecturally separate.
-- Demo site is stateless -- no data persists between visits.
+- **Local-only usage counters** are tracked in the desktop and personal modes -- currently sessions (app opens) and studies imported. They are stored locally and surfaced to the user in the help modal, so the user can see exactly what the app knows about them. The stats panel is the privacy policy. ([ADR 008](decisions/008-local-first-instrumentation.md))
+- **Sharing is off by default.** If the user opts in via the toggle in the help modal, only those counters plus a per-installation anonymous ID are sent to Divergent Health. No patient data, file paths, study contents, DICOM UIDs, or medical images are ever included. Turning the toggle off stops all network traffic.
+- PHI and usage telemetry are architecturally separate. The telemetry stream cannot carry PHI because it accepts only predefined numeric counters -- there is no free-form event API.
+- Demo site is stateless -- no data persists between visits, and instrumentation is disabled.
 - Cloud platform (future) will require explicit account creation and consent. SOC 2 Type II and HIPAA BAA availability are the compliance targets.
 
 ---

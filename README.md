@@ -4,7 +4,7 @@
 
 **[Try it live](https://elgabrielc.github.io/dicom-viewer/)** | **By [Divergent Health Technologies](https://divergent.health/)**
 
-A web-based DICOM medical image viewer for CT and MRI studies. Built with Flask and vanilla JavaScript, all processing happens client-side - your medical images never leave your machine.
+A web-based DICOM medical image viewer for CT and MRI studies. Built with Flask and vanilla JavaScript, all processing happens client-side - your medical images stay on your machine. Optional usage sharing (sessions and studies-imported counts only, anonymous) is off by default and toggled from the help modal.
 
 ## Features
 

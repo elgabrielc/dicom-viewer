@@ -246,6 +246,12 @@ fn desktop_db_migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/007_import_tracking.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "instrumentation",
+            sql: include_str!("../migrations/008_instrumentation.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
