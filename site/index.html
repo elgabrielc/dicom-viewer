@@ -794,6 +794,7 @@
     </footer>
 
     <script>
+        document.addEventListener('DOMContentLoaded', () => {
         // -- Preview hover (JS-controlled to prevent flicker) --
         const preview = document.querySelector('.app-preview');
         const frames = preview.querySelectorAll('.preview-frame');
@@ -859,16 +860,24 @@
         let turnstileWidgetId = null;
         let turnstileToken = null;
 
+        function renderTurnstileIfReady() {
+            if (!signupOverlay.classList.contains('visible')) return;
+            if (turnstileWidgetId !== null) return;
+            if (typeof turnstile === 'undefined') return;
+
+            turnstileWidgetId = turnstile.render('#turnstile-container', {
+                sitekey: TURNSTILE_SITE_KEY,
+                callback: (token) => { turnstileToken = token; },
+            });
+        }
+
+        window.onMyRadOneTurnstileLoad = renderTurnstileIfReady;
+
         signupTrigger.addEventListener('click', (e) => {
             e.preventDefault();
             talkWrap.classList.remove('open');
             signupOverlay.classList.add('visible');
-            if (typeof turnstile !== 'undefined' && turnstileWidgetId === null) {
-                turnstileWidgetId = turnstile.render('#turnstile-container', {
-                    sitekey: TURNSTILE_SITE_KEY,
-                    callback: (token) => { turnstileToken = token; },
-                });
-            }
+            renderTurnstileIfReady();
         });
 
         signupOverlay.addEventListener('click', (e) => {
@@ -934,6 +943,7 @@
                 signupSubmit.textContent = 'Sign up';
             }
         });
+        });
     </script>
 
     <!-- Signup overlay -->
@@ -953,6 +963,6 @@
             </form>
         </div>
     </div>
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onMyRadOneTurnstileLoad" async defer></script>
 </body>
 </html>
