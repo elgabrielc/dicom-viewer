@@ -68,14 +68,7 @@
     }
 
     const normalizeBinaryResponse = app.utils.normalizeBinaryResponse;
-
-    function getImportParseErrorMessage(error) {
-        if (!error) return '';
-        if (typeof error === 'string') return error;
-        if (typeof error.message === 'string' && error.message) return error.message;
-        if (typeof error.exception === 'string' && error.exception) return error.exception;
-        return String(error);
-    }
+    const getErrorMessage = app.utils.getErrorMessage;
 
     function hasDicomPreamble(bytes) {
         return !!(
@@ -99,7 +92,7 @@
             return true;
         }
 
-        const message = getImportParseErrorMessage(parseResult?.error).toLowerCase();
+        const message = getErrorMessage(parseResult?.error, '').toLowerCase();
         return IMPORT_TRUNCATION_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
     }
 
@@ -210,7 +203,7 @@
         // Build path with a simple join -- appDataDir already ends with separator
         // on some platforms, so normalize by stripping trailing separator first.
         const base = appDataDir.replace(/[\\/]+$/, '');
-        return base + '/' + LIBRARY_SUBFOLDER;
+        return `${base}/${LIBRARY_SUBFOLDER}`;
     }
 
     /**
@@ -244,7 +237,7 @@
         const sopSegment = sanitizeUidSegment(sopUid);
 
         const root = String(libraryRoot).replace(/[\\/]+$/, '');
-        return root + '/' + studySegment + '/' + seriesSegment + '/' + sopSegment + '.dcm';
+        return `${root}/${studySegment}/${seriesSegment}/${sopSegment}.dcm`;
     }
 
     /**

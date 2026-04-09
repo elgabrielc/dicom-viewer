@@ -15,6 +15,8 @@
     const DESKTOP_MAX_CONCURRENT_LARGE_READS = 2;
     const DESKTOP_SCAN_HEADER_BYTES = 256 * 1024;
     const DESKTOP_SCAN_HEADER_READ_SIZES = Object.freeze([64 * 1024, DESKTOP_SCAN_HEADER_BYTES]);
+    // See docs/planning/REMEDIATION-PLAN.md (DBG-MEDIUM-9).
+    const SAMPLE_FETCH_BATCH_SIZE = 20;
     const DESKTOP_SCAN_SKIP_EXTENSIONS = new Set([
         '.bmp',
         '.chm',
@@ -55,13 +57,14 @@
     const DESKTOP_SCAN_SKIP_DIRECTORY_NAMES = new Set(['__macosx', 'catapult', 'ddv', 'libraries', 'reviewer']);
     const SCAN_PROGRESS_UPDATE_INTERVAL = 200;
     const SCAN_YIELD_INTERVAL_MS = 16;
+    const { getErrorMessage = (_error, fallback = 'Unknown error') => fallback } = app.utils || {};
 
     function updateScanProgress(processed, total, valid) {
         if (processed % SCAN_PROGRESS_UPDATE_INTERVAL !== 0 && processed !== total) return;
 
         const pct = Math.round((processed / total) * 100);
         progressFill.style.animation = 'none';
-        progressFill.style.width = pct + '%';
+        progressFill.style.width = `${pct}%`;
         progressText.textContent = `Scanning... ${pct}%`;
         progressDetail.textContent = `${processed}/${total} files (${valid} viewable DICOM)`;
     }
@@ -78,6 +81,40 @@
         uploadProgress.style.display = 'none';
         progressFill.style.width = '0%';
         progressFill.style.animation = 'none';
+    }
+
+    function formatHttpStatus(response) {
+        const status = Number(response?.status);
+        const statusText = String(response?.statusText || '').trim();
+        if (!Number.isFinite(status)) {
+            return statusText || 'request failed';
+        }
+        return statusText ? `${status} ${statusText}` : `HTTP ${status}`;
+    }
+
+    async function fetchSampleManifest(samplePath) {
+        const manifestPath = `${samplePath}/manifest.json`;
+        const manifestRes = await fetch(manifestPath);
+        if (!manifestRes.ok) {
+            throw new Error(`Unable to load sample manifest from ${manifestPath} (${formatHttpStatus(manifestRes)}).`);
+        }
+
+        const fileNames = await manifestRes.json();
+        if (!Array.isArray(fileNames) || !fileNames.every((name) => typeof name === 'string' && name)) {
+            throw new Error('Sample manifest is invalid.');
+        }
+
+        return fileNames;
+    }
+
+    async function fetchSampleBlob(samplePath, name) {
+        const filePath = `${samplePath}/${name}`;
+        const res = await fetch(filePath);
+        if (!res.ok) {
+            throw new Error(`Unable to download ${filePath} (${formatHttpStatus(res)}).`);
+        }
+
+        return res.blob();
     }
 
     // Resolve the map key for a series within a study. Uses bare UID unless a
@@ -312,14 +349,6 @@
         stats[key] += delta;
     }
 
-    function getDesktopScanParseErrorMessage(error) {
-        if (!error) return '';
-        if (typeof error === 'string') return error;
-        if (typeof error.message === 'string' && error.message) return error.message;
-        if (typeof error.exception === 'string' && error.exception) return error.exception;
-        return String(error);
-    }
-
     function hasDicomPreamble(bytes) {
         return !!(
             bytes &&
@@ -358,7 +387,7 @@
             return true;
         }
 
-        const message = getDesktopScanParseErrorMessage(parseResult?.error).toLowerCase();
+        const message = getErrorMessage(parseResult?.error, '').toLowerCase();
         return DESKTOP_SCAN_TRUNCATION_ERROR_PATTERNS.some((pattern) => message.includes(pattern));
     }
 
@@ -1426,43 +1455,42 @@
         progressFill.style.width = '0%';
 
         try {
-            const manifestRes = await fetch(`${samplePath}/manifest.json`);
-            const fileNames = await manifestRes.json();
-
-            progressText.textContent = 'Downloading DICOM files...';
-            progressDetail.textContent = `0/${fileNames.length} files`;
-
-            const filePromises = fileNames.map(async (name, i) => {
-                const res = await fetch(`${samplePath}/${name}`);
-                const blob = await res.blob();
-                if ((i + 1) % 5 === 0 || i === fileNames.length - 1) {
-                    const pct = Math.round(((i + 1) / fileNames.length) * 50);
-                    progressFill.style.width = `${pct}%`;
-                    progressDetail.textContent = `${i + 1}/${fileNames.length} files`;
-                }
-                return { name, blob };
-            });
-
-            const files = await Promise.all(filePromises);
-            progressText.textContent = 'Processing DICOM files...';
-            progressFill.style.width = '50%';
-
+            const fileNames = await fetchSampleManifest(samplePath);
+            const totalFiles = fileNames.length;
+            const totalProgressSteps = Math.max(totalFiles * 2, 1);
             const studies = {};
+            let downloaded = 0;
             let processed = 0;
 
-            for (const { blob } of files) {
-                const meta = await parseDicomMetadata(blob);
-                processed++;
+            progressText.textContent = 'Downloading DICOM files...';
+            progressDetail.textContent = `0/${totalFiles} files`;
 
-                const pct = 50 + Math.round((processed / files.length) * 50);
-                progressFill.style.width = `${pct}%`;
-                progressDetail.textContent = `Processing ${processed}/${files.length}`;
+            for (let batchStart = 0; batchStart < totalFiles; batchStart += SAMPLE_FETCH_BATCH_SIZE) {
+                const batchNames = fileNames.slice(batchStart, batchStart + SAMPLE_FETCH_BATCH_SIZE);
+                const files = await Promise.all(
+                    batchNames.map(async (name) => {
+                        const blob = await fetchSampleBlob(samplePath, name);
+                        downloaded++;
+                        progressText.textContent = 'Downloading DICOM files...';
+                        progressDetail.textContent = `${downloaded}/${totalFiles} files`;
+                        progressFill.style.width = `${Math.round(((downloaded + processed) / totalProgressSteps) * 100)}%`;
+                        return { blob };
+                    }),
+                );
 
-                if (!isRenderableImageMetadata(meta)) continue;
+                for (const { blob } of files) {
+                    const meta = await parseDicomMetadata(blob);
+                    processed++;
 
-                addSliceToStudies(studies, meta, { kind: 'blob', blob });
+                    progressText.textContent = 'Processing DICOM files...';
+                    progressDetail.textContent = `Processing ${processed}/${totalFiles}`;
+                    progressFill.style.width = `${Math.round(((downloaded + processed) / totalProgressSteps) * 100)}%`;
+
+                    if (!isRenderableImageMetadata(meta)) continue;
+
+                    addSliceToStudies(studies, meta, { kind: 'blob', blob });
+                }
             }
-
             return finalizeStudies(studies);
         } finally {
             hideProgressOverlay();

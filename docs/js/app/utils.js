@@ -36,6 +36,34 @@
                 return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
             });
         },
+        getErrorMessage(error, fallback = 'Unknown error') {
+            if (!error) {
+                return fallback;
+            }
+
+            if (typeof error === 'string') {
+                return error || fallback;
+            }
+
+            if (typeof error.message === 'string' && error.message.trim()) {
+                return error.message;
+            }
+
+            if (typeof error.exception === 'string' && error.exception.trim()) {
+                return error.exception;
+            }
+
+            const stringified = String(error);
+            if (
+                stringified === '[object Object]' &&
+                typeof error.constructor?.name === 'string' &&
+                error.constructor.name
+            ) {
+                return error.constructor.name;
+            }
+
+            return stringified || fallback;
+        },
         createStagedError(stage, message, extra = {}) {
             const error = new Error(message);
             error.stage = stage;
