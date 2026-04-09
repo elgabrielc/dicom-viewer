@@ -3,6 +3,7 @@
 
 const REPO = 'elgabrielc/dicom-viewer';
 const CACHE_TTL = 300; // 5 minutes
+const CACHE_KEY = 'https://myradone.com/_internal/download-url';
 
 export default {
   async fetch(request) {
@@ -12,11 +13,13 @@ export default {
       return new Response('Not found', { status: 404 });
     }
 
+    // Cache stores the resolved URL as plain text (not the 302 redirect,
+    // which the Cache API silently drops)
     const cache = caches.default;
-    const cacheKey = new Request('https://myradone.com/download-cache', request);
-    const cached = await cache.match(cacheKey);
+    const cached = await cache.match(CACHE_KEY);
     if (cached) {
-      return cached;
+      const dmgUrl = await cached.text();
+      return Response.redirect(dmgUrl, 302);
     }
 
     const apiUrl = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -38,11 +41,12 @@ export default {
       return new Response('DMG not found in latest release', { status: 404 });
     }
 
-    const response = Response.redirect(dmg.browser_download_url, 302);
-    const cacheable = new Response(response.body, response);
-    cacheable.headers.set('Cache-Control', `public, max-age=${CACHE_TTL}`);
-    await cache.put(cacheKey, cacheable.clone());
+    // Store the URL string so the Cache API can actually cache it
+    const cacheResp = new Response(dmg.browser_download_url, {
+      headers: { 'Cache-Control': `public, max-age=${CACHE_TTL}` },
+    });
+    await cache.put(CACHE_KEY, cacheResp);
 
-    return response;
+    return Response.redirect(dmg.browser_download_url, 302);
   },
 };
