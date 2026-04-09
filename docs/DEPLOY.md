@@ -15,22 +15,6 @@ The DICOM Viewer is a **static single-page application** that runs entirely in t
 - GitHub Pages works out of the box
 - Medical images never leave the user's machine
 
-### myRadOne Landing Page (Cloudflare Pages)
-
-The public `myradone.com` marketing site is a separate static bundle in `site/`.
-
-- `site/index.html` is the landing page
-- `site/privacy.html` is the signup privacy page
-- `site/fonts/`, `site/library-screenshot.png`, and `site/viewer-screenshot.png` are part of the deployable asset set
-
-Deploy it to the Cloudflare Pages project named `myradone` with:
-
-```bash
-npx wrangler pages deploy site --project-name myradone --branch main
-```
-
-This project is currently deployed manually, so merging a PR does not update `myradone.com` by itself.
-
 The application consists of static files in the `docs/` folder:
 
 ```
@@ -41,6 +25,24 @@ docs/
 ├── sample/             # Demo CT scan (optional)
 └── sample-mri/         # Demo MRI scan (optional)
 ```
+
+---
+
+## myRadOne Landing Page (Cloudflare Pages)
+
+The public `myradone.com` marketing site is a separate static bundle in `site/`.
+
+- `site/index.html` is the landing page
+- `site/privacy.html` is the signup privacy page
+- `site/fonts/`, `site/library-screenshot.png`, and `site/viewer-screenshot.png` are part of the deployable asset set
+
+Deploy it to the Cloudflare Pages project named `myradone` with:
+
+```bash
+npx wrangler pages deploy site --project-name myradone
+```
+
+This project is currently deployed manually, so merging a PR does not update `myradone.com` by itself.
 
 ---
 
