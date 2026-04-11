@@ -144,9 +144,12 @@ test.describe('Instrumentation: personal mode counters', () => {
 
         await page.goto(APP_URL);
 
-        await page.waitForFunction(() => {
-            return window.__instrumentationTestDbState?.row?.sessions === 1;
-        }, { timeout: DESKTOP_RUNTIME_WAIT_TIMEOUT_MS });
+        await page.waitForFunction(
+            () => {
+                return window.__instrumentationTestDbState?.row?.sessions === 1;
+            },
+            { timeout: DESKTOP_RUNTIME_WAIT_TIMEOUT_MS },
+        );
 
         const localRaw = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
         expect(localRaw).toBeNull();
