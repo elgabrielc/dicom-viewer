@@ -239,6 +239,11 @@ test('tampered session values are rejected', async () => {
     assert.equal(await verifySignedSessionValue(tampered, 'secret-token'), false);
 });
 
+test('malformed session values are rejected', async () => {
+    assert.equal(await verifySignedSessionValue('v1.123abc.'.concat('0'.repeat(64)), 'secret-token'), false);
+    assert.equal(await verifySignedSessionValue('v1.123456.short', 'secret-token'), false);
+});
+
 test('handleDashboard returns login page without auth and shell with auth', async () => {
     const env = createEnv();
 

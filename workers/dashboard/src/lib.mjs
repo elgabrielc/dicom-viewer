@@ -159,6 +159,9 @@ function bytesToHex(bytes) {
 }
 
 function bytesToBase64(bytes) {
+    if (typeof Buffer !== 'undefined') {
+        return Buffer.from(bytes).toString('base64');
+    }
     let binary = '';
     for (const byte of bytes) {
         binary += String.fromCharCode(byte);
@@ -234,6 +237,10 @@ export async function verifySignedSessionValue(value, secret, nowMs = Date.now()
         return false;
     }
 
+    if (!/^\d+$/.test(expiresAtRaw) || !/^[0-9a-f]{64}$/.test(signature)) {
+        return false;
+    }
+
     const expiresAtMs = Number.parseInt(expiresAtRaw, 10);
     if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
         return false;
@@ -256,7 +263,8 @@ function getCookieToken(request) {
 }
 
 async function buildSessionCookie(request, token) {
-    const expiresAtMs = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
+    const nowMs = Date.now();
+    const expiresAtMs = nowMs + SESSION_MAX_AGE_SECONDS * 1000;
     const attributes = [
         'HttpOnly',
         `Expires=${new Date(expiresAtMs).toUTCString()}`,
@@ -268,7 +276,7 @@ async function buildSessionCookie(request, token) {
         attributes.push('Secure');
     }
 
-    const signedValue = await createSignedSessionValue(token);
+    const signedValue = await createSignedSessionValue(token, nowMs);
     return `${DASHBOARD_SESSION_COOKIE}=${encodeURIComponent(signedValue)}; ${attributes.join('; ')}`;
 }
 
