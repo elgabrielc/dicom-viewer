@@ -17,6 +17,7 @@ const SOURCE_ORDER = ['landing', 'demo', 'app'];
 const SOURCE_ORDER_SQL = "CASE source WHEN 'landing' THEN 0 WHEN 'demo' THEN 1 WHEN 'app' THEN 2 ELSE 3 END";
 const STATUS_ORDER_SQL = "CASE status WHEN 'active' THEN 0 ELSE 1 END";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
+const UNAUTHORIZED_WWW_AUTHENTICATE = 'Bearer realm="myradone-dashboard"';
 const textEncoder = new TextEncoder();
 const signingKeyCache = new Map();
 const inlineScriptCspCache = new Map();
@@ -255,8 +256,10 @@ function getCookieToken(request) {
 }
 
 async function buildSessionCookie(request, token) {
+    const expiresAtMs = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
     const attributes = [
         'HttpOnly',
+        `Expires=${new Date(expiresAtMs).toUTCString()}`,
         `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
         'Path=/',
         'SameSite=Strict'
@@ -270,7 +273,13 @@ async function buildSessionCookie(request, token) {
 }
 
 function buildClearSessionCookie(request) {
-    const attributes = ['HttpOnly', 'Max-Age=0', 'Path=/', 'SameSite=Strict'];
+    const attributes = [
+        'HttpOnly',
+        'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+        'Max-Age=0',
+        'Path=/',
+        'SameSite=Strict'
+    ];
     if (new URL(request.url).protocol === 'https:') {
         attributes.push('Secure');
     }
@@ -684,7 +693,10 @@ export async function handleSession(request, env) {
         return jsonResponse(
             { error: 'Unauthorized' },
             401,
-            { 'Set-Cookie': buildClearSessionCookie(request) }
+            {
+                'Set-Cookie': buildClearSessionCookie(request),
+                'WWW-Authenticate': UNAUTHORIZED_WWW_AUTHENTICATE
+            }
         );
     }
 
@@ -695,7 +707,8 @@ export async function handleSession(request, env) {
 
 async function createUnauthorizedResponse(pathname, request) {
     const headers = {
-        'Set-Cookie': buildClearSessionCookie(request)
+        'Set-Cookie': buildClearSessionCookie(request),
+        'WWW-Authenticate': UNAUTHORIZED_WWW_AUTHENTICATE
     };
 
     if (pathname === DASHBOARD_PATH) {

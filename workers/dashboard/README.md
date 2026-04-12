@@ -45,6 +45,8 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
 - The worker sets CSP, frame, referrer, and content-type hardening headers.
   HTML responses derive script hashes from the inline scripts they actually
   serve instead of relying on hand-maintained hash constants.
+- `401` API responses include `WWW-Authenticate: Bearer realm="myradone-dashboard"`
+  so CLI and browser tooling get a clearer auth signal.
 - D1 access is read-only by convention, not by enforced binding mode. This
   worker only issues `SELECT` queries.
 

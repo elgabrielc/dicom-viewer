@@ -199,6 +199,10 @@ function createRequest(path, { token = null, cookieToken = null, method = 'GET' 
     });
 }
 
+function extractCookieValue(setCookieHeader) {
+    return decodeURIComponent(setCookieHeader.match(/myradone_dashboard_token=([^;]+)/)[1]);
+}
+
 test('authenticate rejects missing and wrong tokens, accepts matching token', async () => {
     const env = createEnv();
 
@@ -211,9 +215,7 @@ test('authenticate rejects missing and wrong tokens, accepts matching token', as
         env,
         DASHBOARD_HTML
     );
-    const cookieValue = decodeURIComponent(
-        sessionLogin.headers.get('Set-Cookie').match(/myradone_dashboard_token=([^;]+)/)[1]
-    );
+    const cookieValue = extractCookieValue(sessionLogin.headers.get('Set-Cookie'));
     assert.match(cookieValue, /^v1\.\d+\.[0-9a-f]{64}$/);
     assert.equal(await verifySignedSessionValue(cookieValue, 'secret-token'), true);
     assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { cookieToken: cookieValue }), env), true);
@@ -230,6 +232,13 @@ test('signed session values expire server-side', async () => {
     );
 });
 
+test('tampered session values are rejected', async () => {
+    const value = await createSignedSessionValue('secret-token', Date.UTC(2026, 3, 12, 12, 0, 0));
+    const tampered = value.replace(/\.[0-9a-f]{64}$/, '.'.concat('0'.repeat(64)));
+
+    assert.equal(await verifySignedSessionValue(tampered, 'secret-token'), false);
+});
+
 test('handleDashboard returns login page without auth and shell with auth', async () => {
     const env = createEnv();
 
@@ -244,9 +253,7 @@ test('handleDashboard returns login page without auth and shell with auth', asyn
         env,
         REAL_DASHBOARD_HTML
     );
-    const cookieValue = decodeURIComponent(
-        sessionLogin.headers.get('Set-Cookie').match(/myradone_dashboard_token=([^;]+)/)[1]
-    );
+    const cookieValue = extractCookieValue(sessionLogin.headers.get('Set-Cookie'));
     const shellResponse = await handleDashboard(createRequest(DASHBOARD_PATH, { cookieToken: cookieValue }), env, REAL_DASHBOARD_HTML);
     assert.equal(shellResponse.status, 200);
     const shellHtml = await shellResponse.text();
@@ -364,6 +371,7 @@ test('dispatchRequest creates and clears dashboard sessions', async () => {
     );
     assert.equal(loginResponse.status, 204);
     assert.match(loginResponse.headers.get('Set-Cookie'), /HttpOnly/);
+    assert.match(loginResponse.headers.get('Set-Cookie'), /Expires=/);
     assert.match(loginResponse.headers.get('Set-Cookie'), /myradone_dashboard_token=/);
 
     const rejectedLogin = await dispatchRequest(
@@ -372,6 +380,7 @@ test('dispatchRequest creates and clears dashboard sessions', async () => {
         DASHBOARD_HTML
     );
     assert.equal(rejectedLogin.status, 401);
+    assert.equal(rejectedLogin.headers.get('WWW-Authenticate'), 'Bearer realm="myradone-dashboard"');
 
     const logoutResponse = await dispatchRequest(
         createRequest(SESSION_PATH, { method: 'DELETE' }),
@@ -379,6 +388,7 @@ test('dispatchRequest creates and clears dashboard sessions', async () => {
         DASHBOARD_HTML
     );
     assert.equal(logoutResponse.status, 204);
+    assert.match(logoutResponse.headers.get('Set-Cookie'), /Expires=Thu, 01 Jan 1970 00:00:00 GMT/);
     assert.match(logoutResponse.headers.get('Set-Cookie'), /Max-Age=0/);
 });
 
@@ -387,6 +397,19 @@ test('logout is not blocked by the dashboard rate limiter', async () => {
     const response = await dispatchRequest(createRequest(SESSION_PATH, { method: 'DELETE' }), env, DASHBOARD_HTML);
 
     assert.equal(response.status, 204);
+});
+
+test('tampered dashboard cookies fall back to login and get cleared', async () => {
+    const env = createEnv();
+    const response = await handleDashboard(
+        createRequest(DASHBOARD_PATH, { cookieToken: 'v1.9999999999999.'.concat('0'.repeat(64)) }),
+        env,
+        REAL_DASHBOARD_HTML
+    );
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('Set-Cookie'), /Max-Age=0/);
+    assert.match(await response.text(), /Open dashboard/);
 });
 
 test('createErrorResponse turns unexpected failures into JSON 500 payloads', async () => {
