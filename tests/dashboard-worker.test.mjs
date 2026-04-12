@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 
 import {
     DASHBOARD_PATH,
@@ -15,6 +17,24 @@ import {
 } from '../workers/dashboard/src/lib.mjs';
 
 const DASHBOARD_HTML = '<!doctype html><html><body data-dashboard-shell="true">dashboard</body></html>';
+const REAL_DASHBOARD_HTML = fs.readFileSync(
+    new URL('../workers/dashboard/src/dashboard.html', import.meta.url),
+    'utf8'
+);
+
+function extractInlineScript(html) {
+    const match = html.match(/<script>([\s\S]*?)<\/script>/);
+    assert.ok(match, 'expected inline script');
+    return match[1];
+}
+
+function sha256Base64(value) {
+    return crypto.createHash('sha256').update(value).digest('base64');
+}
+
+function sha256Hex(value) {
+    return crypto.createHash('sha256').update(value).digest('hex');
+}
 
 function createEnv({ subscribers = [], token = 'secret-token', rateLimitSuccess = true } = {}) {
     return {
@@ -181,13 +201,23 @@ function createRequest(path, { token = null, cookieToken = null, method = 'GET' 
     });
 }
 
-test('authenticate rejects missing and wrong tokens, accepts matching token', () => {
+test('authenticate rejects missing and wrong tokens, accepts matching token', async () => {
     const env = createEnv();
 
-    assert.equal(authenticate(createRequest(DASHBOARD_PATH), env), false);
-    assert.equal(authenticate(createRequest(DASHBOARD_PATH, { token: 'wrong' }), env), false);
-    assert.equal(authenticate(createRequest(DASHBOARD_PATH, { token: 'secret-token' }), env), true);
-    assert.equal(authenticate(createRequest(DASHBOARD_PATH, { cookieToken: 'secret-token' }), env), true);
+    assert.equal(await authenticate(createRequest(DASHBOARD_PATH), env), false);
+    assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { token: 'wrong' }), env), false);
+    assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { token: 'secret-token' }), env), true);
+
+    const sessionLogin = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: 'secret-token' }),
+        env,
+        DASHBOARD_HTML
+    );
+    const cookieValue = decodeURIComponent(
+        sessionLogin.headers.get('Set-Cookie').match(/myradone_dashboard_token=([^;]+)/)[1]
+    );
+    assert.equal(cookieValue, sha256Hex('secret-token'));
+    assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { cookieToken: cookieValue }), env), true);
 });
 
 test('handleDashboard returns login page without auth and shell with auth', async () => {
@@ -195,18 +225,30 @@ test('handleDashboard returns login page without auth and shell with auth', asyn
 
     const loginResponse = await handleDashboard(createRequest(DASHBOARD_PATH), env, DASHBOARD_HTML);
     assert.equal(loginResponse.status, 200);
-    assert.match(await loginResponse.text(), /Open dashboard/);
+    const loginHtml = await loginResponse.text();
+    assert.match(loginHtml, /Open dashboard/);
     assert.match(loginResponse.headers.get('Set-Cookie'), /Max-Age=0/);
 
-    const shellResponse = await handleDashboard(
-        createRequest(DASHBOARD_PATH, { cookieToken: 'secret-token' }),
+    const sessionLogin = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: 'secret-token' }),
         env,
-        DASHBOARD_HTML
+        REAL_DASHBOARD_HTML
     );
+    const cookieValue = decodeURIComponent(
+        sessionLogin.headers.get('Set-Cookie').match(/myradone_dashboard_token=([^;]+)/)[1]
+    );
+    const shellResponse = await handleDashboard(createRequest(DASHBOARD_PATH, { cookieToken: cookieValue }), env, REAL_DASHBOARD_HTML);
     assert.equal(shellResponse.status, 200);
-    assert.match(await shellResponse.text(), /data-dashboard-shell="true"/);
+    const shellHtml = await shellResponse.text();
+    assert.match(shellHtml, /data-dashboard-shell="true"/);
     assert.match(shellResponse.headers.get('Content-Security-Policy'), /script-src 'sha256-/);
     assert.doesNotMatch(shellResponse.headers.get('Content-Security-Policy'), /script-src 'unsafe-inline'/);
+
+    const loginScriptHash = sha256Base64(extractInlineScript(loginHtml));
+    assert.match(loginResponse.headers.get('Content-Security-Policy'), new RegExp(loginScriptHash.replaceAll('+', '\\+').replaceAll('/', '\\/')));
+
+    const dashboardScriptHash = sha256Base64(extractInlineScript(shellHtml));
+    assert.match(shellResponse.headers.get('Content-Security-Policy'), new RegExp(dashboardScriptHash.replaceAll('+', '\\+').replaceAll('/', '\\/')));
 });
 
 test('handleSummary returns empty shapes on an empty database', async () => {
@@ -328,6 +370,13 @@ test('dispatchRequest creates and clears dashboard sessions', async () => {
     );
     assert.equal(logoutResponse.status, 204);
     assert.match(logoutResponse.headers.get('Set-Cookie'), /Max-Age=0/);
+});
+
+test('logout is not blocked by the dashboard rate limiter', async () => {
+    const env = createEnv({ rateLimitSuccess: false });
+    const response = await dispatchRequest(createRequest(SESSION_PATH, { method: 'DELETE' }), env, DASHBOARD_HTML);
+
+    assert.equal(response.status, 204);
 });
 
 test('createErrorResponse turns unexpected failures into JSON 500 payloads', async () => {

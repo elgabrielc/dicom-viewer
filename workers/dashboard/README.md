@@ -38,6 +38,8 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
 - Browser login exchanges that token for a same-site `HttpOnly` session cookie
   via `POST /api/session`, so the full dashboard flow does not depend on
   `sessionStorage` or `document.write`.
+- The session cookie stores a derived verifier rather than the raw shared
+  secret, and expires after 12 hours.
 - Rate limiting runs before auth and applies to the entire worker.
 - Every response is `Cache-Control: no-store`.
 - The worker sets CSP, frame, referrer, and content-type hardening headers.

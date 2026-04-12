@@ -16,7 +16,9 @@ const SORT_COLUMNS = new Map([
 const SOURCE_ORDER = ['landing', 'demo', 'app'];
 const SOURCE_ORDER_SQL = "CASE source WHEN 'landing' THEN 0 WHEN 'demo' THEN 1 WHEN 'app' THEN 2 ELSE 3 END";
 const STATUS_ORDER_SQL = "CASE status WHEN 'active' THEN 0 ELSE 1 END";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const textEncoder = new TextEncoder();
+const sessionHashCache = new Map();
 const JSON_RESPONSE_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 const LOGIN_PAGE_SCRIPT = `(function () {
   const form = document.getElementById('loginForm');
@@ -156,6 +158,21 @@ function getBearerToken(request) {
     return match ? match[1].trim() : '';
 }
 
+async function hashSessionToken(token) {
+    if (sessionHashCache.has(token)) {
+        return sessionHashCache.get(token);
+    }
+
+    const hashedTokenPromise = crypto.subtle
+        .digest('SHA-256', textEncoder.encode(token))
+        .then((digest) =>
+            [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+        );
+
+    sessionHashCache.set(token, hashedTokenPromise);
+    return hashedTokenPromise;
+}
+
 function getCookieToken(request) {
     const cookieHeader = request.headers.get('Cookie') || '';
 
@@ -168,13 +185,19 @@ function getCookieToken(request) {
     return '';
 }
 
-function buildSessionCookie(request, token) {
-    const attributes = ['HttpOnly', 'Path=/', 'SameSite=Strict'];
+async function buildSessionCookie(request, token) {
+    const attributes = [
+        'HttpOnly',
+        `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
+        'Path=/',
+        'SameSite=Strict'
+    ];
     if (new URL(request.url).protocol === 'https:') {
         attributes.push('Secure');
     }
 
-    return `${DASHBOARD_SESSION_COOKIE}=${encodeURIComponent(token)}; ${attributes.join('; ')}`;
+    const hashedToken = await hashSessionToken(token);
+    return `${DASHBOARD_SESSION_COOKIE}=${encodeURIComponent(hashedToken)}; ${attributes.join('; ')}`;
 }
 
 function buildClearSessionCookie(request) {
@@ -186,15 +209,24 @@ function buildClearSessionCookie(request) {
     return `${DASHBOARD_SESSION_COOKIE}=; ${attributes.join('; ')}`;
 }
 
-export function authenticate(request, env) {
-    const providedToken = getBearerToken(request) || getCookieToken(request);
+export async function authenticate(request, env) {
+    const bearerToken = getBearerToken(request);
+    const cookieToken = getCookieToken(request);
     const expectedToken = typeof env.DASHBOARD_TOKEN === 'string' ? env.DASHBOARD_TOKEN.trim() : '';
 
-    if (!providedToken || !expectedToken) {
+    if (!expectedToken) {
         return false;
     }
 
-    return timingSafeEqual(providedToken, expectedToken);
+    if (bearerToken) {
+        return timingSafeEqual(bearerToken, expectedToken);
+    }
+
+    if (!cookieToken) {
+        return false;
+    }
+
+    return timingSafeEqual(cookieToken, await hashSessionToken(expectedToken));
 }
 
 async function isRateLimited(request, env) {
@@ -555,7 +587,7 @@ export async function handleSubscribers(request, env) {
 export async function handleDashboard(request, env, dashboardHtml) {
     requireGet(request);
 
-    if (!authenticate(request, env)) {
+    if (!(await authenticate(request, env))) {
         return htmlResponse(
             createLoginHtml(),
             200,
@@ -578,7 +610,7 @@ export async function handleSession(request, env) {
         methodNotAllowed();
     }
 
-    if (!authenticate(request, env)) {
+    if (!(await authenticate(request, env))) {
         return jsonResponse(
             { error: 'Unauthorized' },
             401,
@@ -587,7 +619,7 @@ export async function handleSession(request, env) {
     }
 
     return emptyResponse(204, {
-        'Set-Cookie': buildSessionCookie(request, env.DASHBOARD_TOKEN.trim())
+        'Set-Cookie': await buildSessionCookie(request, env.DASHBOARD_TOKEN.trim())
     });
 }
 
@@ -614,6 +646,10 @@ function createRateLimitResponse(pathname) {
 export async function dispatchRequest(request, env, dashboardHtml) {
     const { pathname } = new URL(request.url);
 
+    if (pathname === SESSION_PATH && request.method === 'DELETE') {
+        return handleSession(request, env);
+    }
+
     if (await isRateLimited(request, env)) {
         return createRateLimitResponse(pathname);
     }
@@ -628,7 +664,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
 
     if (pathname === SUMMARY_PATH) {
         requireGet(request);
-        if (!authenticate(request, env)) {
+        if (!(await authenticate(request, env))) {
             return createUnauthorizedResponse(pathname, request);
         }
         return jsonResponse(await handleSummary(env));
@@ -636,7 +672,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
 
     if (pathname === SUBSCRIBERS_PATH) {
         requireGet(request);
-        if (!authenticate(request, env)) {
+        if (!(await authenticate(request, env))) {
             return createUnauthorizedResponse(pathname, request);
         }
         return jsonResponse(await handleSubscribers(request, env));
