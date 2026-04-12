@@ -1,0 +1,23 @@
+name = "myradone-dashboard"
+main = "src/index.mjs"
+compatibility_date = "2026-04-07"
+workers_dev = false
+preview_urls = false
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = false
+
+[[d1_databases]]
+binding = "SUBSCRIBERS_DB"
+database_name = "myradone-subscribers"
+database_id = "33a16c5c-0618-47a8-b351-7af2f4f979e9"
+
+[[ratelimits]]
+name = "DASHBOARD_RATE_LIMIT"
+namespace_id = "2026041201"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
