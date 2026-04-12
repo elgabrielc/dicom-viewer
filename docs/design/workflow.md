@@ -60,6 +60,8 @@ Before making design recommendations or changes:
 - Report back what was saved to repo docs and what was saved to private memory.
 - If an automated closeout reminder appears, treat closeout as the next task
   instead of normal work continuation.
+- Treat the hook reminder itself as the go signal for closeout; do not wait for
+  a second confirmation before saving the session state.
 
 ## Promotion Loop
 
