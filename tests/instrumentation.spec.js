@@ -42,6 +42,7 @@ const { test, expect } = require('@playwright/test');
 const APP_URL = 'http://127.0.0.1:5001/?nolib';
 const TEST_URL = 'http://127.0.0.1:5001/?test';
 const STORAGE_KEY = 'dicom-viewer-instrumentation-v1';
+const DESKTOP_RUNTIME_WAIT_TIMEOUT_MS = 5_000;
 
 /**
  * Playwright gives each test a fresh browser context with empty localStorage
@@ -99,6 +100,66 @@ async function waitForStats(page, predicate, timeout = 5000) {
 // ============================================================================
 
 test.describe('Instrumentation: personal mode counters', () => {
+    test('delayed desktop runtime readiness does not fall back to localStorage', async ({ page }) => {
+        await page.addInitScript(() => {
+            const dbState = {
+                loadCount: 0,
+                row: null,
+            };
+
+            const fakeDb = {
+                async select() {
+                    return dbState.row ? [{ ...dbState.row }] : [];
+                },
+                async execute(_sql, params) {
+                    dbState.row = {
+                        id: 1,
+                        version: params[0],
+                        revision: params[1],
+                        installation_id: params[2],
+                        first_seen: params[3],
+                        last_seen: params[4],
+                        sessions: params[5],
+                        studies_imported: params[6],
+                        share_enabled: params[7],
+                    };
+                    return { rowsAffected: 1 };
+                },
+            };
+
+            window.__instrumentationTestDbState = dbState;
+            window.__TAURI__ = {};
+            window.__DICOM_VIEWER_TAURI_STORAGE_READY__ = new Promise((resolve) => {
+                setTimeout(() => {
+                    window.__TAURI__.sql = {
+                        load: async () => {
+                            dbState.loadCount += 1;
+                            return fakeDb;
+                        },
+                    };
+                    resolve(window.__TAURI__);
+                }, 100);
+            });
+        });
+
+        await page.goto(APP_URL);
+
+        await page.waitForFunction(
+            () => {
+                return window.__instrumentationTestDbState?.row?.sessions === 1;
+            },
+            { timeout: DESKTOP_RUNTIME_WAIT_TIMEOUT_MS },
+        );
+
+        const localRaw = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
+        expect(localRaw).toBeNull();
+
+        const dbState = await page.evaluate(() => window.__instrumentationTestDbState);
+        expect(dbState.loadCount).toBeGreaterThan(0);
+        expect(dbState.row).not.toBeNull();
+        expect(dbState.row.sessions).toBe(1);
+    });
+
     test('records first session on fresh load (no startup race drop)', async ({ page }) => {
         await clearInstrumentationStorage(page);
         await page.goto(APP_URL);

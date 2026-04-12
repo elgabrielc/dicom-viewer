@@ -8,6 +8,20 @@ Copyright 2026 Divergent Health Technologies
 
 ## [Unreleased]
 
+## [2026-04-10]
+
+### Added
+- Optional Usage Stats panel in Help for app opens and studies imported
+- Opt-in anonymous instrumentation snapshot support for desktop and personal modes
+
+### Changed
+- Improved myradone release funnel with landing, download, and signup updates
+- Added repo-wide linting and formatting infrastructure to tighten release quality
+
+### Fixed
+- macOS app icon refresh after in-app updates
+- Several instrumentation correctness issues before first release
+
 ## [2026-04-09]
 
 ### Fixed
