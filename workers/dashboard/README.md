@@ -38,12 +38,13 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
 - Browser login exchanges that token for a same-site `HttpOnly` session cookie
   via `POST /api/session`, so the full dashboard flow does not depend on
   `sessionStorage` or `document.write`.
-- The session cookie stores a derived verifier rather than the raw shared
-  secret, and expires after 12 hours.
+- The session cookie stores a signed, time-bound verifier rather than the raw
+  shared secret, and the worker enforces the 12-hour expiry server-side.
 - Rate limiting runs before auth and applies to the entire worker.
 - Every response is `Cache-Control: no-store`.
 - The worker sets CSP, frame, referrer, and content-type hardening headers.
-  HTML responses use script hashes instead of `script-src 'unsafe-inline'`.
+  HTML responses derive script hashes from the inline scripts they actually
+  serve instead of relying on hand-maintained hash constants.
 - D1 access is read-only by convention, not by enforced binding mode. This
   worker only issues `SELECT` queries.
 

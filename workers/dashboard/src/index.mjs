@@ -20,7 +20,7 @@ export default {
         try {
             return await dispatchRequest(request, env, dashboardHtml);
         } catch (error) {
-            return createErrorResponse(request, error);
+            return await createErrorResponse(request, error);
         }
     }
 };

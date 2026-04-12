@@ -9,11 +9,13 @@ import {
     SUMMARY_PATH,
     SUBSCRIBERS_PATH,
     authenticate,
+    createSignedSessionValue,
     createErrorResponse,
     dispatchRequest,
     handleDashboard,
     handleSubscribers,
-    handleSummary
+    handleSummary,
+    verifySignedSessionValue
 } from '../workers/dashboard/src/lib.mjs';
 
 const DASHBOARD_HTML = '<!doctype html><html><body data-dashboard-shell="true">dashboard</body></html>';
@@ -30,10 +32,6 @@ function extractInlineScript(html) {
 
 function sha256Base64(value) {
     return crypto.createHash('sha256').update(value).digest('base64');
-}
-
-function sha256Hex(value) {
-    return crypto.createHash('sha256').update(value).digest('hex');
 }
 
 function createEnv({ subscribers = [], token = 'secret-token', rateLimitSuccess = true } = {}) {
@@ -216,8 +214,20 @@ test('authenticate rejects missing and wrong tokens, accepts matching token', as
     const cookieValue = decodeURIComponent(
         sessionLogin.headers.get('Set-Cookie').match(/myradone_dashboard_token=([^;]+)/)[1]
     );
-    assert.equal(cookieValue, sha256Hex('secret-token'));
+    assert.match(cookieValue, /^v1\.\d+\.[0-9a-f]{64}$/);
+    assert.equal(await verifySignedSessionValue(cookieValue, 'secret-token'), true);
     assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { cookieToken: cookieValue }), env), true);
+});
+
+test('signed session values expire server-side', async () => {
+    const nowMs = Date.UTC(2026, 3, 12, 12, 0, 0);
+    const value = await createSignedSessionValue('secret-token', nowMs);
+
+    assert.equal(await verifySignedSessionValue(value, 'secret-token', nowMs + 1_000), true);
+    assert.equal(
+        await verifySignedSessionValue(value, 'secret-token', nowMs + 12 * 60 * 60 * 1000 + 1),
+        false
+    );
 });
 
 test('handleDashboard returns login page without auth and shell with auth', async () => {
@@ -304,7 +314,7 @@ test('handleSubscribers invalid integer errors do not reflect raw input', async 
     try {
         await handleSubscribers(request, env);
     } catch (error) {
-        response = createErrorResponse(request, error);
+        response = await createErrorResponse(request, error);
     }
 
     assert.ok(response);
@@ -384,7 +394,7 @@ test('createErrorResponse turns unexpected failures into JSON 500 payloads', asy
     const originalConsoleError = console.error;
     console.error = () => {};
 
-    const response = createErrorResponse(request, new Error('boom'));
+    const response = await createErrorResponse(request, new Error('boom'));
 
     console.error = originalConsoleError;
 

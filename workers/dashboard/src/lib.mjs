@@ -18,7 +18,8 @@ const SOURCE_ORDER_SQL = "CASE source WHEN 'landing' THEN 0 WHEN 'demo' THEN 1 W
 const STATUS_ORDER_SQL = "CASE status WHEN 'active' THEN 0 ELSE 1 END";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 12;
 const textEncoder = new TextEncoder();
-const sessionHashCache = new Map();
+const signingKeyCache = new Map();
+const inlineScriptCspCache = new Map();
 const JSON_RESPONSE_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 const LOGIN_PAGE_SCRIPT = `(function () {
   const form = document.getElementById('loginForm');
@@ -74,12 +75,6 @@ const LOGIN_PAGE_SCRIPT = `(function () {
     submitToken(token);
   });
 }());`;
-// Keep these hashes in sync with the inline scripts in LOGIN_PAGE_SCRIPT and dashboard.html.
-const LOGIN_PAGE_CSP =
-    "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'sha256-eFTzCI9iuo4BrRDWpekD3Zcjuh71IkGU48bivkfumTY='; style-src 'unsafe-inline'";
-const DASHBOARD_PAGE_CSP =
-    "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'sha256-VfEhTEHh27hhls/PX5RzOmFm8XzH3IXvg6LSK6hiSs8='; style-src 'unsafe-inline'";
-
 class HttpError extends Error {
     constructor(status, message) {
         super(message);
@@ -125,7 +120,7 @@ export function jsonResponse(payload, status = 200, extraHeaders = {}) {
     });
 }
 
-export function htmlResponse(html, status = 200, csp = LOGIN_PAGE_CSP, extraHeaders = {}) {
+export function htmlResponse(html, status = 200, csp = JSON_RESPONSE_CSP, extraHeaders = {}) {
     return new Response(html, {
         status,
         headers: createHeaders('text/html; charset=UTF-8', csp, extraHeaders)
@@ -158,19 +153,93 @@ function getBearerToken(request) {
     return match ? match[1].trim() : '';
 }
 
-async function hashSessionToken(token) {
-    if (sessionHashCache.has(token)) {
-        return sessionHashCache.get(token);
+function bytesToHex(bytes) {
+    return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function bytesToBase64(bytes) {
+    let binary = '';
+    for (const byte of bytes) {
+        binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+}
+
+function extractInlineScript(html) {
+    const match = html.match(/<script>([\s\S]*?)<\/script>/);
+    if (!match) {
+        throw new Error('Expected an inline dashboard script');
+    }
+    return match[1];
+}
+
+async function getSigningKey(secret) {
+    if (signingKeyCache.has(secret)) {
+        return signingKeyCache.get(secret);
     }
 
-    const hashedTokenPromise = crypto.subtle
-        .digest('SHA-256', textEncoder.encode(token))
-        .then((digest) =>
-            [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-        );
+    const signingKeyPromise = crypto.subtle.importKey(
+        'raw',
+        textEncoder.encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
 
-    sessionHashCache.set(token, hashedTokenPromise);
-    return hashedTokenPromise;
+    signingKeyCache.set(secret, signingKeyPromise);
+    return signingKeyPromise;
+}
+
+async function signSessionPayload(secret, payload) {
+    const signingKey = await getSigningKey(secret);
+    const signature = await crypto.subtle.sign('HMAC', signingKey, textEncoder.encode(payload));
+    return bytesToHex(new Uint8Array(signature));
+}
+
+async function buildInlineScriptCsp(html) {
+    const script = extractInlineScript(html);
+
+    if (inlineScriptCspCache.has(script)) {
+        return inlineScriptCspCache.get(script);
+    }
+
+    const cspPromise = crypto.subtle.digest('SHA-256', textEncoder.encode(script)).then((digest) => {
+        const hash = bytesToBase64(new Uint8Array(digest));
+        return `default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'`;
+    });
+
+    inlineScriptCspCache.set(script, cspPromise);
+    return cspPromise;
+}
+
+function buildSessionPayload(expiresAtMs) {
+    return `v1:${expiresAtMs}`;
+}
+
+export async function createSignedSessionValue(secret, nowMs = Date.now()) {
+    const expiresAtMs = nowMs + SESSION_MAX_AGE_SECONDS * 1000;
+    const payload = buildSessionPayload(expiresAtMs);
+    const signature = await signSessionPayload(secret, payload);
+    return `v1.${expiresAtMs}.${signature}`;
+}
+
+export async function verifySignedSessionValue(value, secret, nowMs = Date.now()) {
+    if (typeof value !== 'string' || !value) {
+        return false;
+    }
+
+    const [version, expiresAtRaw, signature] = value.split('.');
+    if (version !== 'v1' || !expiresAtRaw || !signature) {
+        return false;
+    }
+
+    const expiresAtMs = Number.parseInt(expiresAtRaw, 10);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+        return false;
+    }
+
+    const expectedSignature = await signSessionPayload(secret, buildSessionPayload(expiresAtMs));
+    return timingSafeEqual(signature, expectedSignature);
 }
 
 function getCookieToken(request) {
@@ -196,8 +265,8 @@ async function buildSessionCookie(request, token) {
         attributes.push('Secure');
     }
 
-    const hashedToken = await hashSessionToken(token);
-    return `${DASHBOARD_SESSION_COOKIE}=${encodeURIComponent(hashedToken)}; ${attributes.join('; ')}`;
+    const signedValue = await createSignedSessionValue(token);
+    return `${DASHBOARD_SESSION_COOKIE}=${encodeURIComponent(signedValue)}; ${attributes.join('; ')}`;
 }
 
 function buildClearSessionCookie(request) {
@@ -226,7 +295,7 @@ export async function authenticate(request, env) {
         return false;
     }
 
-    return timingSafeEqual(cookieToken, await hashSessionToken(expectedToken));
+    return verifySignedSessionValue(cookieToken, expectedToken);
 }
 
 async function isRateLimited(request, env) {
@@ -586,17 +655,18 @@ export async function handleSubscribers(request, env) {
 
 export async function handleDashboard(request, env, dashboardHtml) {
     requireGet(request);
+    const loginHtml = createLoginHtml();
 
     if (!(await authenticate(request, env))) {
         return htmlResponse(
-            createLoginHtml(),
+            loginHtml,
             200,
-            LOGIN_PAGE_CSP,
+            await buildInlineScriptCsp(loginHtml),
             { 'Set-Cookie': buildClearSessionCookie(request) }
         );
     }
 
-    return htmlResponse(dashboardHtml, 200, DASHBOARD_PAGE_CSP);
+    return htmlResponse(dashboardHtml, 200, await buildInlineScriptCsp(dashboardHtml));
 }
 
 export async function handleSession(request, env) {
@@ -623,21 +693,23 @@ export async function handleSession(request, env) {
     });
 }
 
-function createUnauthorizedResponse(pathname, request) {
+async function createUnauthorizedResponse(pathname, request) {
     const headers = {
         'Set-Cookie': buildClearSessionCookie(request)
     };
 
     if (pathname === DASHBOARD_PATH) {
-        return htmlResponse(createLoginHtml(), 200, LOGIN_PAGE_CSP, headers);
+        const loginHtml = createLoginHtml();
+        return htmlResponse(loginHtml, 200, await buildInlineScriptCsp(loginHtml), headers);
     }
 
     return jsonResponse({ error: 'Unauthorized' }, 401, headers);
 }
 
-function createRateLimitResponse(pathname) {
+async function createRateLimitResponse(pathname) {
     if (pathname === DASHBOARD_PATH) {
-        return htmlResponse(createLoginHtml('Too many requests. Please try again shortly.'), 429);
+        const loginHtml = createLoginHtml('Too many requests. Please try again shortly.');
+        return htmlResponse(loginHtml, 429, await buildInlineScriptCsp(loginHtml));
     }
 
     return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429);
@@ -651,7 +723,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
     }
 
     if (await isRateLimited(request, env)) {
-        return createRateLimitResponse(pathname);
+        return await createRateLimitResponse(pathname);
     }
 
     if (pathname === SESSION_PATH) {
@@ -665,7 +737,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
     if (pathname === SUMMARY_PATH) {
         requireGet(request);
         if (!(await authenticate(request, env))) {
-            return createUnauthorizedResponse(pathname, request);
+            return await createUnauthorizedResponse(pathname, request);
         }
         return jsonResponse(await handleSummary(env));
     }
@@ -673,7 +745,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
     if (pathname === SUBSCRIBERS_PATH) {
         requireGet(request);
         if (!(await authenticate(request, env))) {
-            return createUnauthorizedResponse(pathname, request);
+            return await createUnauthorizedResponse(pathname, request);
         }
         return jsonResponse(await handleSubscribers(request, env));
     }
@@ -681,17 +753,21 @@ export async function dispatchRequest(request, env, dashboardHtml) {
     return jsonResponse({ error: 'Not found' }, 404);
 }
 
-export function createErrorResponse(request, error) {
+export async function createErrorResponse(request, error) {
     const pathname = new URL(request.url).pathname;
 
     if (error instanceof HttpError) {
-        return pathname === DASHBOARD_PATH
-            ? htmlResponse(createLoginHtml(error.message), error.status)
-            : jsonResponse({ error: error.message }, error.status);
+        if (pathname === DASHBOARD_PATH) {
+            const loginHtml = createLoginHtml(error.message);
+            return htmlResponse(loginHtml, error.status, await buildInlineScriptCsp(loginHtml));
+        }
+        return jsonResponse({ error: error.message }, error.status);
     }
 
     console.error('dashboard worker failed', error);
-    return pathname === DASHBOARD_PATH
-        ? htmlResponse(createLoginHtml('Server error.'), 500)
-        : jsonResponse({ error: 'Server error' }, 500);
+    if (pathname === DASHBOARD_PATH) {
+        const loginHtml = createLoginHtml('Server error.');
+        return htmlResponse(loginHtml, 500, await buildInlineScriptCsp(loginHtml));
+    }
+    return jsonResponse({ error: 'Server error' }, 500);
 }
