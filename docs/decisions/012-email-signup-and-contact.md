@@ -52,6 +52,7 @@ Rejected. CORS alone does not stop direct POST spam. Turnstile provides a lightw
 - The Worker treats a signup for an unsubscribed address as a reactivation instead of returning a duplicate success.
 - The landing page ships with Cloudflare's visible Turnstile test site key by default so local testing works before production credentials are added.
 - A static privacy page lives next to the landing page so the consent copy points to a real document immediately.
+- The subscriber write path now has a matching internal read path at `workers/dashboard/`, a separate protected Worker that exposes subscriber analytics and a paginated list view without requiring ad hoc `wrangler d1 execute` access.
 
 ## Consequences
 

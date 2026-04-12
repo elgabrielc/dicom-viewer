@@ -1,0 +1,290 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+    DASHBOARD_PATH,
+    SUMMARY_PATH,
+    SUBSCRIBERS_PATH,
+    authenticate,
+    createErrorResponse,
+    dispatchRequest,
+    handleDashboard,
+    handleSubscribers,
+    handleSummary
+} from '../workers/dashboard/src/lib.mjs';
+
+const DASHBOARD_HTML = '<!doctype html><html><body data-dashboard-shell="true">dashboard</body></html>';
+
+function createEnv({ subscribers = [], token = 'secret-token', rateLimitSuccess = true } = {}) {
+    return {
+        DASHBOARD_TOKEN: token,
+        DASHBOARD_RATE_LIMIT: {
+            async limit() {
+                return { success: rateLimitSuccess };
+            }
+        },
+        SUBSCRIBERS_DB: createDb(subscribers)
+    };
+}
+
+function createDb(initialSubscribers) {
+    const subscribers = initialSubscribers.map((subscriber, index) => ({
+        id: index + 1,
+        email: subscriber.email,
+        status: subscriber.status ?? 'active',
+        subscribed_at: subscriber.subscribed_at ?? '2026-04-12 12:00:00',
+        source: subscriber.source ?? 'landing',
+        consent_version: subscriber.consent_version ?? 'v1'
+    }));
+
+    return {
+        prepare(query) {
+            return {
+                args: [],
+                bind(...args) {
+                    this.args = args;
+                    return this;
+                },
+                async first() {
+                    if (query.includes('COUNT(*) AS total') && query.includes("status = 'active'")) {
+                        const total = subscribers.length;
+                        const active = subscribers.filter((row) => row.status === 'active').length;
+                        const unsubscribed = subscribers.filter((row) => row.status === 'unsubscribed').length;
+                        return { total, active, unsubscribed };
+                    }
+
+                    if (query.startsWith('SELECT COUNT(*) AS total FROM subscribers')) {
+                        return { total: filterSubscribers(query, this.args, subscribers).length };
+                    }
+
+                    throw new Error(`Unhandled first() query: ${query}`);
+                },
+                async all() {
+                    if (query.startsWith('SELECT source, status, COUNT(*) AS count')) {
+                        const grouped = new Map();
+                        for (const subscriber of subscribers) {
+                            const key = `${subscriber.source}:${subscriber.status}`;
+                            grouped.set(key, (grouped.get(key) || 0) + 1);
+                        }
+
+                        return {
+                            results: [...grouped.entries()]
+                                .map(([key, count]) => {
+                                    const [source, status] = key.split(':');
+                                    return { source, status, count };
+                                })
+                                .sort((left, right) => left.source.localeCompare(right.source) || left.status.localeCompare(right.status))
+                        };
+                    }
+
+                    if (query.startsWith('WITH RECURSIVE days(day) AS')) {
+                        return {
+                            results: buildDailyRows(subscribers)
+                        };
+                    }
+
+                    if (query.includes('SELECT id, email, status, subscribed_at, source, consent_version')) {
+                        const filtered = filterSubscribers(query, this.args, subscribers);
+                        const [limit, offset] = extractPagination(query, this.args);
+                        const { column, direction } = extractSort(query);
+                        const sorted = [...filtered].sort((left, right) => compareRows(left, right, column, direction));
+                        return {
+                            results: sorted.slice(offset, offset + limit)
+                        };
+                    }
+
+                    throw new Error(`Unhandled all() query: ${query}`);
+                }
+            };
+        }
+    };
+}
+
+function filterSubscribers(query, args, subscribers) {
+    let bindIndex = 0;
+    let rows = [...subscribers];
+
+    if (query.includes('status = ?')) {
+        const status = args[bindIndex];
+        bindIndex += 1;
+        rows = rows.filter((row) => row.status === status);
+    }
+
+    if (query.includes('source = ?')) {
+        const source = args[bindIndex];
+        rows = rows.filter((row) => row.source === source);
+    }
+
+    return rows;
+}
+
+function extractPagination(query, args) {
+    const needsStatus = query.includes('status = ?');
+    const needsSource = query.includes('source = ?');
+    const offsetIndex = (needsStatus ? 1 : 0) + (needsSource ? 1 : 0);
+    return [args[offsetIndex], args[offsetIndex + 1]];
+}
+
+function extractSort(query) {
+    const match = query.match(/ORDER BY ([a-z_]+) (ASC|DESC), id (ASC|DESC)/i);
+    return {
+        column: match ? match[1] : 'subscribed_at',
+        direction: match ? match[2].toLowerCase() : 'desc'
+    };
+}
+
+function compareRows(left, right, column, direction) {
+    const factor = direction === 'asc' ? 1 : -1;
+    const leftValue = left[column];
+    const rightValue = right[column];
+
+    if (leftValue < rightValue) return -1 * factor;
+    if (leftValue > rightValue) return 1 * factor;
+
+    return (left.id - right.id) * factor;
+}
+
+function buildDailyRows(subscribers) {
+    const counts = new Map();
+    for (const subscriber of subscribers) {
+        const day = subscriber.subscribed_at.slice(0, 10);
+        counts.set(day, (counts.get(day) || 0) + 1);
+    }
+
+    const today = new Date('2026-04-12T00:00:00Z');
+    const rows = [];
+    for (let index = 29; index >= 0; index -= 1) {
+        const date = new Date(today);
+        date.setUTCDate(today.getUTCDate() - index);
+        const day = date.toISOString().slice(0, 10);
+        rows.push({
+            day,
+            count: counts.get(day) || 0
+        });
+    }
+
+    return rows;
+}
+
+function createRequest(path, { token = null, method = 'GET' } = {}) {
+    const headers = new Headers();
+    if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+    }
+    return new Request(`https://dashboard.myradone.com${path}`, {
+        method,
+        headers
+    });
+}
+
+test('authenticate rejects missing and wrong tokens, accepts matching token', () => {
+    const env = createEnv();
+
+    assert.equal(authenticate(createRequest(DASHBOARD_PATH), env), false);
+    assert.equal(authenticate(createRequest(DASHBOARD_PATH, { token: 'wrong' }), env), false);
+    assert.equal(authenticate(createRequest(DASHBOARD_PATH, { token: 'secret-token' }), env), true);
+});
+
+test('handleDashboard returns login page without auth and shell with auth', async () => {
+    const env = createEnv();
+
+    const loginResponse = await handleDashboard(createRequest(DASHBOARD_PATH), env, DASHBOARD_HTML);
+    assert.equal(loginResponse.status, 200);
+    assert.match(await loginResponse.text(), /Open dashboard/);
+
+    const shellResponse = await handleDashboard(
+        createRequest(DASHBOARD_PATH, { token: 'secret-token' }),
+        env,
+        DASHBOARD_HTML
+    );
+    assert.equal(shellResponse.status, 200);
+    assert.match(await shellResponse.text(), /data-dashboard-shell="true"/);
+});
+
+test('handleSummary returns empty shapes on an empty database', async () => {
+    const env = createEnv({ subscribers: [] });
+    const payload = await handleSummary(env);
+
+    assert.deepEqual(payload.counts, {
+        total: 0,
+        active: 0,
+        unsubscribed: 0
+    });
+    assert.equal(payload.sources.length, 3);
+    assert.equal(payload.daily.length, 30);
+});
+
+test('handleSubscribers rejects invalid filters and sort params', async () => {
+    const env = createEnv();
+
+    await assert.rejects(
+        () => handleSubscribers(createRequest(`${SUBSCRIBERS_PATH}?status=bad`), env),
+        /Invalid status filter/
+    );
+    await assert.rejects(
+        () => handleSubscribers(createRequest(`${SUBSCRIBERS_PATH}?source=other`), env),
+        /Invalid source filter/
+    );
+    await assert.rejects(
+        () => handleSubscribers(createRequest(`${SUBSCRIBERS_PATH}?sort=created_at`), env),
+        /Invalid sort column/
+    );
+    await assert.rejects(
+        () => handleSubscribers(createRequest(`${SUBSCRIBERS_PATH}?order=sideways`), env),
+        /Invalid sort order/
+    );
+});
+
+test('handleSubscribers enforces per_page <= 100', async () => {
+    const env = createEnv();
+
+    await assert.rejects(
+        () => handleSubscribers(createRequest(`${SUBSCRIBERS_PATH}?per_page=101`), env),
+        /Integer parameter out of range/
+    );
+});
+
+test('handleSubscribers paginates and sorts seeded subscribers', async () => {
+    const env = createEnv({
+        subscribers: [
+            { email: 'zeta@example.com', source: 'demo', subscribed_at: '2026-04-10 08:00:00' },
+            { email: 'alpha@example.com', source: 'landing', subscribed_at: '2026-04-12 09:00:00' },
+            { email: 'beta@example.com', source: 'app', status: 'unsubscribed', subscribed_at: '2026-04-11 07:00:00' }
+        ]
+    });
+
+    const payload = await handleSubscribers(
+        createRequest(`${SUBSCRIBERS_PATH}?sort=email&order=asc&per_page=2&page=1`),
+        env
+    );
+
+    assert.equal(payload.subscribers.length, 2);
+    assert.equal(payload.subscribers[0].email, 'alpha@example.com');
+    assert.equal(payload.pagination.total, 3);
+    assert.equal(payload.pagination.total_pages, 2);
+});
+
+test('dispatchRequest returns 401 for unauthenticated API requests and 429 when rate-limited', async () => {
+    const env = createEnv();
+
+    const unauthorized = await dispatchRequest(createRequest(SUMMARY_PATH), env, DASHBOARD_HTML);
+    assert.equal(unauthorized.status, 401);
+    assert.deepEqual(await unauthorized.json(), { error: 'Unauthorized' });
+
+    const rateLimitedEnv = createEnv({ rateLimitSuccess: false });
+    const rateLimited = await dispatchRequest(createRequest(SUMMARY_PATH), rateLimitedEnv, DASHBOARD_HTML);
+    assert.equal(rateLimited.status, 429);
+});
+
+test('createErrorResponse turns unexpected failures into JSON 500 payloads', async () => {
+    const request = createRequest(SUBSCRIBERS_PATH);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+
+    const response = createErrorResponse(request, new Error('boom'));
+
+    console.error = originalConsoleError;
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { error: 'Server error' });
+});
