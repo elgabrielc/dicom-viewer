@@ -199,6 +199,55 @@ npm run build:plain-dmg -- --skip-build
 
 - CI can produce a signed, notarized, stapled plain DMG without manual patching
 
+### Known gotchas (encountered 2026-04-09)
+
+See `docs/BUGS.md` BUG-011 for full context. Short version:
+
+**1. `TAURI_SIGNING_PRIVATE_KEY` missing on non-signing hosts**
+
+The full release flow (`npm run tauri build`) tries to produce both the `.app` and an
+updater tarball with a detached signature. The signing step is gated on
+`TAURI_SIGNING_PRIVATE_KEY`, which should live only on the signing host. On any other
+machine, the compile will succeed but the release flow will halt with a missing-env
+error before writing the updater artifact.
+
+**Workaround**: the `.app` is already built at
+`desktop/src-tauri/target/release/bundle/macos/myradone.app` by the time the signing
+step runs. Use the `--skip-build` packaging path to wrap it in a plain DMG without
+touching the updater signing flow:
+
+```bash
+npm run build:plain-dmg -- --skip-build
+```
+
+Plain DMGs are standalone distributable installers and do not need to be signed as
+updater artifacts. The in-app auto-update path *does* need a signed updater tarball,
+so that step must still run on the signing host for user-facing update rollouts.
+
+**2. Stale `/Volumes/<name>` mounts break `hdiutil create`**
+
+macOS pseudo-mounts DMG contents under `/Volumes/<volname>` whenever a DMG is opened,
+and unclean exits (crashed builds, interrupted `hdiutil` runs, Finder windows left
+open) can leave the mount in place. On the next DMG build with the same volume name,
+`hdiutil create` emits a misleading permission error -- the real cause is that the
+suffix-renamed volume (e.g. `/Volumes/myradone 1`) is still attached.
+
+**Workaround**: before retrying `--skip-build`, list and detach stale mounts:
+
+```bash
+ls /Volumes                                        # find the stale mount
+hdiutil detach "/Volumes/myradone 1" -force        # and any others with suffix numbers
+```
+
+Then rerun `npm run build:plain-dmg -- --skip-build`. If the script still fails,
+packaging manually with `hdiutil` directly against the already-built `.app` (referencing
+the existing `build-plain-dmg.sh` as a template) is a last-resort fallback.
+
+**Proposed hardening**: extend `desktop/scripts/build-plain-dmg.sh` to detect any
+existing mount whose volume name matches `PRODUCT_NAME` and detach it automatically
+before calling `hdiutil create`. This would convert the gotcha into silent
+self-healing. Not yet implemented -- pending recurrence data.
+
 ---
 
 ## Phase 4: Clean-Mac Release Validation

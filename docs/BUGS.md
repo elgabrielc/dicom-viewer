@@ -12,6 +12,206 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-011: Desktop release build blocked by missing signing key and stale DMG mounts
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved (operational) |
+| **Priority** | Medium |
+| **Found** | 2026-04-09 |
+| **Resolved** | 2026-04-09 |
+| **Scope** | Build environment, not shipped code |
+
+**How Encountered:**
+During a local macOS release build of the myradone desktop app, `npm run tauri build`
+compiled cleanly and produced the `.app` bundle, but the full release pipeline failed
+in two separate places in quick succession:
+
+1. **Tauri updater signing step** halted with a missing `TAURI_SIGNING_PRIVATE_KEY`
+   environment variable. The signing key for the updater tarball is only present on
+   the dedicated signing host; the local build machine does not have it.
+2. After switching to the `--skip-build` path (which wraps an already-built `.app`
+   into a plain DMG without needing the updater key), `hdiutil create` failed with a
+   permission error because a stale volume from a previous aborted DMG build was
+   still mounted at `/Volumes/myradone 1`. The ` 1` suffix is macOS's automatic rename
+   when a volume with the same name is already mounted, and `hdiutil` refuses to
+   overwrite or reuse the conflicting mount.
+
+Neither failure is a compile error or a code defect. Both are build-environment
+conditions that any future release from a non-primary host can hit again.
+
+**Root Cause:**
+- **Missing signing key**: Tauri's full release flow bundles *two* artifacts: the
+  signed `.app` and an updater tarball (`.app.tar.gz`) with a detached signature that
+  the in-app updater uses to verify future updates. The tarball signing step is
+  gated on `TAURI_SIGNING_PRIVATE_KEY`. On a host that does not have that key, the
+  release flow aborts even though the `.app` itself is already written to disk.
+- **Stale DMG mount**: macOS pseudo-mounts DMG contents under `/Volumes/<volname>`
+  whenever a DMG is opened. Unclean exits (crashed builds, interrupted `hdiutil`
+  runs, Finder windows left open) can leave the mount in place. On the next DMG
+  build with the same `volname`, `hdiutil` hits the conflict and emits a misleading
+  permission error instead of a clear "volume in use" diagnostic.
+
+**Solution:**
+Two complementary fixes: one immediate, one preventative.
+
+Immediate (operational workaround, repeatable):
+- Use the repo's existing `--skip-build` packaging path for hosts without the
+  signing key:
+  ```
+  npm run build:plain-dmg -- --skip-build
+  ```
+  This consumes the already-built `.app` from
+  `desktop/src-tauri/target/release/bundle/macos/` and wraps it in a plain DMG. No
+  updater signing is required because plain DMGs are not signed update artifacts --
+  they are standalone distributable installers. Updater signing is only needed for
+  the in-app auto-update path.
+- Before retrying `--skip-build`, detach any stale DMG mounts:
+  ```
+  hdiutil detach "/Volumes/myradone 1" -force
+  ```
+  (Replace the path if the volume suffix is different.) `ls /Volumes` lists all
+  current mounts.
+
+Preventative (proposed, not yet committed):
+- Add a pre-packaging step to `desktop/scripts/build-plain-dmg.sh` that detects
+  and detaches any existing mount whose volume name matches `PRODUCT_NAME` before
+  calling `hdiutil create`. This converts the gotcha into silent self-healing.
+
+**Why This Solution:**
+Alternatives considered:
+- *Require `TAURI_SIGNING_PRIVATE_KEY` on every build host* - Rejected. The key
+  must stay on the signing host only; distributing it to every dev machine defeats
+  the purpose. The `--skip-build` path is the correct separation: code builds
+  anywhere, signing happens on the signing host.
+- *Rename the DMG volume name per build* - Rejected. The volume name is the user-
+  visible label when the DMG is mounted; rotating it degrades the install UX.
+- *Fail loudly in `build-plain-dmg.sh` on mount conflict instead of auto-detaching* -
+  Partially considered. A loud failure is better than the current opaque `hdiutil`
+  error, but auto-detach is strictly better because it fixes the common case
+  without manual intervention.
+
+**Prevention Controls:**
+- Documented in `docs/planning/PLAN-tauri-release.md` under "Known gotchas" so
+  future release sessions can find the workaround without re-deriving it.
+- Proposed hardening of `desktop/scripts/build-plain-dmg.sh` to auto-detach stale
+  mounts (pending implementation -- track as follow-up if the gotcha recurs).
+- Anyone running the release from a new machine should know: compile errors come
+  from the Rust/Tauri build phase; post-build errors about signing or `hdiutil` are
+  environmental and have documented workarounds in this entry.
+
+**Files Changed:**
+- `docs/BUGS.md` (this entry)
+- `docs/planning/PLAN-tauri-release.md` (added "Known gotchas" section)
+
+### BUG-010: "Error loading sample: undefined" on sample CT/MRI buttons
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | High |
+| **Found** | 2026-04-09 |
+| **Resolved** | 2026-04-09 |
+| **Commit** | 576a95b |
+
+**How Encountered:**
+User Jake Powell (Android, RCS screenshot) reported that clicking either the "CT Scan"
+or "MRI Scan" sample button on the library view produced an alert dialog reading
+literally:
+
+```
+myradone
+Error loading sample: undefined
+OK
+```
+
+Gabriel also reproduced on desktop. The sample buttons are the single most important
+demo-mode feature -- the first thing new visitors interact with -- so this broke the
+primary onboarding path.
+
+**Root Cause:**
+Two layered defects, plus one flawed test-plan assumption that almost shipped a useless
+regression test:
+
+1. **`docs/js/app/main.js:189`** did `alert(\`Error loading sample: ${err.message}\`)`
+   unconditionally. When the caught value was not a standard `Error` instance
+   (`DOMException` with empty message, bare string from `throw "..."`, plain object),
+   `err.message` evaluated to JavaScript `undefined`, and template literal interpolation
+   stringified that to the literal word `"undefined"` -- which is exactly what the user
+   saw. The same pattern existed in three other handlers in the same file
+   (`handleDroppedFolder`, two `handleTauriDrop` paths), all with the same latent bug.
+
+2. **`docs/js/app/sources.js` `loadSampleStudies`** fetched all 188 (CT) or 241 (MRI)
+   sample files via unbounded `fileNames.map() + Promise.all()`. Peak memory was
+   ~96MB (CT) / ~240MB (MRI) because every blob was held in the `files` array through
+   a separate parse phase. Neither the manifest fetch nor the per-file fetch checked
+   `res.ok`, so a 404 (stale CDN cache, wrong deployment target, deploy in flight) would
+   produce a downstream `SyntaxError` from `manifestRes.json()` or a zero-byte blob from
+   `res.blob()` that later failed inside `parseDicomMetadata` with an unpredictable
+   error shape. Those unpredictable errors fed directly into bug #1 above and surfaced
+   as `"undefined"`.
+
+**Solution:**
+- Added `app.utils.getErrorMessage(error)` in `docs/js/app/utils.js`, promoted from two
+  byte-identical duplicates that already existed in `sources.js` and `import-pipeline.js`.
+  Handles `string`, `error.message`, `error.exception`, and falls back to the constructor
+  name instead of `[object Object]` for plain objects.
+- Fixed all four `alert(...${err.message})` sites in `main.js`. Each handler now does:
+  `AbortError` early-return (matching the existing `handleTauriDrop` guard), shared
+  helper for message extraction, `console.error` so the original error object is
+  preserved in devtools.
+- Added `res.ok` checks to both fetches in `loadSampleStudies`, matching the existing
+  correct pattern at `sources.js:904`. Error messages include the full URL and HTTP
+  status so the alert will identify exactly which file failed.
+- Replaced the two-phase "fetch everything, then parse everything" loop with a
+  fetch-and-parse-per-batch loop at `SAMPLE_FETCH_BATCH_SIZE = 20` (the exact batch size
+  recommended in `docs/planning/REMEDIATION-PLAN.md` DBG-MEDIUM-9). Each batch's blobs
+  go out of scope before the next batch's fetches fire, so peak memory drops from
+  ~96MB (CT) / ~240MB (MRI) to ~3MB transient + retained renderable slices.
+- Deleted the two duplicate helpers in `sources.js` and `import-pipeline.js` now that
+  `app.utils.getErrorMessage` is the single source of truth.
+
+**Why This Solution:**
+Alternatives considered:
+- *Fix only `handleSampleLoad` and leave the other three handlers* -- Rejected. The
+  hardener audit showed the same `${err.message}` pattern in 4 places. Fixing one
+  guarantees the next `Error: undefined` ticket lands in a different handler.
+- *Inline the message-extraction logic in `main.js`* -- Rejected. Two verbatim copies
+  of the helper already existed elsewhere in the codebase. Promoting to `app.utils`
+  removed duplication and established the single-source discipline.
+- *Wrap every fetch error inside `loadSampleStudies` in a new `Error`* -- Rejected by
+  Codex during review. Wrapping destroys the original error's stack trace and type
+  information. Instead, let the real error bubble through the data layer unchanged
+  and only format it at the UI boundary (`main.js` catch block). This is the correct
+  error-handling discipline: format at the edge, not in the middle.
+- *Use `DESKTOP_PATH_SCAN_CONCURRENCY = 10` for the batch size* -- Rejected. That
+  constant is semantically "native file reads over Tauri IPC," not network fetches.
+  The repo's `REMEDIATION-PLAN.md` already documented batches of 20 for this exact
+  code path (DBG-MEDIUM-9), so we used the repo-local anchor.
+- *Simple batched loop with `files.push(...batch)` accumulation* -- Rejected. The
+  original draft plan had this shape, but it would have reduced fan-out without
+  actually lowering peak memory, because all blobs would still be held in the `files`
+  array through the parse phase. Codex caught this. The final loop is fetch-parse-discard
+  per batch so non-renderable blobs go out of scope each iteration.
+
+**Prevention Controls:**
+Flawed regression test avoided: the first draft of the regression test patched
+`window.app.sources.loadSampleStudies` at runtime, but `main.js` captures that
+function by destructuring at app boot, so the button handler holds a private reference
+to the original. A runtime patch on `app.sources` would have silently tested the happy
+path while appearing to test the error path. The committed test instead targets a seam
+the button handler actually calls at runtime. Lesson recorded here: always identify the
+exact reference path the production code uses before choosing a mock seam.
+
+**Files Changed:**
+- `docs/js/app/utils.js` (+ `getErrorMessage` helper, export on `app.utils`)
+- `docs/js/app/main.js` (4 error handlers: defensive extraction + `console.error` +
+  `AbortError` guard where missing)
+- `docs/js/app/sources.js` (delete `getDesktopScanParseErrorMessage`, add `res.ok`
+  checks, fetch-and-parse batching at size 20)
+- `docs/js/app/import-pipeline.js` (delete `getImportParseErrorMessage`)
+- `tests/library-and-navigation.spec.js` (regression test at correct mock seam)
+
 ### BUG-009: macOS dock icon not updated after app update
 
 | Field | Value |
