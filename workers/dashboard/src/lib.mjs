@@ -1,7 +1,9 @@
 export const DASHBOARD_PATH = '/';
+export const SESSION_PATH = '/api/session';
 export const SUMMARY_PATH = '/api/summary';
 export const SUBSCRIBERS_PATH = '/api/subscribers';
 
+const DASHBOARD_SESSION_COOKIE = 'myradone_dashboard_token';
 const VALID_STATUSES = new Set(['active', 'unsubscribed']);
 const VALID_SOURCES = new Set(['landing', 'demo', 'app']);
 const VALID_ORDERS = new Set(['asc', 'desc']);
@@ -15,6 +17,66 @@ const SOURCE_ORDER = ['landing', 'demo', 'app'];
 const SOURCE_ORDER_SQL = "CASE source WHEN 'landing' THEN 0 WHEN 'demo' THEN 1 WHEN 'app' THEN 2 ELSE 3 END";
 const STATUS_ORDER_SQL = "CASE status WHEN 'active' THEN 0 ELSE 1 END";
 const textEncoder = new TextEncoder();
+const JSON_RESPONSE_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+const LOGIN_PAGE_SCRIPT = `(function () {
+  const form = document.getElementById('loginForm');
+  const tokenInput = document.getElementById('tokenInput');
+  const submitButton = document.getElementById('submitButton');
+  const errorMessage = document.getElementById('errorMessage');
+
+  async function createSession(token) {
+    return fetch('${SESSION_PATH}', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token
+      },
+      cache: 'no-store',
+      credentials: 'same-origin'
+    });
+  }
+
+  async function submitToken(token) {
+    submitButton.disabled = true;
+    errorMessage.textContent = '';
+
+    try {
+      const response = await createSession(token);
+
+      if (response.status === 401) {
+        throw new Error('Invalid dashboard token.');
+      }
+
+      if (response.status === 429) {
+        throw new Error('Too many requests. Please try again shortly.');
+      }
+
+      if (!response.ok) {
+        throw new Error('Dashboard request failed.');
+      }
+
+      window.location.replace('/');
+    } catch (error) {
+      errorMessage.textContent = error.message || 'Dashboard request failed.';
+    } finally {
+      submitButton.disabled = false;
+    }
+  }
+
+  form.addEventListener('submit', function (event) {
+    event.preventDefault();
+    const token = tokenInput.value.trim();
+    if (!token) {
+      errorMessage.textContent = 'Dashboard token is required.';
+      return;
+    }
+    submitToken(token);
+  });
+}());`;
+// Keep these hashes in sync with the inline scripts in LOGIN_PAGE_SCRIPT and dashboard.html.
+const LOGIN_PAGE_CSP =
+    "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'sha256-eFTzCI9iuo4BrRDWpekD3Zcjuh71IkGU48bivkfumTY='; style-src 'unsafe-inline'";
+const DASHBOARD_PAGE_CSP =
+    "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'sha256-VfEhTEHh27hhls/PX5RzOmFm8XzH3IXvg6LSK6hiSs8='; style-src 'unsafe-inline'";
 
 class HttpError extends Error {
     constructor(status, message) {
@@ -32,30 +94,46 @@ function escapeHtml(value) {
         .replaceAll('"', '&quot;');
 }
 
-function createHeaders(contentType) {
-    return new Headers({
+function createHeaders(contentType, csp, extraHeaders = {}) {
+    const headers = new Headers({
         'Cache-Control': 'no-store',
-        'Content-Security-Policy':
-            "default-src 'self'; base-uri 'none'; connect-src 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'",
-        'Content-Type': contentType,
+        'Content-Security-Policy': csp,
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
         'Referrer-Policy': 'no-referrer',
+        Vary: 'Authorization, Cookie',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY'
     });
+
+    if (contentType) {
+        headers.set('Content-Type', contentType);
+    }
+
+    for (const [name, value] of Object.entries(extraHeaders)) {
+        headers.set(name, value);
+    }
+
+    return headers;
 }
 
-export function jsonResponse(payload, status = 200) {
+export function jsonResponse(payload, status = 200, extraHeaders = {}) {
     return new Response(JSON.stringify(payload), {
         status,
-        headers: createHeaders('application/json; charset=UTF-8')
+        headers: createHeaders('application/json; charset=UTF-8', JSON_RESPONSE_CSP, extraHeaders)
     });
 }
 
-export function htmlResponse(html, status = 200) {
+export function htmlResponse(html, status = 200, csp = LOGIN_PAGE_CSP, extraHeaders = {}) {
     return new Response(html, {
         status,
-        headers: createHeaders('text/html; charset=UTF-8')
+        headers: createHeaders('text/html; charset=UTF-8', csp, extraHeaders)
+    });
+}
+
+function emptyResponse(status = 204, extraHeaders = {}) {
+    return new Response(null, {
+        status,
+        headers: createHeaders(null, JSON_RESPONSE_CSP, extraHeaders)
     });
 }
 
@@ -78,8 +156,38 @@ function getBearerToken(request) {
     return match ? match[1].trim() : '';
 }
 
+function getCookieToken(request) {
+    const cookieHeader = request.headers.get('Cookie') || '';
+
+    for (const fragment of cookieHeader.split(';')) {
+        const [name, ...rest] = fragment.trim().split('=');
+        if (name !== DASHBOARD_SESSION_COOKIE) continue;
+        return decodeURIComponent(rest.join('='));
+    }
+
+    return '';
+}
+
+function buildSessionCookie(request, token) {
+    const attributes = ['HttpOnly', 'Path=/', 'SameSite=Strict'];
+    if (new URL(request.url).protocol === 'https:') {
+        attributes.push('Secure');
+    }
+
+    return `${DASHBOARD_SESSION_COOKIE}=${encodeURIComponent(token)}; ${attributes.join('; ')}`;
+}
+
+function buildClearSessionCookie(request) {
+    const attributes = ['HttpOnly', 'Max-Age=0', 'Path=/', 'SameSite=Strict'];
+    if (new URL(request.url).protocol === 'https:') {
+        attributes.push('Secure');
+    }
+
+    return `${DASHBOARD_SESSION_COOKIE}=; ${attributes.join('; ')}`;
+}
+
 export function authenticate(request, env) {
-    const providedToken = getBearerToken(request);
+    const providedToken = getBearerToken(request) || getCookieToken(request);
     const expectedToken = typeof env.DASHBOARD_TOKEN === 'string' ? env.DASHBOARD_TOKEN.trim() : '';
 
     if (!providedToken || !expectedToken) {
@@ -218,86 +326,7 @@ function createLoginHtml(errorMessage = '') {
     </form>
     <div id="errorMessage" class="error" role="alert">${safeError}</div>
   </main>
-  <script>
-    (function () {
-      const form = document.getElementById('loginForm');
-      const tokenInput = document.getElementById('tokenInput');
-      const submitButton = document.getElementById('submitButton');
-      const errorMessage = document.getElementById('errorMessage');
-
-      async function loadDashboardShell(token) {
-        const response = await fetch(window.location.pathname, {
-          method: 'GET',
-          headers: { Authorization: 'Bearer ' + token },
-          cache: 'no-store'
-        });
-
-        const html = await response.text();
-        if (!response.ok || !html.includes('data-dashboard-shell="true"')) {
-          throw new Error(response.status === 429 ? 'Too many requests. Please try again shortly.' : 'Invalid dashboard token.');
-        }
-
-        document.open();
-        document.write(html);
-        document.close();
-      }
-
-      async function verifyToken(token) {
-        const response = await fetch('/api/summary', {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            Authorization: 'Bearer ' + token
-          },
-          cache: 'no-store'
-        });
-
-        if (response.status === 401) {
-          throw new Error('Invalid dashboard token.');
-        }
-
-        if (response.status === 429) {
-          throw new Error('Too many requests. Please try again shortly.');
-        }
-
-        if (!response.ok) {
-          throw new Error('Dashboard request failed.');
-        }
-      }
-
-      async function submitToken(token) {
-        submitButton.disabled = true;
-        errorMessage.textContent = '';
-
-        try {
-          await verifyToken(token);
-          sessionStorage.setItem('dashboardToken', token);
-          await loadDashboardShell(token);
-        } catch (error) {
-          sessionStorage.removeItem('dashboardToken');
-          errorMessage.textContent = error.message || 'Dashboard request failed.';
-        } finally {
-          submitButton.disabled = false;
-        }
-      }
-
-      form.addEventListener('submit', function (event) {
-        event.preventDefault();
-        const token = tokenInput.value.trim();
-        if (!token) {
-          errorMessage.textContent = 'Dashboard token is required.';
-          return;
-        }
-        submitToken(token);
-      });
-
-      const storedToken = sessionStorage.getItem('dashboardToken');
-      if (storedToken) {
-        tokenInput.value = storedToken;
-        submitToken(storedToken);
-      }
-    }());
-  </script>
+  <script>${LOGIN_PAGE_SCRIPT}</script>
 </body>
 </html>`;
 }
@@ -323,11 +352,11 @@ function parseIntegerParam(rawValue, fallback, { min = 1, max = Number.MAX_SAFE_
 
     const parsed = Number.parseInt(rawValue, 10);
     if (!Number.isFinite(parsed) || String(parsed) !== String(rawValue).trim()) {
-        badRequest(`Invalid integer parameter: ${rawValue}`);
+        badRequest('Invalid integer parameter');
     }
 
     if (parsed < min || parsed > max) {
-        badRequest(`Integer parameter out of range: ${rawValue}`);
+        badRequest('Integer parameter out of range');
     }
 
     return parsed;
@@ -527,18 +556,51 @@ export async function handleDashboard(request, env, dashboardHtml) {
     requireGet(request);
 
     if (!authenticate(request, env)) {
-        return htmlResponse(createLoginHtml(), 200);
+        return htmlResponse(
+            createLoginHtml(),
+            200,
+            LOGIN_PAGE_CSP,
+            { 'Set-Cookie': buildClearSessionCookie(request) }
+        );
     }
 
-    return htmlResponse(dashboardHtml, 200);
+    return htmlResponse(dashboardHtml, 200, DASHBOARD_PAGE_CSP);
 }
 
-function createUnauthorizedResponse(pathname) {
-    if (pathname === DASHBOARD_PATH) {
-        return htmlResponse(createLoginHtml(), 200);
+export async function handleSession(request, env) {
+    if (request.method === 'DELETE') {
+        return emptyResponse(204, {
+            'Set-Cookie': buildClearSessionCookie(request)
+        });
     }
 
-    return jsonResponse({ error: 'Unauthorized' }, 401);
+    if (request.method !== 'POST') {
+        methodNotAllowed();
+    }
+
+    if (!authenticate(request, env)) {
+        return jsonResponse(
+            { error: 'Unauthorized' },
+            401,
+            { 'Set-Cookie': buildClearSessionCookie(request) }
+        );
+    }
+
+    return emptyResponse(204, {
+        'Set-Cookie': buildSessionCookie(request, env.DASHBOARD_TOKEN.trim())
+    });
+}
+
+function createUnauthorizedResponse(pathname, request) {
+    const headers = {
+        'Set-Cookie': buildClearSessionCookie(request)
+    };
+
+    if (pathname === DASHBOARD_PATH) {
+        return htmlResponse(createLoginHtml(), 200, LOGIN_PAGE_CSP, headers);
+    }
+
+    return jsonResponse({ error: 'Unauthorized' }, 401, headers);
 }
 
 function createRateLimitResponse(pathname) {
@@ -556,6 +618,10 @@ export async function dispatchRequest(request, env, dashboardHtml) {
         return createRateLimitResponse(pathname);
     }
 
+    if (pathname === SESSION_PATH) {
+        return handleSession(request, env);
+    }
+
     if (pathname === DASHBOARD_PATH) {
         return handleDashboard(request, env, dashboardHtml);
     }
@@ -563,7 +629,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
     if (pathname === SUMMARY_PATH) {
         requireGet(request);
         if (!authenticate(request, env)) {
-            return createUnauthorizedResponse(pathname);
+            return createUnauthorizedResponse(pathname, request);
         }
         return jsonResponse(await handleSummary(env));
     }
@@ -571,7 +637,7 @@ export async function dispatchRequest(request, env, dashboardHtml) {
     if (pathname === SUBSCRIBERS_PATH) {
         requireGet(request);
         if (!authenticate(request, env)) {
-            return createUnauthorizedResponse(pathname);
+            return createUnauthorizedResponse(pathname, request);
         }
         return jsonResponse(await handleSubscribers(request, env));
     }

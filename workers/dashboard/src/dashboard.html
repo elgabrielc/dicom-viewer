@@ -545,13 +545,28 @@
         unsubscribedCount: document.getElementById('unsubscribedCount')
       };
 
-      function getToken() {
-        return sessionStorage.getItem('dashboardToken') || '';
+      let redirecting = false;
+
+      async function clearSession() {
+        try {
+          await fetch('/api/session', {
+            method: 'DELETE',
+            cache: 'no-store',
+            credentials: 'same-origin'
+          });
+        } catch (error) {
+          return null;
+        }
+        return null;
       }
 
-      function clearTokenAndReload() {
-        sessionStorage.removeItem('dashboardToken');
-        window.location.reload();
+      async function clearSessionAndRedirect() {
+        if (redirecting) {
+          return;
+        }
+        redirecting = true;
+        await clearSession();
+        window.location.replace('/');
       }
 
       function normalizeTimestamp(value) {
@@ -625,24 +640,18 @@
       }
 
       async function apiJson(path) {
-        const token = getToken();
-        if (!token) {
-          clearTokenAndReload();
-          throw new Error('Dashboard token missing.');
-        }
-
         const response = await fetch(path, {
           method: 'GET',
           headers: {
-            Accept: 'application/json',
-            Authorization: 'Bearer ' + token
+            Accept: 'application/json'
           },
-          cache: 'no-store'
+          cache: 'no-store',
+          credentials: 'same-origin'
         });
 
         if (response.status === 401) {
-          clearTokenAndReload();
-          throw new Error('Dashboard token expired.');
+          await clearSessionAndRedirect();
+          throw new Error('Dashboard session expired.');
         }
 
         let payload = null;
@@ -693,7 +702,12 @@
 
           const topline = document.createElement('div');
           topline.className = 'source-topline';
-          topline.innerHTML = '<span>' + row.source + '</span><span>' + row.total + '</span>';
+          const sourceLabel = document.createElement('span');
+          sourceLabel.textContent = row.source;
+          const sourceTotal = document.createElement('span');
+          sourceTotal.textContent = String(row.total);
+          topline.appendChild(sourceLabel);
+          topline.appendChild(sourceTotal);
 
           const meta = document.createElement('div');
           meta.className = 'source-meta';
@@ -870,13 +884,8 @@
       });
 
       elements.logoutButton.addEventListener('click', function () {
-        clearTokenAndReload();
+        clearSessionAndRedirect();
       });
-
-      if (!getToken()) {
-        clearTokenAndReload();
-        return;
-      }
 
       refreshAll();
       state.refreshHandle = window.setInterval(refreshAll, 60000);

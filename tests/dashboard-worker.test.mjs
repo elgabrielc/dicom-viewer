@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
     DASHBOARD_PATH,
+    SESSION_PATH,
     SUMMARY_PATH,
     SUBSCRIBERS_PATH,
     authenticate,
@@ -166,10 +167,13 @@ function buildDailyRows(subscribers) {
     return rows;
 }
 
-function createRequest(path, { token = null, method = 'GET' } = {}) {
+function createRequest(path, { token = null, cookieToken = null, method = 'GET' } = {}) {
     const headers = new Headers();
     if (token) {
         headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (cookieToken) {
+        headers.set('Cookie', `myradone_dashboard_token=${encodeURIComponent(cookieToken)}`);
     }
     return new Request(`https://dashboard.myradone.com${path}`, {
         method,
@@ -183,6 +187,7 @@ test('authenticate rejects missing and wrong tokens, accepts matching token', ()
     assert.equal(authenticate(createRequest(DASHBOARD_PATH), env), false);
     assert.equal(authenticate(createRequest(DASHBOARD_PATH, { token: 'wrong' }), env), false);
     assert.equal(authenticate(createRequest(DASHBOARD_PATH, { token: 'secret-token' }), env), true);
+    assert.equal(authenticate(createRequest(DASHBOARD_PATH, { cookieToken: 'secret-token' }), env), true);
 });
 
 test('handleDashboard returns login page without auth and shell with auth', async () => {
@@ -191,14 +196,17 @@ test('handleDashboard returns login page without auth and shell with auth', asyn
     const loginResponse = await handleDashboard(createRequest(DASHBOARD_PATH), env, DASHBOARD_HTML);
     assert.equal(loginResponse.status, 200);
     assert.match(await loginResponse.text(), /Open dashboard/);
+    assert.match(loginResponse.headers.get('Set-Cookie'), /Max-Age=0/);
 
     const shellResponse = await handleDashboard(
-        createRequest(DASHBOARD_PATH, { token: 'secret-token' }),
+        createRequest(DASHBOARD_PATH, { cookieToken: 'secret-token' }),
         env,
         DASHBOARD_HTML
     );
     assert.equal(shellResponse.status, 200);
     assert.match(await shellResponse.text(), /data-dashboard-shell="true"/);
+    assert.match(shellResponse.headers.get('Content-Security-Policy'), /script-src 'sha256-/);
+    assert.doesNotMatch(shellResponse.headers.get('Content-Security-Policy'), /script-src 'unsafe-inline'/);
 });
 
 test('handleSummary returns empty shapes on an empty database', async () => {
@@ -244,6 +252,23 @@ test('handleSubscribers enforces per_page <= 100', async () => {
     );
 });
 
+test('handleSubscribers invalid integer errors do not reflect raw input', async () => {
+    const env = createEnv();
+    const request = createRequest(`${SUBSCRIBERS_PATH}?page=%3Cscript%3Ealert(1)%3C/script%3E`, {
+        cookieToken: 'secret-token'
+    });
+
+    let response = null;
+    try {
+        await handleSubscribers(request, env);
+    } catch (error) {
+        response = createErrorResponse(request, error);
+    }
+
+    assert.ok(response);
+    assert.deepEqual(await response.json(), { error: 'Invalid integer parameter' });
+});
+
 test('handleSubscribers paginates and sorts seeded subscribers', async () => {
     const env = createEnv({
         subscribers: [
@@ -270,10 +295,39 @@ test('dispatchRequest returns 401 for unauthenticated API requests and 429 when 
     const unauthorized = await dispatchRequest(createRequest(SUMMARY_PATH), env, DASHBOARD_HTML);
     assert.equal(unauthorized.status, 401);
     assert.deepEqual(await unauthorized.json(), { error: 'Unauthorized' });
+    assert.match(unauthorized.headers.get('Set-Cookie'), /Max-Age=0/);
 
     const rateLimitedEnv = createEnv({ rateLimitSuccess: false });
     const rateLimited = await dispatchRequest(createRequest(SUMMARY_PATH), rateLimitedEnv, DASHBOARD_HTML);
     assert.equal(rateLimited.status, 429);
+});
+
+test('dispatchRequest creates and clears dashboard sessions', async () => {
+    const env = createEnv();
+
+    const loginResponse = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: 'secret-token' }),
+        env,
+        DASHBOARD_HTML
+    );
+    assert.equal(loginResponse.status, 204);
+    assert.match(loginResponse.headers.get('Set-Cookie'), /HttpOnly/);
+    assert.match(loginResponse.headers.get('Set-Cookie'), /myradone_dashboard_token=/);
+
+    const rejectedLogin = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: 'wrong' }),
+        env,
+        DASHBOARD_HTML
+    );
+    assert.equal(rejectedLogin.status, 401);
+
+    const logoutResponse = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'DELETE' }),
+        env,
+        DASHBOARD_HTML
+    );
+    assert.equal(logoutResponse.status, 204);
+    assert.match(logoutResponse.headers.get('Set-Cookie'), /Max-Age=0/);
 });
 
 test('createErrorResponse turns unexpected failures into JSON 500 payloads', async () => {

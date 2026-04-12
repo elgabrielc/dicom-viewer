@@ -13,8 +13,11 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
 
 ## Endpoints
 
-- `GET /` - Protected dashboard shell. Without a valid bearer token, returns a
-  minimal login page.
+- `GET /` - Protected dashboard shell. Without a valid dashboard session cookie
+  or bearer token, returns a minimal login page.
+- `POST /api/session` - Validates a bearer token and mints the browser session
+  cookie used by the dashboard shell.
+- `DELETE /api/session` - Clears the dashboard session cookie.
 - `GET /api/summary` - Aggregate subscriber counts, source mix, and 30-day daily
   signup totals.
 - `GET /api/subscribers` - Paginated subscriber list with allowlisted
@@ -32,9 +35,13 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
 ## Security Notes
 
 - The dashboard uses a single shared bearer token from `DASHBOARD_TOKEN`.
+- Browser login exchanges that token for a same-site `HttpOnly` session cookie
+  via `POST /api/session`, so the full dashboard flow does not depend on
+  `sessionStorage` or `document.write`.
 - Rate limiting runs before auth and applies to the entire worker.
 - Every response is `Cache-Control: no-store`.
 - The worker sets CSP, frame, referrer, and content-type hardening headers.
+  HTML responses use script hashes instead of `script-src 'unsafe-inline'`.
 - D1 access is read-only by convention, not by enforced binding mode. This
   worker only issues `SELECT` queries.
 
@@ -118,7 +125,8 @@ Manual:
 3. Enter the token and confirm the summary cards, recent signups, and full table
    render.
 4. Exercise filters, sorting, and pagination.
-5. Confirm invalid tokens fail with `401` on API requests.
+5. Confirm invalid login attempts stay on the login page and valid logout returns
+   you there.
 6. Inspect headers with:
 
    ```bash

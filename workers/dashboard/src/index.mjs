@@ -4,11 +4,12 @@ import {
     createErrorResponse,
     dispatchRequest,
     handleDashboard as handleDashboardImpl,
+    handleSession,
     handleSubscribers,
     handleSummary
 } from './lib.mjs';
 
-export { authenticate, handleSubscribers, handleSummary };
+export { authenticate, handleSession, handleSubscribers, handleSummary };
 
 export async function handleDashboard(request, env) {
     return handleDashboardImpl(request, env, dashboardHtml);
