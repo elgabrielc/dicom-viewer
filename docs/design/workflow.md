@@ -108,6 +108,9 @@ Important notes:
 - Stale dirty files from older sessions should not trigger reminders by
   themselves; they only count when the current session also shows active design
   discussion.
+- Once a marker exists for the session, file recency is anchored to the
+  marker's own `first_seen_at` / `first_design_signal_at` timestamps instead of
+  repeatedly inferring freshness from transcript file metadata alone.
 - The local `.claude/` hook files are machine-local in this clone family because
   `.git/info/exclude` ignores `.claude/`; that is not a global repo guarantee.
 
