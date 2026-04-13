@@ -98,13 +98,19 @@ Marker states:
 - `resolved`: closeout completed and recorded
 - `stale`: unresolved marker older than the local TTL and no longer active
 
+The marker is a machine-readable trigger and recovery record; the dated session
+scratch note under `sessions/YYYY-MM-DD.md` remains the human-readable handoff
+artifact that captures the actual frontier and best next starting point.
+
 Important notes:
 
 - The transcript-size threshold is only a heuristic and may need recalibration.
 - The design signal is intentionally conservative: explicit design paths,
   transcript references to `divergent-designer`, `docs/design/`,
   `brand-system`, `logo`, `palette`, `typography`, or `wordmark`, and recent
-  file changes only.
+  file changes only. In practice the local hooks combine allowlisted file
+  paths, recent file mtimes anchored to the session marker, and a small
+  transcript-tail keyword check to avoid false positives.
 - Stale dirty files from older sessions should not trigger reminders by
   themselves; they only count when the current session also shows active design
   discussion.
@@ -113,10 +119,12 @@ Important notes:
   repeatedly inferring freshness from transcript file metadata alone.
 - The local `.claude/` hook files are machine-local in this clone family because
   `.git/info/exclude` ignores `.claude/`; that is not a global repo guarantee.
+  In a fresh clone, add `.claude/` to your local `.git/info/exclude` (or an
+  equivalent local exclude file) before using project-local hook scripts.
 
 ## Manual Flush Prompt
 
-Use this explicit prompt when a design session may compact or end, or whenever
+Use this explicit prompt whenever a design session may compact or end, or when
 the local hooks are not configured:
 
 ```text
