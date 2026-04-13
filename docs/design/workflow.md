@@ -101,6 +101,13 @@ Marker states:
 Important notes:
 
 - The transcript-size threshold is only a heuristic and may need recalibration.
+- The design signal is intentionally conservative: explicit design paths,
+  transcript references to `divergent-designer`, `docs/design/`,
+  `brand-system`, `logo`, `palette`, `typography`, or `wordmark`, and recent
+  file changes only.
+- Stale dirty files from older sessions should not trigger reminders by
+  themselves; they only count when the current session also shows active design
+  discussion.
 - The local `.claude/` hook files are machine-local in this clone family because
   `.git/info/exclude` ignores `.claude/`; that is not a global repo guarantee.
 
