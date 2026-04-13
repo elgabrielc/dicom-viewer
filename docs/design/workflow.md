@@ -58,6 +58,10 @@ Before making design recommendations or changes:
 - If nothing was approved yet, still capture the current frontier and the best
   next starting point in session scratch.
 - Report back what was saved to repo docs and what was saved to private memory.
+- If an automated closeout reminder appears, treat closeout as the next task
+  instead of normal work continuation.
+- Treat the hook reminder itself as the go signal for closeout; do not wait for
+  a second confirmation before saving the session state.
 
 ## Promotion Loop
 
@@ -71,9 +75,57 @@ Use this after each real design session.
    in `docs/design/patterns/`.
 5. Periodically compress `docs/design/core.md` so it stays short and useful.
 
-## Pre-Compaction Flush
+## Automated Closeout Hooks
 
-Use this explicit prompt when a design session may compact or end:
+This project can use machine-local Claude hooks to reduce the chance of losing
+design state across compaction boundaries.
+
+- `UserPromptSubmit` can inject a proactive reminder when the transcript gets
+  large and recent design work is detected.
+- `PreCompact` can capture mechanical state into a marker file before
+  compaction.
+- `SessionStart` with `source=compact` can re-inject a recovery reminder after
+  compaction by pointing the agent at the marker and transcript path.
+
+The marker lives under:
+
+`~/.claude/agent-memory/divergent-designer/workspaces/dicom-viewer/pending-closeout/`
+
+Marker states:
+
+- `pending`: design signal detected, closeout not yet completed
+- `reminded`: a proactive or post-compaction reminder was injected
+- `resolved`: closeout completed and recorded
+- `stale`: unresolved marker older than the local TTL and no longer active
+
+The marker is a machine-readable trigger and recovery record; the dated session
+scratch note under `sessions/YYYY-MM-DD.md` remains the human-readable handoff
+artifact that captures the actual frontier and best next starting point.
+
+Important notes:
+
+- The transcript-size threshold is only a heuristic and may need recalibration.
+- The design signal is intentionally conservative: explicit design paths,
+  transcript references to `divergent-designer`, `docs/design/`,
+  `brand-system`, `logo`, `palette`, `typography`, or `wordmark`, and recent
+  file changes only. In practice the local hooks combine allowlisted file
+  paths, recent file mtimes anchored to the session marker, and a small
+  transcript-tail keyword check to avoid false positives.
+- Stale dirty files from older sessions should not trigger reminders by
+  themselves; they only count when the current session also shows active design
+  discussion.
+- Once a marker exists for the session, file recency is anchored to the
+  marker's own `first_seen_at` / `first_design_signal_at` timestamps instead of
+  repeatedly inferring freshness from transcript file metadata alone.
+- The local `.claude/` hook files are machine-local in this clone family because
+  `.git/info/exclude` ignores `.claude/`; that is not a global repo guarantee.
+  In a fresh clone, add `.claude/` to your local `.git/info/exclude` (or an
+  equivalent local exclude file) before using project-local hook scripts.
+
+## Manual Flush Prompt
+
+Use this explicit prompt whenever a design session may compact or end, or when
+the local hooks are not configured:
 
 ```text
 Before this session compacts, run design closeout:
