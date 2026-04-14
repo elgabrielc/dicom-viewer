@@ -21,7 +21,10 @@ or visual fatigue of many legacy medical interfaces.
 
 ## Product Character
 
+- myRadOne is a consumer product -- built for individuals on their own devices, not for hospital IT deployment.
 - myRadOne is a library first, then a viewer.
+- The library carries a warm, welcoming character (Google Photos / Apple Photos lineage).
+- The viewer carries consumer-accessible technical depth (Darkroom / Lightroom / Photos edit mode lineage) -- precise inside a calm shell. "Consumer" does not mean "dumbed down" on technical surfaces.
 - The interface should suggest ownership, continuity, and safekeeping.
 - Design should reduce anxiety for patients and clinicians rather than perform
   technical sophistication.
