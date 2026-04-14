@@ -29,3 +29,11 @@ fonts. Decide the final packaging plan, migration order, and timing.
 The durable direction is a calmer dark viewer with warm accents, but the checked
 in CSS still reflects an older navy system. Decide the final dark token values
 when the migration happens.
+
+## myRadOne Consumer Landing Brief
+
+The current `surfaces/landing.md` is scoped to the Divergent Health parent brand.
+In the cloud-primary end state, app.divergent.health (or myradone.com) will need
+its own consumer product landing -- a different design brief: conversion-oriented,
+benefit-led, patient-first, rather than a composed company brand page. Decide the
+scope and distinctness of this surface when cloud work resumes.

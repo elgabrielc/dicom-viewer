@@ -20,19 +20,23 @@ For architecture decision records, see [docs/decisions/](decisions/).
 
 A medical imaging viewer that works like a photo library. Users collect their imaging -- CT scans, MRIs, X-rays -- from hospitals, CDs, downloads, wherever it comes from, into one place. View it, annotate it, keep it. Eventually, sync it across devices and access it from anywhere.
 
+The library draws from **Google Photos** and **Apple Photos**: warm, welcoming, organized around the user. The viewer draws from **Darkroom**, **Lightroom**, and **Photos edit mode**: consumer-accessible on the outside, seriously precise on the inside. A consumer product with real technical depth where it matters.
+
 The product starts as a desktop app and grows into a cloud platform.
 
 ### Who It's For
 
-Today: individuals who want to view and organize their own medical imaging. Patients who get CDs from hospitals. Physicians reviewing outside studies. Researchers working with DICOM datasets.
+myradone is a consumer product -- built for individuals on their own devices. It is not a PACS, not a hospital IT deployment, not an enterprise clinical workflow tool. Enterprise clinical use is a separate future motion that does not drive current product direction.
+
+Today: individuals who want to view and organize their own medical imaging. Patients who get CDs from hospitals. Physicians reviewing outside studies on personal devices. Researchers working with DICOM datasets.
 
 Tomorrow: the same people, plus teams who need to share and collaborate on imaging. The cloud platform enables this.
 
 ### What Makes It Different
 
-- **You own your data.** Imaging stays on your machine (desktop) or in your account (cloud). No vendor lock-in on the data itself.
-- **It works offline.** The desktop app is fully functional without an internet connection. Cloud sync is additive, not required.
-- **It's a library, not just a viewer.** Import once, always there. Organized by study and series. Notes and reports attached.
+- **Your imaging, your account.** Your imaging belongs to you and travels with you across devices -- not tied to any hospital, vendor, or single machine. Today it lives on your desktop; in the cloud-primary era it lives in your account.
+- **Online or offline.** Studies stream responsively when you're connected. Pin what you need for full offline viewing.
+- **A library, not just a viewer.** Import once. Organized by study and series. Notes and reports attached.
 
 ---
 
@@ -50,14 +54,17 @@ These domains have different storage characteristics, different sync requirement
 
 When in doubt, ask: "Is this about the imaging pipeline or the annotation layer?" and keep the answer in its own lane.
 
-### Local-First, Cloud-Second
+### Architecture Trajectory
 
-The desktop app is the primary product today. It must be fully functional without any server or internet connection. Cloud sync is a layer on top, not a dependency underneath.
+myradone is on a deliberate trajectory from local-first (today) to cloud-primary (end state). Three phases:
 
-This means:
-- All writes go to local storage first. The UI reads from local storage.
-- Cloud is a replication target, not a primary store.
-- If the network disappears, the app keeps working. Changes queue locally and sync when connectivity returns.
+**Today (bootstrap).** The desktop app is the primary surface. Local SQLite is the source of truth. Cloud does not exist yet. All writes go to local storage first; the UI reads from local storage. The app is fully functional offline.
+
+**Bridge.** A sync engine ([ADR 006](decisions/006-cloud-sync-storage-architecture.md)) replicates local annotations to the cloud without breaking offline. Local remains authoritative on the desktop during this phase. Changes queue locally when offline and sync when connectivity returns.
+
+**End state (cloud-primary).** Files live in the cloud. All clients -- web, mobile, desktop -- stream on demand with thin ephemeral working-set caches. The web app at app.divergent.health is the primary surface. Desktop becomes an optional convenience client with the same cloud-backed state. Persistent offline availability is an opt-in "pin this study" action, not the default. This matches the Google Photos / Drive / Dropbox model: files belong to your account in the cloud, not to any single device.
+
+The local-first architecture is scaffolding, not the destination. Engineering effort should go into building the bridge (sync engine, auth, identity, DICOMweb transport) that gets the consumer product to the cloud-primary end state -- not into making "local-first forever" more robust.
 
 ### Copy-on-Import
 
@@ -111,10 +118,49 @@ The same codebase adapts to four contexts:
 |------|---------|-------------|----------|
 | **Demo** | GitHub Pages | None (stateless) | Public visitors trying it out |
 | **Personal** | localhost Flask | Flask API + localStorage | Individual users |
-| **Desktop** | Tauri shell | SQLite + managed library folder | Individual users (primary product) |
-| **Cloud** | app.divergent.health (future) | Server-side + local cache | Logged-in users |
+| **Desktop** | Tauri shell | SQLite + managed library folder | Individual users (today's primary surface) |
+| **Cloud** | app.divergent.health (future) | Server-side of record; clients hold ephemeral caches | Logged-in users (end-state primary surface) |
 
 Detection is via Tauri first, then hostname. Feature flags route through `CONFIG.deploymentMode`.
+
+### Distribution Strategy
+
+Desktop apps are distributed as direct-download signed installers (`.dmg` for macOS, `.msi` for Windows) from divergent.health. Curated app stores -- Microsoft Store, Mac App Store -- are not the canonical channel.
+
+Users discover and engage with the product through the web app first. When they want the desktop client, they download it from the site. Code signing + auto-update (Tauri updater + GitHub Releases) is the full distribution story.
+
+**Why not the curated app stores:**
+Consumer-app precedent points toward the Microsoft Store or Mac App Store for discovery (e.g. OpenAI's Codex chose the Microsoft Store for Windows). That reasoning doesn't transfer:
+- The web app is the discovery surface -- users arrive at the desktop installer already engaged, so store-driven discovery is not load-bearing
+- Tauri has no native MSIX support, so a store path doubles the packaging pipeline
+- Hours-to-days Store review lag conflicts with a ship-on-demand release cadence
+
+**Implications:**
+- Code signing is non-negotiable on both platforms (Apple Developer ID; Microsoft Trusted Signing or EV certificate on Windows)
+- Auto-update is built into the app (Tauri updater + GitHub Releases), not delegated to a store
+- Installers run in user-space without admin escalation where possible
+- Enterprise clinical distribution is a separate motion in the Future roadmap with its own packaging, compliance, and procurement requirements -- out of scope for current planning
+
+### Reference Architecture
+
+The cloud-primary end state has five architectural layers. Each has a representative benchmark we are modeling against, so planning discussions reference concrete implementations instead of abstract patterns.
+
+| Layer | Approach | Benchmark |
+|-------|----------|-----------|
+| **Product framing** | Files live in the cloud, clients stream on demand | Google Photos |
+| **Transport** | DICOMweb (WADO-RS / QIDO-RS / STOW-RS) + progressive HTJ2K | Google Healthcare Imaging API |
+| **Rendering** | Client-side in the browser, GPU-accelerated | OHIF (Cornerstone3D) |
+| **Local state** | Ephemeral working-set during active session, not persistent files | Netflix |
+| **Opt-in sync** | "Pin this study for offline" as a power-user action | Spotify |
+
+The two-domain split (imaging vs annotations) maps onto this stack distinctly. **Imaging** flows through Transport + Rendering + Local State. **Annotations** flow through a parallel CRDT-style sync layer (Figma/Linear model), formalized in [ADR 006](decisions/006-cloud-sync-storage-architecture.md). Both domains live in the same cloud-hosted account.
+
+Connections to existing decisions:
+- [ADR 004](decisions/004-cloud-platform-rendering-architecture.md) commits to client-side rendering (the Rendering layer)
+- [ADR 006](decisions/006-cloud-sync-storage-architecture.md) designs the sync engine (the bridge from today's local-first desktop to the end state)
+- [ADR 010](decisions/010-patient-provider-image-sharing.md) commits to in-house STOW-RS for patient-to-provider sharing (pre-commits the DICOMweb Transport)
+
+Today's desktop app (local-first SQLite + managed library folder) is the bootstrap phase. The five-layer model is what ships at app.divergent.health; Windows, Linux, and mobile users eventually get the end-state product for free through the web client.
 
 ### Storage Architecture
 
@@ -129,8 +175,10 @@ Detection is via Tauri first, then hostname. Feature flags route through `CONFIG
   reports/                    # Attached report files (PDFs, images)
 ```
 
-**Cloud (future):**
-The managed library folder becomes a local cache of the cloud state. The sync engine uploads from and downloads into this folder. Each device materializes only the studies it needs. See [ADR 006](decisions/006-cloud-sync-storage-architecture.md) and the [managed folder principle](planning/PRINCIPLE-managed-folder-as-local-cache.md).
+**Cloud (end state):**
+Cloud is the source of truth for both imaging and annotations. Imaging is served via a DICOMweb server; clients stream on demand via WADO-RS with progressive HTJ2K. Annotations sync through outbox-based replication ([ADR 006](decisions/006-cloud-sync-storage-architecture.md)).
+
+By default, clients hold only an ephemeral working-set cache during active viewing sessions -- files do not live on the device. Users can opt into persistent offline availability per study via an explicit "pin" action. When pinning is enabled on desktop, the managed library folder acts as the local cache (see the [managed folder principle](planning/PRINCIPLE-managed-folder-as-local-cache.md)). This matches the Google Drive "Stream" (default) vs "Mirror" (opt-in) distinction.
 
 ---
 
@@ -139,7 +187,7 @@ The managed library folder becomes a local cache of the cloud state. The sync en
 The product started as a browser-based DICOM viewer and evolved into a desktop application with a path to cloud.
 
 **January 2026 -- Browser viewer.**
-Initial release. Web-based DICOM viewer with drag-and-drop folder loading, slice navigation, and basic windowing. Chose vanilla JS over React/Vue for simplicity. Client-side processing for privacy. Dark theme for radiologist viewing environment. Added sample CT and MRI scans, viewing tools (W/L, Pan, Zoom), measurement tool, and automated Playwright test suite.
+Initial release. Web-based DICOM viewer with drag-and-drop folder loading, slice navigation, and basic windowing. Chose vanilla JS over React/Vue for simplicity. Client-side processing for privacy. Dark theme for low-light viewing. Added sample CT and MRI scans, viewing tools (W/L, Pan, Zoom), measurement tool, and automated Playwright test suite.
 
 **February 2026 -- Persistent library.**
 Added persistent local DICOM library so users don't re-import on every visit. Flask backend scans a configured folder on startup and serves results via API. Introduced `DicomFolderSource` abstraction. ([ADR 002](decisions/002-persistent-local-library.md))
@@ -213,18 +261,26 @@ The full hosted service at app.divergent.health, plus the ability for patients t
 - Three-stream data model: telemetry (no PHI), audit logs (PHI references, 6-year retention), product data (DICOM in transit)
 - Published privacy policy (modeled on Panic's approach)
 - Server-side search and organization
-- Multi-platform (Windows, Linux desktop; mobile TBD)
+- Multi-platform access via the web client -- Windows, Linux, ChromeOS, tablets, and mobile are covered by app.divergent.health without native ports
 - Sharing and collaboration
 
-### Future: Enterprise + Advanced Imaging
+### Future: Advanced Imaging
 
-- HIPAA business associate status + provider contracts
-- Epic integration via SMART on FHIR (when revenue justifies $300K+ investment)
-- HITRUST certification (when enterprise payer customers require it)
+Consumer viewing features that build on the cloud platform once it is stable.
+
 - 3D volume rendering with medical presets (CT soft tissue, bone, lung; MRI brain, spine)
 - Multi-planar reconstruction (MPR)
 - Hanging protocols
 - AI-assisted analysis (integration points, not building our own models)
+
+### Future: Enterprise (Separate Motion)
+
+Enterprise clinical deployment is a separate motion with its own packaging, compliance, and go-to-market concerns. It does not drive current product direction and is noted here only for completeness. If and when it becomes relevant, it will be planned as a distinct product motion -- not retrofitted onto the consumer product.
+
+- HIPAA business associate status + provider contracts
+- Epic integration via SMART on FHIR (when revenue justifies $300K+ investment)
+- HITRUST certification (when enterprise payer customers require it)
+- Enterprise distribution packaging (MSI + ADMX templates, Intune/SCCM/Jamf deployment guides)
 
 ---
 
