@@ -121,6 +121,12 @@ Important notes:
   `.git/info/exclude` ignores `.claude/`; that is not a global repo guarantee.
   In a fresh clone, add `.claude/` to your local `.git/info/exclude` (or an
   equivalent local exclude file) before using project-local hook scripts.
+- **Kill switch**: to silence all closeout hooks instantly without removing
+  wiring, set `CLOSEOUT_HOOKS_DISABLED=1` in your shell before launching Claude.
+  This causes every hook script to exit immediately with no side effects. Unset
+  the variable or set it to `0` to re-enable. Use this if the hooks are
+  producing false positives or otherwise interfering with non-design work during
+  the observation period.
 
 ## Manual Flush Prompt
 
