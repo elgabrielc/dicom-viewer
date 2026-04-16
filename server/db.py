@@ -11,6 +11,7 @@ import re
 import sqlite3
 import tempfile
 import threading
+import uuid
 
 from flask import g
 
@@ -479,6 +480,34 @@ def init_db():
                 created_at = time,
                 updated_at = time
             WHERE record_uuid IS NULL
+            """
+        )
+
+        duplicate_rows = db.execute(
+            """
+            SELECT record_uuid
+            FROM comments
+            WHERE record_uuid IS NOT NULL
+            GROUP BY record_uuid
+            HAVING COUNT(*) > 1
+            """
+        ).fetchall()
+        for duplicate in duplicate_rows:
+            rows = db.execute(
+                'SELECT id FROM comments WHERE record_uuid = ? ORDER BY id ASC',
+                (duplicate['record_uuid'],),
+            ).fetchall()
+            for row in rows[1:]:
+                db.execute(
+                    'UPDATE comments SET record_uuid = ? WHERE id = ?',
+                    (str(uuid.uuid4()), row['id']),
+                )
+
+        db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_comments_record_uuid
+            ON comments(record_uuid)
+            WHERE record_uuid IS NOT NULL
             """
         )
 

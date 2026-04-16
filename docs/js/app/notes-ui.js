@@ -150,7 +150,10 @@
                             if (!blob) return;
                             const filename = report.name || 'report';
                             const file = new File([blob], filename, { type: blob.type || '' });
-                            await notesApi.uploadReport(studyUid, file, report);
+                            const uploaded = await notesApi.uploadReport(studyUid, file, report);
+                            if (!uploaded) {
+                                throw new Error(`Failed to migrate legacy report ${report.id}`);
+                            }
                         })(),
                     );
                 }

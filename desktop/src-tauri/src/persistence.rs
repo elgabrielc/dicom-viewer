@@ -325,12 +325,31 @@ pub async fn apply_desktop_migration(
 
     for row in &batch.comments {
         sqlx::query(
-            r#"INSERT OR IGNORE INTO comments (study_uid, series_uid, text, time)
-               VALUES (?, ?, ?, ?)"#,
+            r#"INSERT OR IGNORE INTO comments (
+                   study_uid,
+                   series_uid,
+                   text,
+                   time,
+                   record_uuid,
+                   created_at,
+                   updated_at
+               )
+               VALUES (
+                   ?, ?, ?, ?,
+                   lower(hex(randomblob(4))) || '-' ||
+                   lower(hex(randomblob(2))) || '-' ||
+                   '4' || substr(lower(hex(randomblob(2))), 2) || '-' ||
+                   substr('89ab', abs(random()) % 4 + 1, 1) ||
+                   substr(lower(hex(randomblob(2))), 2) || '-' ||
+                   lower(hex(randomblob(6))),
+                   ?, ?
+               )"#,
         )
         .bind(&row.study_uid)
         .bind(&row.series_uid)
         .bind(&row.text)
+        .bind(row.time)
+        .bind(row.time)
         .bind(row.time)
         .execute(&mut *tx)
         .await

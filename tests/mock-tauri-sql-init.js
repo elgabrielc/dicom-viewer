@@ -216,15 +216,18 @@
                     }
                     state.meta.lastCommentId += 1;
                     const id = state.meta.lastCommentId;
+                    const recordUuid = values[4] || `mock-comment-${id}`;
+                    const createdAt = values[5] ?? time;
+                    const updatedAt = values[6] ?? time;
                     state.comments.push({
                         id,
                         study_uid: studyUid,
                         series_uid: seriesUid,
                         text,
                         time,
-                        record_uuid: null,
-                        created_at: time,
-                        updated_at: time,
+                        record_uuid: recordUuid,
+                        created_at: createdAt,
+                        updated_at: updatedAt,
                         deleted_at: null,
                         device_id: null,
                         sync_version: 0,
@@ -234,24 +237,51 @@
                 }
 
                 if (normalized.startsWith('update comments set')) {
-                    const [text, time, id, studyUid] = values;
-                    const existing = state.comments.find((row) => row.id === Number(id) && row.study_uid === studyUid);
+                    let text;
+                    let time;
+                    let updatedAt;
+                    let existing;
+
+                    if (normalized.includes('where record_uuid = ? and study_uid = ?')) {
+                        const recordUuid = values[3];
+                        const studyUid = values[4];
+                        [text, time, updatedAt] = values;
+                        existing = state.comments.find(
+                            (row) => row.record_uuid === recordUuid && row.study_uid === studyUid,
+                        );
+                    } else {
+                        const legacyId = values.length >= 5 ? values[3] : values[2];
+                        const studyUid = values.length >= 5 ? values[4] : values[3];
+                        text = values[0];
+                        time = values[1];
+                        updatedAt = values.length >= 5 ? values[2] : time;
+                        existing = state.comments.find(
+                            (row) => row.id === Number(legacyId) && row.study_uid === studyUid,
+                        );
+                    }
                     if (!existing) {
                         return { rowsAffected: 0, lastInsertId: null };
                     }
                     existing.text = text;
                     existing.time = time;
-                    existing.updated_at = time;
+                    existing.updated_at = updatedAt;
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
                 }
 
                 if (normalized.startsWith('delete from comments')) {
-                    const [id, studyUid] = values;
                     const before = state.comments.length;
-                    state.comments = state.comments.filter(
-                        (row) => !(row.id === Number(id) && row.study_uid === studyUid),
-                    );
+                    if (normalized.includes('where record_uuid = ? and study_uid = ?')) {
+                        const [recordUuid, studyUid] = values;
+                        state.comments = state.comments.filter(
+                            (row) => !(row.record_uuid === recordUuid && row.study_uid === studyUid),
+                        );
+                    } else {
+                        const [id, studyUid] = values;
+                        state.comments = state.comments.filter(
+                            (row) => !(row.id === Number(id) && row.study_uid === studyUid),
+                        );
+                    }
                     persistState(db, state);
                     return { rowsAffected: before - state.comments.length, lastInsertId: null };
                 }

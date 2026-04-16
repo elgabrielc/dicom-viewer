@@ -60,7 +60,6 @@ async function setupOutboxPage(page) {
                         });
                     }
                     if (prop === 'isCloudPlatform') return () => true;
-                    if (typeof target[prop] === 'function') return target[prop].bind(target);
                     return target[prop];
                 },
             }),
@@ -558,5 +557,142 @@ test.describe('Outbox Collapsing Edge Cases', () => {
         // NEW: noop entries are kept in the array with _noop flag
         expect(matchingEntries.length).toBe(1);
         expect(matchingEntries[0]._noop).toBe(true);
+    });
+
+    test('readRecordState preserves series_uid for series comments from app state', async ({ page }) => {
+        await setupOutboxPage(page);
+        await clearOutbox(page);
+
+        const result = await page.evaluate(() => {
+            window.DicomViewerApp = {
+                state: {
+                    studies: {
+                        'study-series-sync': {
+                            description: '',
+                            comments: [],
+                            reports: [],
+                            series: {
+                                'series-1': {
+                                    description: '',
+                                    comments: [
+                                        {
+                                            id: 'series-comment-1',
+                                            record_uuid: 'series-comment-1',
+                                            text: 'Series-only comment',
+                                            time: 10,
+                                            created_at: 10,
+                                            updated_at: 10,
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+
+            return window._SyncOutbox.readRecordState('comments', 'series-comment-1');
+        });
+
+        expect(result).toMatchObject({
+            study_uid: 'study-series-sync',
+            series_uid: 'series-1',
+            text: 'Series-only comment',
+        });
+    });
+
+    test('dispatcher enqueues sync outbox entries for successful cloud mutations', async ({ page }) => {
+        await setupOutboxPage(page);
+        await clearOutbox(page);
+
+        const calls = await page.evaluate(async () => {
+            const studyUid = 'cloud-dispatcher-study';
+            const commentId = 'dispatcher-comment-1';
+            const enqueueCalls = [];
+
+            window.DicomViewerApp = {
+                state: {
+                    studies: {
+                        [studyUid]: {
+                            description: 'Before',
+                            sync_version: 2,
+                            comments: [
+                                {
+                                    id: commentId,
+                                    record_uuid: commentId,
+                                    text: 'Existing comment',
+                                    time: 1,
+                                    created_at: 1,
+                                    updated_at: 1,
+                                    sync_version: 3,
+                                },
+                            ],
+                            reports: [
+                                {
+                                    id: 'dispatcher-report-1',
+                                    name: 'Report',
+                                    type: 'pdf',
+                                    size: 128,
+                                    addedAt: 1,
+                                    updatedAt: 1,
+                                    sync_version: 4,
+                                },
+                            ],
+                            series: {},
+                        },
+                    },
+                },
+            };
+
+            window._SyncOutbox.enqueueChange = (tableName, recordKey, operation, baseSyncVersion) => {
+                enqueueCalls.push({ tableName, recordKey, operation, baseSyncVersion });
+                return {
+                    id: `entry-${enqueueCalls.length}`,
+                    operation_uuid: `op-${enqueueCalls.length}`,
+                    table_name: tableName,
+                    record_key: recordKey,
+                    operation,
+                    base_sync_version: baseSyncVersion,
+                };
+            };
+            window._NotesServer.ServerBackend.saveStudyDescription = async () => ({
+                studyUid,
+                description: 'After',
+            });
+            window._NotesServer.ServerBackend.updateComment = async () => ({
+                record_uuid: commentId,
+                text: 'Edited comment',
+            });
+            window._NotesServer.ServerBackend.deleteReport = async () => true;
+
+            await window.NotesAPI.saveStudyDescription(studyUid, 'After');
+            await window.NotesAPI.updateComment(studyUid, commentId, { text: 'Edited comment' });
+            await window.NotesAPI.deleteReport(studyUid, 'dispatcher-report-1');
+
+            return enqueueCalls;
+        });
+
+        expect(calls).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    tableName: 'study_notes',
+                    recordKey: 'cloud-dispatcher-study',
+                    operation: 'update',
+                    baseSyncVersion: 2,
+                }),
+                expect.objectContaining({
+                    tableName: 'comments',
+                    recordKey: 'dispatcher-comment-1',
+                    operation: 'update',
+                    baseSyncVersion: 3,
+                }),
+                expect.objectContaining({
+                    tableName: 'reports',
+                    recordKey: 'dispatcher-report-1',
+                    operation: 'delete',
+                    baseSyncVersion: 4,
+                }),
+            ]),
+        );
     });
 });

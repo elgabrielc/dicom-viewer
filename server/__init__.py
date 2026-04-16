@@ -43,6 +43,13 @@ from server.security import (
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _env_flag(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def create_app():
     """Flask application factory. Returns a fully configured app instance."""
     app = Flask(
@@ -53,6 +60,7 @@ def create_app():
     # Override root_path so DB paths and other root-relative logic stays correct
     app.root_path = _PROJECT_ROOT
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
+    app.config['TRUST_X_FORWARDED_FOR'] = _env_flag('TRUST_X_FORWARDED_FOR', False)
 
     # Initialize database paths and schema
     db_module.configure(app.root_path)

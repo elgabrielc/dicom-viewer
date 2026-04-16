@@ -426,7 +426,7 @@ const _SyncOutbox = (() => {
         return next;
     }
 
-    function markSynced(entryIds, syncedAt) {
+    function markSynced(entryIds, _syncedAt) {
         const idSet = new Set(entryIds);
         if (isDesktopMode()) {
             const syncedEntries = desktopCache.outbox.filter((entry) => idSet.has(entry.id));
@@ -496,61 +496,94 @@ const _SyncOutbox = (() => {
             const found = studyEntry.comments.find(
                 (comment) => comment.record_uuid === recordUuid || comment.id === recordUuid,
             );
-            if (found) return found;
+            if (found) return { comment: found, seriesUid: null };
         }
         if (studyEntry.series && typeof studyEntry.series === 'object') {
-            for (const seriesEntry of Object.values(studyEntry.series)) {
+            for (const [seriesUid, seriesEntry] of Object.entries(studyEntry.series)) {
                 if (!Array.isArray(seriesEntry.comments)) continue;
                 const found = seriesEntry.comments.find(
                     (comment) => comment.record_uuid === recordUuid || comment.id === recordUuid,
                 );
-                if (found) return found;
+                if (found) return { comment: found, seriesUid };
             }
         }
         return null;
     }
 
-    function readRecordState(tableName, recordKey) {
-        const { loadStore, ensureStudy, findReportMetadata } = window._NotesInternals;
-        const store = loadStore();
-
-        if (tableName === 'study_notes') {
-            const studyEntry = store.studies[recordKey];
-            if (!studyEntry) return null;
-            return { description: studyEntry.description || '' };
+    function getReadableStores() {
+        const { loadStore } = window._NotesInternals;
+        const stores = [];
+        const persistedStore = loadStore();
+        if (persistedStore?.studies && typeof persistedStore.studies === 'object') {
+            stores.push(persistedStore);
         }
 
-        if (tableName === 'comments') {
-            for (const studyUid of Object.keys(store.studies)) {
-                const studyEntry = ensureStudy(store, studyUid);
-                const found = findCommentInStudy(studyEntry, recordKey);
-                if (found) {
-                    return {
-                        study_uid: studyUid,
-                        text: found.text || '',
-                        created_at: found.created_at || found.time || 0,
-                        updated_at: found.updated_at || found.time || 0,
-                        deleted_at: found.deletedAt || found.deleted_at || null,
-                    };
-                }
+        const appStudies = window.DicomViewerApp?.state?.studies;
+        if (appStudies && typeof appStudies === 'object' && appStudies !== persistedStore?.studies) {
+            stores.push({ studies: appStudies });
+        }
+
+        return stores;
+    }
+
+    function findReportInStore(store, recordKey) {
+        const normalizedKey = String(recordKey || '').trim();
+        if (!normalizedKey) return null;
+
+        for (const [studyUid, studyEntry] of Object.entries(store?.studies || {})) {
+            const report = Array.isArray(studyEntry?.reports)
+                ? studyEntry.reports.find((entry) => String(entry?.id || '').trim() === normalizedKey)
+                : null;
+            if (report) {
+                return { studyUid, report };
             }
-            return null;
         }
 
-        if (tableName === 'reports') {
-            const match = findReportMetadata(store, recordKey);
-            if (!match) return null;
-            const report = match.report;
-            return {
-                study_uid: match.studyUid,
-                name: report.name || '',
-                type: report.type || '',
-                size: report.size || 0,
-                content_hash: report.contentHash || null,
-                created_at: report.addedAt ? new Date(report.addedAt).getTime() : 0,
-                updated_at: report.updatedAt || 0,
-                deleted_at: report.deletedAt || report.deleted_at || null,
-            };
+        return null;
+    }
+
+    function readRecordState(tableName, recordKey) {
+        for (const store of getReadableStores()) {
+            if (tableName === 'study_notes') {
+                const studyEntry = store.studies?.[recordKey];
+                if (studyEntry) {
+                    return { description: studyEntry.description || '' };
+                }
+                continue;
+            }
+
+            if (tableName === 'comments') {
+                for (const [studyUid, studyEntry] of Object.entries(store.studies || {})) {
+                    const found = findCommentInStudy(studyEntry, recordKey);
+                    if (found) {
+                        return {
+                            study_uid: studyUid,
+                            series_uid: found.seriesUid || null,
+                            text: found.comment.text || '',
+                            created_at: found.comment.created_at || found.comment.time || 0,
+                            updated_at: found.comment.updated_at || found.comment.time || 0,
+                            deleted_at: found.comment.deletedAt || found.comment.deleted_at || null,
+                        };
+                    }
+                }
+                continue;
+            }
+
+            if (tableName === 'reports') {
+                const match = findReportInStore(store, recordKey);
+                if (!match) continue;
+                const report = match.report;
+                return {
+                    study_uid: match.studyUid,
+                    name: report.name || '',
+                    type: report.type || '',
+                    size: report.size || 0,
+                    content_hash: report.contentHash || null,
+                    created_at: report.addedAt ? new Date(report.addedAt).getTime() : 0,
+                    updated_at: report.updatedAt || 0,
+                    deleted_at: report.deletedAt || report.deleted_at || null,
+                };
+            }
         }
 
         return null;

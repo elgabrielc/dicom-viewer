@@ -57,7 +57,7 @@ def _normalize_email(email):
 
 def _client_ip():
     forwarded = request.headers.get('X-Forwarded-For', '')
-    if forwarded:
+    if current_app.config.get('TRUST_X_FORWARDED_FOR') and forwarded:
         return forwarded.split(',')[0].strip() or 'unknown'
     return request.remote_addr or 'unknown'
 

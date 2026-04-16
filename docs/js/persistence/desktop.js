@@ -13,7 +13,6 @@
 const _NotesDesktop = (() => {
     const {
         createEmptyStore,
-        normalizeCommentId,
         ensureStudy,
         ensureSeries,
         normalizeReportId,
@@ -892,7 +891,7 @@ const _NotesDesktop = (() => {
                     ? ensureSeries(ensureStudy(notes, row.study_uid), row.series_uid)
                     : ensureStudy(notes, row.study_uid);
                 target.comments.push({
-                    id: row.id,
+                    id: row.record_uuid || row.id,
                     record_uuid: row.record_uuid || null,
                     text: row.text,
                     time: row.time,
@@ -972,14 +971,20 @@ const _NotesDesktop = (() => {
             if (!text) return null;
             const seriesUid = payload.seriesUid || '';
             const time = parseInteger(payload.time, Date.now());
+            const recordUuid = payload.record_uuid || crypto.randomUUID();
             const result = await db.execute(
-                'INSERT INTO comments (study_uid, series_uid, text, time) VALUES (?, ?, ?, ?)',
-                [studyUid, seriesUid, text, time],
+                `INSERT INTO comments (study_uid, series_uid, text, time, record_uuid, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [studyUid, seriesUid, text, time, recordUuid, time, time],
             );
             return {
-                id: result?.lastInsertId ?? null,
+                id: recordUuid,
+                record_uuid: recordUuid,
                 text,
                 time,
+                created_at: time,
+                updated_at: time,
+                legacy_id: result?.lastInsertId ?? null,
             };
         },
 
@@ -990,17 +995,27 @@ const _NotesDesktop = (() => {
             const text = (payload.text || '').trim();
             if (!text) return null;
             const time = parseInteger(payload.time, Date.now());
-            const result = await db.execute('UPDATE comments SET text = ?, time = ? WHERE id = ? AND study_uid = ?', [
-                text,
-                time,
-                normalizeCommentId(commentId),
-                studyUid,
-            ]);
+            const commentKey = String(commentId);
+            let result = await db.execute(
+                'UPDATE comments SET text = ?, time = ?, updated_at = ? WHERE record_uuid = ? AND study_uid = ?',
+                [text, time, time, commentKey, studyUid],
+            );
+            if (!result?.rowsAffected) {
+                const legacyId = parseInteger(commentId, null);
+                if (legacyId !== null) {
+                    result = await db.execute(
+                        'UPDATE comments SET text = ?, time = ?, updated_at = ? WHERE id = ? AND study_uid = ?',
+                        [text, time, time, legacyId, studyUid],
+                    );
+                }
+            }
             if (!result?.rowsAffected) return null;
             return {
-                id: normalizeCommentId(commentId),
+                id: commentKey,
+                record_uuid: commentKey,
                 text,
                 time,
+                updated_at: time,
             };
         },
 
@@ -1008,10 +1023,19 @@ const _NotesDesktop = (() => {
             if (!studyUid || commentId === undefined || commentId === null) return false;
             await initializeDesktopPersistence();
             const db = await getDesktopDb();
-            await db.execute('DELETE FROM comments WHERE id = ? AND study_uid = ?', [
-                normalizeCommentId(commentId),
+            let result = await db.execute('DELETE FROM comments WHERE record_uuid = ? AND study_uid = ?', [
+                String(commentId),
                 studyUid,
             ]);
+            if (!result?.rowsAffected) {
+                const legacyId = parseInteger(commentId, null);
+                if (legacyId !== null) {
+                    result = await db.execute('DELETE FROM comments WHERE id = ? AND study_uid = ?', [
+                        legacyId,
+                        studyUid,
+                    ]);
+                }
+            }
             return true;
         },
 

@@ -7,6 +7,7 @@ Deletes are soft (tombstoned with deleted_at) to support sync replication.
 Copyright (c) 2026 Divergent Health Technologies
 """
 
+import sqlite3
 import time
 import uuid
 
@@ -15,6 +16,16 @@ from flask import Blueprint, jsonify, request
 from server.db import MAX_TIMESTAMP_DRIFT_MS, get_db, parse_int
 
 comments_bp = Blueprint('comments', __name__)
+
+
+def _comment_uuid_exists(db, record_uuid):
+    if not record_uuid:
+        return False
+    row = db.execute(
+        'SELECT 1 FROM comments WHERE record_uuid = ? LIMIT 1',
+        (record_uuid,),
+    ).fetchone()
+    return row is not None
 
 
 @comments_bp.route('/api/notes/<study_uid>/comments', methods=['POST'])
@@ -33,19 +44,30 @@ def add_comment(study_uid):
     else:
         timestamp = now
 
-    record_uuid = data.get('record_uuid') or str(uuid.uuid4())
+    requested_uuid = (data.get('record_uuid') or '').strip()
+    record_uuid = requested_uuid or str(uuid.uuid4())
     # Validate record_uuid is never empty
     if not record_uuid or not record_uuid.strip():
         record_uuid = str(uuid.uuid4())
 
     db = get_db()
-    db.execute(
-        """INSERT INTO comments
-           (study_uid, series_uid, text, time, record_uuid, created_at, updated_at, sync_version)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
-        (study_uid, series_uid, text, timestamp, record_uuid, timestamp, timestamp),
-    )
-    db.commit()
+    if requested_uuid and _comment_uuid_exists(db, record_uuid):
+        return jsonify({'error': 'Comment ID already exists'}), 409
+
+    try:
+        db.execute(
+            """
+            INSERT INTO comments (
+                study_uid, series_uid, text, time, record_uuid, created_at, updated_at, sync_version
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """,
+            (study_uid, series_uid, text, timestamp, record_uuid, timestamp, timestamp),
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return jsonify({'error': 'Comment ID already exists'}), 409
 
     return jsonify(
         {

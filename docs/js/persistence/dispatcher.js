@@ -13,7 +13,7 @@
  */
 
 const NotesAPI = (() => {
-    const { LocalBackend } = window._NotesInternals;
+    const { LocalBackend, normalizeCommentId, normalizeReportId } = window._NotesInternals;
     const { ServerBackend, authenticatedFetch } = window._NotesServer;
     const {
         DesktopBackend,
@@ -28,22 +28,85 @@ const NotesAPI = (() => {
     } = window._NotesDesktop;
 
     // ---- Dispatcher ----
+    function getConfig() {
+        if (typeof window !== 'undefined' && window.CONFIG) {
+            return window.CONFIG;
+        }
+        if (typeof CONFIG !== 'undefined') {
+            return CONFIG;
+        }
+        return null;
+    }
+
     function getBackend() {
-        const mode = typeof CONFIG !== 'undefined' ? CONFIG.deploymentMode : 'personal';
+        const config = getConfig();
+        const mode = config?.deploymentMode || 'personal';
         if (mode === 'desktop') return 'desktop';
-        const hasServer =
-            typeof CONFIG !== 'undefined' && CONFIG.features
-                ? CONFIG.features.notesServer
-                : mode === 'personal' || mode === 'cloud';
+        const hasServer = config?.features ? config.features.notesServer : mode === 'personal' || mode === 'cloud';
         if (hasServer) return 'server';
         return 'local';
     }
 
     function isEnabled() {
-        if (typeof CONFIG !== 'undefined' && CONFIG.shouldPersistNotes) {
-            return CONFIG.shouldPersistNotes();
+        const config = getConfig();
+        if (config?.shouldPersistNotes) {
+            return config.shouldPersistNotes();
         }
         return true;
+    }
+
+    function isCloudSyncEnabled() {
+        const config = getConfig();
+        return (
+            !!config?.features?.cloudSync &&
+            typeof window._SyncOutbox?.enqueueChange === 'function'
+        );
+    }
+
+    function getStudyState(studyUid) {
+        return window.DicomViewerApp?.state?.studies?.[studyUid] || null;
+    }
+
+    function getBaseSyncVersion(record) {
+        const value = Number(record?.sync_version);
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    function findCommentRecord(studyUid, commentId) {
+        const studyEntry = getStudyState(studyUid);
+        if (!studyEntry) return null;
+        const target = normalizeCommentId(commentId);
+        if (target === null) return null;
+
+        const matches = (comment) => {
+            if (comment?.record_uuid && normalizeCommentId(comment.record_uuid) === target) return true;
+            return normalizeCommentId(comment?.id) === target;
+        };
+
+        if (Array.isArray(studyEntry.comments)) {
+            const found = studyEntry.comments.find(matches);
+            if (found) return found;
+        }
+        if (studyEntry.series && typeof studyEntry.series === 'object') {
+            for (const seriesEntry of Object.values(studyEntry.series)) {
+                if (!Array.isArray(seriesEntry?.comments)) continue;
+                const found = seriesEntry.comments.find(matches);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    function findReportRecord(studyUid, reportId) {
+        const studyEntry = getStudyState(studyUid);
+        if (!studyEntry || !Array.isArray(studyEntry.reports)) return null;
+        const target = normalizeReportId(reportId);
+        return studyEntry.reports.find((report) => normalizeReportId(report?.id) === target) || null;
+    }
+
+    function enqueueSyncChange(tableName, recordKey, operation, baseSyncVersion = 0) {
+        if (!isCloudSyncEnabled()) return null;
+        return window._SyncOutbox.enqueueChange(tableName, recordKey, operation, baseSyncVersion);
     }
 
     async function withFallback(serverCall, localCall, desktopCall = localCall) {
@@ -77,11 +140,16 @@ const NotesAPI = (() => {
 
     async function saveStudyDescription(studyUid, description) {
         if (!isEnabled()) return null;
-        return await withFallback(
+        const baseSyncVersion = getBaseSyncVersion(getStudyState(studyUid));
+        const result = await withFallback(
             () => ServerBackend.saveStudyDescription(studyUid, description),
             () => LocalBackend.saveStudyDescription(studyUid, description),
             () => DesktopBackend.saveStudyDescription(studyUid, description),
         );
+        if (result) {
+            enqueueSyncChange('study_notes', studyUid, 'update', baseSyncVersion);
+        }
+        return result;
     }
 
     async function saveSeriesDescription(studyUid, seriesUid, description) {
@@ -95,47 +163,78 @@ const NotesAPI = (() => {
 
     async function addComment(studyUid, payload) {
         if (!isEnabled()) return null;
-        return await withFallback(
+        const result = await withFallback(
             () => ServerBackend.addComment(studyUid, payload),
             () => LocalBackend.addComment(studyUid, payload),
             () => DesktopBackend.addComment(studyUid, payload),
         );
+        const recordKey = result?.record_uuid || result?.id || null;
+        if (recordKey) {
+            enqueueSyncChange('comments', recordKey, 'insert', 0);
+        }
+        return result;
     }
 
     async function updateComment(studyUid, commentId, payload) {
         if (!isEnabled()) return null;
-        return await withFallback(
+        const comment = findCommentRecord(studyUid, commentId);
+        const baseSyncVersion = getBaseSyncVersion(comment);
+        const result = await withFallback(
             () => ServerBackend.updateComment(studyUid, commentId, payload),
             () => LocalBackend.updateComment(studyUid, commentId, payload),
             () => DesktopBackend.updateComment(studyUid, commentId, payload),
         );
+        const recordKey = result?.record_uuid || result?.id || comment?.record_uuid || comment?.id || commentId;
+        if (result && recordKey) {
+            enqueueSyncChange('comments', recordKey, 'update', baseSyncVersion);
+        }
+        return result;
     }
 
     async function deleteComment(studyUid, commentId) {
         if (!isEnabled()) return false;
-        return await withFallback(
+        const comment = findCommentRecord(studyUid, commentId);
+        const baseSyncVersion = getBaseSyncVersion(comment);
+        const result = await withFallback(
             () => ServerBackend.deleteComment(studyUid, commentId),
             () => LocalBackend.deleteComment(studyUid, commentId),
             () => DesktopBackend.deleteComment(studyUid, commentId),
         );
+        const recordKey = comment?.record_uuid || comment?.id || commentId;
+        if (result && recordKey) {
+            enqueueSyncChange('comments', recordKey, 'delete', baseSyncVersion);
+        }
+        return result;
     }
 
     async function uploadReport(studyUid, file, meta) {
         if (!isEnabled()) return null;
-        return await withFallback(
+        const result = await withFallback(
             () => ServerBackend.uploadReport(studyUid, file, meta),
             () => LocalBackend.uploadReport(studyUid, file, meta),
             () => DesktopBackend.uploadReport(studyUid, file, meta),
         );
+        const recordKey = result?.id || meta?.id || null;
+        if (recordKey) {
+            enqueueSyncChange('reports', recordKey, 'insert', 0);
+        }
+        return result;
     }
 
     async function deleteReport(studyUid, reportId) {
         if (!isEnabled()) return false;
-        return await withFallback(
+        const report = findReportRecord(studyUid, reportId);
+        const baseSyncVersion = getBaseSyncVersion(report);
+        const result = await withFallback(
             () => ServerBackend.deleteReport(studyUid, reportId),
             () => LocalBackend.deleteReport(studyUid, reportId),
             () => DesktopBackend.deleteReport(studyUid, reportId),
         );
+        const recordKey = report?.id || reportId;
+        if (result && recordKey) {
+            enqueueSyncChange('reports', recordKey, 'delete', baseSyncVersion);
+        }
+        return result;
     }
 
     async function migrate(payload) {

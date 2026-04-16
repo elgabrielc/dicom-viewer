@@ -110,7 +110,9 @@
         if (existing) clearTimeout(existing);
         const handle = setTimeout(() => {
             descriptionSaveTimers.delete(key);
-            callback();
+            Promise.resolve(callback()).catch((error) => {
+                console.warn('Failed to persist description change:', error);
+            });
         }, 500);
         descriptionSaveTimers.set(key, handle);
     }
@@ -746,25 +748,52 @@
         });
 
         studiesBody.querySelectorAll('.description-input:not(.series-description)').forEach((textarea) => {
+            const studyUid = textarea.dataset.studyUid;
+            textarea.dataset.persistedValue = state.studies[studyUid]?.description || '';
             textarea.oninput = () => {
                 const studyUid = textarea.dataset.studyUid;
                 if (state.studies[studyUid]) {
+                    const rollbackValue = textarea.dataset.persistedValue || '';
+                    const nextValue = textarea.value;
                     state.studies[studyUid].description = textarea.value;
-                    scheduleDescriptionSave(`study:${studyUid}`, () => {
-                        notesApi.saveStudyDescription(studyUid, textarea.value);
+                    scheduleDescriptionSave(`study:${studyUid}`, async () => {
+                        const saved = await notesApi.saveStudyDescription(studyUid, nextValue);
+                        if (saved) {
+                            textarea.dataset.persistedValue = nextValue;
+                            return;
+                        }
+                        if (textarea.value === nextValue) {
+                            textarea.value = rollbackValue;
+                            state.studies[studyUid].description = rollbackValue;
+                        }
+                        alert('Failed to save study description. Please try again.');
                     });
                 }
             };
         });
 
         studiesBody.querySelectorAll('.series-description').forEach((textarea) => {
+            const studyUid = textarea.dataset.studyUid;
+            const seriesUid = textarea.dataset.seriesUid;
+            textarea.dataset.persistedValue = state.studies[studyUid]?.series[seriesUid]?.description || '';
             textarea.oninput = () => {
                 const studyUid = textarea.dataset.studyUid;
                 const seriesUid = textarea.dataset.seriesUid;
                 if (state.studies[studyUid]?.series[seriesUid]) {
+                    const rollbackValue = textarea.dataset.persistedValue || '';
+                    const nextValue = textarea.value;
                     state.studies[studyUid].series[seriesUid].description = textarea.value;
-                    scheduleDescriptionSave(`series:${studyUid}:${seriesUid}`, () => {
-                        notesApi.saveSeriesDescription(studyUid, seriesUid, textarea.value);
+                    scheduleDescriptionSave(`series:${studyUid}:${seriesUid}`, async () => {
+                        const saved = await notesApi.saveSeriesDescription(studyUid, seriesUid, nextValue);
+                        if (saved) {
+                            textarea.dataset.persistedValue = nextValue;
+                            return;
+                        }
+                        if (textarea.value === nextValue) {
+                            textarea.value = rollbackValue;
+                            state.studies[studyUid].series[seriesUid].description = rollbackValue;
+                        }
+                        alert('Failed to save series description. Please try again.');
                     });
                 }
             };

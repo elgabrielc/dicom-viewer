@@ -507,7 +507,7 @@ const _SyncEngine = (() => {
         _applyRemoteData(tableName, recordKey, data, syncVersion) {
             if (!data) return;
 
-            const { loadStore, saveStore, ensureStudy } = window._NotesInternals;
+            const { loadStore, saveStore, ensureStudy, ensureSeries } = window._NotesInternals;
             const store = loadStore();
 
             if (tableName === 'study_notes') {
@@ -523,6 +523,7 @@ const _SyncEngine = (() => {
             if (tableName === 'comments') {
                 const studyUid = data.study_uid;
                 if (!studyUid) return;
+                const seriesUid = data.series_uid || null;
                 const deletedAt = data.deletedAt || data.deleted_at || null;
 
                 if (deletedAt) {
@@ -543,15 +544,26 @@ const _SyncEngine = (() => {
                 const existing = this._findCommentByKey(studyEntry, recordKey);
 
                 if (existing) {
+                    this._removeCommentFromStudy(studyEntry, recordKey);
+                    const targetComments = seriesUid
+                        ? ensureSeries(studyEntry, seriesUid).comments
+                        : studyEntry.comments;
+                    targetComments.push(existing);
                     // Update existing comment
+                    existing.id = recordKey;
+                    existing.record_uuid = recordKey;
                     existing.text = data.text || '';
+                    existing.created_at = data.created_at || existing.created_at || existing.time || Date.now();
                     existing.updated_at = data.updated_at || Date.now();
-                    existing.time = data.created_at || existing.time || Date.now();
+                    existing.time = existing.created_at || existing.time || Date.now();
                     existing.sync_version = syncVersion;
+                    delete existing.deletedAt;
+                    delete existing.deleted_at;
                 } else {
                     // Insert new comment from remote
                     const createdAt = data.created_at || Date.now();
-                    studyEntry.comments.push({
+                    const targetComments = seriesUid ? ensureSeries(studyEntry, seriesUid).comments : studyEntry.comments;
+                    targetComments.push({
                         id: recordKey,
                         record_uuid: recordKey,
                         text: data.text || '',
