@@ -531,16 +531,16 @@ def _apply_delete(db, table, user_id, key, device_id, new_version, now_ms):
                 sync_version,
                 last_operation
             )
-            VALUES (?, ?, '', ?, NULL, ?, ?, 'delete')
+            VALUES (?, ?, '', ?, ?, ?, ?, 'delete')
             ON CONFLICT(user_id, study_uid) DO UPDATE SET
                 description = '',
                 updated_at = excluded.updated_at,
-                deleted_at = NULL,
+                deleted_at = excluded.deleted_at,
                 device_id = excluded.device_id,
                 sync_version = excluded.sync_version,
                 last_operation = excluded.last_operation
             """,
-            (user_id, key, now_ms, device_id, new_version),
+            (user_id, key, now_ms, now_ms, device_id, new_version),
         )
         return
 

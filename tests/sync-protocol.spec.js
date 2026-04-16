@@ -232,6 +232,56 @@ test.describe('Sync Push - Accepted Changes', () => {
         expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
         expect(deleteResult.accepted[0].sync_version).toBeGreaterThan(insertedVersion);
     });
+
+    test('delete a study note emits a tombstone with deleted_at set', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const studyUid = uniqueStudyUid();
+
+        const insertChange = studyNoteUpdateChange(studyUid, {
+            description: 'Delete me',
+            baseSyncVersion: 0,
+        });
+        const insertResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
+        const insertedVersion = insertResult.accepted[0].sync_version;
+
+        const deleteChange = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'study_notes',
+            key: studyUid,
+            operation: 'delete',
+            base_sync_version: insertedVersion,
+            data: {},
+        };
+        const deleteResult = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            access_token,
+            device_id,
+            insertResult.delta_cursor,
+            [deleteChange],
+        );
+
+        expect(deleteResult.accepted).toHaveLength(1);
+        expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
+
+        const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
+        const pullResult = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            access_token,
+            device2,
+            insertResult.delta_cursor,
+            [],
+        );
+
+        const tombstone = pullResult.remote_changes.find(
+            (change) => change.table === 'study_notes' && change.key === studyUid,
+        );
+        expect(tombstone).toBeDefined();
+        expect(tombstone.operation).toBe('delete');
+        expect(typeof tombstone.data.deleted_at).toBe('number');
+        expect(tombstone.data.deleted_at).not.toBeNull();
+    });
 });
 
 // ---------------------------------------------------------------------------

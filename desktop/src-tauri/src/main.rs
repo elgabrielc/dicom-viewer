@@ -6,6 +6,8 @@ mod persistence;
 mod scan;
 mod secure_store;
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{AboutMetadata, Menu, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
@@ -47,6 +49,7 @@ const EVENT_SHOW_LIBRARY: &str = "desktop://show-library-in-finder";
 const EVENT_CHECK_UPDATES: &str = "desktop://check-for-updates";
 const EVENT_OPEN_HELP: &str = "desktop://open-help";
 const DESKTOP_DB_URL: &str = "sqlite:viewer.db";
+const MAX_FRONTEND_DECODE_LOG_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,8 +130,29 @@ fn get_debug_settings(settings: tauri::State<'_, DebugSettings>) -> DebugSetting
 #[tauri::command]
 fn log_frontend_decode_event(settings: tauri::State<'_, DebugSettings>, message: String) {
     if settings.frontend_decode_trace {
-        eprintln!("[frontend-decode] {message}");
+        eprintln!(
+            "[frontend-decode] {}",
+            truncate_frontend_decode_log_message(&message)
+        );
     }
+}
+
+fn truncate_frontend_decode_log_message(message: &str) -> Cow<'_, str> {
+    if message.len() <= MAX_FRONTEND_DECODE_LOG_BYTES {
+        return Cow::Borrowed(message);
+    }
+
+    const SUFFIX: &str = "...";
+    let max_prefix_bytes = MAX_FRONTEND_DECODE_LOG_BYTES.saturating_sub(SUFFIX.len());
+    let mut cutoff = max_prefix_bytes;
+    while cutoff > 0 && !message.is_char_boundary(cutoff) {
+        cutoff -= 1;
+    }
+
+    let mut truncated = String::with_capacity(cutoff + SUFFIX.len());
+    truncated.push_str(&message[..cutoff]);
+    truncated.push_str(SUFFIX);
+    Cow::Owned(truncated)
 }
 
 fn build_menu<R: Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
@@ -523,4 +547,27 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_frontend_decode_log_message_leaves_short_messages_intact() {
+        let message = "short decode trace";
+
+        assert_eq!(truncate_frontend_decode_log_message(message), message);
+    }
+
+    #[test]
+    fn truncate_frontend_decode_log_message_caps_bytes_and_preserves_utf8() {
+        let message = "é".repeat(MAX_FRONTEND_DECODE_LOG_BYTES);
+
+        let truncated = truncate_frontend_decode_log_message(&message);
+
+        assert!(truncated.len() <= MAX_FRONTEND_DECODE_LOG_BYTES);
+        assert!(truncated.ends_with("..."));
+        assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
+    }
 }
