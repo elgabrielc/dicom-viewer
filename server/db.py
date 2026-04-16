@@ -130,6 +130,7 @@ def close_db(exception=None):
 def init_db():
     _ensure_data_dirs()
     db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
     try:
         db.execute(
             """
