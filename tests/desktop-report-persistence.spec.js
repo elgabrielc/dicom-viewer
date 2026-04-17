@@ -170,7 +170,9 @@ test.describe('Desktop report persistence', () => {
                     text: 'Desktop UUID comment edited',
                     time: 456,
                 });
-                const sqlStoreBeforeDelete = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+                const sqlStoreBeforeDelete = JSON.parse(
+                    localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}',
+                );
                 const deleted = await window.NotesAPI.deleteComment(studyUid, saved.record_uuid);
                 const notes = await window.NotesAPI.loadNotes([studyUid]);
                 const sqlStoreAfterDelete = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');

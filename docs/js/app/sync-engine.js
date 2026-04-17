@@ -562,7 +562,9 @@ const _SyncEngine = (() => {
                 } else {
                     // Insert new comment from remote
                     const createdAt = data.created_at || Date.now();
-                    const targetComments = seriesUid ? ensureSeries(studyEntry, seriesUid).comments : studyEntry.comments;
+                    const targetComments = seriesUid
+                        ? ensureSeries(studyEntry, seriesUid).comments
+                        : studyEntry.comments;
                     targetComments.push({
                         id: recordKey,
                         record_uuid: recordKey,

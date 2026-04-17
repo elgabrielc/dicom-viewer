@@ -57,10 +57,7 @@ const NotesAPI = (() => {
 
     function isCloudSyncEnabled() {
         const config = getConfig();
-        return (
-            !!config?.features?.cloudSync &&
-            typeof window._SyncOutbox?.enqueueChange === 'function'
-        );
+        return !!config?.features?.cloudSync && typeof window._SyncOutbox?.enqueueChange === 'function';
     }
 
     function getStudyState(studyUid) {
