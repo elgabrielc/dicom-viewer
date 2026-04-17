@@ -47,8 +47,10 @@ _EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 # or broad test runs that create many unique users from the same machine.
 _AUTH_WINDOW_SECONDS = 15 * 60
 _AUTH_MAX_ATTEMPTS = 5
+_AUTH_SWEEP_INTERVAL_SECONDS = 60
 _AUTH_FAILURES = defaultdict(deque)
 _AUTH_FAILURES_LOCK = threading.Lock()
+_AUTH_LAST_SWEEP_AT = 0
 
 
 def _normalize_email(email):
@@ -73,12 +75,39 @@ def _prune_attempts(attempts, now_s):
         attempts.popleft()
 
 
+def _sweep_auth_failures(now_s):
+    stale_keys = []
+    for key, attempts in list(_AUTH_FAILURES.items()):
+        _prune_attempts(attempts, now_s)
+        if not attempts:
+            stale_keys.append(key)
+
+    for key in stale_keys:
+        _AUTH_FAILURES.pop(key, None)
+
+
+def _maybe_sweep_auth_failures(now_s):
+    global _AUTH_LAST_SWEEP_AT
+
+    if now_s - _AUTH_LAST_SWEEP_AT < _AUTH_SWEEP_INTERVAL_SECONDS and _AUTH_FAILURES:
+        return
+
+    _sweep_auth_failures(now_s)
+    _AUTH_LAST_SWEEP_AT = now_s
+
+
 def _rate_limit_retry_after(action, email):
     now_s = int(time.time())
     key = _auth_failure_key(action, email)
     with _AUTH_FAILURES_LOCK:
-        attempts = _AUTH_FAILURES[key]
+        _maybe_sweep_auth_failures(now_s)
+        attempts = _AUTH_FAILURES.get(key)
+        if attempts is None:
+            return None
         _prune_attempts(attempts, now_s)
+        if not attempts:
+            _AUTH_FAILURES.pop(key, None)
+            return None
         if len(attempts) < _AUTH_MAX_ATTEMPTS:
             return None
         return max(1, _AUTH_WINDOW_SECONDS - (now_s - attempts[0]))
@@ -88,6 +117,7 @@ def _record_auth_failure(action, email):
     now_s = int(time.time())
     key = _auth_failure_key(action, email)
     with _AUTH_FAILURES_LOCK:
+        _maybe_sweep_auth_failures(now_s)
         attempts = _AUTH_FAILURES[key]
         _prune_attempts(attempts, now_s)
         attempts.append(now_s)

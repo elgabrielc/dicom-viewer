@@ -44,6 +44,8 @@ MAX_TIMESTAMP_DRIFT_MS = 365 * 24 * 60 * 60 * 1000  # 1 year
 
 # Settings/config synchronization
 SETTINGS_LOCK = threading.Lock()
+_SQLITE_IDENTIFIER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_SQLITE_COLUMN_DEFINITION_RE = re.compile(r"^[A-Z]+(?: [A-Z]+)*(?: DEFAULT (?:''|[0-9]+))?$")
 
 
 def configure(app_root_path):
@@ -519,8 +521,17 @@ def init_db():
 
 def _add_column(db, table, column, col_type):
     """Add a column to a table if it does not already exist. Idempotent."""
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(table):
+        raise ValueError(f'Invalid SQLite table identifier: {table}')
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(column):
+        raise ValueError(f'Invalid SQLite column identifier: {column}')
+
+    column_definition = ' '.join(str(col_type or '').split())
+    if not _SQLITE_COLUMN_DEFINITION_RE.fullmatch(column_definition):
+        raise ValueError(f'Invalid SQLite column definition: {col_type}')
+
     try:
-        db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}')
+        db.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {column_definition}')
     except sqlite3.OperationalError as exc:
         # "duplicate column name" means it already exists -- safe to ignore
         if 'duplicate column' not in str(exc).lower():

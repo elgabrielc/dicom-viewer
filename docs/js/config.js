@@ -52,7 +52,7 @@ const CONFIG = {
         }
 
         // Future cloud platform
-        if (hostname.includes('divergent.health') && !hostname.includes('localhost')) {
+        if (hostname === 'divergent.health' || hostname.endsWith('.divergent.health')) {
             return 'cloud';
         }
 
