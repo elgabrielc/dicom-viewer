@@ -6,7 +6,6 @@ Copyright (c) 2026 Divergent Health Technologies
 
 import hashlib
 import os
-import shutil
 import tempfile
 import time
 import uuid
@@ -139,6 +138,16 @@ def _build_notes_payload(study_uids, db):
     return {uid: data for uid, data in notes.items() if has_notes(data)}
 
 
+def _remove_file_if_present(path):
+    if not path:
+        return
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
 @reports_bp.route('/api/notes/', methods=['GET'])
 def get_notes():
     studies_param = request.args.get('studies', '').strip()
@@ -170,7 +179,7 @@ def upload_report(study_uid):
     name = (request.form.get('name') or file.filename or 'report').strip()[:255]
 
     provided_type = request.form.get('type')
-    report_type, ext, mime = resolve_report_type(file.filename, provided_type, file.mimetype)
+    report_type, ext, _mime = resolve_report_type(file.filename, provided_type, file.mimetype)
     if not report_type:
         return jsonify({'error': 'Unsupported report file type'}), 400
 
@@ -180,8 +189,8 @@ def upload_report(study_uid):
 
     report_path = os.path.join(db_module.REPORTS_DIR, f'{report_id}.{ext}')
 
-    # Save upload to a temp file first, then commit DB, then move into place.
-    # This prevents orphan files if the DB operation fails.
+    # Save upload to a temp file first, then atomically install it before
+    # committing metadata. If the DB write fails, restore the previous file.
     _ensure_data_dirs()
     tmp_fd, tmp_path = tempfile.mkstemp(dir=db_module.REPORTS_DIR, suffix=f'.{ext}.tmp')
     try:
@@ -207,55 +216,68 @@ def upload_report(study_uid):
         if existing and existing['added_at'] and not request.form.get('addedAt'):
             added_at = existing['added_at']
 
-        # Upsert clears deleted_at (resurrection) and populates sync columns
-        db.execute(
-            """
-            INSERT INTO reports (id, study_uid, name, type, size, file_path,
-                                 added_at, updated_at, content_hash, device_id,
-                                 sync_version, deleted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
-            ON CONFLICT(id) DO UPDATE SET
-                study_uid=excluded.study_uid,
-                name=excluded.name,
-                type=excluded.type,
-                size=excluded.size,
-                file_path=excluded.file_path,
-                added_at=excluded.added_at,
-                updated_at=excluded.updated_at,
-                content_hash=excluded.content_hash,
-                device_id=excluded.device_id,
-                sync_version=0,
-                deleted_at=NULL
-            """,
-            (
-                report_id,
-                study_uid,
-                name,
-                report_type,
-                size,
-                report_path,
-                added_at,
-                updated_at,
-                content_hash,
-                device_id,
-            ),
-        )
-        db.commit()
+        previous_path = existing['file_path'] if existing else None
+        backup_path = None
 
-        # DB committed successfully -- move temp file to final path
-        if existing and existing['file_path'] and existing['file_path'] != report_path:
-            try:
-                if os.path.exists(existing['file_path']):
-                    os.remove(existing['file_path'])
-            except OSError:
-                pass
-        shutil.move(tmp_path, report_path)
-    except Exception:
-        # Clean up temp file on any failure
         try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+            if previous_path and previous_path == report_path and os.path.exists(report_path):
+                backup_path = f'{report_path}.bak-{now}'
+                os.replace(report_path, backup_path)
+            os.replace(tmp_path, report_path)
+        except Exception:
+            _remove_file_if_present(tmp_path)
+            if backup_path and os.path.exists(backup_path):
+                os.replace(backup_path, report_path)
+            raise
+
+        try:
+            # Upsert clears deleted_at (resurrection) and populates sync columns
+            db.execute(
+                """
+                INSERT INTO reports (id, study_uid, name, type, size, file_path,
+                                     added_at, updated_at, content_hash, device_id,
+                                     sync_version, deleted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
+                ON CONFLICT(id) DO UPDATE SET
+                    study_uid=excluded.study_uid,
+                    name=excluded.name,
+                    type=excluded.type,
+                    size=excluded.size,
+                    file_path=excluded.file_path,
+                    added_at=excluded.added_at,
+                    updated_at=excluded.updated_at,
+                    content_hash=excluded.content_hash,
+                    device_id=excluded.device_id,
+                    sync_version=0,
+                    deleted_at=NULL
+                """,
+                (
+                    report_id,
+                    study_uid,
+                    name,
+                    report_type,
+                    size,
+                    report_path,
+                    added_at,
+                    updated_at,
+                    content_hash,
+                    device_id,
+                ),
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            _remove_file_if_present(report_path)
+            if backup_path and os.path.exists(backup_path):
+                os.replace(backup_path, report_path)
+            raise
+
+        if backup_path and os.path.exists(backup_path):
+            _remove_file_if_present(backup_path)
+        if previous_path and previous_path != report_path:
+            _remove_file_if_present(previous_path)
+    except Exception:
+        _remove_file_if_present(tmp_path)
         raise
 
     return jsonify(

@@ -5,6 +5,8 @@ use std::{
 };
 
 use serde::Serialize;
+use tauri::Runtime;
+use tauri_plugin_fs::FsExt;
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanManifestEntry {
@@ -16,23 +18,40 @@ pub struct ScanManifestEntry {
 }
 
 #[tauri::command]
-pub async fn read_scan_manifest(
+pub async fn read_scan_manifest<R: Runtime>(
+    app: tauri::AppHandle<R>,
     roots: Vec<String>,
     max_depth: usize,
     allowed: tauri::State<'_, crate::path_util::AllowedPaths>,
 ) -> Result<Vec<ScanManifestEntry>, String> {
+    let fs_scope = app.fs_scope();
     let scoped_roots = roots
         .iter()
-        .map(|root| {
-            let canonical = crate::path_util::resolve_canonical_path(root, "scan-manifest")?;
-            allowed.add_root(canonical.clone());
-            Ok(canonical)
-        })
+        .map(|root| resolve_authorized_root(root, &allowed, |path| fs_scope.is_allowed(path)))
         .collect::<Result<Vec<_>, String>>()?;
 
     tokio::task::spawn_blocking(move || read_scan_manifest_impl(&scoped_roots, max_depth))
         .await
         .map_err(|error| format!("Native scan manifest worker failed to join: {error}"))?
+}
+
+fn resolve_authorized_root<F>(
+    root: &str,
+    allowed: &crate::path_util::AllowedPaths,
+    is_allowed: F,
+) -> Result<PathBuf, String>
+where
+    F: FnOnce(&Path) -> bool,
+{
+    let canonical = crate::path_util::resolve_canonical_path(root, "scan-manifest")?;
+    if !is_allowed(&canonical) {
+        return Err(format!(
+            "scan-manifest: path is outside granted scope: {}",
+            crate::path_util::redact_path(root)
+        ));
+    }
+    allowed.add_root(canonical.clone());
+    Ok(canonical)
 }
 
 fn read_scan_manifest_impl(
@@ -158,6 +177,35 @@ mod tests {
         ));
         fs::create_dir_all(&dir).expect("temp dir should be creatable");
         dir
+    }
+
+    #[test]
+    fn resolve_authorized_root_requires_existing_fs_scope_access() {
+        let root = temp_dir("unauthorized-root");
+        let allowed = crate::path_util::AllowedPaths::default();
+
+        let error = resolve_authorized_root(root.to_string_lossy().as_ref(), &allowed, |_| false)
+            .expect_err("unauthorized root should be rejected");
+
+        assert!(error.contains("outside granted scope"));
+        assert!(!allowed.is_within_scope(&root));
+
+        fs::remove_dir_all(&root).expect("temp dir should be removable");
+    }
+
+    #[test]
+    fn resolve_authorized_root_registers_roots_only_after_scope_validation() {
+        let root = temp_dir("authorized-root");
+        let allowed = crate::path_util::AllowedPaths::default();
+        let canonical = root.canonicalize().expect("temp dir should resolve");
+
+        let resolved = resolve_authorized_root(root.to_string_lossy().as_ref(), &allowed, |_| true)
+            .expect("authorized root should succeed");
+
+        assert_eq!(resolved, canonical);
+        assert!(allowed.is_within_scope(&canonical));
+
+        fs::remove_dir_all(&root).expect("temp dir should be removable");
     }
 
     #[test]

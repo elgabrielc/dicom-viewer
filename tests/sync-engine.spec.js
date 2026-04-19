@@ -26,6 +26,16 @@ async function setupSyncEnginePage(page) {
             return store.studies[studyUid];
         }
 
+        function ensureSeries(studyEntry, seriesUid) {
+            if (!studyEntry.series[seriesUid]) {
+                studyEntry.series[seriesUid] = {
+                    description: '',
+                    comments: [],
+                };
+            }
+            return studyEntry.series[seriesUid];
+        }
+
         window._NotesInternals = {
             loadStore() {
                 return structuredClone(window.__SYNC_TEST_STORE);
@@ -34,6 +44,7 @@ async function setupSyncEnginePage(page) {
                 window.__SYNC_TEST_STORE = structuredClone(store);
             },
             ensureStudy,
+            ensureSeries,
             normalizeReportId(id) {
                 return String(id || '').trim();
             },
@@ -398,5 +409,82 @@ test.describe('Sync Engine', () => {
         expect(comment.time).toBe(111);
         expect(comment.updated_at).toBe(222);
         expect(comment.sync_version).toBe(5);
+    });
+
+    test('remote series comments are inserted and moved into the correct series bucket', async ({ page }) => {
+        await setupSyncEnginePage(page);
+
+        const study = await page.evaluate(() => {
+            window.__SYNC_TEST_STORE = {
+                studies: {
+                    'study-series-remote': {
+                        description: '',
+                        comments: [
+                            {
+                                id: 'comment-move',
+                                record_uuid: 'comment-move',
+                                text: 'Study level',
+                                time: 1,
+                                created_at: 1,
+                                updated_at: 1,
+                                sync_version: 1,
+                            },
+                        ],
+                        reports: [],
+                        series: {
+                            'series-a': { description: '', comments: [] },
+                            'series-b': { description: '', comments: [] },
+                        },
+                    },
+                },
+            };
+
+            const engine = new window._SyncEngine.SyncEngine({
+                getAccessToken: async () => 'valid-access-token',
+                onAuthRequired: () => {},
+            });
+
+            engine._applyRemoteData(
+                'comments',
+                'comment-series-new',
+                {
+                    study_uid: 'study-series-remote',
+                    series_uid: 'series-a',
+                    text: 'Inserted into series A',
+                    created_at: 10,
+                    updated_at: 10,
+                },
+                5,
+            );
+
+            engine._applyRemoteData(
+                'comments',
+                'comment-move',
+                {
+                    study_uid: 'study-series-remote',
+                    series_uid: 'series-b',
+                    text: 'Moved into series B',
+                    created_at: 1,
+                    updated_at: 20,
+                },
+                6,
+            );
+
+            return window.__SYNC_TEST_STORE.studies['study-series-remote'];
+        });
+
+        expect(study.comments).toEqual([]);
+        expect(study.series['series-a'].comments[0]).toMatchObject({
+            id: 'comment-series-new',
+            record_uuid: 'comment-series-new',
+            text: 'Inserted into series A',
+            sync_version: 5,
+        });
+        expect(study.series['series-b'].comments[0]).toMatchObject({
+            id: 'comment-move',
+            record_uuid: 'comment-move',
+            text: 'Moved into series B',
+            sync_version: 6,
+        });
     });
 });

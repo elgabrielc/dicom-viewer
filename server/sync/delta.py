@@ -10,14 +10,16 @@ Handles:
 Copyright (c) 2026 Divergent Health Technologies
 """
 
+import json
 import time
 
 # Tables the sync protocol supports in v1
-SYNC_TABLES = {'study_notes', 'comments', 'reports'}
+SYNC_TABLES = {'study_notes', 'series_notes', 'comments', 'reports'}
 
 # Cloud-scoped storage tables used exclusively by /api/sync
 TABLE_STORAGE = {
     'study_notes': 'cloud_study_notes',
+    'series_notes': 'cloud_series_notes',
     'comments': 'cloud_comments',
     'reports': 'cloud_reports',
 }
@@ -25,6 +27,7 @@ TABLE_STORAGE = {
 # Column that serves as the primary key for each synced table
 TABLE_KEY_COLUMN = {
     'study_notes': 'study_uid',
+    'series_notes': 'record_key',
     'comments': 'record_uuid',
     'reports': 'id',
 }
@@ -32,6 +35,7 @@ TABLE_KEY_COLUMN = {
 # Columns to include in sync data payloads for each table.
 TABLE_DATA_COLUMNS = {
     'study_notes': ['study_uid', 'description', 'updated_at', 'deleted_at'],
+    'series_notes': ['study_uid', 'series_uid', 'description', 'updated_at', 'deleted_at'],
     'comments': [
         'record_uuid',
         'study_uid',
@@ -55,6 +59,18 @@ TABLE_DATA_COLUMNS = {
 }
 
 
+def _parse_series_record_key(record_key):
+    try:
+        study_uid, series_uid = json.loads(record_key)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError(f'Invalid series_notes record key: {record_key}') from exc
+
+    if not isinstance(study_uid, str) or not isinstance(series_uid, str):
+        raise ValueError(f'Invalid series_notes record key: {record_key}')
+
+    return study_uid, series_uid
+
+
 def process_change(db, user_id, device_id, change):
     """Process a single change from a client push."""
     operation_uuid = change['operation_uuid']
@@ -73,6 +89,19 @@ def process_change(db, user_id, device_id, change):
             'current_sync_version': 0,
             'current_data': {},
         }
+
+    if table == 'series_notes':
+        try:
+            _parse_series_record_key(key)
+        except ValueError:
+            return {
+                'status': 'rejected',
+                'operation_uuid': operation_uuid,
+                'key': key,
+                'reason': 'invalid_key',
+                'current_sync_version': 0,
+                'current_data': {},
+            }
 
     existing_op = db.execute(
         'SELECT sync_version FROM sync_processed_ops WHERE operation_uuid = ? AND user_id = ?',
@@ -280,6 +309,46 @@ def _apply_insert(db, table, user_id, key, data, device_id, new_version, now_ms)
         )
         return
 
+    if table == 'series_notes':
+        study_uid, series_uid = _parse_series_record_key(key)
+        db.execute(
+            """
+            INSERT INTO cloud_series_notes (
+                user_id,
+                record_key,
+                study_uid,
+                series_uid,
+                description,
+                updated_at,
+                deleted_at,
+                device_id,
+                sync_version,
+                last_operation
+            )
+            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 'insert')
+            ON CONFLICT(user_id, record_key) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                series_uid = excluded.series_uid,
+                description = excluded.description,
+                updated_at = excluded.updated_at,
+                deleted_at = NULL,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
+            """,
+            (
+                user_id,
+                key,
+                study_uid,
+                series_uid,
+                data.get('description', ''),
+                data.get('updated_at', now_ms),
+                device_id,
+                new_version,
+            ),
+        )
+        return
+
     if table == 'comments':
         created_at = data.get('created_at', now_ms)
         db.execute(
@@ -410,6 +479,46 @@ def _apply_update(db, table, user_id, key, data, device_id, new_version, now_ms)
         )
         return
 
+    if table == 'series_notes':
+        study_uid, series_uid = _parse_series_record_key(key)
+        db.execute(
+            """
+            INSERT INTO cloud_series_notes (
+                user_id,
+                record_key,
+                study_uid,
+                series_uid,
+                description,
+                updated_at,
+                deleted_at,
+                device_id,
+                sync_version,
+                last_operation
+            )
+            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, 'update')
+            ON CONFLICT(user_id, record_key) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                series_uid = excluded.series_uid,
+                description = excluded.description,
+                updated_at = excluded.updated_at,
+                deleted_at = NULL,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
+            """,
+            (
+                user_id,
+                key,
+                study_uid,
+                series_uid,
+                data.get('description', ''),
+                data.get('updated_at', now_ms),
+                device_id,
+                new_version,
+            ),
+        )
+        return
+
     if table == 'comments':
         existing = _read_cloud_row(db, 'cloud_comments', user_id, 'record_uuid', key)
         created_at = data.get('created_at')
@@ -531,51 +640,164 @@ def _apply_delete(db, table, user_id, key, device_id, new_version, now_ms):
                 sync_version,
                 last_operation
             )
-            VALUES (?, ?, '', ?, NULL, ?, ?, 'delete')
+            VALUES (?, ?, '', ?, ?, ?, ?, 'delete')
             ON CONFLICT(user_id, study_uid) DO UPDATE SET
                 description = '',
                 updated_at = excluded.updated_at,
-                deleted_at = NULL,
+                deleted_at = excluded.deleted_at,
                 device_id = excluded.device_id,
                 sync_version = excluded.sync_version,
                 last_operation = excluded.last_operation
             """,
-            (user_id, key, now_ms, device_id, new_version),
+            (user_id, key, now_ms, now_ms, device_id, new_version),
+        )
+        return
+
+    if table == 'series_notes':
+        study_uid, series_uid = _parse_series_record_key(key)
+        existing = _read_cloud_row(db, 'cloud_series_notes', user_id, 'record_key', key)
+        db.execute(
+            """
+            INSERT INTO cloud_series_notes (
+                user_id,
+                record_key,
+                study_uid,
+                series_uid,
+                description,
+                updated_at,
+                deleted_at,
+                device_id,
+                sync_version,
+                last_operation
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'delete')
+            ON CONFLICT(user_id, record_key) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                series_uid = excluded.series_uid,
+                description = excluded.description,
+                updated_at = excluded.updated_at,
+                deleted_at = excluded.deleted_at,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
+            """,
+            (
+                user_id,
+                key,
+                existing['study_uid'] if existing else study_uid,
+                existing['series_uid'] if existing else series_uid,
+                existing['description'] if existing else '',
+                now_ms,
+                now_ms,
+                device_id,
+                new_version,
+            ),
         )
         return
 
     if table == 'comments':
+        existing = _read_cloud_row(db, 'cloud_comments', user_id, 'record_uuid', key)
         db.execute(
             """
-            UPDATE cloud_comments
-            SET deleted_at = ?,
-                updated_at = ?,
-                device_id = ?,
-                sync_version = ?,
-                last_operation = 'delete'
-            WHERE user_id = ? AND record_uuid = ?
+            INSERT INTO cloud_comments (
+                user_id,
+                record_uuid,
+                study_uid,
+                series_uid,
+                text,
+                time,
+                created_at,
+                updated_at,
+                deleted_at,
+                device_id,
+                sync_version,
+                last_operation
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'delete')
+            ON CONFLICT(user_id, record_uuid) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                series_uid = excluded.series_uid,
+                text = excluded.text,
+                time = excluded.time,
+                created_at = excluded.created_at,
+                updated_at = excluded.updated_at,
+                deleted_at = excluded.deleted_at,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
             """,
-            (now_ms, now_ms, device_id, new_version, user_id, key),
+            (
+                user_id,
+                key,
+                existing['study_uid'] if existing else '',
+                existing['series_uid'] if existing else None,
+                existing['text'] if existing else '',
+                existing['time'] if existing else now_ms,
+                existing['created_at'] if existing else now_ms,
+                now_ms,
+                now_ms,
+                device_id,
+                new_version,
+            ),
         )
         return
 
     if table == 'reports':
+        existing = _read_cloud_row(db, 'cloud_reports', user_id, 'id', key)
         db.execute(
             """
-            UPDATE cloud_reports
-            SET deleted_at = ?,
-                updated_at = ?,
-                device_id = ?,
-                sync_version = ?,
-                last_operation = 'delete'
-            WHERE user_id = ? AND id = ?
+            INSERT INTO cloud_reports (
+                user_id,
+                id,
+                study_uid,
+                name,
+                type,
+                size,
+                content_hash,
+                added_at,
+                updated_at,
+                deleted_at,
+                device_id,
+                sync_version,
+                last_operation
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'delete')
+            ON CONFLICT(user_id, id) DO UPDATE SET
+                study_uid = excluded.study_uid,
+                name = excluded.name,
+                type = excluded.type,
+                size = excluded.size,
+                content_hash = excluded.content_hash,
+                added_at = excluded.added_at,
+                updated_at = excluded.updated_at,
+                deleted_at = excluded.deleted_at,
+                device_id = excluded.device_id,
+                sync_version = excluded.sync_version,
+                last_operation = excluded.last_operation
             """,
-            (now_ms, now_ms, device_id, new_version, user_id, key),
+            (
+                user_id,
+                key,
+                existing['study_uid'] if existing else '',
+                existing['name'] if existing else '',
+                existing['type'] if existing else '',
+                existing['size'] if existing else 0,
+                existing['content_hash'] if existing else None,
+                existing['added_at'] if existing else now_ms,
+                now_ms,
+                now_ms,
+                device_id,
+                new_version,
+            ),
         )
 
 
 def _read_cloud_row(db, table_name, user_id, key_col, key):
     """Read a raw cloud-table row for upsert fallback behavior."""
+    if table_name not in TABLE_STORAGE.values():
+        raise ValueError(f'Unsupported cloud table: {table_name}')
+    if key_col not in {'study_uid', 'record_key', 'record_uuid', 'id'}:
+        raise ValueError(f'Unsupported cloud table key column: {key_col}')
     return db.execute(
         f'SELECT * FROM {table_name} WHERE user_id = ? AND {key_col} = ?',
         (user_id, key),

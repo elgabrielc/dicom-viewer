@@ -6,6 +6,7 @@
     window.DicomViewerApp = app;
     const { state } = app;
     const notesApi = window.NotesAPI;
+    const config = window.CONFIG;
     const { $, studiesBody } = app.dom;
     const { escapeHtml, generateUUID } = app.utils;
 
@@ -53,6 +54,9 @@
         const saved = await notesApi.uploadReport(studyUid, file, report);
         if (saved) {
             Object.assign(report, saved);
+        } else if (config?.deploymentMode === 'personal' || config?.deploymentMode === 'cloud') {
+            alert('Failed to upload report. Please try again.');
+            return;
         } else {
             report.blob = file;
         }
@@ -68,15 +72,14 @@
         const idx = reports.findIndex((report) => report.id === reportId);
         if (idx === -1) return;
 
-        const removed = reports.splice(idx, 1)[0];
-        updateReportListUI(studyUid);
-
         const result = await notesApi.deleteReport(studyUid, reportId);
         if (!result && notesApi.isEnabled()) {
-            reports.splice(idx, 0, removed);
-            updateReportListUI(studyUid);
             alert('Failed to delete report. Please try again.');
+            return;
         }
+
+        reports.splice(idx, 1);
+        updateReportListUI(studyUid);
     }
 
     function renderReports(reports, studyUid) {

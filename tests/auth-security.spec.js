@@ -529,6 +529,24 @@ test.describe('Test Suite 43: Auth Endpoint Hardening', () => {
         expect(Number(limited.headers()['retry-after'] || '0')).toBeGreaterThan(0);
     });
 
+    test('login rate limiting ignores spoofed X-Forwarded-For by default', async ({ request }) => {
+        const email = uniqueEmail();
+
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+            const response = await request.post(`${BASE_URL}/api/auth/login`, {
+                headers: sameOriginHeaders({ 'X-Forwarded-For': `203.0.113.${attempt}` }),
+                data: { email, password: 'wrong-password' },
+            });
+            expect(response.status()).toBe(401);
+        }
+
+        const limited = await request.post(`${BASE_URL}/api/auth/login`, {
+            headers: sameOriginHeaders({ 'X-Forwarded-For': '198.51.100.99' }),
+            data: { email, password: 'wrong-password' },
+        });
+        expect(limited.status()).toBe(429);
+    });
+
     test('signup returns the same accepted response for new and duplicate emails', async ({ request }) => {
         const email = uniqueEmail();
         const payload = {

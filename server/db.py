@@ -11,6 +11,7 @@ import re
 import sqlite3
 import tempfile
 import threading
+import uuid
 
 from flask import g
 
@@ -43,6 +44,8 @@ MAX_TIMESTAMP_DRIFT_MS = 365 * 24 * 60 * 60 * 1000  # 1 year
 
 # Settings/config synchronization
 SETTINGS_LOCK = threading.Lock()
+_SQLITE_IDENTIFIER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_SQLITE_COLUMN_DEFINITION_RE = re.compile(r"^[A-Z]+(?: [A-Z]+)*(?: DEFAULT (?:''|[0-9]+))?$")
 
 
 def configure(app_root_path):
@@ -129,6 +132,7 @@ def close_db(exception=None):
 def init_db():
     _ensure_data_dirs()
     db = sqlite3.connect(DB_PATH)
+    db.row_factory = sqlite3.Row
     try:
         db.execute(
             """
@@ -239,6 +243,31 @@ def init_db():
             """
             CREATE INDEX IF NOT EXISTS idx_cloud_study_notes_study_uid
             ON cloud_study_notes(study_uid)
+            """
+        )
+
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cloud_series_notes (
+                user_id INTEGER NOT NULL,
+                record_key TEXT NOT NULL,
+                study_uid TEXT NOT NULL,
+                series_uid TEXT NOT NULL,
+                description TEXT,
+                updated_at INTEGER,
+                deleted_at INTEGER,
+                device_id TEXT,
+                sync_version INTEGER NOT NULL DEFAULT 0,
+                last_operation TEXT NOT NULL DEFAULT 'update',
+                PRIMARY KEY (user_id, record_key),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cloud_series_notes_study_uid
+            ON cloud_series_notes(user_id, study_uid, series_uid)
             """
         )
 
@@ -482,6 +511,34 @@ def init_db():
             """
         )
 
+        duplicate_rows = db.execute(
+            """
+            SELECT record_uuid
+            FROM comments
+            WHERE record_uuid IS NOT NULL
+            GROUP BY record_uuid
+            HAVING COUNT(*) > 1
+            """
+        ).fetchall()
+        for duplicate in duplicate_rows:
+            rows = db.execute(
+                'SELECT id FROM comments WHERE record_uuid = ? ORDER BY id ASC',
+                (duplicate['record_uuid'],),
+            ).fetchall()
+            for row in rows[1:]:
+                db.execute(
+                    'UPDATE comments SET record_uuid = ? WHERE id = ?',
+                    (str(uuid.uuid4()), row['id']),
+                )
+
+        db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_comments_record_uuid
+            ON comments(record_uuid)
+            WHERE record_uuid IS NOT NULL
+            """
+        )
+
         db.commit()
     finally:
         db.close()
@@ -489,8 +546,17 @@ def init_db():
 
 def _add_column(db, table, column, col_type):
     """Add a column to a table if it does not already exist. Idempotent."""
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(table):
+        raise ValueError(f'Invalid SQLite table identifier: {table}')
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(column):
+        raise ValueError(f'Invalid SQLite column identifier: {column}')
+
+    column_definition = ' '.join(str(col_type or '').split())
+    if not _SQLITE_COLUMN_DEFINITION_RE.fullmatch(column_definition):
+        raise ValueError(f'Invalid SQLite column definition: {col_type}')
+
     try:
-        db.execute(f'ALTER TABLE {table} ADD COLUMN {column} {col_type}')
+        db.execute(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {column_definition}')
     except sqlite3.OperationalError as exc:
         # "duplicate column name" means it already exists -- safe to ignore
         if 'duplicate column' not in str(exc).lower():

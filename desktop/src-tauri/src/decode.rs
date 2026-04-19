@@ -270,9 +270,10 @@ pub async fn decode_frame<R: Runtime>(
     let pixel_data_length = decode_result.metadata.pixel_data_length;
     let decode_id = store.insert(decode_result.pixel_bytes);
     if native_decode_debug {
+        let redacted_path = redact_path_for_log(&scoped_path);
         eprintln!(
             "[native-decode] response path={} frame={} decode_id={} pixel_bytes={} store_pending={} elapsed_ms={}",
-            scoped_path.display(),
+            redacted_path,
             frame_index,
             decode_id,
             pixel_data_length,
@@ -306,9 +307,10 @@ pub async fn decode_frame_with_pixels<R: Runtime>(
     let pixel_data_length = decoded_frame.metadata.pixel_data_length;
     let response = build_decode_frame_with_pixels_response(decoded_frame)?;
     if native_decode_debug {
+        let redacted_path = redact_path_for_log(&scoped_path);
         eprintln!(
             "[native-decode] response-with-pixels path={} frame={} pixel_bytes={} elapsed_ms={}",
-            scoped_path.display(),
+            redacted_path,
             frame_index,
             pixel_data_length,
             started_at.elapsed().as_millis()
@@ -450,6 +452,7 @@ fn decode_frame_impl_with_cache(
     native_decode_debug: bool,
 ) -> DecodeResult<DecodedFrame> {
     let started_at = Instant::now();
+    let redacted_path = redact_path_for_log(path);
     let object = open_file(path).map_err(|error| {
         DecodeError::new("decode", format!("Failed to open DICOM file: {error}"))
     })?;
@@ -473,7 +476,7 @@ fn decode_frame_impl_with_cache(
             if native_decode_debug {
                 eprintln!(
                     "[native-decode] cache-hit path={} frame={} pixel_bytes={} rows={} cols={} elapsed_ms={}",
-                    path.display(),
+                    redacted_path,
                     frame_index,
                     cached_frame.metadata.pixel_data_length,
                     cached_frame.metadata.rows,
@@ -497,8 +500,7 @@ fn decode_frame_impl_with_cache(
         if let Err(error) = cache_write_result {
             eprintln!(
                 "Skipping decode cache write for {}: {}",
-                path.display(),
-                error
+                redacted_path, error
             );
         }
     }
@@ -506,7 +508,7 @@ fn decode_frame_impl_with_cache(
     if native_decode_debug {
         eprintln!(
             "[native-decode] cache-miss path={} frame={} pixel_bytes={} rows={} cols={} elapsed_ms={}",
-            path.display(),
+            redacted_path,
             frame_index,
             decoded_frame.metadata.pixel_data_length,
             decoded_frame.metadata.rows,
@@ -516,6 +518,10 @@ fn decode_frame_impl_with_cache(
     }
 
     Ok(decoded_frame)
+}
+
+fn redact_path_for_log(path: &Path) -> String {
+    crate::path_util::redact_path(path.to_string_lossy().as_ref()).to_string()
 }
 
 fn build_cache_key(
@@ -1239,5 +1245,12 @@ mod tests {
         assert_eq!(read.len(), MAX_SCAN_HEADER_BYTES);
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn redact_path_for_log_only_keeps_the_filename() {
+        let path = PathBuf::from("/Users/test/Patient Name/study/series/image-001.dcm");
+
+        assert_eq!(redact_path_for_log(&path), "image-001.dcm");
     }
 }

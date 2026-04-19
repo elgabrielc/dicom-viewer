@@ -24,6 +24,19 @@ const _SyncEngine = (() => {
     // Backoff schedule: 30s, 60s, 120s, 300s (max 5 min)
     const BACKOFF_SCHEDULE_MS = [30000, 60000, 120000, 300000];
 
+    function parseSeriesRecordKey(recordKey) {
+        try {
+            const [studyUid, seriesUid] = JSON.parse(String(recordKey || ''));
+            if (!studyUid || !seriesUid) return null;
+            return {
+                studyUid: String(studyUid),
+                seriesUid: String(seriesUid),
+            };
+        } catch {
+            return null;
+        }
+    }
+
     /**
      * SyncEngine manages the periodic sync loop.
      *
@@ -445,7 +458,7 @@ const _SyncEngine = (() => {
          * @param {Map} [studyLookup] - Optional pre-built comment lookup map for O(1) access
          */
         _updateLocalSyncVersion(tableName, recordKey, syncVersion, studyLookup) {
-            const { loadStore, saveStore, ensureStudy } = window._NotesInternals;
+            const { loadStore, saveStore, ensureStudy, ensureSeries } = window._NotesInternals;
             const store = loadStore();
 
             if (tableName === 'study_notes') {
@@ -485,6 +498,17 @@ const _SyncEngine = (() => {
                 return;
             }
 
+            if (tableName === 'series_notes') {
+                const parsed = parseSeriesRecordKey(recordKey);
+                if (!parsed) return;
+                const studyEntry = store.studies[parsed.studyUid];
+                if (!studyEntry) return;
+                const seriesEntry = ensureSeries(studyEntry, parsed.seriesUid);
+                seriesEntry.sync_version = syncVersion;
+                saveStore(store);
+                return;
+            }
+
             if (tableName === 'reports') {
                 const { findReportMetadata } = window._NotesInternals;
                 const match = findReportMetadata(store, recordKey);
@@ -507,7 +531,7 @@ const _SyncEngine = (() => {
         _applyRemoteData(tableName, recordKey, data, syncVersion) {
             if (!data) return;
 
-            const { loadStore, saveStore, ensureStudy } = window._NotesInternals;
+            const { loadStore, saveStore, ensureStudy, ensureSeries } = window._NotesInternals;
             const store = loadStore();
 
             if (tableName === 'study_notes') {
@@ -520,9 +544,42 @@ const _SyncEngine = (() => {
                 return;
             }
 
+            if (tableName === 'series_notes') {
+                const parsed = parseSeriesRecordKey(recordKey);
+                if (!parsed) return;
+                const deletedAt = data.deletedAt || data.deleted_at || null;
+                const existingStudy = store.studies[parsed.studyUid];
+
+                if (deletedAt) {
+                    if (!existingStudy) return;
+                    const existingSeries = existingStudy.series?.[parsed.seriesUid];
+                    if (!existingSeries) return;
+                    existingSeries.description = '';
+                    existingSeries.deletedAt = deletedAt;
+                    existingSeries.sync_version = syncVersion;
+                    saveStore(store);
+                    return;
+                }
+
+                const studyEntry = ensureStudy(store, parsed.studyUid);
+                const seriesEntry = ensureSeries(studyEntry, parsed.seriesUid);
+                if (data.description !== undefined) {
+                    seriesEntry.description = data.description;
+                }
+                if (data.updated_at !== undefined) {
+                    seriesEntry.updated_at = data.updated_at;
+                }
+                seriesEntry.sync_version = syncVersion;
+                delete seriesEntry.deletedAt;
+                delete seriesEntry.deleted_at;
+                saveStore(store);
+                return;
+            }
+
             if (tableName === 'comments') {
                 const studyUid = data.study_uid;
                 if (!studyUid) return;
+                const seriesUid = data.series_uid || null;
                 const deletedAt = data.deletedAt || data.deleted_at || null;
 
                 if (deletedAt) {
@@ -543,15 +600,28 @@ const _SyncEngine = (() => {
                 const existing = this._findCommentByKey(studyEntry, recordKey);
 
                 if (existing) {
+                    this._removeCommentFromStudy(studyEntry, recordKey);
+                    const targetComments = seriesUid
+                        ? ensureSeries(studyEntry, seriesUid).comments
+                        : studyEntry.comments;
+                    targetComments.push(existing);
                     // Update existing comment
+                    existing.id = recordKey;
+                    existing.record_uuid = recordKey;
                     existing.text = data.text || '';
+                    existing.created_at = data.created_at || existing.created_at || existing.time || Date.now();
                     existing.updated_at = data.updated_at || Date.now();
-                    existing.time = data.created_at || existing.time || Date.now();
+                    existing.time = existing.created_at || existing.time || Date.now();
                     existing.sync_version = syncVersion;
+                    delete existing.deletedAt;
+                    delete existing.deleted_at;
                 } else {
                     // Insert new comment from remote
                     const createdAt = data.created_at || Date.now();
-                    studyEntry.comments.push({
+                    const targetComments = seriesUid
+                        ? ensureSeries(studyEntry, seriesUid).comments
+                        : studyEntry.comments;
+                    targetComments.push({
                         id: recordKey,
                         record_uuid: recordKey,
                         text: data.text || '',

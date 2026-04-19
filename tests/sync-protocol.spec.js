@@ -193,6 +193,51 @@ test.describe('Sync Push - Accepted Changes', () => {
         expect(updateResult.accepted[0].sync_version).toBeGreaterThan(insertedVersion);
     });
 
+    test('update a series note, verify it appears in remote_changes', async ({ request }) => {
+        const { access_token, device_id: deviceA } = await setupSyncUser(request);
+        const { device_id: deviceB } = await registerDevice(request, BASE_URL, access_token);
+        const studyUid = uniqueStudyUid();
+        const seriesUid = `test-sync-series-${Date.now()}`;
+        const seriesKey = JSON.stringify([studyUid, seriesUid]);
+
+        const initialSync = await syncAndExpectOk(request, BASE_URL, access_token, deviceB, null, []);
+
+        const change = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'series_notes',
+            key: seriesKey,
+            operation: 'update',
+            base_sync_version: 0,
+            data: {
+                study_uid: studyUid,
+                series_uid: seriesUid,
+                description: 'Series sync description',
+                updated_at: Date.now(),
+            },
+        };
+        const pushResult = await syncAndExpectOk(request, BASE_URL, access_token, deviceA, null, [change]);
+
+        expect(pushResult.accepted).toHaveLength(1);
+        expect(pushResult.accepted[0].operation_uuid).toBe(change.operation_uuid);
+
+        const pullResult = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            access_token,
+            deviceB,
+            initialSync.delta_cursor,
+            [],
+        );
+        const found = pullResult.remote_changes.find((rc) => rc.key === seriesKey && rc.table === 'series_notes');
+        expect(found).toBeDefined();
+        expect(found.operation).toBe('update');
+        expect(found.data).toMatchObject({
+            study_uid: studyUid,
+            series_uid: seriesUid,
+            description: 'Series sync description',
+        });
+    });
+
     test('delete (tombstone) a report, verify accepted', async ({ request }) => {
         const { access_token, device_id } = await setupSyncUser(request);
         const reportId = uniqueRecordUuid();
@@ -231,6 +276,109 @@ test.describe('Sync Push - Accepted Changes', () => {
         expect(deleteResult.accepted.length).toBe(1);
         expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
         expect(deleteResult.accepted[0].sync_version).toBeGreaterThan(insertedVersion);
+    });
+
+    test('delete a study note emits a tombstone with deleted_at set', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const studyUid = uniqueStudyUid();
+
+        const insertChange = studyNoteUpdateChange(studyUid, {
+            description: 'Delete me',
+            baseSyncVersion: 0,
+        });
+        const insertResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
+        const insertedVersion = insertResult.accepted[0].sync_version;
+
+        const deleteChange = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'study_notes',
+            key: studyUid,
+            operation: 'delete',
+            base_sync_version: insertedVersion,
+            data: {},
+        };
+        const deleteResult = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            access_token,
+            device_id,
+            insertResult.delta_cursor,
+            [deleteChange],
+        );
+
+        expect(deleteResult.accepted).toHaveLength(1);
+        expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
+
+        const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
+        const pullResult = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            access_token,
+            device2,
+            insertResult.delta_cursor,
+            [],
+        );
+
+        const tombstone = pullResult.remote_changes.find(
+            (change) => change.table === 'study_notes' && change.key === studyUid,
+        );
+        expect(tombstone).toBeDefined();
+        expect(tombstone.operation).toBe('delete');
+        expect(typeof tombstone.data.deleted_at).toBe('number');
+        expect(tombstone.data.deleted_at).not.toBeNull();
+    });
+
+    test('delete of a never-inserted comment still creates a tombstone', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const commentKey = uniqueRecordUuid();
+
+        const deleteChange = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'comments',
+            key: commentKey,
+            operation: 'delete',
+            base_sync_version: 0,
+            data: {},
+        };
+        const deleteResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [deleteChange]);
+
+        expect(deleteResult.accepted).toHaveLength(1);
+        expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
+
+        const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
+        const pullResult = await syncAndExpectOk(request, BASE_URL, access_token, device2, null, []);
+
+        const tombstone = pullResult.remote_changes.find(
+            (change) => change.table === 'comments' && change.key === commentKey,
+        );
+        expect(tombstone).toBeDefined();
+        expect(tombstone.operation).toBe('delete');
+        expect(typeof tombstone.data.deleted_at).toBe('number');
+        expect(tombstone.data.deleted_at).not.toBeNull();
+    });
+
+    test('delete of a never-inserted report still creates a tombstone', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const reportId = uniqueRecordUuid();
+
+        const deleteChange = reportDeleteChange(reportId, {
+            baseSyncVersion: 0,
+        });
+        const deleteResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [deleteChange]);
+
+        expect(deleteResult.accepted).toHaveLength(1);
+        expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
+
+        const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
+        const pullResult = await syncAndExpectOk(request, BASE_URL, access_token, device2, null, []);
+
+        const tombstone = pullResult.remote_changes.find(
+            (change) => change.table === 'reports' && change.key === reportId,
+        );
+        expect(tombstone).toBeDefined();
+        expect(tombstone.operation).toBe('delete');
+        expect(typeof tombstone.data.deleted_at).toBe('number');
+        expect(tombstone.data.deleted_at).not.toBeNull();
     });
 });
 
@@ -327,6 +475,85 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
         expect(rej.current_sync_version).toBe(v2);
         expect(rej.current_data).toHaveProperty('description');
         expect(rej.current_data.description).toBe('Second');
+    });
+
+    test('stale report updates return current_data instead of failing', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const reportId = uniqueRecordUuid();
+        const studyUid = uniqueStudyUid();
+        const addedAt = Date.now() - 5000;
+
+        const insertChange = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'reports',
+            key: reportId,
+            operation: 'insert',
+            base_sync_version: 0,
+            data: {
+                study_uid: studyUid,
+                name: 'Initial report name',
+                type: 'pdf',
+                size: 100,
+                content_hash: 'hash-initial',
+                added_at: addedAt,
+                updated_at: addedAt,
+            },
+        };
+        const inserted = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
+        const insertedVersion = inserted.accepted[0].sync_version;
+
+        const updateTime = Date.now();
+        const currentUpdate = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'reports',
+            key: reportId,
+            operation: 'update',
+            base_sync_version: insertedVersion,
+            data: {
+                name: 'Current report name',
+                size: 200,
+                content_hash: 'hash-current',
+                updated_at: updateTime,
+            },
+        };
+        const updated = await syncAndExpectOk(request, BASE_URL, access_token, device_id, inserted.delta_cursor, [
+            currentUpdate,
+        ]);
+        const currentVersion = updated.accepted[0].sync_version;
+
+        const staleUpdate = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'reports',
+            key: reportId,
+            operation: 'update',
+            base_sync_version: insertedVersion,
+            data: {
+                name: 'Stale report name',
+                size: 300,
+                content_hash: 'hash-stale',
+                updated_at: updateTime + 1000,
+            },
+        };
+        const staleResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, updated.delta_cursor, [
+            staleUpdate,
+        ]);
+
+        expect(staleResult.rejected).toHaveLength(1);
+        expect(staleResult.accepted).toEqual([]);
+        expect(staleResult.rejected[0]).toMatchObject({
+            operation_uuid: staleUpdate.operation_uuid,
+            key: reportId,
+            reason: 'stale',
+            current_sync_version: currentVersion,
+        });
+        expect(staleResult.rejected[0].current_data).toMatchObject({
+            study_uid: studyUid,
+            name: 'Current report name',
+            type: 'pdf',
+            size: 200,
+            content_hash: 'hash-current',
+            added_at: addedAt,
+        });
     });
 
     test('unknown operation does not advance sync_version for the next valid write', async ({ request }) => {
@@ -540,6 +767,31 @@ test.describe('Sync Cursor Management', () => {
         const body = await response.json();
         expect(body.error).toBe('cursor_expired');
         expect(body.hint).toBe('full_resync');
+    });
+
+    test('cursor token from one user is rejected for another user', async ({ request }) => {
+        const userA = await setupSyncUser(request);
+        const userB = await setupSyncUser(request);
+
+        const aSync = await syncAndExpectOk(request, BASE_URL, userA.access_token, userA.device_id, null, [
+            commentInsertChange({ text: 'User A private change' }),
+        ]);
+
+        const response = await syncRequest(
+            request,
+            BASE_URL,
+            userB.access_token,
+            userB.device_id,
+            aSync.delta_cursor,
+            [],
+        );
+        expect(response.status()).toBe(410);
+
+        const body = await response.json();
+        expect(body).toEqual({
+            error: 'cursor_expired',
+            hint: 'full_resync',
+        });
     });
 
     test('null cursor returns full enumeration', async ({ request }) => {

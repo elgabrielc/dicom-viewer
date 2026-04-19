@@ -41,6 +41,24 @@ test.describe('Test Suite 28: POST /api/notes/<study_uid>/comments - Add Comment
         expect(body.seriesUid).toBeNull();
     });
 
+    test('rejects duplicate client-supplied record_uuid values', async ({ request }) => {
+        const studyUid = uniqueStudyUid();
+        const recordUuid = `11111111-2222-4333-8444-${Date.now().toString().padStart(12, '0')}`;
+
+        const first = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+            data: { text: 'first comment', record_uuid: recordUuid },
+        });
+        expect(first.status()).toBe(200);
+
+        const second = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {
+            data: { text: 'duplicate comment', record_uuid: recordUuid },
+        });
+        expect(second.status()).toBe(409);
+
+        const body = await second.json();
+        expect(body.error).toContain('exists');
+    });
+
     test('returns 400 when comment text is missing', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         const response = await request.post(`${BASE_URL}/api/notes/${studyUid}/comments`, {

@@ -151,7 +151,20 @@
             } else if (saved.id !== undefined && saved.id !== null) {
                 comment.id = saved.id;
             }
+            if (saved.time) {
+                comment.time = saved.time;
+            }
             updateCommentListUI(studyUid, seriesUid);
+            return;
+        }
+
+        const idx = comments.indexOf(comment);
+        if (idx !== -1) {
+            comments.splice(idx, 1);
+        }
+        updateCommentListUI(studyUid, seriesUid);
+        if (notesApi.isEnabled()) {
+            alert('Failed to save comment. Please try again.');
         }
     }
 
@@ -163,11 +176,16 @@
 
         const idx = findCommentIndex(comments, commentId);
         if (idx === -1) return;
+        if (!String(commentId).startsWith('local-')) {
+            const deleted = await notesApi.deleteComment(studyUid, commentId);
+            if (!deleted) {
+                alert('Failed to delete comment. Please try again.');
+                return;
+            }
+        }
+
         comments.splice(idx, 1);
         updateCommentListUI(studyUid, seriesUid);
-        if (!String(commentId).startsWith('local-')) {
-            await notesApi.deleteComment(studyUid, commentId);
-        }
     }
 
     async function editComment(studyUid, seriesUid, commentId) {
@@ -182,14 +200,24 @@
         const newText = prompt('Edit comment:', comments[idx].text);
         const trimmedText = newText?.trim();
         if (trimmedText) {
+            const previous = {
+                text: comments[idx].text,
+                time: comments[idx].time,
+            };
             comments[idx].text = trimmedText;
             comments[idx].time = Date.now();
             updateCommentListUI(studyUid, seriesUid);
             if (!String(commentId).startsWith('local-')) {
-                await notesApi.updateComment(studyUid, commentId, {
+                const saved = await notesApi.updateComment(studyUid, commentId, {
                     text: comments[idx].text,
                     time: comments[idx].time,
                 });
+                if (!saved) {
+                    comments[idx].text = previous.text;
+                    comments[idx].time = previous.time;
+                    updateCommentListUI(studyUid, seriesUid);
+                    alert('Failed to update comment. Please try again.');
+                }
             }
         }
     }

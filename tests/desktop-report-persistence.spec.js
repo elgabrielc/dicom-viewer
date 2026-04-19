@@ -149,6 +149,60 @@ async function installMockTauri(page, options = {}) {
 }
 
 test.describe('Desktop report persistence', () => {
+    test('desktop comment writes use canonical UUID ids for update and delete', async ({ page }) => {
+        const studyUid = '1.2.840.desktop.comment-uuid.study';
+        const seriesUid = '1.2.840.desktop.comment-uuid.series';
+
+        await installMockTauri(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(
+            async ({ studyUid, seriesUid }) => {
+                await window.NotesAPI.initializeDesktopStorage();
+
+                const saved = await window.NotesAPI.addComment(studyUid, {
+                    text: 'Desktop UUID comment',
+                    time: 123,
+                    seriesUid,
+                });
+                const updated = await window.NotesAPI.updateComment(studyUid, saved.record_uuid, {
+                    text: 'Desktop UUID comment edited',
+                    time: 456,
+                });
+                const sqlStoreBeforeDelete = JSON.parse(
+                    localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}',
+                );
+                const deleted = await window.NotesAPI.deleteComment(studyUid, saved.record_uuid);
+                const notes = await window.NotesAPI.loadNotes([studyUid]);
+                const sqlStoreAfterDelete = JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}');
+
+                return {
+                    saved,
+                    updated,
+                    sqlStoreBeforeDelete,
+                    deleted,
+                    notes,
+                    sqlStoreAfterDelete,
+                };
+            },
+            { studyUid, seriesUid },
+        );
+
+        expect(result.saved.record_uuid).toBeTruthy();
+        expect(result.saved.id).toBe(result.saved.record_uuid);
+        expect(result.updated.record_uuid).toBe(result.saved.record_uuid);
+        expect(result.sqlStoreBeforeDelete.comments[0].record_uuid).toBe(result.saved.record_uuid);
+        expect(result.deleted).toBe(true);
+        expect(result.notes.studies).not.toHaveProperty(studyUid);
+        expect(result.sqlStoreAfterDelete.comments).toHaveLength(1);
+        expect(result.sqlStoreAfterDelete.comments[0]).toMatchObject({
+            record_uuid: result.saved.record_uuid,
+        });
+        expect(typeof result.sqlStoreAfterDelete.comments[0].deleted_at).toBe('number');
+        expect(result.sqlStoreAfterDelete.comments[0].deleted_at).toBeGreaterThan(0);
+    });
+
     test('desktop NotesAPI.migrate imports legacy notes into sqlite without falling back', async ({ page }) => {
         const studyUid = '1.2.840.desktop.manual-migrate.study';
         const seriesUid = '1.2.840.desktop.manual-migrate.series';

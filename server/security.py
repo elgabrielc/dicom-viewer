@@ -21,6 +21,15 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 # Routes that carry PHI and require session-token authentication.
 # /api/test-data/* is intentionally excluded (anonymized sample data).
 _PHI_ROUTE_PREFIXES = ('/api/notes', '/api/library/', '/api/maintenance')
+_TEST_MODE_DISABLED_ERROR = 'Test mode is only available when FLASK_ENV=test'
+
+
+def _is_test_environment():
+    return os.environ.get('FLASK_ENV') == 'test'
+
+
+def _is_test_mode_requested():
+    return request.args.get('test') is not None or request.headers.get('X-Test-Mode') == '1'
 
 
 def _is_test_mode_request():
@@ -31,11 +40,15 @@ def _is_test_mode_request():
     on the page load signals test mode. For direct API requests (Playwright's
     request fixture), we check for the X-Test-Mode header instead.
     """
-    if os.environ.get('FLASK_ENV') != 'test':
+    if not _is_test_environment():
         return False
-    if request.args.get('test') is not None:
-        return True
-    return request.headers.get('X-Test-Mode') == '1'
+    return _is_test_mode_requested()
+
+
+def _test_mode_misconfigured_response():
+    if _is_test_environment() or not _is_test_mode_requested():
+        return None
+    return jsonify({'error': _TEST_MODE_DISABLED_ERROR}), 403
 
 
 def csrf_origin_check():
@@ -52,6 +65,10 @@ def csrf_origin_check():
     which use bare API calls without browser context.
     """
     if request.method in ('POST', 'PUT', 'DELETE'):
+        misconfigured = _test_mode_misconfigured_response()
+        if misconfigured is not None:
+            return misconfigured
+
         origin = request.headers.get('Origin')
         if not origin:
             # Fall back to Referer if Origin is absent (some browsers strip it)
@@ -90,6 +107,10 @@ def session_token_check():
     needs_token = any(path.startswith(prefix) for prefix in _PHI_ROUTE_PREFIXES)
     if not needs_token:
         return
+
+    misconfigured = _test_mode_misconfigured_response()
+    if misconfigured is not None:
+        return misconfigured
 
     # Bypass for test mode (Playwright)
     if _is_test_mode_request():
