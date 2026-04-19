@@ -69,6 +69,10 @@ const NotesAPI = (() => {
         return Number.isFinite(value) ? value : 0;
     }
 
+    function buildSeriesSyncKey(studyUid, seriesUid) {
+        return JSON.stringify([String(studyUid || ''), String(seriesUid || '')]);
+    }
+
     function findCommentRecord(studyUid, commentId) {
         const studyEntry = getStudyState(studyUid);
         if (!studyEntry) return null;
@@ -151,11 +155,18 @@ const NotesAPI = (() => {
 
     async function saveSeriesDescription(studyUid, seriesUid, description) {
         if (!isEnabled()) return null;
-        return await withFallback(
+        const studyEntry = getStudyState(studyUid);
+        const seriesEntry = studyEntry?.series?.[seriesUid] || null;
+        const baseSyncVersion = getBaseSyncVersion(seriesEntry);
+        const result = await withFallback(
             () => ServerBackend.saveSeriesDescription(studyUid, seriesUid, description),
             () => LocalBackend.saveSeriesDescription(studyUid, seriesUid, description),
             () => DesktopBackend.saveSeriesDescription(studyUid, seriesUid, description),
         );
+        if (result) {
+            enqueueSyncChange('series_notes', buildSeriesSyncKey(studyUid, seriesUid), 'update', baseSyncVersion);
+        }
+        return result;
     }
 
     async function addComment(studyUid, payload) {

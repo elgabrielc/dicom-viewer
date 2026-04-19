@@ -1023,20 +1023,22 @@ const _NotesDesktop = (() => {
             if (!studyUid || commentId === undefined || commentId === null) return false;
             await initializeDesktopPersistence();
             const db = await getDesktopDb();
-            let result = await db.execute('DELETE FROM comments WHERE record_uuid = ? AND study_uid = ?', [
-                String(commentId),
-                studyUid,
-            ]);
+            const deletedAt = Date.now();
+            const commentKey = String(commentId);
+            let result = await db.execute(
+                'UPDATE comments SET deleted_at = ?, updated_at = ? WHERE record_uuid = ? AND study_uid = ?',
+                [deletedAt, deletedAt, commentKey, studyUid],
+            );
             if (!result?.rowsAffected) {
                 const legacyId = parseInteger(commentId, null);
                 if (legacyId !== null) {
-                    result = await db.execute('DELETE FROM comments WHERE id = ? AND study_uid = ?', [
-                        legacyId,
-                        studyUid,
-                    ]);
+                    result = await db.execute(
+                        'UPDATE comments SET deleted_at = ?, updated_at = ?, record_uuid = COALESCE(record_uuid, ?) WHERE id = ? AND study_uid = ?',
+                        [deletedAt, deletedAt, commentKey, legacyId, studyUid],
+                    );
                 }
             }
-            return true;
+            return !!result?.rowsAffected;
         },
 
         async uploadReport(studyUid, file, report = {}) {

@@ -607,6 +607,7 @@ test.describe('Outbox Collapsing Edge Cases', () => {
 
         const calls = await page.evaluate(async () => {
             const studyUid = 'cloud-dispatcher-study';
+            const seriesUid = 'cloud-dispatcher-series';
             const commentId = 'dispatcher-comment-1';
             const enqueueCalls = [];
 
@@ -638,7 +639,13 @@ test.describe('Outbox Collapsing Edge Cases', () => {
                                     sync_version: 4,
                                 },
                             ],
-                            series: {},
+                            series: {
+                                [seriesUid]: {
+                                    description: 'Series before',
+                                    sync_version: 5,
+                                    comments: [],
+                                },
+                            },
                         },
                     },
                 },
@@ -659,6 +666,11 @@ test.describe('Outbox Collapsing Edge Cases', () => {
                 studyUid,
                 description: 'After',
             });
+            window._NotesServer.ServerBackend.saveSeriesDescription = async () => ({
+                studyUid,
+                seriesUid,
+                description: 'Series after',
+            });
             window._NotesServer.ServerBackend.updateComment = async () => ({
                 record_uuid: commentId,
                 text: 'Edited comment',
@@ -666,6 +678,7 @@ test.describe('Outbox Collapsing Edge Cases', () => {
             window._NotesServer.ServerBackend.deleteReport = async () => true;
 
             await window.NotesAPI.saveStudyDescription(studyUid, 'After');
+            await window.NotesAPI.saveSeriesDescription(studyUid, seriesUid, 'Series after');
             await window.NotesAPI.updateComment(studyUid, commentId, { text: 'Edited comment' });
             await window.NotesAPI.deleteReport(studyUid, 'dispatcher-report-1');
 
@@ -679,6 +692,12 @@ test.describe('Outbox Collapsing Edge Cases', () => {
                     recordKey: 'cloud-dispatcher-study',
                     operation: 'update',
                     baseSyncVersion: 2,
+                }),
+                expect.objectContaining({
+                    tableName: 'series_notes',
+                    recordKey: JSON.stringify(['cloud-dispatcher-study', 'cloud-dispatcher-series']),
+                    operation: 'update',
+                    baseSyncVersion: 5,
                 }),
                 expect.objectContaining({
                     tableName: 'comments',

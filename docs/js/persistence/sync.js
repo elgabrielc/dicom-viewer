@@ -526,6 +526,32 @@ const _SyncOutbox = (() => {
         return stores;
     }
 
+    function parseSeriesRecordKey(recordKey) {
+        try {
+            const [studyUid, seriesUid] = JSON.parse(String(recordKey || ''));
+            if (!studyUid || !seriesUid) return null;
+            return {
+                studyUid: String(studyUid),
+                seriesUid: String(seriesUid),
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    function findSeriesEntry(store, recordKey) {
+        const parsed = parseSeriesRecordKey(recordKey);
+        if (!parsed) return null;
+        const studyEntry = store?.studies?.[parsed.studyUid];
+        const seriesEntry = studyEntry?.series?.[parsed.seriesUid];
+        if (!seriesEntry) return null;
+        return {
+            studyUid: parsed.studyUid,
+            seriesUid: parsed.seriesUid,
+            seriesEntry,
+        };
+    }
+
     function findReportInStore(store, recordKey) {
         const normalizedKey = String(recordKey || '').trim();
         if (!normalizedKey) return null;
@@ -550,6 +576,18 @@ const _SyncOutbox = (() => {
                     return { description: studyEntry.description || '' };
                 }
                 continue;
+            }
+
+            if (tableName === 'series_notes') {
+                const match = findSeriesEntry(store, recordKey);
+                if (!match) continue;
+                return {
+                    study_uid: match.studyUid,
+                    series_uid: match.seriesUid,
+                    description: match.seriesEntry.description || '',
+                    updated_at: match.seriesEntry.updated_at || 0,
+                    deleted_at: match.seriesEntry.deletedAt || match.seriesEntry.deleted_at || null,
+                };
             }
 
             if (tableName === 'comments') {
@@ -604,6 +642,25 @@ const _SyncOutbox = (() => {
                 recordKey,
             ]);
             return rows[0] ? { description: rows[0].description || '' } : null;
+        }
+
+        if (tableName === 'series_notes') {
+            const parsed = parseSeriesRecordKey(recordKey);
+            if (!parsed) return null;
+            const rows = await db.select(
+                `SELECT study_uid, series_uid, description, updated_at, deleted_at
+                 FROM series_notes
+                 WHERE study_uid = ? AND series_uid = ? LIMIT 1`,
+                [parsed.studyUid, parsed.seriesUid],
+            );
+            if (!rows[0]) return null;
+            return {
+                study_uid: rows[0].study_uid,
+                series_uid: rows[0].series_uid,
+                description: rows[0].description || '',
+                updated_at: rows[0].updated_at || 0,
+                deleted_at: rows[0].deleted_at || null,
+            };
         }
 
         if (tableName === 'comments') {

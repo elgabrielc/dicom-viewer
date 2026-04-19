@@ -182,6 +182,7 @@
                         series_uid: seriesUid,
                         description,
                         updated_at: updatedAt,
+                        deleted_at: null,
                     });
                     persistState(db, state);
                     return { rowsAffected: 1, lastInsertId: null };
@@ -237,10 +238,42 @@
                 }
 
                 if (normalized.startsWith('update comments set')) {
+                    let existing;
+                    if (normalized.includes('set deleted_at = ?, updated_at = ?')) {
+                        let deletedAt;
+                        let updatedAt;
+
+                        if (normalized.includes('where record_uuid = ? and study_uid = ?')) {
+                            const recordUuid = values[2];
+                            const studyUid = values[3];
+                            [deletedAt, updatedAt] = values;
+                            existing = state.comments.find(
+                                (row) => row.record_uuid === recordUuid && row.study_uid === studyUid,
+                            );
+                        } else {
+                            const legacyId = values[3];
+                            const studyUid = values[4];
+                            const recordUuid = values[2];
+                            [deletedAt, updatedAt] = values;
+                            existing = state.comments.find(
+                                (row) => row.id === Number(legacyId) && row.study_uid === studyUid,
+                            );
+                            if (existing && !existing.record_uuid) {
+                                existing.record_uuid = recordUuid;
+                            }
+                        }
+                        if (!existing) {
+                            return { rowsAffected: 0, lastInsertId: null };
+                        }
+                        existing.deleted_at = deletedAt;
+                        existing.updated_at = updatedAt;
+                        persistState(db, state);
+                        return { rowsAffected: 1, lastInsertId: null };
+                    }
+
                     let text;
                     let time;
                     let updatedAt;
-                    let existing;
 
                     if (normalized.includes('where record_uuid = ? and study_uid = ?')) {
                         const recordUuid = values[3];
@@ -593,6 +626,28 @@
                             series_uid: row.series_uid,
                             description: row.description,
                         }));
+                }
+
+                if (
+                    normalized.startsWith(
+                        'select study_uid, series_uid, description, updated_at, deleted_at from series_notes where study_uid = ? and series_uid = ? limit 1',
+                    )
+                ) {
+                    const [studyUid, seriesUid] = values;
+                    const row = state.series_notes.find(
+                        (entry) => entry.study_uid === studyUid && entry.series_uid === seriesUid,
+                    );
+                    return row
+                        ? [
+                              {
+                                  study_uid: row.study_uid,
+                                  series_uid: row.series_uid,
+                                  description: row.description,
+                                  updated_at: row.updated_at,
+                                  deleted_at: row.deleted_at || null,
+                              },
+                          ]
+                        : [];
                 }
 
                 if (

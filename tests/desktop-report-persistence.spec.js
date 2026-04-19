@@ -195,7 +195,12 @@ test.describe('Desktop report persistence', () => {
         expect(result.sqlStoreBeforeDelete.comments[0].record_uuid).toBe(result.saved.record_uuid);
         expect(result.deleted).toBe(true);
         expect(result.notes.studies).not.toHaveProperty(studyUid);
-        expect(result.sqlStoreAfterDelete.comments).toEqual([]);
+        expect(result.sqlStoreAfterDelete.comments).toHaveLength(1);
+        expect(result.sqlStoreAfterDelete.comments[0]).toMatchObject({
+            record_uuid: result.saved.record_uuid,
+        });
+        expect(typeof result.sqlStoreAfterDelete.comments[0].deleted_at).toBe('number');
+        expect(result.sqlStoreAfterDelete.comments[0].deleted_at).toBeGreaterThan(0);
     });
 
     test('desktop NotesAPI.migrate imports legacy notes into sqlite without falling back', async ({ page }) => {

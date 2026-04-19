@@ -248,6 +248,31 @@ def init_db():
 
         db.execute(
             """
+            CREATE TABLE IF NOT EXISTS cloud_series_notes (
+                user_id INTEGER NOT NULL,
+                record_key TEXT NOT NULL,
+                study_uid TEXT NOT NULL,
+                series_uid TEXT NOT NULL,
+                description TEXT,
+                updated_at INTEGER,
+                deleted_at INTEGER,
+                device_id TEXT,
+                sync_version INTEGER NOT NULL DEFAULT 0,
+                last_operation TEXT NOT NULL DEFAULT 'update',
+                PRIMARY KEY (user_id, record_key),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_cloud_series_notes_study_uid
+            ON cloud_series_notes(user_id, study_uid, series_uid)
+            """
+        )
+
+        db.execute(
+            """
             CREATE TABLE IF NOT EXISTS cloud_comments (
                 user_id INTEGER NOT NULL,
                 record_uuid TEXT NOT NULL,

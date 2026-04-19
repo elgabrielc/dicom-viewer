@@ -193,6 +193,51 @@ test.describe('Sync Push - Accepted Changes', () => {
         expect(updateResult.accepted[0].sync_version).toBeGreaterThan(insertedVersion);
     });
 
+    test('update a series note, verify it appears in remote_changes', async ({ request }) => {
+        const { access_token, device_id: deviceA } = await setupSyncUser(request);
+        const { device_id: deviceB } = await registerDevice(request, BASE_URL, access_token);
+        const studyUid = uniqueStudyUid();
+        const seriesUid = `test-sync-series-${Date.now()}`;
+        const seriesKey = JSON.stringify([studyUid, seriesUid]);
+
+        const initialSync = await syncAndExpectOk(request, BASE_URL, access_token, deviceB, null, []);
+
+        const change = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'series_notes',
+            key: seriesKey,
+            operation: 'update',
+            base_sync_version: 0,
+            data: {
+                study_uid: studyUid,
+                series_uid: seriesUid,
+                description: 'Series sync description',
+                updated_at: Date.now(),
+            },
+        };
+        const pushResult = await syncAndExpectOk(request, BASE_URL, access_token, deviceA, null, [change]);
+
+        expect(pushResult.accepted).toHaveLength(1);
+        expect(pushResult.accepted[0].operation_uuid).toBe(change.operation_uuid);
+
+        const pullResult = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            access_token,
+            deviceB,
+            initialSync.delta_cursor,
+            [],
+        );
+        const found = pullResult.remote_changes.find((rc) => rc.key === seriesKey && rc.table === 'series_notes');
+        expect(found).toBeDefined();
+        expect(found.operation).toBe('update');
+        expect(found.data).toMatchObject({
+            study_uid: studyUid,
+            series_uid: seriesUid,
+            description: 'Series sync description',
+        });
+    });
+
     test('delete (tombstone) a report, verify accepted', async ({ request }) => {
         const { access_token, device_id } = await setupSyncUser(request);
         const reportId = uniqueRecordUuid();
@@ -276,6 +321,59 @@ test.describe('Sync Push - Accepted Changes', () => {
 
         const tombstone = pullResult.remote_changes.find(
             (change) => change.table === 'study_notes' && change.key === studyUid,
+        );
+        expect(tombstone).toBeDefined();
+        expect(tombstone.operation).toBe('delete');
+        expect(typeof tombstone.data.deleted_at).toBe('number');
+        expect(tombstone.data.deleted_at).not.toBeNull();
+    });
+
+    test('delete of a never-inserted comment still creates a tombstone', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const commentKey = uniqueRecordUuid();
+
+        const deleteChange = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'comments',
+            key: commentKey,
+            operation: 'delete',
+            base_sync_version: 0,
+            data: {},
+        };
+        const deleteResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [deleteChange]);
+
+        expect(deleteResult.accepted).toHaveLength(1);
+        expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
+
+        const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
+        const pullResult = await syncAndExpectOk(request, BASE_URL, access_token, device2, null, []);
+
+        const tombstone = pullResult.remote_changes.find(
+            (change) => change.table === 'comments' && change.key === commentKey,
+        );
+        expect(tombstone).toBeDefined();
+        expect(tombstone.operation).toBe('delete');
+        expect(typeof tombstone.data.deleted_at).toBe('number');
+        expect(tombstone.data.deleted_at).not.toBeNull();
+    });
+
+    test('delete of a never-inserted report still creates a tombstone', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const reportId = uniqueRecordUuid();
+
+        const deleteChange = reportDeleteChange(reportId, {
+            baseSyncVersion: 0,
+        });
+        const deleteResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [deleteChange]);
+
+        expect(deleteResult.accepted).toHaveLength(1);
+        expect(deleteResult.accepted[0].operation_uuid).toBe(deleteChange.operation_uuid);
+
+        const { device_id: device2 } = await registerDevice(request, BASE_URL, access_token);
+        const pullResult = await syncAndExpectOk(request, BASE_URL, access_token, device2, null, []);
+
+        const tombstone = pullResult.remote_changes.find(
+            (change) => change.table === 'reports' && change.key === reportId,
         );
         expect(tombstone).toBeDefined();
         expect(tombstone.operation).toBe('delete');
