@@ -233,6 +233,42 @@ test.describe('E2E Authentication Flow', () => {
         expect(syncResult).toHaveProperty('delta_cursor');
     });
 
+    test('refresh endpoint rejects access tokens', async ({ request }) => {
+        const { email, password } = await createTestUser(request);
+        const loginResult = await loginUser(request, BASE_URL, email, password);
+
+        const refreshResponse = await request.post(`${BASE_URL}/api/auth/refresh`, {
+            data: { refresh_token: loginResult.access_token },
+        });
+        expect(refreshResponse.status()).toBe(401);
+
+        const body = await refreshResponse.json();
+        expect(body).toEqual({ error: 'Invalid refresh token' });
+    });
+
+    test('device list shows only the authenticated user devices', async ({ request }) => {
+        const userA = await setupDevice(request);
+        const userADevice2 = await setupSecondDevice(request, userA.email, userA.password);
+        const userB = await setupDevice(request);
+
+        const listAResponse = await request.get(`${BASE_URL}/api/auth/devices`, {
+            headers: { Authorization: `Bearer ${userA.access_token}` },
+        });
+        expect(listAResponse.status()).toBe(200);
+        const listABody = await listAResponse.json();
+        const userADeviceIds = listABody.devices.map((device) => device.id).sort();
+
+        expect(userADeviceIds).toEqual([userA.device_id, userADevice2.device_id].sort());
+        expect(userADeviceIds).not.toContain(userB.device_id);
+
+        const listBResponse = await request.get(`${BASE_URL}/api/auth/devices`, {
+            headers: { Authorization: `Bearer ${userB.access_token}` },
+        });
+        expect(listBResponse.status()).toBe(200);
+        const listBBody = await listBResponse.json();
+        expect(listBBody.devices.map((device) => device.id)).toEqual([userB.device_id]);
+    });
+
     test('invalid credentials return 401', async ({ request }) => {
         const { email } = await createTestUser(request);
 

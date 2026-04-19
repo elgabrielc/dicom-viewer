@@ -477,6 +477,85 @@ test.describe('Sync Push - Rejected Changes (Stale base_sync_version)', () => {
         expect(rej.current_data.description).toBe('Second');
     });
 
+    test('stale report updates return current_data instead of failing', async ({ request }) => {
+        const { access_token, device_id } = await setupSyncUser(request);
+        const reportId = uniqueRecordUuid();
+        const studyUid = uniqueStudyUid();
+        const addedAt = Date.now() - 5000;
+
+        const insertChange = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'reports',
+            key: reportId,
+            operation: 'insert',
+            base_sync_version: 0,
+            data: {
+                study_uid: studyUid,
+                name: 'Initial report name',
+                type: 'pdf',
+                size: 100,
+                content_hash: 'hash-initial',
+                added_at: addedAt,
+                updated_at: addedAt,
+            },
+        };
+        const inserted = await syncAndExpectOk(request, BASE_URL, access_token, device_id, null, [insertChange]);
+        const insertedVersion = inserted.accepted[0].sync_version;
+
+        const updateTime = Date.now();
+        const currentUpdate = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'reports',
+            key: reportId,
+            operation: 'update',
+            base_sync_version: insertedVersion,
+            data: {
+                name: 'Current report name',
+                size: 200,
+                content_hash: 'hash-current',
+                updated_at: updateTime,
+            },
+        };
+        const updated = await syncAndExpectOk(request, BASE_URL, access_token, device_id, inserted.delta_cursor, [
+            currentUpdate,
+        ]);
+        const currentVersion = updated.accepted[0].sync_version;
+
+        const staleUpdate = {
+            operation_uuid: uniqueOperationUuid(),
+            table: 'reports',
+            key: reportId,
+            operation: 'update',
+            base_sync_version: insertedVersion,
+            data: {
+                name: 'Stale report name',
+                size: 300,
+                content_hash: 'hash-stale',
+                updated_at: updateTime + 1000,
+            },
+        };
+        const staleResult = await syncAndExpectOk(request, BASE_URL, access_token, device_id, updated.delta_cursor, [
+            staleUpdate,
+        ]);
+
+        expect(staleResult.rejected).toHaveLength(1);
+        expect(staleResult.accepted).toEqual([]);
+        expect(staleResult.rejected[0]).toMatchObject({
+            operation_uuid: staleUpdate.operation_uuid,
+            key: reportId,
+            reason: 'stale',
+            current_sync_version: currentVersion,
+        });
+        expect(staleResult.rejected[0].current_data).toMatchObject({
+            study_uid: studyUid,
+            name: 'Current report name',
+            type: 'pdf',
+            size: 200,
+            content_hash: 'hash-current',
+            added_at: addedAt,
+        });
+    });
+
     test('unknown operation does not advance sync_version for the next valid write', async ({ request }) => {
         const { access_token, device_id } = await setupSyncUser(request);
         const studyUid = uniqueStudyUid();
@@ -688,6 +767,36 @@ test.describe('Sync Cursor Management', () => {
         const body = await response.json();
         expect(body.error).toBe('cursor_expired');
         expect(body.hint).toBe('full_resync');
+    });
+
+    test('cursor token from one user is rejected for another user', async ({ request }) => {
+        const userA = await setupSyncUser(request);
+        const userB = await setupSyncUser(request);
+
+        const aSync = await syncAndExpectOk(
+            request,
+            BASE_URL,
+            userA.access_token,
+            userA.device_id,
+            null,
+            [commentInsertChange({ text: 'User A private change' })],
+        );
+
+        const response = await syncRequest(
+            request,
+            BASE_URL,
+            userB.access_token,
+            userB.device_id,
+            aSync.delta_cursor,
+            [],
+        );
+        expect(response.status()).toBe(410);
+
+        const body = await response.json();
+        expect(body).toEqual({
+            error: 'cursor_expired',
+            hint: 'full_resync',
+        });
     });
 
     test('null cursor returns full enumeration', async ({ request }) => {
