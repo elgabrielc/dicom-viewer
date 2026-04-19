@@ -1,9 +1,12 @@
 export const DASHBOARD_PATH = '/';
+export const CONFIG_PATH = '/api/config';
 export const SESSION_PATH = '/api/session';
 export const SUMMARY_PATH = '/api/summary';
 export const SUBSCRIBERS_PATH = '/api/subscribers';
 
 const DASHBOARD_SESSION_COOKIE = 'myradone_dashboard_token';
+const DASHBOARD_MISCONFIG_ERROR = 'Dashboard misconfigured';
+const DASHBOARD_TOKEN_MIN_LENGTH = 32;
 const VALID_STATUSES = new Set(['active', 'unsubscribed']);
 const VALID_SOURCES = new Set(['landing', 'demo', 'app']);
 const VALID_ORDERS = new Set(['asc', 'desc']);
@@ -22,6 +25,10 @@ const textEncoder = new TextEncoder();
 const signingKeyCache = new Map();
 const inlineScriptCspCache = new Map();
 const JSON_RESPONSE_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
+const STATIC_HTML_CSP =
+    "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; img-src 'self' data:; object-src 'none'; style-src 'unsafe-inline'";
+// Cloudflare Workers isolates reset this naturally on cold start.
+let misconfigWarningLogged = false;
 const LOGIN_PAGE_SCRIPT = `(function () {
   const form = document.getElementById('loginForm');
   const tokenInput = document.getElementById('tokenInput');
@@ -52,6 +59,13 @@ const LOGIN_PAGE_SCRIPT = `(function () {
 
       if (response.status === 429) {
         throw new Error('Too many requests. Please try again shortly.');
+      }
+
+      if (response.status === 503) {
+        const body = await response.json().catch(function () {
+          return {};
+        });
+        throw new Error(body.reason ? 'Server misconfigured: ' + body.reason : 'Server misconfigured.');
       }
 
       if (!response.ok) {
@@ -156,6 +170,11 @@ function getBearerToken(request) {
 
 function bytesToHex(bytes) {
     return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function tokenFingerprint(token) {
+    const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(token));
+    return bytesToHex(new Uint8Array(digest)).slice(0, 12);
 }
 
 function bytesToBase64(bytes) {
@@ -295,24 +314,46 @@ function buildClearSessionCookie(request) {
     return `${DASHBOARD_SESSION_COOKIE}=; ${attributes.join('; ')}`;
 }
 
-export async function authenticate(request, env) {
-    const bearerToken = getBearerToken(request);
-    const cookieToken = getCookieToken(request);
-    const expectedToken = typeof env.DASHBOARD_TOKEN === 'string' ? env.DASHBOARD_TOKEN.trim() : '';
-
-    if (!expectedToken) {
-        return false;
+export function validateConfig(env) {
+    const rawToken = env?.DASHBOARD_TOKEN;
+    if (typeof rawToken !== 'string') {
+        return { ok: false, reason: 'DASHBOARD_TOKEN is unset' };
     }
 
+    const token = rawToken.trim();
+    if (!token) {
+        return { ok: false, reason: 'DASHBOARD_TOKEN is empty' };
+    }
+
+    if (token.length < DASHBOARD_TOKEN_MIN_LENGTH) {
+        return { ok: false, reason: `DASHBOARD_TOKEN is too short (length < ${DASHBOARD_TOKEN_MIN_LENGTH})` };
+    }
+
+    return { ok: true, token };
+}
+
+async function authenticateToken(request, token) {
+    const bearerToken = getBearerToken(request);
+    const cookieToken = getCookieToken(request);
+
     if (bearerToken) {
-        return timingSafeEqual(bearerToken, expectedToken);
+        return timingSafeEqual(bearerToken, token);
     }
 
     if (!cookieToken) {
         return false;
     }
 
-    return verifySignedSessionValue(cookieToken, expectedToken);
+    return verifySignedSessionValue(cookieToken, token);
+}
+
+export async function authenticate(request, env) {
+    const config = validateConfig(env);
+    if (!config.ok) {
+        return false;
+    }
+
+    return authenticateToken(request, config.token);
 }
 
 async function isRateLimited(request, env) {
@@ -328,16 +369,8 @@ async function isRateLimited(request, env) {
     return !success;
 }
 
-function createLoginHtml(errorMessage = '') {
-    const safeError = escapeHtml(errorMessage);
-
-    return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>myRadOne Subscriber Dashboard Login</title>
-  <style>
+function createAuthPageStyles() {
+    return `<style>
     :root {
       --bg: #fff8f3;
       --text: #3d3a36;
@@ -428,7 +461,33 @@ function createLoginHtml(errorMessage = '') {
       font-size: 0.92rem;
       font-weight: 600;
     }
-  </style>
+    .notice {
+      margin-top: 24px;
+      padding: 16px 18px;
+      border: 1px solid rgba(182, 69, 25, 0.2);
+      border-radius: 14px;
+      background: rgba(182, 69, 25, 0.06);
+    }
+    .notice p {
+      margin: 0;
+      color: #7a3a20;
+    }
+    .notice p + p {
+      margin-top: 12px;
+    }
+  </style>`;
+}
+
+function createLoginHtml(errorMessage = '') {
+    const safeError = escapeHtml(errorMessage);
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>myRadOne Subscriber Dashboard Login</title>
+  ${createAuthPageStyles()}
 </head>
 <body>
   <main class="card">
@@ -445,6 +504,31 @@ function createLoginHtml(errorMessage = '') {
     <div id="errorMessage" class="error" role="alert">${safeError}</div>
   </main>
   <script>${LOGIN_PAGE_SCRIPT}</script>
+</body>
+</html>`;
+}
+
+function createMisconfigHtml(reason) {
+    const safeReason = escapeHtml(reason);
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>myRadOne Subscriber Dashboard Misconfigured</title>
+  ${createAuthPageStyles()}
+</head>
+<body>
+  <main class="card">
+    <p class="eyebrow">Configuration Error</p>
+    <h1>Dashboard unavailable</h1>
+    <p>The dashboard worker is misconfigured and cannot authenticate requests.</p>
+    <div class="notice" role="alert">
+      <p>${safeReason}</p>
+      <p>Use <code>${CONFIG_PATH}</code> to verify the deployed token configuration after updating the secret.</p>
+    </div>
+  </main>
 </body>
 </html>`;
 }
@@ -672,9 +756,14 @@ export async function handleSubscribers(request, env) {
 
 export async function handleDashboard(request, env, dashboardHtml) {
     requireGet(request);
-    const loginHtml = createLoginHtml();
+    const config = validateConfig(env);
+    if (!config.ok) {
+        logMisconfigOnce(config.reason);
+        return misconfigHtmlResponse(request, config.reason);
+    }
 
-    if (!(await authenticate(request, env))) {
+    if (!(await authenticateToken(request, config.token))) {
+        const loginHtml = createLoginHtml();
         return htmlResponse(
             loginHtml,
             200,
@@ -697,7 +786,13 @@ export async function handleSession(request, env) {
         methodNotAllowed();
     }
 
-    if (!(await authenticate(request, env))) {
+    const config = validateConfig(env);
+    if (!config.ok) {
+        logMisconfigOnce(config.reason);
+        return misconfigJsonResponse(request, config.reason);
+    }
+
+    if (!(await authenticateToken(request, config.token))) {
         return jsonResponse(
             { error: 'Unauthorized' },
             401,
@@ -709,7 +804,28 @@ export async function handleSession(request, env) {
     }
 
     return emptyResponse(204, {
-        'Set-Cookie': await buildSessionCookie(request, env.DASHBOARD_TOKEN.trim())
+        'Set-Cookie': await buildSessionCookie(request, config.token)
+    });
+}
+
+function logMisconfigOnce(reason) {
+    if (misconfigWarningLogged) {
+        return;
+    }
+
+    misconfigWarningLogged = true;
+    console.error('dashboard worker misconfigured:', reason);
+}
+
+function misconfigJsonResponse(request, reason, payload = null) {
+    return jsonResponse(payload || { error: DASHBOARD_MISCONFIG_ERROR, reason }, 503, {
+        'Set-Cookie': buildClearSessionCookie(request)
+    });
+}
+
+function misconfigHtmlResponse(request, reason) {
+    return htmlResponse(createMisconfigHtml(reason), 503, STATIC_HTML_CSP, {
+        'Set-Cookie': buildClearSessionCookie(request)
     });
 }
 
@@ -736,8 +852,28 @@ async function createRateLimitResponse(pathname) {
     return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429);
 }
 
+async function handleConfig(request, env) {
+    requireGet(request);
+    const config = validateConfig(env);
+    if (!config.ok) {
+        logMisconfigOnce(config.reason);
+        return jsonResponse({ error: DASHBOARD_MISCONFIG_ERROR, reason: config.reason }, 503);
+    }
+
+    return jsonResponse({
+        status: 'ok',
+        token_configured: true,
+        token_length: config.token.length,
+        token_fingerprint_sha256_prefix: await tokenFingerprint(config.token)
+    });
+}
+
 export async function dispatchRequest(request, env, dashboardHtml) {
     const { pathname } = new URL(request.url);
+
+    if (pathname === CONFIG_PATH) {
+        return handleConfig(request, env);
+    }
 
     if (pathname === SESSION_PATH && request.method === 'DELETE') {
         return handleSession(request, env);
@@ -745,6 +881,14 @@ export async function dispatchRequest(request, env, dashboardHtml) {
 
     if (await isRateLimited(request, env)) {
         return await createRateLimitResponse(pathname);
+    }
+
+    const config = validateConfig(env);
+    if (!config.ok) {
+        logMisconfigOnce(config.reason);
+        return pathname === DASHBOARD_PATH
+            ? misconfigHtmlResponse(request, config.reason)
+            : misconfigJsonResponse(request, config.reason);
     }
 
     if (pathname === SESSION_PATH) {

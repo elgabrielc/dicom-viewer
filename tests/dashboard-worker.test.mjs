@@ -5,6 +5,7 @@ import fs from 'node:fs';
 
 import {
     DASHBOARD_PATH,
+    CONFIG_PATH,
     SESSION_PATH,
     SUMMARY_PATH,
     SUBSCRIBERS_PATH,
@@ -19,6 +20,7 @@ import {
 } from '../workers/dashboard/src/lib.mjs';
 
 const DASHBOARD_HTML = '<!doctype html><html><body data-dashboard-shell="true">dashboard</body></html>';
+const VALID_TEST_TOKEN = 'valid-dashboard-token-0123456789abcdef';
 const REAL_DASHBOARD_HTML = fs.readFileSync(
     new URL('../workers/dashboard/src/dashboard.html', import.meta.url),
     'utf8'
@@ -34,7 +36,14 @@ function sha256Base64(value) {
     return crypto.createHash('sha256').update(value).digest('base64');
 }
 
-function createEnv({ subscribers = [], token = 'secret-token', rateLimitSuccess = true } = {}) {
+function sha256Hex(value) {
+    return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function createEnv(options = {}) {
+    const { subscribers = [], rateLimitSuccess = true } = options;
+    const token = Object.prototype.hasOwnProperty.call(options, 'token') ? options.token : VALID_TEST_TOKEN;
+
     return {
         DASHBOARD_TOKEN: token,
         DASHBOARD_RATE_LIMIT: {
@@ -208,40 +217,40 @@ test('authenticate rejects missing and wrong tokens, accepts matching token', as
 
     assert.equal(await authenticate(createRequest(DASHBOARD_PATH), env), false);
     assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { token: 'wrong' }), env), false);
-    assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { token: 'secret-token' }), env), true);
+    assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { token: VALID_TEST_TOKEN }), env), true);
 
     const sessionLogin = await dispatchRequest(
-        createRequest(SESSION_PATH, { method: 'POST', token: 'secret-token' }),
+        createRequest(SESSION_PATH, { method: 'POST', token: VALID_TEST_TOKEN }),
         env,
         DASHBOARD_HTML
     );
     const cookieValue = extractCookieValue(sessionLogin.headers.get('Set-Cookie'));
     assert.match(cookieValue, /^v1\.\d+\.[0-9a-f]{64}$/);
-    assert.equal(await verifySignedSessionValue(cookieValue, 'secret-token'), true);
+    assert.equal(await verifySignedSessionValue(cookieValue, VALID_TEST_TOKEN), true);
     assert.equal(await authenticate(createRequest(DASHBOARD_PATH, { cookieToken: cookieValue }), env), true);
 });
 
 test('signed session values expire server-side', async () => {
     const nowMs = Date.UTC(2026, 3, 12, 12, 0, 0);
-    const value = await createSignedSessionValue('secret-token', nowMs);
+    const value = await createSignedSessionValue(VALID_TEST_TOKEN, nowMs);
 
-    assert.equal(await verifySignedSessionValue(value, 'secret-token', nowMs + 1_000), true);
+    assert.equal(await verifySignedSessionValue(value, VALID_TEST_TOKEN, nowMs + 1_000), true);
     assert.equal(
-        await verifySignedSessionValue(value, 'secret-token', nowMs + 12 * 60 * 60 * 1000 + 1),
+        await verifySignedSessionValue(value, VALID_TEST_TOKEN, nowMs + 12 * 60 * 60 * 1000 + 1),
         false
     );
 });
 
 test('tampered session values are rejected', async () => {
-    const value = await createSignedSessionValue('secret-token', Date.UTC(2026, 3, 12, 12, 0, 0));
+    const value = await createSignedSessionValue(VALID_TEST_TOKEN, Date.UTC(2026, 3, 12, 12, 0, 0));
     const tampered = value.replace(/\.[0-9a-f]{64}$/, '.'.concat('0'.repeat(64)));
 
-    assert.equal(await verifySignedSessionValue(tampered, 'secret-token'), false);
+    assert.equal(await verifySignedSessionValue(tampered, VALID_TEST_TOKEN), false);
 });
 
 test('malformed session values are rejected', async () => {
-    assert.equal(await verifySignedSessionValue('v1.123abc.'.concat('0'.repeat(64)), 'secret-token'), false);
-    assert.equal(await verifySignedSessionValue('v1.123456.short', 'secret-token'), false);
+    assert.equal(await verifySignedSessionValue('v1.123abc.'.concat('0'.repeat(64)), VALID_TEST_TOKEN), false);
+    assert.equal(await verifySignedSessionValue('v1.123456.short', VALID_TEST_TOKEN), false);
 });
 
 test('handleDashboard returns login page without auth and shell with auth', async () => {
@@ -254,7 +263,7 @@ test('handleDashboard returns login page without auth and shell with auth', asyn
     assert.match(loginResponse.headers.get('Set-Cookie'), /Max-Age=0/);
 
     const sessionLogin = await dispatchRequest(
-        createRequest(SESSION_PATH, { method: 'POST', token: 'secret-token' }),
+        createRequest(SESSION_PATH, { method: 'POST', token: VALID_TEST_TOKEN }),
         env,
         REAL_DASHBOARD_HTML
     );
@@ -319,7 +328,7 @@ test('handleSubscribers enforces per_page <= 100', async () => {
 test('handleSubscribers invalid integer errors do not reflect raw input', async () => {
     const env = createEnv();
     const request = createRequest(`${SUBSCRIBERS_PATH}?page=%3Cscript%3Ealert(1)%3C/script%3E`, {
-        cookieToken: 'secret-token'
+        cookieToken: VALID_TEST_TOKEN
     });
 
     let response = null;
@@ -370,7 +379,7 @@ test('dispatchRequest creates and clears dashboard sessions', async () => {
     const env = createEnv();
 
     const loginResponse = await dispatchRequest(
-        createRequest(SESSION_PATH, { method: 'POST', token: 'secret-token' }),
+        createRequest(SESSION_PATH, { method: 'POST', token: VALID_TEST_TOKEN }),
         env,
         DASHBOARD_HTML
     );
@@ -397,11 +406,113 @@ test('dispatchRequest creates and clears dashboard sessions', async () => {
     assert.match(logoutResponse.headers.get('Set-Cookie'), /Max-Age=0/);
 });
 
+test('POST /api/session returns 503, not 401, when DASHBOARD_TOKEN is empty', async () => {
+    const response = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: VALID_TEST_TOKEN }),
+        createEnv({ token: '' }),
+        DASHBOARD_HTML
+    );
+
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get('Set-Cookie'), /Max-Age=0/);
+    assert.deepEqual(await response.json(), {
+        error: 'Dashboard misconfigured',
+        reason: 'DASHBOARD_TOKEN is empty'
+    });
+});
+
+test('POST /api/session returns 503 when DASHBOARD_TOKEN is unset', async () => {
+    const response = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: VALID_TEST_TOKEN }),
+        createEnv({ token: undefined }),
+        DASHBOARD_HTML
+    );
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+        error: 'Dashboard misconfigured',
+        reason: 'DASHBOARD_TOKEN is unset'
+    });
+});
+
+test('POST /api/session returns 503 when DASHBOARD_TOKEN is too short', async () => {
+    const response = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'POST', token: VALID_TEST_TOKEN }),
+        createEnv({ token: 'too-short-dashboard' }),
+        DASHBOARD_HTML
+    );
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+        error: 'Dashboard misconfigured',
+        reason: 'DASHBOARD_TOKEN is too short (length < 32)'
+    });
+});
+
 test('logout is not blocked by the dashboard rate limiter', async () => {
     const env = createEnv({ rateLimitSuccess: false });
     const response = await dispatchRequest(createRequest(SESSION_PATH, { method: 'DELETE' }), env, DASHBOARD_HTML);
 
     assert.equal(response.status, 204);
+});
+
+test('logout still clears cookies while the dashboard is misconfigured', async () => {
+    const response = await dispatchRequest(
+        createRequest(SESSION_PATH, { method: 'DELETE' }),
+        createEnv({ token: '' }),
+        DASHBOARD_HTML
+    );
+
+    assert.equal(response.status, 204);
+    assert.match(response.headers.get('Set-Cookie'), /Max-Age=0/);
+});
+
+test('dispatchRequest returns a dedicated misconfig page for GET /', async () => {
+    const response = await dispatchRequest(createRequest(DASHBOARD_PATH), createEnv({ token: '' }), DASHBOARD_HTML);
+    const html = await response.text();
+
+    assert.equal(response.status, 503);
+    assert.match(response.headers.get('Set-Cookie'), /Max-Age=0/);
+    assert.match(html, /Dashboard unavailable/);
+    assert.match(html, /DASHBOARD_TOKEN is empty/);
+    assert.doesNotMatch(html, /id="tokenInput"/);
+});
+
+test('GET /api/config returns trimmed token metadata with a SHA-256 fingerprint prefix', async () => {
+    const tokenWithWhitespace = `  ${VALID_TEST_TOKEN}  `;
+    const response = await dispatchRequest(createRequest(CONFIG_PATH), createEnv({ token: tokenWithWhitespace }), DASHBOARD_HTML);
+    const payload = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload, {
+        status: 'ok',
+        token_configured: true,
+        token_length: VALID_TEST_TOKEN.length,
+        token_fingerprint_sha256_prefix: sha256Hex(VALID_TEST_TOKEN).slice(0, 12)
+    });
+    assert.match(payload.token_fingerprint_sha256_prefix, /^[0-9a-f]{12}$/);
+});
+
+test('GET /api/config returns the standard 503 misconfig payload without clearing cookies', async () => {
+    const response = await dispatchRequest(createRequest(CONFIG_PATH), createEnv({ token: '' }), DASHBOARD_HTML);
+
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Set-Cookie'), null);
+    assert.deepEqual(await response.json(), {
+        error: 'Dashboard misconfigured',
+        reason: 'DASHBOARD_TOKEN is empty'
+    });
+});
+
+test('GET /api/config bypasses the dashboard rate limiter', async () => {
+    const response = await dispatchRequest(
+        createRequest(CONFIG_PATH),
+        createEnv({ rateLimitSuccess: false }),
+        DASHBOARD_HTML
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).status, 'ok');
 });
 
 test('tampered dashboard cookies fall back to login and get cleared', async () => {
