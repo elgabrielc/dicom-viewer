@@ -773,14 +773,9 @@ test.describe('Sync Cursor Management', () => {
         const userA = await setupSyncUser(request);
         const userB = await setupSyncUser(request);
 
-        const aSync = await syncAndExpectOk(
-            request,
-            BASE_URL,
-            userA.access_token,
-            userA.device_id,
-            null,
-            [commentInsertChange({ text: 'User A private change' })],
-        );
+        const aSync = await syncAndExpectOk(request, BASE_URL, userA.access_token, userA.device_id, null, [
+            commentInsertChange({ text: 'User A private change' }),
+        ]);
 
         const response = await syncRequest(
             request,
