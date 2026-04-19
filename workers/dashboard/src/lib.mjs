@@ -27,6 +27,7 @@ const inlineScriptCspCache = new Map();
 const JSON_RESPONSE_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 const STATIC_HTML_CSP =
     "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; img-src 'self' data:; object-src 'none'; style-src 'unsafe-inline'";
+// Cloudflare Workers isolates reset this naturally on cold start.
 let misconfigWarningLogged = false;
 const LOGIN_PAGE_SCRIPT = `(function () {
   const form = document.getElementById('loginForm');
@@ -856,11 +857,7 @@ async function handleConfig(request, env) {
     const config = validateConfig(env);
     if (!config.ok) {
         logMisconfigOnce(config.reason);
-        return misconfigJsonResponse(request, config.reason, {
-            status: 'error',
-            reason: config.reason,
-            token_configured: false
-        });
+        return jsonResponse({ error: DASHBOARD_MISCONFIG_ERROR, reason: config.reason }, 503);
     }
 
     return jsonResponse({

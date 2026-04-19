@@ -74,7 +74,24 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
    npx wrangler secret put DASHBOARD_TOKEN --config workers/dashboard/wrangler.toml
    ```
 
-2. Verify the deployed dashboard token configuration:
+2. Apply the subscriber index migration remotely:
+
+   ```bash
+   npx wrangler d1 migrations apply myradone-subscribers --remote --config workers/dashboard/wrangler.toml
+   ```
+
+3. Deploy the worker:
+
+   ```bash
+   npx wrangler deploy --config workers/dashboard/wrangler.toml
+   ```
+
+4. Add a custom domain route in Cloudflare:
+
+   - Worker: `myradone-dashboard`
+   - Domain: `dashboard.myradone.com`
+
+5. Verify the deployed dashboard token configuration:
 
    ```bash
    echo -n 'YOUR_TOKEN' | shasum -a 256 | head -c 12
@@ -86,23 +103,6 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
    - `"status":"ok"`
    - `"token_length":<trimmed token length>`
    - `"token_fingerprint_sha256_prefix":"<same 12-char SHA-256 prefix>"`
-
-3. Apply the subscriber index migration remotely:
-
-   ```bash
-   npx wrangler d1 migrations apply myradone-subscribers --remote --config workers/dashboard/wrangler.toml
-   ```
-
-4. Deploy the worker:
-
-   ```bash
-   npx wrangler deploy --config workers/dashboard/wrangler.toml
-   ```
-
-5. Add a custom domain route in Cloudflare:
-
-   - Worker: `myradone-dashboard`
-   - Domain: `dashboard.myradone.com`
 
 ## Local Development
 

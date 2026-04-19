@@ -493,6 +493,17 @@ test('GET /api/config returns trimmed token metadata with a SHA-256 fingerprint 
     assert.match(payload.token_fingerprint_sha256_prefix, /^[0-9a-f]{12}$/);
 });
 
+test('GET /api/config returns the standard 503 misconfig payload without clearing cookies', async () => {
+    const response = await dispatchRequest(createRequest(CONFIG_PATH), createEnv({ token: '' }), DASHBOARD_HTML);
+
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Set-Cookie'), null);
+    assert.deepEqual(await response.json(), {
+        error: 'Dashboard misconfigured',
+        reason: 'DASHBOARD_TOKEN is empty'
+    });
+});
+
 test('GET /api/config bypasses the dashboard rate limiter', async () => {
     const response = await dispatchRequest(
         createRequest(CONFIG_PATH),
