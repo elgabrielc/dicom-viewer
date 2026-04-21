@@ -86,10 +86,12 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
    npx wrangler deploy --config workers/dashboard/wrangler.toml
    ```
 
-4. Add a custom domain route in Cloudflare:
-
-   - Worker: `myradone-dashboard`
-   - Domain: `dashboard.myradone.com`
+4. Route configuration is managed in `wrangler.toml` (`[[routes]]` block)
+   per [ADR 013](../../docs/decisions/013-worker-routing-as-code.md). The
+   `wrangler deploy` step above reconciles the `dashboard.myradone.com/*`
+   route automatically; no Cloudflare UI change is required. Do not add or
+   edit the route through the Cloudflare dashboard -- it will drift from the
+   repo and the next deploy may reconcile it away.
 
 5. Verify the deployed dashboard token configuration:
 
