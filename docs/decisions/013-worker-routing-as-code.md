@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Implemented
 
 ## Context
 
@@ -73,4 +73,4 @@ Tradeoffs:
 - `workers/download/wrangler.toml` declares `myradone.com/download` using the ADR 013 `[[routes]]` table-array form.
 - `workers/subscribe/wrangler.toml` declares `api.myradone.com/subscribe`.
 - `workers/stats/wrangler.toml` declares `api.myradone.com/api/stats`.
-- Follow-up completion is tracked in PR #93, which applies those route declarations and README updates.
+- All four workers now declare their routes in `wrangler.toml`. Migration complete.
