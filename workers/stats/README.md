@@ -141,15 +141,11 @@ trivial abuse.
    npx wrangler deploy
    ```
 
-7. Add a custom-domain route in Cloudflare so the worker is reachable at
-   `api.myradone.com/api/stats`:
-
-   - Worker: `myradone-stats`
-   - Domain: `api.myradone.com`
-   - Path: `/api/stats`
-
-   The existing subscribe worker (`workers/subscribe`) follows the same
-   pattern at `api.myradone.com/subscribe` -- mirror that configuration.
+7. The route is config-managed per
+   [`docs/decisions/013-worker-routing-as-code.md`](../../docs/decisions/013-worker-routing-as-code.md)
+   and is applied on `wrangler deploy`. Do not add or edit the
+   `api.myradone.com/api/stats` route manually in the Cloudflare dashboard
+   unless you are making an emergency override that will be reconciled in a PR.
 
 ## Verification
 

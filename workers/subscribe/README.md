@@ -36,11 +36,11 @@ Cloudflare Worker + D1 for newsletter signup collection.
    npx wrangler deploy --config workers/subscribe/wrangler.toml
    ```
 
-6. Add a custom domain in Cloudflare:
-
-   - Worker: `myradone-subscribe`
-   - Domain: `api.myradone.com`
-   - Path: `/subscribe`
+6. The route is config-managed per
+   [`docs/decisions/013-worker-routing-as-code.md`](../../docs/decisions/013-worker-routing-as-code.md)
+   and is applied on `wrangler deploy`. Do not add or edit the
+   `api.myradone.com/subscribe` route manually in the Cloudflare dashboard
+   unless you are making an emergency override that will be reconciled in a PR.
 
 7. Replace the test Turnstile site key in `design/brand/landing.html` with the production site key before launch.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Implemented
 
 ## Context
 
@@ -70,5 +70,7 @@ Tradeoffs:
 ## Migration
 
 - `workers/dashboard/wrangler.toml` declares `dashboard.myradone.com/*` (PR #90).
-- `workers/download/wrangler.toml` already declares `myradone.com/download`.
-- `workers/subscribe/wrangler.toml` and `workers/stats/wrangler.toml` will be updated in a follow-up to declare their `api.myradone.com` routes. This is tracked as a follow-up task, not a blocker for this ADR.
+- `workers/download/wrangler.toml` declares `myradone.com/download` using the ADR 013 `[[routes]]` table-array form.
+- `workers/subscribe/wrangler.toml` declares `api.myradone.com/subscribe`.
+- `workers/stats/wrangler.toml` declares `api.myradone.com/api/stats`.
+- All four workers now declare their routes in `wrangler.toml`. Migration complete.
