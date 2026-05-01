@@ -693,6 +693,7 @@
 
     function closeViewer() {
         beginLoadGeneration();
+        app.dicom?.disposeJpeg2000Worker?.('Viewer closed before JPEG 2000 decode completed.');
         viewerView.style.display = 'none';
         libraryView.style.display = 'block';
         document.body.classList.remove('viewer-page');

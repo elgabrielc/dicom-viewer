@@ -26,6 +26,21 @@ function runPythonJson(script) {
 }
 
 test.describe('Hardening pass', () => {
+    test('Flask responses include a CSP without inline script execution', async ({ request }) => {
+        const response = await request.get(HOME_URL);
+        expect(response.status()).toBe(200);
+
+        const headers = response.headers();
+        const csp = headers['content-security-policy'] || '';
+        expect(csp).toContain("script-src 'self' 'wasm-unsafe-eval'");
+        expect(csp).toContain("'unsafe-eval'");
+        expect(csp).toContain("worker-src 'self' blob: 'wasm-unsafe-eval'");
+        expect(csp).toContain("object-src 'none'");
+        expect(csp).not.toContain("script-src 'unsafe-inline'");
+        expect(headers['referrer-policy']).toBe('no-referrer');
+        expect(headers['permissions-policy']).toContain('camera=()');
+    });
+
     test('db migration helper validates identifiers and column definitions', async () => {
         const result = runPythonJson(`
 import json
@@ -61,6 +76,75 @@ print(json.dumps({'columns': columns, 'errors': errors}))
             'safe_table|bad-column|TEXT': 'ValueError',
             'safe_table|still_bad|TEXT); DROP TABLE safe_table; --': 'ValueError',
         });
+    });
+
+    test('network-exposed library config requires an allowed root', async () => {
+        const result = runPythonJson(`
+import json
+import os
+import sys
+import tempfile
+
+sys.path.insert(0, sys.argv[1])
+
+import server.routes.library as library_module
+
+original_host = os.environ.get('FLASK_HOST')
+original_roots = os.environ.get(library_module.LIBRARY_ALLOWED_ROOTS_ENV)
+
+def restore_env():
+    if original_host is None:
+        os.environ.pop('FLASK_HOST', None)
+    else:
+        os.environ['FLASK_HOST'] = original_host
+    if original_roots is None:
+        os.environ.pop(library_module.LIBRARY_ALLOWED_ROOTS_ENV, None)
+    else:
+        os.environ[library_module.LIBRARY_ALLOWED_ROOTS_ENV] = original_roots
+
+def validate(path):
+    allowed, error, status = library_module._validate_library_config_path(path, path)
+    return {'allowed': allowed, 'error': error, 'status': status}
+
+try:
+    allowed_root = tempfile.mkdtemp(prefix='dicom-allowed-root-')
+    allowed_child = os.path.join(allowed_root, 'incoming')
+    outside_root = tempfile.mkdtemp(prefix='dicom-outside-root-')
+
+    os.environ['FLASK_HOST'] = '127.0.0.1'
+    os.environ.pop(library_module.LIBRARY_ALLOWED_ROOTS_ENV, None)
+    loopback = validate(outside_root)
+
+    os.environ['FLASK_HOST'] = '0.0.0.0'
+    os.environ.pop(library_module.LIBRARY_ALLOWED_ROOTS_ENV, None)
+    exposed_without_roots = validate(allowed_child)
+
+    os.environ[library_module.LIBRARY_ALLOWED_ROOTS_ENV] = allowed_root
+    exposed_allowed = validate(allowed_child)
+    exposed_outside = validate(outside_root)
+finally:
+    restore_env()
+
+print(json.dumps({
+    'loopback': loopback,
+    'exposed_without_roots': exposed_without_roots,
+    'exposed_allowed': exposed_allowed,
+    'exposed_outside': exposed_outside,
+}))
+        `);
+
+        expect(result.loopback).toEqual({ allowed: true, error: null, status: null });
+        expect(result.exposed_without_roots).toMatchObject({
+            allowed: false,
+            status: 403,
+        });
+        expect(result.exposed_without_roots.error).toContain('DICOM_LIBRARY_ALLOWED_ROOTS');
+        expect(result.exposed_allowed).toEqual({ allowed: true, error: null, status: null });
+        expect(result.exposed_outside).toMatchObject({
+            allowed: false,
+            status: 403,
+        });
+        expect(result.exposed_outside.error).toContain('outside allowed roots');
     });
 
     test('auth throttling sweeps expired buckets and does not create empty lookup buckets', async () => {

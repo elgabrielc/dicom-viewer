@@ -21,6 +21,7 @@ library_bp = Blueprint('library', __name__)
 # Persistent local library folder defaults (personal mode)
 DEFAULT_LIBRARY_FOLDER_RAW = '~/DICOMs'
 DEFAULT_LIBRARY_FOLDER = os.path.expanduser(DEFAULT_LIBRARY_FOLDER_RAW)
+LIBRARY_ALLOWED_ROOTS_ENV = 'DICOM_LIBRARY_ALLOWED_ROOTS'
 
 # Library config synchronization
 LIBRARY_CONFIG_LOCK = threading.Lock()
@@ -402,6 +403,59 @@ def _build_library_config_payload():
         }
 
 
+def _is_network_exposed():
+    return os.environ.get('FLASK_HOST') == '0.0.0.0'
+
+
+def _parse_library_allowed_roots(raw_value):
+    if not raw_value:
+        return []
+
+    normalized = raw_value.replace('\n', os.pathsep)
+    if os.pathsep != ',':
+        normalized = normalized.replace(',', os.pathsep)
+    return [item.strip() for item in normalized.split(os.pathsep) if item.strip()]
+
+
+def _get_library_allowed_roots():
+    return _parse_library_allowed_roots(os.environ.get(LIBRARY_ALLOWED_ROOTS_ENV, ''))
+
+
+def _path_is_within(candidate_path, root_path):
+    try:
+        candidate = Path(candidate_path).expanduser().resolve(strict=False)
+        root = Path(root_path).expanduser().resolve(strict=False)
+    except OSError:
+        return False
+
+    if candidate == root:
+        return True
+
+    try:
+        candidate.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_library_config_path(folder_path, folder_label):
+    allowed_roots = _get_library_allowed_roots()
+    if not allowed_roots:
+        if _is_network_exposed():
+            return (
+                False,
+                f'Library folder changes require {LIBRARY_ALLOWED_ROOTS_ENV} '
+                'when FLASK_HOST=0.0.0.0',
+                403,
+            )
+        return True, None, None
+
+    if any(_path_is_within(folder_path, root) for root in allowed_roots):
+        return True, None, None
+
+    return False, f'Library folder is outside allowed roots: {folder_label}', 403
+
+
 # =============================================================================
 # LIBRARY ROUTES
 # =============================================================================
@@ -426,6 +480,10 @@ def update_library_config():
 
     folder_raw = folder.strip()
     folder_path = os.path.expanduser(folder_raw)
+
+    allowed, error, status = _validate_library_config_path(folder_path, folder_raw)
+    if not allowed:
+        return jsonify({'error': error}), status
 
     if not os.path.isdir(folder_path):
         return jsonify({'error': f'Directory does not exist: {folder_raw}'}), 400

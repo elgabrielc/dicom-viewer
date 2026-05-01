@@ -15,6 +15,22 @@
 const { test, expect } = require('@playwright/test');
 const { BASE_URL, uniqueStudyUid, minimalPdfBuffer, uploadReport } = require('./notes-test-helpers');
 
+function randomReportToken(length = 8) {
+    return Math.random()
+        .toString(36)
+        .replace(/[^a-z0-9]/g, '')
+        .slice(2, 2 + length)
+        .padEnd(length, 'a');
+}
+
+function uniqueReportId(prefix = 'report') {
+    return `${prefix}-${Date.now().toString(36)}-${randomReportToken(8)}`;
+}
+
+function fixedLengthReportId(length) {
+    return `r${randomReportToken(length)}${Date.now().toString(36)}`.padEnd(length, 'a').slice(0, length);
+}
+
 // ---------------------------------------------------------------------------
 // Test Suite 31: POST /api/notes/<study_uid>/reports - Upload Report
 // ---------------------------------------------------------------------------
@@ -108,7 +124,7 @@ test.describe('Test Suite 31: POST /api/notes/<study_uid>/reports - Upload Repor
     test('custom report ID (valid format) is used and preserved in the response', async ({ request }) => {
         const studyUid = uniqueStudyUid();
         // Valid format: ^[a-zA-Z0-9_-]{8,64}$
-        const customId = 'report-id-abcd1234';
+        const customId = uniqueReportId('report-id');
 
         const response = await uploadReport(request, studyUid, { reportId: customId });
         expect(response.status()).toBe(200);
@@ -156,7 +172,7 @@ test.describe('Test Suite 31: POST /api/notes/<study_uid>/reports - Upload Repor
 
     test('uploading with an existing report ID replaces the previous report (upsert)', async ({ request }) => {
         const studyUid = uniqueStudyUid();
-        const reportId = 'stable-report-id-0001';
+        const reportId = uniqueReportId('stable-report');
 
         // First upload
         await uploadReport(request, studyUid, {
@@ -176,6 +192,40 @@ test.describe('Test Suite 31: POST /api/notes/<study_uid>/reports - Upload Repor
         const body = await secondResponse.json();
         expect(body.id).toBe(reportId);
         expect(body.name).toBe('Second Upload');
+    });
+
+    test('uploading with an existing report ID for another study is rejected', async ({ request }) => {
+        const firstStudyUid = uniqueStudyUid();
+        const secondStudyUid = uniqueStudyUid();
+        const reportId = uniqueReportId('cross-study-report');
+
+        const firstResponse = await uploadReport(request, firstStudyUid, {
+            reportId,
+            filename: 'first.pdf',
+            name: 'First Study Report',
+        });
+        expect(firstResponse.status()).toBe(200);
+
+        const secondResponse = await uploadReport(request, secondStudyUid, {
+            reportId,
+            filename: 'second.pdf',
+            name: 'Second Study Report',
+        });
+        expect(secondResponse.status()).toBe(409);
+
+        const conflictBody = await secondResponse.json();
+        expect(conflictBody.error).toContain('different study');
+
+        const notesBody = await (
+            await request.get(`${BASE_URL}/api/notes/?studies=${firstStudyUid},${secondStudyUid}`)
+        ).json();
+        const firstStudyReports = notesBody.studies[firstStudyUid]?.reports || [];
+        const secondStudyReports = notesBody.studies[secondStudyUid]?.reports || [];
+
+        expect(firstStudyReports).toEqual(
+            expect.arrayContaining([expect.objectContaining({ id: reportId, name: 'First Study Report' })]),
+        );
+        expect(secondStudyReports.find((report) => report.id === reportId)).toBeUndefined();
     });
 
     test('report name is trimmed and capped at 255 characters', async ({ request }) => {
@@ -245,7 +295,7 @@ test.describe('Test Suite 32: GET /api/notes/reports/<id>/file - Download Report
 
     test('report remains downloadable after a second upload with same ID (upsert)', async ({ request }) => {
         const studyUid = uniqueStudyUid();
-        const reportId = 'download-upsert-test-id';
+        const reportId = uniqueReportId('download-upsert');
         const secondContent = Buffer.from('%PDF-1.4\n% second version\n%%EOF\n');
 
         await uploadReport(request, studyUid, { reportId, filename: 'v1.pdf' });
@@ -328,17 +378,19 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
 
     test('deleting one report leaves sibling reports for the same study intact', async ({ request }) => {
         const studyUid = uniqueStudyUid();
+        const keepReportId = uniqueReportId('keep-report');
+        const deleteReportId = uniqueReportId('del-report');
 
         const { id: idA } = await (
             await uploadReport(request, studyUid, {
-                reportId: 'keep-this-report-aa11',
+                reportId: keepReportId,
                 filename: 'keep.pdf',
             })
         ).json();
 
         const { id: idB } = await (
             await uploadReport(request, studyUid, {
-                reportId: 'del-this-report-bb22',
+                reportId: deleteReportId,
                 filename: 'delete.pdf',
             })
         ).json();
@@ -356,7 +408,7 @@ test.describe('Test Suite 33: DELETE /api/notes/<study_uid>/reports/<id>', () =>
 
     test('soft-deleted report can be resurrected by re-uploading with same ID', async ({ request }) => {
         const studyUid = uniqueStudyUid();
-        const reportId = 'resurrect-test-id-01';
+        const reportId = uniqueReportId('resurrect');
 
         // Upload, delete, re-upload
         await uploadReport(request, studyUid, { reportId, filename: 'v1.pdf' });
@@ -428,10 +480,12 @@ test.describe('Test Suite 34: Content Hash and Soft-Delete File Retention', () =
 
     test('different file content produces different content hashes', async ({ request }) => {
         const studyUid = uniqueStudyUid();
+        const reportAId = uniqueReportId('hash-diff-a');
+        const reportBId = uniqueReportId('hash-diff-b');
 
         const bodyA = await (
             await uploadReport(request, studyUid, {
-                reportId: 'hash-diff-test-aaa1',
+                reportId: reportAId,
                 filename: 'a.pdf',
                 fileContent: Buffer.from('%PDF-1.4\ncontent A\n%%EOF\n'),
             })
@@ -439,7 +493,7 @@ test.describe('Test Suite 34: Content Hash and Soft-Delete File Retention', () =
 
         const bodyB = await (
             await uploadReport(request, studyUid, {
-                reportId: 'hash-diff-test-bbb2',
+                reportId: reportBId,
                 filename: 'b.pdf',
                 fileContent: Buffer.from('%PDF-1.4\ncontent B\n%%EOF\n'),
             })
@@ -491,16 +545,20 @@ test.describe('Test Suite 35: _sanitize_report_id Validation', () => {
     // whether the returned ID matches the input.
 
     const VALID_ID_CASES = [
-        { id: 'abcd1234', label: 'exactly 8 chars (minimum length)' },
-        { id: 'a'.repeat(64), label: 'exactly 64 chars (maximum length)' },
-        { id: 'has-hyphens-here', label: 'hyphens allowed' },
-        { id: 'has_underscores_', label: 'underscores allowed' },
-        { id: 'MixedCASE12345ab', label: 'mixed case alphanumeric' },
+        { buildId: () => fixedLengthReportId(8), label: 'exactly 8 chars (minimum length)' },
+        { buildId: () => fixedLengthReportId(64), label: 'exactly 64 chars (maximum length)' },
+        { buildId: () => uniqueReportId('has-hyphens'), label: 'hyphens allowed' },
+        { buildId: () => uniqueReportId('has_underscores'), label: 'underscores allowed' },
+        {
+            buildId: () => `MixedCASE${Date.now().toString(36)}${randomReportToken(5)}`,
+            label: 'mixed case alphanumeric',
+        },
     ];
 
-    for (const { id, label } of VALID_ID_CASES) {
+    for (const { buildId, label } of VALID_ID_CASES) {
         test(`accepts valid ID: ${label}`, async ({ request }) => {
             const studyUid = uniqueStudyUid();
+            const id = buildId();
             const response = await uploadReport(request, studyUid, { reportId: id });
             expect(response.status()).toBe(200);
 

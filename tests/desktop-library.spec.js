@@ -2121,6 +2121,59 @@ test.describe('Desktop library scanning', () => {
         });
     });
 
+    test('window-level rerender reloads the current slice after cache eviction', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+
+        const result = await page.evaluate(async () => {
+            const app = window.DicomViewerApp;
+            const slice = {
+                frameIndex: 0,
+                sliceLocation: 12.34,
+                source: {
+                    kind: 'path',
+                    path: '/library/evicted-wl.dcm',
+                },
+            };
+            const originalLoadSlice = app.viewer.loadSlice;
+            const loadCalls = [];
+
+            app.state.currentStudy = { studyInstanceUid: 'study-1' };
+            app.state.currentSeries = {
+                seriesInstanceUid: 'series-1',
+                slices: [slice],
+            };
+            app.state.currentSliceIndex = 0;
+            app.state.currentTool = 'wl';
+            app.state.isDragging = true;
+            app.state.dragStart = { x: 0, y: 0 };
+            app.state.baseWindowLevel = { center: 100, width: 400 };
+            app.state.windowLevel = { center: null, width: null };
+            app.state.sliceCache.clear();
+
+            app.viewer.loadSlice = async (index) => {
+                loadCalls.push(index);
+                return null;
+            };
+
+            try {
+                app.tools.onCanvasMouseMove(new MouseEvent('mousemove', { clientX: 8, clientY: -4 }));
+                await new Promise((resolve) => window.requestAnimationFrame(() => setTimeout(resolve, 0)));
+            } finally {
+                app.viewer.loadSlice = originalLoadSlice;
+                app.state.isDragging = false;
+            }
+
+            return {
+                loadCalls,
+                windowLevel: app.state.windowLevel,
+            };
+        });
+
+        expect(result.loadCalls).toEqual([0]);
+        expect(result.windowLevel).toEqual({ center: 108, width: 416 });
+    });
+
     test('viewer loadSlice uses desktop header decode before full file reads', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);

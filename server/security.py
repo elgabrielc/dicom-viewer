@@ -22,6 +22,17 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 # /api/test-data/* is intentionally excluded (anonymized sample data).
 _PHI_ROUTE_PREFIXES = ('/api/notes', '/api/library/', '/api/maintenance')
 _TEST_MODE_DISABLED_ERROR = 'Test mode is only available when FLASK_ENV=test'
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self' data: blob: asset: http://asset.localhost; "
+    "connect-src 'self' ipc: http://ipc.localhost https://api.myradone.com; "
+    "img-src 'self' data: blob: asset: http://asset.localhost; "
+    "style-src 'self' 'unsafe-inline'; "
+    "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; "
+    "worker-src 'self' blob: 'wasm-unsafe-eval'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'self'"
+)
 
 
 def _is_test_environment():
@@ -123,6 +134,9 @@ def session_token_check():
 
 def set_security_headers(response):
     """Add standard security headers to all responses."""
+    response.headers['Content-Security-Policy'] = CONTENT_SECURITY_POLICY
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
     return response

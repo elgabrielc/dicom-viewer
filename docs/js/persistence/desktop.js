@@ -732,10 +732,14 @@ const _NotesDesktop = (() => {
         const finalPath = await path.join(reportsDir, `${filenameBase}.${extension}`);
         const tempPath = await path.join(reportsDir, `${filenameBase}.${extension}.tmp-${Date.now()}`);
         const bytes = new Uint8Array(await file.arrayBuffer());
-        const existingRows = await db.select('SELECT file_path, added_at FROM reports WHERE id = ? LIMIT 1', [
-            reportId,
-        ]);
+        const existingRows = await db.select(
+            'SELECT file_path, added_at, study_uid FROM reports WHERE id = ? LIMIT 1',
+            [reportId],
+        );
         const existing = existingRows[0] || null;
+        if (existing && existing.study_uid !== studyUid) {
+            throw new Error('Report ID already belongs to a different study.');
+        }
         const now = Date.now();
         const addedAt = parseInteger(report.addedAt, parseInteger(existing?.added_at, now));
         const updatedAt = parseInteger(report.updatedAt, now);
@@ -773,7 +777,6 @@ const _NotesDesktop = (() => {
                 `INSERT INTO reports (id, study_uid, name, type, size, file_path, added_at, updated_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(id) DO UPDATE SET
-                     study_uid = excluded.study_uid,
                      name = excluded.name,
                      type = excluded.type,
                      size = excluded.size,

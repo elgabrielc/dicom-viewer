@@ -5,7 +5,8 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const REPO_ROOT = path.join(__dirname, '..');
-const PYTHON_BIN = path.join(REPO_ROOT, 'venv', 'bin', 'python');
+const REPO_VENV_PYTHON = path.join(REPO_ROOT, 'venv', 'bin', 'python');
+const PYTHON_BIN = fs.existsSync(REPO_VENV_PYTHON) ? REPO_VENV_PYTHON : process.env.PYTHON || 'python3';
 const UID_ROOT = '1.2.826.0.1.3680043.10.54321';
 
 const PYTHON_SCRIPT = `
@@ -73,7 +74,8 @@ function makeUid(suffix = '') {
 }
 
 function createSyntheticDicomFolder(entries, options = {}) {
-    if (!fs.existsSync(PYTHON_BIN)) {
+    const pythonNeedsPathCheck = path.isAbsolute(PYTHON_BIN) || PYTHON_BIN.includes(path.sep);
+    if (pythonNeedsPathCheck && !fs.existsSync(PYTHON_BIN)) {
         throw new Error(`Missing test python environment: ${PYTHON_BIN}`);
     }
 

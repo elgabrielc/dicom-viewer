@@ -779,6 +779,12 @@
                         : [];
                 }
 
+                if (normalized.startsWith('select file_path, added_at, study_uid from reports where id = ? limit 1')) {
+                    const [id] = values;
+                    const row = state.reports.find((entry) => String(entry.id) === String(id));
+                    return row ? [{ file_path: row.file_path, added_at: row.added_at, study_uid: row.study_uid }] : [];
+                }
+
                 if (normalized.startsWith('select file_path, added_at from reports where id = ? limit 1')) {
                     const [id] = values;
                     const row = state.reports.find((entry) => String(entry.id) === String(id));
