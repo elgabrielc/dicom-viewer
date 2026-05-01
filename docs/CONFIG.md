@@ -33,9 +33,10 @@ DICOM_TEST_DATA="/path/to/dicom/folder" python app.py
 |----------|-------|
 | Purpose | Restrict folders accepted by `/api/library/config` |
 | Default | Unrestricted on loopback, required when `FLASK_HOST=0.0.0.0` |
-| Format | `:`-separated directories on macOS/Linux, `;`-separated on Windows |
+| Format | Platform path separator (`:` on macOS/Linux, `;` on Windows), semicolon, comma, or newline-separated directories |
 
 When the Flask app is exposed on all interfaces with `FLASK_HOST=0.0.0.0`, runtime library-folder changes are rejected unless the requested folder is inside one of these allowed roots.
+Spaces inside directory names are preserved.
 
 **Usage:**
 ```bash

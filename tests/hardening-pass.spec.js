@@ -107,8 +107,12 @@ def validate(path):
     return {'allowed': allowed, 'error': error, 'status': status}
 
 try:
-    allowed_root = tempfile.mkdtemp(prefix='dicom-allowed-root-')
+    allowed_root = tempfile.mkdtemp(prefix='dicom allowed root ')
     allowed_child = os.path.join(allowed_root, 'incoming')
+    second_allowed_root = tempfile.mkdtemp(prefix='dicom second allowed root ')
+    second_allowed_child = os.path.join(second_allowed_root, 'incoming')
+    semicolon_allowed_root = tempfile.mkdtemp(prefix='dicom semicolon allowed root ')
+    semicolon_allowed_child = os.path.join(semicolon_allowed_root, 'incoming')
     outside_root = tempfile.mkdtemp(prefix='dicom-outside-root-')
 
     os.environ['FLASK_HOST'] = '127.0.0.1'
@@ -119,8 +123,12 @@ try:
     os.environ.pop(library_module.LIBRARY_ALLOWED_ROOTS_ENV, None)
     exposed_without_roots = validate(allowed_child)
 
-    os.environ[library_module.LIBRARY_ALLOWED_ROOTS_ENV] = allowed_root
+    os.environ[library_module.LIBRARY_ALLOWED_ROOTS_ENV] = (
+        f'{allowed_root}{os.pathsep}{second_allowed_root};{semicolon_allowed_root}'
+    )
     exposed_allowed = validate(allowed_child)
+    exposed_second_allowed = validate(second_allowed_child)
+    exposed_semicolon_allowed = validate(semicolon_allowed_child)
     exposed_outside = validate(outside_root)
 finally:
     restore_env()
@@ -129,6 +137,8 @@ print(json.dumps({
     'loopback': loopback,
     'exposed_without_roots': exposed_without_roots,
     'exposed_allowed': exposed_allowed,
+    'exposed_second_allowed': exposed_second_allowed,
+    'exposed_semicolon_allowed': exposed_semicolon_allowed,
     'exposed_outside': exposed_outside,
 }))
         `);
@@ -140,6 +150,8 @@ print(json.dumps({
         });
         expect(result.exposed_without_roots.error).toContain('DICOM_LIBRARY_ALLOWED_ROOTS');
         expect(result.exposed_allowed).toEqual({ allowed: true, error: null, status: null });
+        expect(result.exposed_second_allowed).toEqual({ allowed: true, error: null, status: null });
+        expect(result.exposed_semicolon_allowed).toEqual({ allowed: true, error: null, status: null });
         expect(result.exposed_outside).toMatchObject({
             allowed: false,
             status: 403,
