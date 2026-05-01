@@ -569,9 +569,7 @@ def _add_column(db, table, column, col_type):
 def _ensure_sync_server_versions_user_pk(db):
     """Rebuild legacy sync version tables that were not scoped by user_id."""
     table_info = db.execute("PRAGMA table_info('sync_server_versions')").fetchall()
-    pk_columns = [
-        row['name'] for row in sorted(table_info, key=lambda row: row['pk']) if row['pk']
-    ]
+    pk_columns = [row['name'] for row in sorted(table_info, key=lambda row: row['pk']) if row['pk']]
     if pk_columns == ['table_name', 'record_key', 'user_id']:
         return
 
