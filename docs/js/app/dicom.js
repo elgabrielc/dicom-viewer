@@ -597,11 +597,13 @@
 
     function disposeJpeg2000Worker(reason = null) {
         const error = createJpeg2000DisposeError(reason);
+        // Always clear active-request state so a recycled worker doesn't see
+        // a stale reference. Without this, a no-reason dispose leaves
+        // jpeg2000WorkerState.activeRequest pointing at a dead promise and
+        // the next dispatch queues forever.
         const activeRequest = error ? jpeg2000WorkerState.activeRequest : null;
         const queuedRequests = error ? jpeg2000WorkerState.queue.splice(0) : [];
-        if (error) {
-            jpeg2000WorkerState.activeRequest = null;
-        }
+        jpeg2000WorkerState.activeRequest = null;
 
         try {
             jpeg2000WorkerState.worker?.terminate();

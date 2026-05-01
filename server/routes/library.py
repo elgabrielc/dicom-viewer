@@ -6,6 +6,7 @@ Copyright (c) 2026 Divergent Health Technologies
 """
 
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -403,18 +404,24 @@ def _build_library_config_payload():
         }
 
 
+_LOOPBACK_HOSTS = frozenset({'', '127.0.0.1', '::1', 'localhost'})
+
+
 def _is_network_exposed():
-    return os.environ.get('FLASK_HOST') == '0.0.0.0'
+    host = (os.environ.get('FLASK_HOST') or '').strip().lower()
+    # Anything other than a loopback identifier is treated as network-exposed.
+    # Catches 0.0.0.0, ::, LAN IPs, and explicit hostnames.
+    return host not in _LOOPBACK_HOSTS
 
 
 def _parse_library_allowed_roots(raw_value):
     if not raw_value:
         return []
 
-    normalized = raw_value.replace('\n', os.pathsep)
-    if os.pathsep != ',':
-        normalized = normalized.replace(',', os.pathsep)
-    return [item.strip() for item in normalized.split(os.pathsep) if item.strip()]
+    # Accept any common separator regardless of platform: colon, semicolon,
+    # comma, newline, or whitespace. A user copying config between macOS and
+    # Windows shouldn't silently get an empty allow-list.
+    return [item.strip() for item in re.split(r'[:;,\s]+', raw_value) if item.strip()]
 
 
 def _get_library_allowed_roots():
