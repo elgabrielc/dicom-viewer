@@ -418,10 +418,9 @@ def _parse_library_allowed_roots(raw_value):
     if not raw_value:
         return []
 
-    # Accept any common separator regardless of platform: colon, semicolon,
-    # comma, newline, or whitespace. A user copying config between macOS and
-    # Windows shouldn't silently get an empty allow-list.
-    return [item.strip() for item in re.split(r'[:;,\s]+', raw_value) if item.strip()]
+    separators = tuple(dict.fromkeys((os.pathsep, ';', ',', '\n')))
+    pattern = '|'.join(re.escape(separator) for separator in separators)
+    return [item.strip() for item in re.split(pattern, raw_value) if item.strip()]
 
 
 def _get_library_allowed_roots():
