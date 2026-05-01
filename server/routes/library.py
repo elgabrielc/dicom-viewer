@@ -418,7 +418,7 @@ def _parse_library_allowed_roots(raw_value):
     if not raw_value:
         return []
 
-    separators = tuple(dict.fromkeys((os.pathsep, ';', ',', '\n')))
+    separators = (os.pathsep, ';', ',', '\n')
     pattern = '|'.join(re.escape(separator) for separator in separators)
     return [item.strip() for item in re.split(pattern, raw_value) if item.strip()]
 

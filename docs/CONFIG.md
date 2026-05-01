@@ -37,6 +37,7 @@ DICOM_TEST_DATA="/path/to/dicom/folder" python app.py
 
 When the Flask app is exposed on all interfaces with `FLASK_HOST=0.0.0.0`, runtime library-folder changes are rejected unless the requested folder is inside one of these allowed roots.
 Spaces inside directory names are preserved.
+On Windows, use semicolon, comma, or newline between roots; colon is not treated as a separator because it appears in drive-letter paths.
 
 **Usage:**
 ```bash

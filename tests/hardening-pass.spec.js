@@ -113,6 +113,7 @@ try:
     second_allowed_child = os.path.join(second_allowed_root, 'incoming')
     semicolon_allowed_root = tempfile.mkdtemp(prefix='dicom semicolon allowed root ')
     semicolon_allowed_child = os.path.join(semicolon_allowed_root, 'incoming')
+    flanked_allowed_root = tempfile.mkdtemp(prefix='dicom flanked allowed root ')
     outside_root = tempfile.mkdtemp(prefix='dicom-outside-root-')
 
     os.environ['FLASK_HOST'] = '127.0.0.1'
@@ -130,6 +131,9 @@ try:
     exposed_second_allowed = validate(second_allowed_child)
     exposed_semicolon_allowed = validate(semicolon_allowed_child)
     exposed_outside = validate(outside_root)
+    parsed_flanked_roots = library_module._parse_library_allowed_roots(
+        f'{outside_root},{flanked_allowed_root},{semicolon_allowed_root}'
+    )
 finally:
     restore_env()
 
@@ -140,6 +144,8 @@ print(json.dumps({
     'exposed_second_allowed': exposed_second_allowed,
     'exposed_semicolon_allowed': exposed_semicolon_allowed,
     'exposed_outside': exposed_outside,
+    'parsed_flanked_roots': parsed_flanked_roots,
+    'flanked_allowed_root': flanked_allowed_root,
 }))
         `);
 
@@ -152,6 +158,8 @@ print(json.dumps({
         expect(result.exposed_allowed).toEqual({ allowed: true, error: null, status: null });
         expect(result.exposed_second_allowed).toEqual({ allowed: true, error: null, status: null });
         expect(result.exposed_semicolon_allowed).toEqual({ allowed: true, error: null, status: null });
+        expect(result.parsed_flanked_roots).toHaveLength(3);
+        expect(result.parsed_flanked_roots[1]).toBe(result.flanked_allowed_root);
         expect(result.exposed_outside).toMatchObject({
             allowed: false,
             status: 403,
