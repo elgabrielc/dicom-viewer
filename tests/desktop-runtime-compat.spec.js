@@ -615,8 +615,8 @@ test('desktop CSP allows the JPEG 2000 worker to load OpenJPEG WASM', async () =
     const tauriConfigPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'tauri.conf.json');
     const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, 'utf8'));
 
-    expect(tauriConfig.app.security.csp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
-    expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.csp).toContain("worker-src 'self' blob: 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' blob: 'wasm-unsafe-eval'");
     expect(tauriConfig.app.security.csp).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'");
     expect(tauriConfig.app.security.devCsp).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'");
 });
