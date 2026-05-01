@@ -56,8 +56,17 @@ test-data/
 
 # Playwright test results
 test-results/
+.playwright-mcp/
 
 # Session logs (contain local paths)
 docs/planning/SESSION-*.md
 docs/DEVELOPMENT_PHILOSOPHY.md
 docs/history/
+
+# Research/process artifacts kept locally but not committed by default
+docs/planning/archive/research-exhaust/
+docs/planning/archive/screenshots/
+
+# Generated one-off tool output
+/MacUpdater.js
+/wrangler.toml

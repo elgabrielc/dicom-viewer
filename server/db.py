@@ -409,6 +409,7 @@ def init_db():
         # Idempotent migration: add user_id column if table already exists
         # without it (pre-isolation schema). Safe no-op on fresh databases.
         _add_column(db, 'sync_server_versions', 'user_id', "TEXT NOT NULL DEFAULT ''")
+        _ensure_sync_server_versions_user_pk(db)
 
         # Processed operations for idempotent dedup (scoped by user_id)
         db.execute(
@@ -563,6 +564,43 @@ def _add_column(db, table, column, col_type):
             logging.getLogger(__name__).warning(
                 'Failed to add column %s.%s: %s', table, column, exc
             )
+
+
+def _ensure_sync_server_versions_user_pk(db):
+    """Rebuild legacy sync version tables that were not scoped by user_id."""
+    table_info = db.execute("PRAGMA table_info('sync_server_versions')").fetchall()
+    pk_columns = [
+        row['name'] for row in sorted(table_info, key=lambda row: row['pk']) if row['pk']
+    ]
+    if pk_columns == ['table_name', 'record_key', 'user_id']:
+        return
+
+    db.execute('DROP TABLE IF EXISTS sync_server_versions_new')
+    db.execute(
+        """
+        CREATE TABLE sync_server_versions_new (
+            table_name TEXT NOT NULL,
+            record_key TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            sync_version INTEGER NOT NULL DEFAULT 1,
+            device_id TEXT,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (table_name, record_key, user_id)
+        )
+        """
+    )
+    db.execute(
+        """
+        INSERT OR REPLACE INTO sync_server_versions_new (
+            table_name, record_key, user_id, sync_version, device_id, updated_at
+        )
+        SELECT table_name, record_key, user_id, sync_version, device_id, updated_at
+        FROM sync_server_versions
+        ORDER BY sync_version ASC, updated_at ASC
+        """
+    )
+    db.execute('DROP TABLE sync_server_versions')
+    db.execute('ALTER TABLE sync_server_versions_new RENAME TO sync_server_versions')
 
 
 def parse_int(value, default=None):

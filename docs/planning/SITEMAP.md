@@ -57,6 +57,21 @@ Research informing how we build specific features. Benchmarks competitors to lea
 | `RESEARCH-ambra-reports_2026-02-02.md` | Ambra Health document/report handling: cloud storage, PDF attachments, DICOM study integration |
 | `RESEARCH-ohif-reports_2026-02-02.md` | OHIF Viewer document handling: DICOM-wrapped formats (Encapsulated PDF, Structured Reports), zero-footprint architecture |
 | `RESEARCH-mychart-reports_2026-02-02_2148.md` | Epic MyChart document upload: server-side BLOB storage, clinical review workflow, Chronicles database |
+| `RESEARCH-horos-library-management.md` | Horos/OsiriX library management: import/copy model, album/database behavior, and local storage lessons |
+| `SPEC-reveal-in-finder-studies-series.md` | Desktop context-menu spec for revealing study and series source files in Finder |
+
+### Research -- Product Operations Benchmarks
+
+Research informing updater, telemetry, and local-first product operations choices.
+
+| File | Description |
+|------|-------------|
+| `RESEARCH-claude-instrumentation.md` | Claude app analytics and telemetry patterns: operational/product data separation, GrowthBook/Sentry/Segment, enterprise controls |
+| `RESEARCH-spotify-instrumentation.md` | Spotify analytics and Wrapped-style user-facing insights: event taxonomy, privacy tradeoffs, product value framing |
+| `RESEARCH-todoist-instrumentation.md` | Todoist/Doist instrumentation: Bitmapist-style analytics, privacy policy surface, productivity metrics |
+| `RESEARCH-horos-updates.md` | Horos/OsiriX update model and release-channel lessons for the desktop app |
+| `RESEARCH-todoist-updates.md` | Todoist macOS update model: Electron/Squirrel.Mac direct updates and App Store distribution |
+| `RESEARCH-word-updates.md` | Microsoft Word update model on macOS: Microsoft AutoUpdate architecture and enterprise controls |
 
 ### Research -- Competitive Intelligence
 
@@ -98,6 +113,8 @@ asks to preserve the research process itself.
 | `SECURITY-AUDIT.md` | Application security audit: 14 findings (3 High, 4 Medium, 7 Low) covering Flask API, CSP, Tauri, CI/CD, localStorage |
 | `DEBUGGER-AUDIT.md` | Comprehensive debugging audit: 37 findings (2 High, 15 Medium, 20 Low) covering parsing, rendering, state, memory, error handling, tests |
 | `REMEDIATION-PLAN.md` | Prioritized remediation plan cross-referencing both audits. 5 tiers from image correctness to accept-as-is |
+| `CODEBASE-AUDIT-2026-04-08.md` | Multi-agent codebase audit: hardening, security, and correctness findings captured as historical planning input |
+| `TODO-pr42-hardener-findings.md` | PR #42 hardener follow-up list for desktop security, sync, and context-menu improvements |
 
 ### Other
 
