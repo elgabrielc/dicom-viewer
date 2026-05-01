@@ -21,13 +21,13 @@ database_name = "myradone-stats"
 # Placeholder: the deployer must create the D1 database with
 #   npx wrangler d1 create myradone-stats
 # and paste the returned UUID here before running `wrangler deploy`.
-database_id = "TBD_RUN_WRANGLER_D1_CREATE"
+database_id = "5f9d6a5b-ef20-4a4d-8600-972ecebb690e"
 
 [[ratelimits]]
 name = "STATS_RATE_LIMIT"
 # Placeholder: create a new rate-limit namespace in the Cloudflare dashboard
 # (or let `wrangler deploy` provision it) and paste the numeric ID here.
-namespace_id = "TBD_CREATE_RATELIMIT_NAMESPACE"
+namespace_id = "2026050101"
 
   [ratelimits.simple]
   limit = 60
