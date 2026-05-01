@@ -188,6 +188,13 @@ def upload_report(study_uid):
     updated_at = parse_int(request.form.get('updatedAt'), now)
 
     report_path = os.path.join(db_module.REPORTS_DIR, f'{report_id}.{ext}')
+    db = get_db()
+    existing = db.execute(
+        'SELECT file_path, added_at, study_uid FROM reports WHERE id = ?', (report_id,)
+    ).fetchone()
+
+    if existing and existing['study_uid'] != study_uid:
+        return jsonify({'error': 'Report ID already belongs to a different study'}), 409
 
     # Save upload to a temp file first, then atomically install it before
     # committing metadata. If the DB write fails, restore the previous file.
@@ -206,12 +213,7 @@ def upload_report(study_uid):
         if size is None:
             size = len(file_bytes)
 
-        db = get_db()
         device_id = _get_device_id(db)
-
-        existing = db.execute(
-            'SELECT file_path, added_at FROM reports WHERE id = ?', (report_id,)
-        ).fetchone()
 
         if existing and existing['added_at'] and not request.form.get('addedAt'):
             added_at = existing['added_at']
@@ -239,7 +241,6 @@ def upload_report(study_uid):
                                      sync_version, deleted_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL)
                 ON CONFLICT(id) DO UPDATE SET
-                    study_uid=excluded.study_uid,
                     name=excluded.name,
                     type=excluded.type,
                     size=excluded.size,

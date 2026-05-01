@@ -27,6 +27,21 @@ python app.py
 DICOM_TEST_DATA="/path/to/dicom/folder" python app.py
 ```
 
+### DICOM_LIBRARY_ALLOWED_ROOTS
+
+| Property | Value |
+|----------|-------|
+| Purpose | Restrict folders accepted by `/api/library/config` |
+| Default | Unrestricted on loopback, required when `FLASK_HOST=0.0.0.0` |
+| Format | `:`-separated directories on macOS/Linux, `;`-separated on Windows |
+
+When the Flask app is exposed on all interfaces with `FLASK_HOST=0.0.0.0`, runtime library-folder changes are rejected unless the requested folder is inside one of these allowed roots.
+
+**Usage:**
+```bash
+DICOM_LIBRARY_ALLOWED_ROOTS="$HOME/DICOMs:/Volumes/Imaging" FLASK_HOST=0.0.0.0 python app.py
+```
+
 ### Flask Environment Variables
 
 Standard Flask environment variables apply:

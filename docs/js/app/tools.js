@@ -326,7 +326,10 @@
 
         const cacheKey = app.sources?.getSliceCacheKey?.(slice, state.currentSliceIndex);
         const decoded = state.sliceCache.get(cacheKey);
-        if (!decoded) return;
+        if (!decoded) {
+            void app.viewer?.loadSlice?.(state.currentSliceIndex);
+            return;
+        }
 
         const wlOverride =
             state.windowLevel.center !== null && state.windowLevel.width !== null ? state.windowLevel : null;

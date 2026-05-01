@@ -503,13 +503,13 @@
                     <td><span class="modality-badge">${escapeHtml(study.modality || '-')}</span></td>
                     <td>${study.seriesCount}</td>
                     <td>${study.imageCount}</td>
-                    <td class="comment-cell" onclick="event.stopPropagation()" oncontextmenu="event.preventDefault(); event.stopPropagation()">
-                        <button class="comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" oncontextmenu="event.preventDefault(); event.stopPropagation()">
+                    <td class="comment-cell">
+                        <button class="comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}">
                             ${commentCount > 0 ? `${commentCount} comment${commentCount > 1 ? 's' : ''}` : 'Add comment'}
                         </button>
                     </td>
-                    <td class="report-cell" onclick="event.stopPropagation()" oncontextmenu="event.preventDefault(); event.stopPropagation()">
-                        <button class="report-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" oncontextmenu="event.preventDefault(); event.stopPropagation()">
+                    <td class="report-cell">
+                        <button class="report-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}">
                             ${reportCount > 0 ? `${reportCount} report${reportCount > 1 ? 's' : ''}` : 'Add report'}
                         </button>
                     </td>
@@ -558,11 +558,11 @@
                                             ${warningIcon}
                                             <span class="series-name">${escapeHtml(series.seriesDescription || 'Series ' + (series.seriesNumber || '?'))}</span>
                                             <span class="series-count">${series.slices.length} slices</span>
-                                            <button class="comment-toggle series-comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}" onclick="event.stopPropagation()" oncontextmenu="event.preventDefault(); event.stopPropagation()">
+                                            <button class="comment-toggle series-comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}">
                                                 ${seriesCommentCount > 0 ? `${seriesCommentCount} comment${seriesCommentCount > 1 ? 's' : ''}` : 'Add comment'}
                                             </button>
                                         </div>
-                                        <div class="series-comment-panel" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}" style="display: none;" onclick="event.stopPropagation()">
+                                        <div class="series-comment-panel" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}" style="display: none;">
                                             <div class="detail-panel series-detail-panel">
                                                 <div class="description-section">
                                                     <h4>Description</h4>
@@ -589,6 +589,15 @@
         }
 
         studiesBody.innerHTML = html;
+
+        studiesBody
+            .querySelectorAll('.comment-cell, .report-cell, .comment-toggle, .report-toggle, .series-comment-toggle')
+            .forEach((el) => {
+                el.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                };
+            });
 
         studiesBody.querySelectorAll('.study-row').forEach((row) => {
             row.onclick = (e) => {

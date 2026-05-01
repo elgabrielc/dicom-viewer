@@ -965,6 +965,70 @@ test.describe('Desktop report persistence', () => {
         expect(persisted.reportUrlAfterDelete).toBe('');
     });
 
+    test('desktop backend rejects report IDs already owned by another study', async ({ page }) => {
+        const firstStudyUid = '1.2.840.desktop.cross.study.a';
+        const secondStudyUid = '1.2.840.desktop.cross.study.b';
+        const reportId = 'desktop-cross-study-report';
+
+        await installMockTauri(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(
+            async ({ firstStudyUid, secondStudyUid, reportId }) => {
+                const makeFile = (name) => {
+                    const bytes = new TextEncoder().encode('%PDF-1.4\n%%EOF');
+                    return new File([bytes], name, { type: 'application/pdf' });
+                };
+                const now = Date.now();
+                const first = await window.NotesAPI.uploadReport(firstStudyUid, makeFile('first.pdf'), {
+                    id: reportId,
+                    name: 'First Desktop Report',
+                    type: 'pdf',
+                    addedAt: now,
+                    updatedAt: now,
+                });
+                const second = await window.NotesAPI.uploadReport(secondStudyUid, makeFile('second.pdf'), {
+                    id: reportId,
+                    name: 'Second Desktop Report',
+                    type: 'pdf',
+                    addedAt: now + 1,
+                    updatedAt: now + 1,
+                });
+                const notes = await window.NotesAPI.loadNotes([firstStudyUid, secondStudyUid]);
+                const firstStored =
+                    notes?.studies?.[firstStudyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
+                const secondStored =
+                    notes?.studies?.[secondStudyUid]?.reports?.find((entry) => entry?.id === reportId) || null;
+                const appDataPath = await window.__TAURI__.path.appDataDir();
+                const rejectedPath = await window.__TAURI__.path.join(
+                    appDataPath,
+                    'reports',
+                    secondStudyUid,
+                    `${reportId}.pdf`,
+                );
+
+                return {
+                    first,
+                    second,
+                    firstStored,
+                    secondStored,
+                    rejectedFileExists: await window.__TAURI__.fs.exists(rejectedPath),
+                    sqlReports: JSON.parse(localStorage.getItem('mock-tauri-sql:sqlite:viewer.db') || '{}').reports,
+                };
+            },
+            { firstStudyUid, secondStudyUid, reportId },
+        );
+
+        expect(result.first).toMatchObject({ id: reportId, name: 'First Desktop Report' });
+        expect(result.second).toBeNull();
+        expect(result.firstStored).toMatchObject({ id: reportId, name: 'First Desktop Report' });
+        expect(result.secondStored).toBeNull();
+        expect(result.rejectedFileExists).toBe(false);
+        expect(result.sqlReports).toHaveLength(1);
+        expect(result.sqlReports[0]).toMatchObject({ id: reportId, study_uid: firstStudyUid });
+    });
+
     test('desktop backend removes metadata even when report file deletion fails', async ({ page }) => {
         const studyUid = '1.2.840.desktop.test.study';
         const reportId = 'desktop-report-delete-failure';

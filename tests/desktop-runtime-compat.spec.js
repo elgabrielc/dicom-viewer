@@ -526,12 +526,99 @@ test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', asy
     expect(result).toMatch(/\/js\/openjpegwasm_decode\.wasm$/);
 });
 
+test('JPEG 2000 worker disposal rejects an active decode and terminates the worker', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5001/?nolib');
+
+    const result = await page.evaluate(async () => {
+        const app = window.DicomViewerApp;
+        const originalWorker = window.Worker;
+        const workers = [];
+
+        class SilentWorker {
+            constructor(url) {
+                this.url = url;
+                this.terminated = false;
+                workers.push(this);
+            }
+
+            postMessage() {}
+
+            terminate() {
+                this.terminated = true;
+            }
+        }
+
+        window.Worker = SilentWorker;
+
+        try {
+            const pending = app.dicom.decodeJ2KInWorker(new Uint8Array([1, 2, 3, 4]), 16, 0, 1, 2).then(
+                () => ({ status: 'resolved' }),
+                (error) => ({
+                    status: 'rejected',
+                    message: error?.message || String(error),
+                    stage: error?.stage || null,
+                }),
+            );
+            await Promise.resolve();
+            app.dicom.disposeJpeg2000Worker('Viewer closed before JPEG 2000 decode completed.');
+
+            const outcome = await Promise.race([
+                pending,
+                new Promise((resolve) => setTimeout(() => resolve({ status: 'pending' }), 100)),
+            ]);
+
+            return {
+                exportedDispose: typeof app.dicom.disposeJpeg2000Worker,
+                workerCount: workers.length,
+                terminated: workers[0]?.terminated || false,
+                outcome,
+            };
+        } finally {
+            window.Worker = originalWorker;
+            app.dicom.disposeJpeg2000Worker('test cleanup');
+        }
+    });
+
+    expect(result.exportedDispose).toBe('function');
+    expect(result.workerCount).toBe(1);
+    expect(result.terminated).toBe(true);
+    expect(result.outcome).toMatchObject({
+        status: 'rejected',
+        stage: 'decode',
+    });
+    expect(result.outcome.message).toContain('Viewer closed');
+});
+
+test('closing the viewer disposes the JPEG 2000 worker', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5001/?nolib');
+
+    const reasons = await page.evaluate(() => {
+        const app = window.DicomViewerApp;
+        const originalDispose = app.dicom.disposeJpeg2000Worker;
+        const calls = [];
+        app.dicom.disposeJpeg2000Worker = (reason) => {
+            calls.push(reason);
+        };
+        try {
+            app.viewer.closeViewer();
+        } finally {
+            app.dicom.disposeJpeg2000Worker = originalDispose;
+        }
+        return calls;
+    });
+
+    expect(reasons).toHaveLength(1);
+    expect(reasons[0]).toContain('Viewer closed');
+});
+
 test('desktop CSP allows the JPEG 2000 worker to load OpenJPEG WASM', async () => {
     const tauriConfigPath = path.join(__dirname, '..', 'desktop', 'src-tauri', 'tauri.conf.json');
     const tauriConfig = JSON.parse(fs.readFileSync(tauriConfigPath, 'utf8'));
 
-    expect(tauriConfig.app.security.csp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
-    expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.csp).toContain("worker-src 'self' blob: 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.devCsp).toContain("worker-src 'self' blob: 'wasm-unsafe-eval'");
+    expect(tauriConfig.app.security.csp).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'");
+    expect(tauriConfig.app.security.devCsp).toContain("script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'");
 });
 
 // Regression: the cloud-sync PR removed read_scan_manifest and read_scan_header from the
