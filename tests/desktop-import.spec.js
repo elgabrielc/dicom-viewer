@@ -1698,7 +1698,7 @@ test.describe('Desktop import integration', () => {
         const bannerText = await page.locator('#importResultText').textContent();
         expect(bannerText).toContain('Imported 5 files');
         expect(bannerText).toContain('2 duplicates skipped');
-        expect(bannerText).toContain('1 invalid');
+        expect(bannerText).toContain('1 non-DICOM file skipped');
         expect(bannerText).toContain('3.5s');
 
         // The banner should have the success class (no errors or collisions)
