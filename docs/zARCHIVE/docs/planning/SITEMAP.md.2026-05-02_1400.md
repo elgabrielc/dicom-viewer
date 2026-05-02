@@ -42,22 +42,9 @@ Plans, research, and reference materials for feature development.
 
 | File | Description |
 |------|-------------|
-| `PLAN-3d-volume-rendering.md` | Implementation plan for 3D volume rendering (vtk.js): guiding principles, technology selection, phased feature list, UI design, performance considerations |
 | `PLAN-tauri-desktop-app.md` | Historical implementation plan for the Tauri desktop shell, restored from the original Claude-authored planning doc and annotated with the commits/PRs that completed it |
 | `PLAN-tauri-release.md` | Release plan for shipping the Tauri desktop app as a signed, notarized macOS artifact, with the plain DMG as the official packaging path and Finder-styled DMG work deferred |
 | `PLAN-notes.md` | Notes feature (descriptions + comments): design decisions, storage rationale, future improvements, recommended tests |
-
-### Test Plans
-
-| File | Description |
-|------|-------------|
-| `TEST-PLAN-viewing-tools.md` | Comprehensive test plan for Window/Level, Pan, Zoom, and Reset functionality |
-
-### Strategic Reference
-
-| File | Description |
-|------|-------------|
-| `COMPANIES-RESEARCHED.md` | Canonical roster of every company / product / platform researched or cited across the project, organized by category. The "have we looked at X?" reference |
 
 ### Research -- Feature Design
 
@@ -65,8 +52,7 @@ Research informing how we build specific features. Benchmarks competitors to lea
 
 | File | Description |
 |------|-------------|
-| `RESEARCH-3d-volume-rendering.md` | Architecture considerations for 3D volume rendering: modularity, graceful degradation, testability, dependency evaluation criteria. Cross-links to benchmarks file |
-| `RESEARCH-3d-volume-rendering-benchmarks.md` | 3D rendering benchmark of Onshape, Fusion 360, 3D Slicer/vtk.js, Horos. Comparison tables, transfer functions, GPU ray casting, recommended path. Led to vtk.js decision |
+| `RESEARCH-3d-volume-rendering.md` | 3D rendering approaches: benchmarked Onshape, Fusion 360, 3D Slicer, Horos/OsiriX. Led to vtk.js decision |
 | `RESEARCH-measurement-tool.md` | Measurement tools: benchmarked Horos, NilRead, Ambra, Sectra UniView. Calibration, pixel spacing, interaction models |
 | `RESEARCH-ambra-reports_2026-02-02.md` | Ambra Health document/report handling: cloud storage, PDF attachments, DICOM study integration |
 | `RESEARCH-ohif-reports_2026-02-02.md` | OHIF Viewer document handling: DICOM-wrapped formats (Encapsulated PDF, Structured Reports), zero-footprint architecture |
@@ -98,9 +84,6 @@ Deep technical analysis of competing products and how their architectures compar
 | `RESEARCH-visage.md` | Visage 7 / Pro Medicus: pure SSR from GPU render servers (C++/Qt, Zuse Institute Berlin origins), patented adaptive streaming, single codebase (viewer+archive+AI), AWS cloud-native, per-study pricing, 100% customer retention |
 | `RESEARCH-ohif.md` | OHIF Viewer (open-source): Cornerstone3D rendering (vtk.js + WebGL), extension/mode architecture, DICOMweb, progressive HTJ2K loading, VoxelManager memory optimization. Most direct architectural comparison to our viewer |
 | `RESEARCH-aws-healthlake-imaging.md` | AWS HealthLake Imaging: HTJ2K encoding (2-3x compression), DICOMweb API (WADO-RS/STOW-RS/QIDO-RS with OIDC), progressive loading via TLM Proxy, archive tier at $0.006/GB with subsecond retrieval. Potential infrastructure for our cloud platform (ADR 004) |
-| `RESEARCH-easyradiology.md` | easyRadiology AG: 35% German market share, architecture, and market positioning |
-| `RESEARCH-direct-to-consumer-medical-imaging.md` | Validates "occupied but not won" framing for the patient-facing DICOM cloud space; documents adjacent / disqualified players |
-| `RESEARCH-mymedicalimages-equivalents.md` | Exhaustive equivalents search: surfaces 3DICOM Patient (Singular Health, ASX:SHG) as the strongest direct competitor; documents DicomShare and Falcon Mx |
 
 ### Research Companions
 
@@ -161,12 +144,6 @@ project truth.
 
 ---
 
-## Archive (`dicom-viewer/docs/zARCHIVE/`)
-
-Timestamped snapshots of files before deletion, rename, or heavy modification. Preserved so we can refer back to what a file said before. The `z` prefix sorts this folder to the bottom of `docs/`. See `docs/zARCHIVE/README.md` for the policy: archive before any deletion, rename, removal of a `##` section or 10+ lines, or any restructuring. Use `cp` (not `mv`), name as `<original>.<YYYY-MM-DD_HHMM>.<ext>`, and mirror the full repo-relative path under `zARCHIVE/`.
-
----
-
 ## Decisions (`dicom-viewer/docs/decisions/`)
 
 Architecture Decision Records (ADRs) for significant project decisions and rationale.
@@ -183,8 +160,6 @@ Architecture Decision Records (ADRs) for significant project decisions and ratio
 
 ## DICOM Viewer Application (`dicom-viewer/`)
 
-Repo root holds only the canonical top-level docs (README, CLAUDE.md, AGENTS.md, CONTRIBUTING.md, CHANGELOG.md, USER_GUIDE.md). All plans, research, and test plans live under `docs/planning/`.
-
 ```
 dicom-viewer/
 ├── .github/workflows/     # CI/CD configuration
@@ -192,24 +167,17 @@ dicom-viewer/
 ├── app.py                 # Flask backend
 ├── desktop/               # Tauri desktop shell, Rust entry point, icons, build config
 ├── requirements.txt       # Python dependencies
-├── README.md              # Project entry point
 ├── CLAUDE.md              # Claude Code context and instructions
-├── AGENTS.md              # Agent workflow and parallel-work rules
 ├── CONTRIBUTING.md        # Contribution guidelines
-├── CHANGELOG.md           # Version history
-├── USER_GUIDE.md          # End-user documentation
 ├── docs/                  # Frontend static files + documentation
 │   ├── index.html         # Main SPA
 │   ├── css/               # Styles
 │   ├── js/                # JavaScript, config.js, WASM decoders
 │   ├── sample/            # Demo CT scan
 │   ├── sample-mri/        # Demo MRI scan
-│   ├── planning/          # Plans, test plans, research, strategic reference
+│   ├── planning/          # Research and feature planning
 │   ├── decisions/         # ADRs and architecture rationale
 │   ├── design/            # Persistent design handbook and closeout workflow
-│   ├── zARCHIVE/          # Timestamped snapshots before destructive edits
-│   ├── DIVERGENT_CENTRAL_GUIDE.md  # Canonical product vision and strategy
-│   ├── INDEX.md           # Master documentation index
 │   ├── BUGS.md            # Bug tracking
 │   ├── DEPLOY.md          # Deployment guide
 │   ├── DEVELOPMENT_PHILOSOPHY.md  # Why we work this way
@@ -240,4 +208,4 @@ dicom-viewer/
 
 ---
 
-*Last updated: 2026-05-02*
+*Last updated: 2026-04-06*

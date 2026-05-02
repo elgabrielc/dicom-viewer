@@ -239,7 +239,7 @@ The Tauri plan completed, then the next major desktop work moved into **ADR-004 
 - PRs #19 through #23
 
 The broader product roadmap after desktop stabilization remained:
-- [3D_VOLUME_RENDERING_PLAN.md](../../3D_VOLUME_RENDERING_PLAN.md)
+- [PLAN-3d-volume-rendering.md](./PLAN-3d-volume-rendering.md)
 - [RESEARCH-3d-volume-rendering.md](./RESEARCH-3d-volume-rendering.md)
 
 So this plan is best read as the bridge between:

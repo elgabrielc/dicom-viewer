@@ -40,6 +40,92 @@ Tomorrow: the same people, plus teams who need to share and collaborate on imagi
 
 ---
 
+## Market Position
+
+**The space is occupied but not won.**
+
+There are at least four active direct-to-consumer DICOM cloud services where individuals can sign up independently, upload their own imaging, and store it in a personal cloud account:
+
+| Product | Pricing | Differentiator |
+|---------|---------|----------------|
+| **MyMedicalImages.com** | $29.95/yr unlimited | Cleanest pure-DTC match. Founded 2017. Browser-based, family folders, CVS Pharmacy partnership. Small scale. |
+| **3DICOM Patient** (Singular Health, ASX:SHG) | $29.95/yr | **Most direct competitor.** Public-company backing, 3D rendering as headline, mobile apps, FDA-cleared MD sibling. Founded 2017. |
+| **DicomShare** | $90/yr (10 GB) | Browser-side anonymization, share-link focused with persistent personal storage. |
+| **Falcon Mx + Falcon Cloud** | $70+/yr | Mobile-first iOS, FDA-cleared sibling (Falcon MD), 4.5★ App Store. |
+
+The largest player adjacent to the category, **PocketHealth** (2M+ patients, 900+ hospitals), reached scale primarily through B2B2C hospital partnerships. Patient self-upload was added in 2022 as a secondary path. Several other platforms (PostDICOM, Purview Image, Ambra, CarePassport, LifeImage / Intelerad) are technically self-signupable but priced as B2B clinic products or require hospital onboarding.
+
+**No pure direct-to-consumer DICOM cloud has broken through at mass-consumer scale.**
+
+### Why the category hasn't been won
+
+1. **No category in consumer minds.** "Where do I keep my medical imaging?" is not a question patients ask themselves.
+2. **Low usage frequency.** Most users have imaging once or twice a year.
+3. **Pricing-to-frequency mismatch.** $30-50/year feels expensive for a once-a-year service.
+4. **Sharing is the killer feature, but recipient acceptance is uneven.** Doctors do not always accept third-party share links.
+5. **B2B2C is structurally easier.** PocketHealth's growth proves this -- direct consumer awareness is hard to manufacture.
+6. **Trust gap.** Patient-facing medical data startups historically struggle to build mass trust.
+7. **Existing products are utility-grade.** All competitors are functional but uninspired -- no consumer-product-quality entrant has emerged.
+
+### myradone's wedge
+
+The competitive position is not "first mover" -- the category has been occupied for nearly a decade (MyMedicalImages and 3DICOM Patient both founded 2017). It is **"quality mover": be the one that actually delivers what the category promises.**
+
+What myradone bets on:
+
+- **Viewer craft** (Darkroom / Lightroom lineage) -- competitors are utility-grade
+- **Library design** (Google Photos lineage) -- competitors feel like vendor portals
+- **Modern web architecture** (DICOMweb + HTJ2K + browser-native client-side rendering, per [ADR 004](decisions/004-cloud-platform-rendering-architecture.md))
+- **Onboarding and brand quality** -- open territory at the consumer-quality top
+- **Genuinely good free tier with no surprise charges** -- PocketHealth's billing-and-cancellation complaints are instructive
+- **3D reconstruction (later)** -- 3DICOM has a 2D-to-3D feature but no consumer scale or brand. The 3D space is contestable, not owned.
+- **Retail and consumer-channel distribution** -- MyMedicalImages's CVS partnership is a starting point, not a moat. The total addressable consumer market is enormous relative to anything any of these competitors has captured.
+
+No competitor has reached the scale or brand recognition required to "own" any feature, channel, or market. Every dimension is contestable. Quality and execution decide the winner.
+
+### Full research
+
+- [RESEARCH-direct-to-consumer-medical-imaging](planning/RESEARCH-direct-to-consumer-medical-imaging.md) -- whether the space is fresh or a graveyard
+- [RESEARCH-mymedicalimages-equivalents](planning/RESEARCH-mymedicalimages-equivalents.md) -- exhaustive search for products like MyMedicalImages
+- [Companies Researched](planning/COMPANIES-RESEARCHED.md) -- running roster of every company we have benchmarked or cited, organized by category
+
+---
+
+## Primary Competitive Benchmarks
+
+These are the products myradone compares against and builds to surpass. This is a primary strategic priority -- not background research. The Tier 1 list defines the build sequence.
+
+### Tier 1 -- compare against, build to surpass
+
+**1. MyMedicalImages.com -- the #1 competitor.**
+Closest analog to myradone's plan. **Reach feature parity ASAP, then surpass.** The near-term build sequence anchors here: web-native onboarding, browser DICOM upload from CD or local folder, family folders, sharing, simple consumer pricing, no surprise charges. Every milestone should ask: "Are we at parity yet? Where are we already better?"
+
+**2. 3DICOM Patient (Singular Health, ASX:SHG).**
+Strongest direct competitor by funding and engineering depth. Same $29.95/yr price point. Public-company backing. Mobile apps. FDA-cleared MD sibling. Benchmark for **breadth of feature surface** and the eventual **3D reconstruction roadmap** (which myradone will pursue and surpass on; not avoid).
+
+**3. Falcon Mx (with Falcon Cloud).**
+Mobile-first iOS competitor with FDA-cleared sibling product (Falcon MD) and 4.5★ App Store ratings. Benchmark for **mobile UX quality** once myradone extends to mobile.
+
+### Tier 2 -- peripheral reference
+
+**DicomShare.**
+Share-tool framing rather than library-first. Useful for benchmarking the **sharing flow specifically**, not the overall product.
+
+### Build sequence implied by the benchmarks
+
+1. **Match MyMedicalImages first** on consumer-library fundamentals: web onboarding, upload, organize, view, share, simple pricing, no surprise charges.
+2. **Surpass on the wedge:** viewer craft (Darkroom/Lightroom lineage), library design (Google Photos lineage), brand quality, modern web architecture (DICOMweb + HTJ2K + browser-native, per [ADR 004](decisions/004-cloud-platform-rendering-architecture.md)).
+3. **Expand into 3DICOM/Falcon dimensions:** 3D reconstruction, mobile-first iOS. None of these are owned by anyone.
+4. **Pursue retail and consumer distribution** in parallel. MyMedicalImages's CVS partnership is a starting point, not a moat. The total addressable market dwarfs anything any current player has captured.
+
+### Discipline
+
+- Every milestone review should ask: where are we behind MyMedicalImages, where are we already past them, and what's between us and surpass?
+- New features should be evaluated against the Tier 1 list: what would MyMedicalImages, 3DICOM Patient, and Falcon Mx need to do to match this? Are we leading or following on this dimension?
+- Tier 2 (DicomShare) is reference-only; do not over-invest in beating peripheral competitors.
+
+---
+
 ## Product Philosophy
 
 ### Two Data Domains
@@ -218,6 +304,8 @@ Researched HIPAA/FTC compliance, DICOMweb standards, Epic/Ambra integration, and
 ---
 
 ## Roadmap
+
+The roadmap is anchored by the [Primary Competitive Benchmarks](#primary-competitive-benchmarks) above. The near-term build sequence is: match MyMedicalImages first, then surpass on the wedge, then expand into 3DICOM/Falcon dimensions.
 
 ### Now: Desktop App (Local-First)
 

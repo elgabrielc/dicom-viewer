@@ -12,6 +12,14 @@ Master index of all project documentation, organized by audience and purpose.
 
 ## Quick Links by Audience
 
+### For Strategy
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| [Divergent Central Guide](./DIVERGENT_CENTRAL_GUIDE.md) | docs/ | Canonical product vision, market position, primary competitive benchmarks (Tier 1: MyMedicalImages, 3DICOM Patient, Falcon Mx), architecture trajectory, and roadmap |
+| [Primary Competitive Benchmarks](./DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks) | docs/ | Tier 1 / Tier 2 competitor priority and the build sequence implied by them. Anchor: MyMedicalImages -- reach parity ASAP, then surpass |
+| [Companies Researched](./planning/COMPANIES-RESEARCHED.md) | docs/planning/ | Running roster of every company / product / platform researched or cited in this project. The "have we looked at X?" reference |
+
 ### For Users
 
 | Document | Location | Description |
@@ -28,7 +36,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [API Reference](./API.md) | docs/ | REST API endpoints for test mode (Flask backend) |
 | [Configuration](./CONFIG.md) | docs/ | Environment variables, runtime settings, browser requirements |
 | [Testing Guide](./TESTING.md) | docs/ | Playwright test setup, helper functions, writing tests, visual verification |
-| [Viewing Tools Test Plan](../TEST_PLAN_VIEWING_TOOLS.md) | Root | Comprehensive test plan for Window/Level, Pan, Zoom, and Reset functionality |
+| [Viewing Tools Test Plan](./planning/TEST-PLAN-viewing-tools.md) | docs/planning/ | Comprehensive test plan for Window/Level, Pan, Zoom, and Reset functionality |
 | [Parallel Agent Workflow](./AGENT_WORKTREES.md) | docs/ | Rules and helper commands for running multiple Codex and Claude sessions safely in parallel |
 | [Parallel Agent Explainer](./AGENT_WORKTREES_EXPLAINER.md) | docs/ | Beginner walkthrough of the multi-agent cleanup, the branch/worktree model, and why the current workflow exists |
 | [Agent Launchers](./AGENT_LAUNCHERS.md) | docs/ | Session launcher scripts for creating worktrees and starting AI sessions safely |
@@ -41,7 +49,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [Code Reviews](./CODE_REVIEWS.md) | docs/ | PR review findings, severity grouping, and resolution status |
 | [Desktop Library Diagnostics](./desktop-library-diagnostics.md) | docs/ | Quick reference for rerunning desktop library scan diagnostics |
 | [Changelog](../CHANGELOG.md) | Root | Version history and release notes |
-| [Benchmarking Research](../BENCHMARKING_RESEARCH.md) | Root | 3D volume rendering competitive benchmarking across established companies |
+| [3D Volume Rendering Benchmarks](./planning/RESEARCH-3d-volume-rendering-benchmarks.md) | docs/planning/ | 3D volume rendering competitive benchmarking across established companies (Onshape, Fusion 360, 3D Slicer, Horos) |
 
 ### For Planning
 
@@ -51,7 +59,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [Project Sitemap](./planning/SITEMAP.md) | docs/planning/ | File structure map and active work tracking |
 | [Remediation Plan](./planning/REMEDIATION-PLAN.md) | docs/planning/ | Prioritized remediation for security and debugging audit findings |
 | [Tauri Release Plan](./planning/PLAN-tauri-release.md) | docs/planning/ | Release plan for the signed/notarized macOS desktop artifact |
-| [3D Volume Rendering Plan](../3D_VOLUME_RENDERING_PLAN.md) | Root | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
+| [3D Volume Rendering Plan](./planning/PLAN-3d-volume-rendering.md) | docs/planning/ | Implementation plan for 3D features: vtk.js, volume rendering, MIP |
 | [Tauri Desktop Plan](./planning/PLAN-tauri-desktop-app.md) | docs/planning/ | Historical plan for the Tauri desktop shell with PR mapping |
 | [Sync Contract v1](./planning/SYNC-CONTRACT-V1.md) | docs/planning/ | Frozen wire protocol and auth model for cloud sync v1 |
 
@@ -74,11 +82,13 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [EasyRadiology](./planning/RESEARCH-easyradiology.md) | Competitive | easyRadiology AG architecture, market positioning, 35% German market share |
 | [Word + OneDrive Sync](./planning/RESEARCH-word-onedrive-sync-prompt_2026-03-25_1124.md) | Infrastructure | Microsoft Word and OneDrive sync architecture, conflict resolution, informing cloud sync design |
 | [Instrumentation: Todoist/Bitmapist](./planning/RESEARCH-instrumentation.md) | Instrumentation | Todoist analytics benchmarking, Bitmapist, Karma system, consent-first model |
-| [Instrumentation: Sublime Text](./planning/RESEARCH-sublime-instrumentation-prompt_2026-04-06_1333.md) | Instrumentation | Sublime Text near-zero telemetry benchmarking, Panic privacy policy as template |
-| [Instrumentation: Claude/Anthropic](./planning/RESEARCH-claude-instrumentation-prompt_2026-04-06_1345.md) | Instrumentation | Claude two-stream architecture, HIPAA BAA, enterprise compliance deep dive |
-| [Instrumentation: Spotify/Wrapped](./planning/RESEARCH-spotify-instrumentation-prompt_2026-04-06_1358.md) | Instrumentation | Spotify data-as-feature, Wrapped viral model, event taxonomy at scale |
-| [DICOM Sharing Compliance](./planning/RESEARCH-dicom-sharing-compliance-prompt_2026-04-06_1425.md) | Compliance | HIPAA/FTC classification, DICOMweb standards, Epic/Ambra integration paths |
-| [Healthcare Compliance Costs](./planning/RESEARCH-healthcare-compliance-costs-prompt_2026-04-06_1445.md) | Compliance | Itemized SOC 2/HITRUST/Epic/Ambra costs, three scenarios, startup examples |
+| [Instrumentation: Sublime Text](./planning/archive/research-exhaust/RESEARCH-sublime-instrumentation-prompt.md) | Instrumentation | Sublime Text near-zero telemetry benchmarking, Panic privacy policy as template (research-exhaust archive; conclusions promoted into ADR 008) |
+| [Instrumentation: Claude/Anthropic](./planning/RESEARCH-claude-instrumentation.md) | Instrumentation | Claude two-stream architecture, HIPAA BAA, enterprise compliance deep dive |
+| [Instrumentation: Spotify/Wrapped](./planning/RESEARCH-spotify-instrumentation.md) | Instrumentation | Spotify data-as-feature, Wrapped viral model, event taxonomy at scale |
+| [DICOM Sharing Compliance](./planning/RESEARCH-dicom-sharing-compliance.md) | Compliance | HIPAA/FTC classification, DICOMweb standards, Epic/Ambra integration paths |
+| [Healthcare Compliance Costs](./planning/RESEARCH-healthcare-compliance-costs.md) | Compliance | Itemized SOC 2/HITRUST/Epic/Ambra costs, three scenarios, startup examples |
+| [Direct-to-Consumer Imaging Cloud (Round 1)](./planning/RESEARCH-direct-to-consumer-medical-imaging.md) | Competitive | Whether patient-facing personal medical imaging cloud is fresh space or graveyard. Validates "occupied but not won" |
+| [MyMedicalImages Equivalents (Round 2)](./planning/RESEARCH-mymedicalimages-equivalents.md) | Competitive | Exhaustive search for products like MyMedicalImages: 3DICOM Patient (strongest competitor), DicomShare, Falcon Mx |
 
 ### For Decisions
 
@@ -114,9 +124,7 @@ dicom-viewer/
 ├── USER_GUIDE.md          # End-user documentation
 ├── CONTRIBUTING.md        # Contribution guidelines
 ├── CHANGELOG.md           # Version history
-├── BENCHMARKING_RESEARCH.md     # 3D volume rendering competitive benchmarking
-├── TEST_PLAN_VIEWING_TOOLS.md   # Viewing tools test plan (W/L, Pan, Zoom, Reset)
-└── 3D_VOLUME_RENDERING_PLAN.md  # 3D feature roadmap
+└── (planning, research, and test plans now live under docs/planning/)
 ```
 
 ### docs/ Directory
@@ -223,7 +231,7 @@ Start here to understand the project before contributing:
 
 ### For Understanding 3D Plans
 
-1. **[3D_VOLUME_RENDERING_PLAN.md](../3D_VOLUME_RENDERING_PLAN.md)** - High-level plan and technology decisions
+1. **[PLAN-3d-volume-rendering.md](./planning/PLAN-3d-volume-rendering.md)** - High-level plan and technology decisions
 2. **[RESEARCH-3d-volume-rendering.md](./planning/RESEARCH-3d-volume-rendering.md)** - Detailed research and benchmarking
 
 ---
@@ -247,7 +255,7 @@ Contribution guidelines. Covers development setup, code style (JavaScript, Pytho
 **CHANGELOG.md**
 Version history following semantic versioning. Documents new features, bug fixes, and breaking changes for each release.
 
-**3D_VOLUME_RENDERING_PLAN.md**
+**docs/planning/PLAN-3d-volume-rendering.md**
 Implementation roadmap for 3D volume rendering. Includes guiding principles, technology selection (vtk.js), phased feature list, UI design, and performance considerations.
 
 ### Technical Documentation
@@ -331,4 +339,4 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 
 ---
 
-*Last updated: 2026-04-06*
+*Last updated: 2026-05-02*
