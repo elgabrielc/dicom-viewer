@@ -102,7 +102,7 @@ For CI, the `test-fixtures/` directory contains minimal test data.
 
 ### Test Files
 - `tests/viewing-tools.spec.js` - Phase 1 viewing tools
-- `TEST_PLAN_VIEWING_TOOLS.md` - Detailed test plan
+- [`planning/TEST-PLAN-viewing-tools.md`](planning/TEST-PLAN-viewing-tools.md) - Detailed test plan
 
 ---
 
@@ -406,7 +406,7 @@ test('Feature - Action - Expected Result', async ({ page }) => {
 When implementing new features, follow this process:
 
 ### 1. Update Test Plan
-Add test cases to `TEST_PLAN_VIEWING_TOOLS.md` (or create new plan file):
+Add test cases to [`planning/TEST-PLAN-viewing-tools.md`](planning/TEST-PLAN-viewing-tools.md) (or create new plan file):
 ```markdown
 ### T[X].[Y]: [Feature Name]
 **Steps:**

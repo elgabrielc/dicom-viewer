@@ -90,7 +90,7 @@ When evaluating libraries/tools, use these rules of thumb:
 
 ## Benchmarking Research
 
-**Status**: Completed - See [BENCHMARKING_RESEARCH.md](./BENCHMARKING_RESEARCH.md) for full details.
+**Status**: Completed - See [RESEARCH-3d-volume-rendering-benchmarks.md](./docs/planning/RESEARCH-3d-volume-rendering-benchmarks.md) for full details.
 
 ### Companies/Projects Studied
 | Company | Platform | Rendering Tech | Key Insight |

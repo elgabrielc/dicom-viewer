@@ -163,8 +163,7 @@ dicom-viewer/
 │   └── viewing-tools.spec.js
 │
 ├── CLAUDE.md               # Technical documentation
-├── USER_GUIDE.md           # End-user documentation
-└── 3D_VOLUME_RENDERING_PLAN.md  # Future 3D features
+└── USER_GUIDE.md           # End-user documentation
 ```
 
 ## Running Tests
@@ -179,7 +178,7 @@ Tests automatically start the Flask server and use test data from `~/claude 0/te
 
 ## Future Plans
 
-See [3D_VOLUME_RENDERING_PLAN.md](./3D_VOLUME_RENDERING_PLAN.md) for planned features:
+See [docs/planning/PLAN-3d-volume-rendering.md](./docs/planning/PLAN-3d-volume-rendering.md) for planned features:
 - 3D volume rendering with vtk.js
 - Maximum Intensity Projection (MIP)
 - Multiplanar Reformation (MPR)

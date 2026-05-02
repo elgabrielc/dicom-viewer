@@ -180,7 +180,7 @@ When in doubt, ask: "Is this about the imaging pipeline or the annotation layer?
 3. Basic ray-casting with preset transfer functions
 4. View mode toggle (2D Slices / 3D Volume / MIP)
 
-See [RESEARCH-3d-volume-rendering.md](docs/planning/RESEARCH-3d-volume-rendering.md) for architecture decisions, and `3D_VOLUME_RENDERING_PLAN.md` for implementation details.
+See [RESEARCH-3d-volume-rendering.md](docs/planning/RESEARCH-3d-volume-rendering.md) for architecture decisions, and [PLAN-3d-volume-rendering.md](docs/planning/PLAN-3d-volume-rendering.md) for implementation details.
 
 ## Technical Notes
 
