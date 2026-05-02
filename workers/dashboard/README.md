@@ -1,8 +1,7 @@
-# myRadOne Subscriber Dashboard
+# myRadOne Dashboard
 
-Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
-`myradone-subscribers` D1 database and anonymous install stats from the
-`myradone-stats` D1 database.
+Internal Cloudflare Worker dashboard for viewing subscriber analytics from
+`myradone-subscribers` and anonymous install stats from `myradone-stats`.
 
 ## Files
 
@@ -66,8 +65,8 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
   serve instead of relying on hand-maintained hash constants.
 - `401` API responses include `WWW-Authenticate: Bearer realm="myradone-dashboard"`
   so CLI and browser tooling get a clearer auth signal.
-- D1 access is read-only by convention, not by enforced binding mode. Stats
-  dashboard reads go through `readonlySelect`, which rejects semicolons,
+- D1 access is read-only by convention, not by enforced binding mode. Dashboard
+  D1 reads go through `readonlySelect`, which rejects semicolons,
   mutation/admin keywords, and anything other than `SELECT`/`WITH` after
   stripping SQL comments.
 - Stats API responses never include full install identifiers. The install list
@@ -169,7 +168,7 @@ you want meaningful dashboard output.
 
    ```bash
    npx wrangler d1 execute myradone-stats --local --config workers/dashboard/wrangler.toml \
-     --command "INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen, version) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', 1);"
+     --command "INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z');"
    ```
 
 7. Run the worker:

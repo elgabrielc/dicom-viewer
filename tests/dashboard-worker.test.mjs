@@ -84,11 +84,7 @@ function createStatsDb(initialInstalls) {
 
     const db = {
         recordedQueries: [],
-        directPrepareCalls: [],
         prepare(query) {
-            if (!this.__readonlySelectActive) {
-                this.directPrepareCalls.push(query);
-            }
             this.recordedQueries.push(query);
             return {
                 args: [],
@@ -139,7 +135,7 @@ function createDb(initialSubscribers) {
         consent_version: subscriber.consent_version ?? 'v1'
     }));
 
-    return {
+    const db = {
         prepare(query) {
             return {
                 args: [],
@@ -200,6 +196,8 @@ function createDb(initialSubscribers) {
             };
         }
     };
+
+    return db;
 }
 
 function filterSubscribers(query, args, subscribers) {
@@ -268,8 +266,7 @@ function normalizeStatsRecord(row) {
         last_seen: row.last_seen,
         revision: row.revision,
         sessions: nonNegativeInteger(stats.sessions),
-        studies_imported: nonNegativeInteger(stats.studiesImported),
-        version: row.version
+        studies_imported: nonNegativeInteger(stats.studiesImported)
     };
 }
 
@@ -488,8 +485,7 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
                 lastSeen: '2026-05-02T10:00:00.000Z',
                 createdAt: '2026-04-01T00:00:00.000Z',
                 sessions: 4,
-                studiesImported: 10,
-                version: 1
+                studiesImported: 10
             },
             {
                 installationId: '22222222-2222-4222-8222-222222222222',
@@ -498,8 +494,7 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
                 lastSeen: '2026-04-29T10:00:00.000Z',
                 createdAt: '2026-05-01T04:00:00.000Z',
                 sessions: 7,
-                studiesImported: 2,
-                version: 1
+                studiesImported: 2
             },
             {
                 installationId: '33333333-3333-4333-8333-333333333333',
@@ -507,8 +502,7 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
                 firstSeen: '2026-05-02T00:00:00.000Z',
                 lastSeen: '2026-03-01T00:00:00.000Z',
                 createdAt: '2026-05-02T03:00:00.000Z',
-                statsJson: '{malformed-json',
-                version: 2
+                statsJson: '{malformed-json'
             }
         ]
     });
@@ -624,8 +618,7 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
                 firstSeen: '2026-04-01T01:00:00.000Z',
                 lastSeen: '2026-05-01T01:00:00.000Z',
                 sessions: 9,
-                studiesImported: 3,
-                version: 1
+                studiesImported: 3
             },
             {
                 installationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -633,8 +626,7 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
                 firstSeen: '2026-04-02T01:00:00.000Z',
                 lastSeen: '2026-05-02T01:00:00.000Z',
                 sessions: 2,
-                studiesImported: 4,
-                version: 2
+                studiesImported: 4
             },
             {
                 installationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
@@ -642,8 +634,7 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
                 firstSeen: '2026-04-03T01:00:00.000Z',
                 lastSeen: '2026-04-30T01:00:00.000Z',
                 sessions: 5,
-                studiesImported: 6,
-                version: 1
+                studiesImported: 6
             }
         ]
     });
@@ -658,7 +649,7 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
     assert.equal(payload.installs[0].install_id_prefix, 'aaaaaaaa');
     assert.equal(payload.installs[0].install_id_prefix.length, 8);
     assert.equal(payload.installs[0].sessions, 9);
-    assert.equal(payload.installs[0].version, 1);
+    assert.equal(Object.hasOwn(payload.installs[0], 'version'), false);
     assert.deepEqual(payload.pagination, {
         page: 1,
         per_page: 2,
@@ -668,6 +659,7 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
     assert.doesNotMatch(serialized, new RegExp(fullId));
     assert.doesNotMatch(serialized, /installationId/);
     assert.doesNotMatch(serialized, /install_id"/);
+    assert.doesNotMatch(serialized, /"version"/);
 });
 
 test('handleStatsInstalls returns field-specific 400 payloads for invalid params', async () => {
@@ -893,6 +885,7 @@ test('readonlySelect rejects mutation keywords, semicolons, and comment-cloaked 
         'SELECT 1; SELECT 2',
         '/* comment */ UPDATE installs SET revision = 1',
         'SEL/*comment*/ECT 1',
+        'ＵＰＤＡＴＥ installs SET revision = 1',
         'WITH rows AS (SELECT 1) DELETE FROM installs'
     ];
 
@@ -901,23 +894,15 @@ test('readonlySelect rejects mutation keywords, semicolons, and comment-cloaked 
     }
 });
 
-test('stats handlers only access D1 through readonlySelect', async () => {
-    const env = createEnv({
-        installs: [
-            {
-                installationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
-                lastSeen: '2026-05-02T10:00:00.000Z',
-                createdAt: '2026-05-02T10:00:00.000Z',
-                sessions: 1,
-                studiesImported: 1
-            }
-        ]
-    });
+test('dashboard worker routes D1 prepare calls through readonlySelect', () => {
+    const source = fs.readFileSync(new URL('../workers/dashboard/src/lib.mjs', import.meta.url), 'utf8');
+    const prepareMatches = [...source.matchAll(/\.prepare\(/g)];
 
-    await handleStatsSummary(env, { now: '2026-05-02T12:00:00.000Z' });
-    await handleStatsInstalls(createRequest(STATS_INSTALLS_PATH), env);
-
-    assert.deepEqual(env.STATS_DB.directPrepareCalls, []);
+    assert.equal(prepareMatches.length, 1);
+    assert.match(
+        source.slice(Math.max(0, prepareMatches[0].index - 300), prepareMatches[0].index + 300),
+        /function readonlySelect/
+    );
 });
 
 test('stats aggregate queries are independently read-only valid', async () => {

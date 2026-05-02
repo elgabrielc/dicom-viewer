@@ -610,7 +610,6 @@
                 <th><button class="sort-button stats-sort-button" data-stats-sort="sessions" type="button">Sessions</button></th>
                 <th><button class="sort-button stats-sort-button" data-stats-sort="studies_imported" type="button">Studies</button></th>
                 <th><button class="sort-button stats-sort-button" data-stats-sort="revision" type="button">Revision</button></th>
-                <th>Version</th>
               </tr>
             </thead>
             <tbody id="statsInstallsBody"></tbody>
@@ -645,6 +644,8 @@
         statsSort: 'last_seen',
         statsOrder: 'desc',
         statsTotalPages: 1,
+        subscribersRefreshPromise: null,
+        statsRefreshPromise: null,
         refreshHandle: null
       };
 
@@ -853,6 +854,16 @@
         return tr;
       }
 
+      function appendEmptyRow(body, colspan, message) {
+        const row = document.createElement('tr');
+        row.className = 'empty-row';
+        const cell = document.createElement('td');
+        cell.colSpan = colspan;
+        cell.textContent = message;
+        row.appendChild(cell);
+        body.appendChild(row);
+      }
+
       function renderSummary(summary) {
         elements.totalCount.textContent = String(summary.counts.total);
         elements.activeCount.textContent = String(summary.counts.active);
@@ -921,10 +932,7 @@
         elements.recentBody.replaceChildren();
 
         if (!payload.subscribers.length) {
-          const row = document.createElement('tr');
-          row.className = 'empty-row';
-          row.innerHTML = '<td colspan="4">No subscribers yet.</td>';
-          elements.recentBody.appendChild(row);
+          appendEmptyRow(elements.recentBody, 4, 'No subscribers yet.');
           return;
         }
 
@@ -943,10 +951,7 @@
         elements.nextPageButton.disabled = payload.pagination.page >= payload.pagination.total_pages;
 
         if (!payload.subscribers.length) {
-          const row = document.createElement('tr');
-          row.className = 'empty-row';
-          row.innerHTML = '<td colspan="5">No subscribers match the current filters.</td>';
-          elements.subscribersBody.appendChild(row);
+          appendEmptyRow(elements.subscribersBody, 5, 'No subscribers match the current filters.');
           return;
         }
 
@@ -984,10 +989,7 @@
 
         if (isLoading && !state.statsLoaded) {
           elements.statsInstallsBody.replaceChildren();
-          const row = document.createElement('tr');
-          row.className = 'empty-row';
-          row.innerHTML = '<td colspan="7">Loading install stats...</td>';
-          elements.statsInstallsBody.appendChild(row);
+          appendEmptyRow(elements.statsInstallsBody, 6, 'Loading install stats...');
         }
       }
 
@@ -1039,15 +1041,14 @@
           'last_seen',
           'sessions',
           'studies_imported',
-          'revision',
-          'version'
+          'revision'
         ];
 
         columns.forEach(function (column) {
           const td = document.createElement('td');
           if (column === 'first_seen' || column === 'last_seen') {
             td.textContent = formatDateTime(install[column]);
-          } else if (column === 'sessions' || column === 'studies_imported' || column === 'revision' || column === 'version') {
+          } else if (column === 'sessions' || column === 'studies_imported' || column === 'revision') {
             td.textContent = formatNumber(install[column]);
           } else {
             td.textContent = install[column] || '—';
@@ -1069,10 +1070,7 @@
         elements.statsNextPageButton.disabled = state.statsPage >= state.statsTotalPages;
 
         if (!payload.installs.length) {
-          const row = document.createElement('tr');
-          row.className = 'empty-row';
-          row.innerHTML = '<td colspan="7">No installs reporting yet.</td>';
-          elements.statsInstallsBody.appendChild(row);
+          appendEmptyRow(elements.statsInstallsBody, 6, 'No installs reporting yet.');
           return;
         }
 
@@ -1091,58 +1089,81 @@
         if (!opts.force && state.statsLoaded) {
           return;
         }
-
-        setStatsLoading(true);
-        showError('');
-
-        try {
-          const [summary, installs] = await Promise.all([
-            apiJson('/api/stats/summary'),
-            apiJson(buildStatsInstallsPath())
-          ]);
-
-          renderStatsSummary(summary);
-          renderStatsInstalls(installs);
-          syncStatsSortButtons();
-          state.statsLoaded = true;
-          elements.lastUpdated.textContent =
-            'Updated ' +
-            new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
-        } catch (error) {
-          showError(error.message || 'Dashboard request failed.');
-        } finally {
-          setStatsLoading(false);
+        if (state.statsRefreshPromise) {
+          return state.statsRefreshPromise;
         }
+
+        state.statsRefreshPromise = (async function () {
+          setStatsLoading(true);
+          elements.refreshButton.disabled = true;
+          showError('');
+
+          try {
+            const [summary, installs] = await Promise.all([
+              apiJson('/api/stats/summary'),
+              apiJson(buildStatsInstallsPath())
+            ]);
+
+            renderStatsSummary(summary);
+            renderStatsInstalls(installs);
+            syncStatsSortButtons();
+            state.statsLoaded = true;
+            elements.lastUpdated.textContent =
+              'Updated ' +
+              new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+          } catch (error) {
+            showError(error.message || 'Dashboard request failed.');
+          } finally {
+            setStatsLoading(false);
+            elements.refreshButton.disabled = false;
+            state.statsRefreshPromise = null;
+          }
+        }());
+
+        return state.statsRefreshPromise;
       }
 
       async function refreshAll() {
-        elements.refreshButton.disabled = true;
-        showError('');
-
-        try {
-          const [summary, recentPayload, subscriberPayload] = await Promise.all([
-            apiJson('/api/summary'),
-            apiJson('/api/subscribers?per_page=10&sort=subscribed_at&order=desc'),
-            apiJson(buildSubscribersPath())
-          ]);
-
-          renderSummary(summary);
-          renderSourceBreakdown(summary.sources);
-          renderDailyChart(summary.daily);
-          renderRecent(recentPayload);
-          renderSubscribers(subscriberPayload);
-          syncSortButtons();
-          if (state.currentTab === 'stats' || state.statsLoaded) {
-            await refreshStats({ force: true });
-          }
-          elements.lastUpdated.textContent =
-            'Updated ' +
-            new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
-        } catch (error) {
-          showError(error.message || 'Dashboard request failed.');
-        } finally {
-          elements.refreshButton.disabled = false;
+        if (state.subscribersRefreshPromise) {
+          return state.subscribersRefreshPromise;
         }
+
+        state.subscribersRefreshPromise = (async function () {
+          elements.refreshButton.disabled = true;
+          showError('');
+
+          try {
+            const [summary, recentPayload, subscriberPayload] = await Promise.all([
+              apiJson('/api/summary'),
+              apiJson('/api/subscribers?per_page=10&sort=subscribed_at&order=desc'),
+              apiJson(buildSubscribersPath())
+            ]);
+
+            renderSummary(summary);
+            renderSourceBreakdown(summary.sources);
+            renderDailyChart(summary.daily);
+            renderRecent(recentPayload);
+            renderSubscribers(subscriberPayload);
+            syncSortButtons();
+            elements.lastUpdated.textContent =
+              'Updated ' +
+              new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+          } catch (error) {
+            showError(error.message || 'Dashboard request failed.');
+          } finally {
+            elements.refreshButton.disabled = false;
+            state.subscribersRefreshPromise = null;
+          }
+        }());
+
+        return state.subscribersRefreshPromise;
+      }
+
+      function refreshCurrent() {
+        if (state.currentTab === 'stats') {
+          return refreshStats({ force: true });
+        }
+        return refreshAll();
       }
 
       function switchTab(name) {
@@ -1239,7 +1260,7 @@
       });
 
       elements.refreshButton.addEventListener('click', function () {
-        refreshAll();
+        refreshCurrent();
       });
 
       elements.subscribersTabButton.addEventListener('click', function () {
@@ -1255,7 +1276,7 @@
       });
 
       refreshAll();
-      state.refreshHandle = window.setInterval(refreshAll, 60000);
+      state.refreshHandle = window.setInterval(refreshCurrent, 60000);
     }());
   </script>
 </body>

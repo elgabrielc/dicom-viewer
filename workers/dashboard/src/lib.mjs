@@ -680,6 +680,7 @@ function statsDayBounds(now = new Date()) {
 
 function stripSqlComments(sql) {
     return String(sql)
+        .normalize('NFKC')
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/--[^\r\n]*/g, ' ');
 }
@@ -702,23 +703,7 @@ function validateReadonlySql(sql) {
 
 export function readonlySelect(db, sql, params = []) {
     validateReadonlySql(sql);
-    const previousReadonlyState = db.__readonlySelectActive;
-    try {
-        db.__readonlySelectActive = true;
-    } catch {
-        // Some runtime bindings may be non-extensible proxies; validation still
-        // gates the query even when the test-only marker cannot be attached.
-    }
-    let statement;
-    try {
-        statement = db.prepare(sql).bind(...params);
-    } finally {
-        try {
-            db.__readonlySelectActive = previousReadonlyState;
-        } catch {
-            // See marker note above.
-        }
-    }
+    const statement = db.prepare(sql).bind(...params);
 
     return {
         first() {
@@ -781,7 +766,8 @@ function toSourceSummary(rows) {
 
 export async function handleSummary(env) {
     const countsRow =
-        (await env.SUBSCRIBERS_DB.prepare(
+        (await readonlySelect(
+            env.SUBSCRIBERS_DB,
             `SELECT
                 COUNT(*) AS total,
                 SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
@@ -791,7 +777,8 @@ export async function handleSummary(env) {
 
     const sourceRows =
         (
-            await env.SUBSCRIBERS_DB.prepare(
+            await readonlySelect(
+                env.SUBSCRIBERS_DB,
                 `SELECT source, status, COUNT(*) AS count
                  FROM subscribers
                  GROUP BY source, status
@@ -801,7 +788,8 @@ export async function handleSummary(env) {
 
     const dailyRows =
         (
-            await env.SUBSCRIBERS_DB.prepare(
+            await readonlySelect(
+                env.SUBSCRIBERS_DB,
                 `WITH RECURSIVE days(day) AS (
                     SELECT date('now', '-29 days')
                     UNION ALL
@@ -849,21 +837,23 @@ export async function handleSubscribers(request, env) {
     const offset = (query.page - 1) * query.perPage;
 
     const countRow =
-        (await env.SUBSCRIBERS_DB.prepare(`SELECT COUNT(*) AS total FROM subscribers ${whereSql}`)
-            .bind(...bindings)
-            .first()) || {};
+        (await readonlySelect(
+            env.SUBSCRIBERS_DB,
+            `SELECT COUNT(*) AS total FROM subscribers ${whereSql}`,
+            bindings
+        ).first()) || {};
 
     const rows =
         (
-            await env.SUBSCRIBERS_DB.prepare(
+            await readonlySelect(
+                env.SUBSCRIBERS_DB,
                 `SELECT id, email, status, subscribed_at, source, consent_version
                  FROM subscribers
                  ${whereSql}
                  ORDER BY ${sortColumn} ${sortDirection}, id ${sortDirection}
-                 LIMIT ? OFFSET ?`
-            )
-                .bind(...bindings, query.perPage, offset)
-                .all()
+                 LIMIT ? OFFSET ?`,
+                [...bindings, query.perPage, offset]
+            ).all()
         ).results || [];
 
     const total = normalizeCount(countRow.total);
@@ -961,8 +951,7 @@ function normalizeInstallRow(row) {
         last_seen: isoDateString(row.last_seen),
         revision: normalizeInt(row.revision),
         sessions: normalizeInt(row.sessions),
-        studies_imported: normalizeInt(row.studies_imported),
-        version: normalizeInt(row.version)
+        studies_imported: normalizeInt(row.studies_imported)
     };
 }
 
@@ -991,8 +980,7 @@ export async function handleStatsInstalls(request, env) {
                     CASE
                         WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.studiesImported') AS INTEGER), 0)
                         ELSE 0
-                    END AS studies_imported,
-                    version
+                    END AS studies_imported
                  FROM installs
                  ORDER BY ${sortColumn} ${sortDirection}, install_id ${sortDirection}
                  LIMIT ? OFFSET ?`,

@@ -12,7 +12,15 @@ import {
     readonlySelect
 } from './lib.mjs';
 
-export { authenticate, handleSession, handleStatsInstalls, handleStatsSummary, handleSubscribers, handleSummary, readonlySelect };
+export {
+    authenticate,
+    handleSession,
+    handleStatsInstalls,
+    handleStatsSummary,
+    handleSubscribers,
+    handleSummary,
+    readonlySelect
+};
 
 export async function handleDashboard(request, env) {
     return handleDashboardImpl(request, env, dashboardHtml);
