@@ -3,6 +3,8 @@ export const CONFIG_PATH = '/api/config';
 export const SESSION_PATH = '/api/session';
 export const SUMMARY_PATH = '/api/summary';
 export const SUBSCRIBERS_PATH = '/api/subscribers';
+export const STATS_SUMMARY_PATH = '/api/stats/summary';
+export const STATS_INSTALLS_PATH = '/api/stats/installs';
 
 const DASHBOARD_SESSION_COOKIE = 'myradone_dashboard_token';
 const DASHBOARD_MISCONFIG_ERROR = 'Dashboard misconfigured';
@@ -10,11 +12,19 @@ const DASHBOARD_TOKEN_MIN_LENGTH = 32;
 const VALID_STATUSES = new Set(['active', 'unsubscribed']);
 const VALID_SOURCES = new Set(['landing', 'demo', 'app']);
 const VALID_ORDERS = new Set(['asc', 'desc']);
+const MUTATION_SQL_KEYWORDS = /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|REPLACE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i;
 const SORT_COLUMNS = new Map([
     ['subscribed_at', 'subscribed_at'],
     ['email', 'email'],
     ['source', 'source'],
     ['status', 'status']
+]);
+const INSTALLS_SORT_COLUMNS = new Map([
+    ['last_seen', 'last_seen'],
+    ['first_seen', 'first_seen'],
+    ['sessions', 'sessions'],
+    ['studies_imported', 'studies_imported'],
+    ['revision', 'revision']
 ]);
 const SOURCE_ORDER = ['landing', 'demo', 'app'];
 const SOURCE_ORDER_SQL = "CASE source WHEN 'landing' THEN 0 WHEN 'demo' THEN 1 WHEN 'app' THEN 2 ELSE 3 END";
@@ -91,10 +101,11 @@ const LOGIN_PAGE_SCRIPT = `(function () {
   });
 }());`;
 class HttpError extends Error {
-    constructor(status, message) {
+    constructor(status, message, field = null) {
         super(message);
         this.name = 'HttpError';
         this.status = status;
+        this.field = field;
     }
 }
 
@@ -486,14 +497,14 @@ function createLoginHtml(errorMessage = '') {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>myRadOne Subscriber Dashboard Login</title>
+  <title>myRadOne Dashboard Login</title>
   ${createAuthPageStyles()}
 </head>
 <body>
   <main class="card">
     <p class="eyebrow">Internal</p>
-    <h1>myRadOne Subscribers</h1>
-    <p>Enter the dashboard token to load the protected subscriber analytics view.</p>
+    <h1>myRadOne Dashboard</h1>
+    <p>Enter the dashboard token to load the protected analytics view.</p>
     <form id="loginForm">
       <label>
         Dashboard token
@@ -516,7 +527,7 @@ function createMisconfigHtml(reason) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>myRadOne Subscriber Dashboard Misconfigured</title>
+  <title>myRadOne Dashboard Misconfigured</title>
   ${createAuthPageStyles()}
 </head>
 <body>
@@ -535,6 +546,10 @@ function createMisconfigHtml(reason) {
 
 function badRequest(message) {
     throw new HttpError(400, message);
+}
+
+function badRequestField(message, field) {
+    throw new HttpError(400, message, field);
 }
 
 function methodNotAllowed() {
@@ -559,6 +574,23 @@ function parseIntegerParam(rawValue, fallback, { min = 1, max = Number.MAX_SAFE_
 
     if (parsed < min || parsed > max) {
         badRequest('Integer parameter out of range');
+    }
+
+    return parsed;
+}
+
+function parseStatsIntegerParam(rawValue, fallback, field, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+    if (rawValue == null || rawValue === '') {
+        return fallback;
+    }
+
+    const parsed = Number.parseInt(rawValue, 10);
+    if (!Number.isFinite(parsed) || String(parsed) !== String(rawValue).trim()) {
+        badRequestField('Invalid integer parameter', field);
+    }
+
+    if (parsed < min || parsed > max) {
+        badRequestField('Integer parameter out of range', field);
     }
 
     return parsed;
@@ -599,9 +631,88 @@ function parseSubscribersQuery(request) {
     };
 }
 
+function parseStatsInstallsQuery(request) {
+    const url = new URL(request.url);
+    const page = parseStatsIntegerParam(url.searchParams.get('page'), 1, 'page', { min: 1 });
+    const perPage = parseStatsIntegerParam(url.searchParams.get('per_page'), 50, 'per_page', { min: 1, max: 100 });
+    const sort = (url.searchParams.get('sort') || 'last_seen').toLowerCase();
+    const order = (url.searchParams.get('order') || 'desc').toLowerCase();
+
+    if (!INSTALLS_SORT_COLUMNS.has(sort)) {
+        badRequestField('Invalid sort column', 'sort');
+    }
+
+    if (!VALID_ORDERS.has(order)) {
+        badRequestField('Invalid sort order', 'order');
+    }
+
+    return { page, perPage, sort, order };
+}
+
 function normalizeCount(value) {
     const count = Number(value);
-    return Number.isFinite(count) ? count : 0;
+    return Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0;
+}
+
+function normalizeInt(value) {
+    return normalizeCount(value);
+}
+
+function isoDateString(value) {
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
+}
+
+function utcDay(value) {
+    return value.toISOString().slice(0, 10);
+}
+
+function statsDayBounds(now = new Date()) {
+    const date = now instanceof Date ? now : new Date(now);
+    const today = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const start = new Date(today);
+    start.setUTCDate(today.getUTCDate() - 29);
+    return {
+        startDay: utcDay(start),
+        todayDay: utcDay(today)
+    };
+}
+
+function stripSqlComments(sql) {
+    return String(sql)
+        .normalize('NFKC')
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/--[^\r\n]*/g, ' ');
+}
+
+function validateReadonlySql(sql) {
+    const stripped = stripSqlComments(sql);
+    if (stripped.includes(';')) {
+        throw new Error('readonlySelect only allows a single read-only statement without semicolons');
+    }
+
+    const firstToken = stripped.trim().match(/^[A-Za-z]+/)?.[0]?.toUpperCase();
+    if (firstToken !== 'SELECT' && firstToken !== 'WITH') {
+        throw new Error('readonlySelect only allows SELECT or WITH statements');
+    }
+
+    if (MUTATION_SQL_KEYWORDS.test(stripped)) {
+        throw new Error('readonlySelect rejected mutation or admin SQL keyword');
+    }
+}
+
+export function readonlySelect(db, sql, params = []) {
+    validateReadonlySql(sql);
+    const statement = db.prepare(sql).bind(...params);
+
+    return {
+        first() {
+            return statement.first();
+        },
+        all() {
+            return statement.all();
+        }
+    };
 }
 
 function buildSubscribersWhereClause(filters) {
@@ -655,7 +766,8 @@ function toSourceSummary(rows) {
 
 export async function handleSummary(env) {
     const countsRow =
-        (await env.SUBSCRIBERS_DB.prepare(
+        (await readonlySelect(
+            env.SUBSCRIBERS_DB,
             `SELECT
                 COUNT(*) AS total,
                 SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
@@ -665,7 +777,8 @@ export async function handleSummary(env) {
 
     const sourceRows =
         (
-            await env.SUBSCRIBERS_DB.prepare(
+            await readonlySelect(
+                env.SUBSCRIBERS_DB,
                 `SELECT source, status, COUNT(*) AS count
                  FROM subscribers
                  GROUP BY source, status
@@ -675,7 +788,8 @@ export async function handleSummary(env) {
 
     const dailyRows =
         (
-            await env.SUBSCRIBERS_DB.prepare(
+            await readonlySelect(
+                env.SUBSCRIBERS_DB,
                 `WITH RECURSIVE days(day) AS (
                     SELECT date('now', '-29 days')
                     UNION ALL
@@ -723,21 +837,23 @@ export async function handleSubscribers(request, env) {
     const offset = (query.page - 1) * query.perPage;
 
     const countRow =
-        (await env.SUBSCRIBERS_DB.prepare(`SELECT COUNT(*) AS total FROM subscribers ${whereSql}`)
-            .bind(...bindings)
-            .first()) || {};
+        (await readonlySelect(
+            env.SUBSCRIBERS_DB,
+            `SELECT COUNT(*) AS total FROM subscribers ${whereSql}`,
+            bindings
+        ).first()) || {};
 
     const rows =
         (
-            await env.SUBSCRIBERS_DB.prepare(
+            await readonlySelect(
+                env.SUBSCRIBERS_DB,
                 `SELECT id, email, status, subscribed_at, source, consent_version
                  FROM subscribers
                  ${whereSql}
                  ORDER BY ${sortColumn} ${sortDirection}, id ${sortDirection}
-                 LIMIT ? OFFSET ?`
-            )
-                .bind(...bindings, query.perPage, offset)
-                .all()
+                 LIMIT ? OFFSET ?`,
+                [...bindings, query.perPage, offset]
+            ).all()
         ).results || [];
 
     const total = normalizeCount(countRow.total);
@@ -745,6 +861,138 @@ export async function handleSubscribers(request, env) {
 
     return {
         subscribers: rows.map(normalizeSubscriberRow),
+        pagination: {
+            page: query.page,
+            per_page: query.perPage,
+            total,
+            total_pages: totalPages
+        }
+    };
+}
+
+export async function handleStatsSummary(env, options = {}) {
+    const { startDay, todayDay } = statsDayBounds(options.now);
+    const now = options.now ? new Date(options.now) : new Date();
+    const nowMs = now.getTime();
+    const active24hSince = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+    const active7dSince = new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const active30dSince = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const totalsRow =
+        (await readonlySelect(
+            env.STATS_DB,
+            `SELECT
+                COUNT(*) AS installs_total,
+                SUM(CASE WHEN last_seen >= ? THEN 1 ELSE 0 END) AS active_24h,
+                SUM(CASE WHEN last_seen >= ? THEN 1 ELSE 0 END) AS active_7d,
+                SUM(CASE WHEN last_seen >= ? THEN 1 ELSE 0 END) AS active_30d,
+                SUM(CASE
+                    WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.sessions') AS INTEGER), 0)
+                    ELSE 0
+                END) AS sessions_total,
+                SUM(CASE
+                    WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.studiesImported') AS INTEGER), 0)
+                    ELSE 0
+                END) AS studies_total
+             FROM installs`,
+            [active24hSince, active7dSince, active30dSince]
+        ).first()) || {};
+
+    const dailyRows =
+        (
+            await readonlySelect(
+                env.STATS_DB,
+                `WITH RECURSIVE days(day) AS (
+                    SELECT date(?)
+                    UNION ALL
+                    SELECT date(day, '+1 day')
+                    FROM days
+                    WHERE day < date(?)
+                )
+                SELECT days.day AS day, COALESCE(counts.count, 0) AS count
+                FROM days
+                LEFT JOIN (
+                    SELECT date(created_at) AS day, COUNT(*) AS count
+                    FROM installs
+                    WHERE created_at >= datetime(?)
+                    GROUP BY date(created_at)
+                ) AS counts
+                  ON counts.day = days.day
+                ORDER BY days.day ASC`,
+                [startDay, todayDay, startDay]
+            ).all()
+        ).results || [];
+
+    return {
+        installs: {
+            total: normalizeCount(totalsRow.installs_total),
+            active_24h: normalizeCount(totalsRow.active_24h),
+            active_7d: normalizeCount(totalsRow.active_7d),
+            active_30d: normalizeCount(totalsRow.active_30d)
+        },
+        sessions: {
+            total: normalizeCount(totalsRow.sessions_total)
+        },
+        studies: {
+            total: normalizeCount(totalsRow.studies_total)
+        },
+        new_installs_daily: dailyRows.map((row) => ({
+            day: row.day,
+            count: normalizeCount(row.count)
+        }))
+    };
+}
+
+function normalizeInstallRow(row) {
+    const installId = typeof row.install_id === 'string' ? row.install_id : '';
+    return {
+        install_id_prefix: installId.slice(0, 8),
+        first_seen: isoDateString(row.first_seen),
+        last_seen: isoDateString(row.last_seen),
+        revision: normalizeInt(row.revision),
+        sessions: normalizeInt(row.sessions),
+        studies_imported: normalizeInt(row.studies_imported)
+    };
+}
+
+export async function handleStatsInstalls(request, env) {
+    const query = parseStatsInstallsQuery(request);
+    const sortColumn = INSTALLS_SORT_COLUMNS.get(query.sort);
+    const sortDirection = query.order.toUpperCase();
+    const offset = (query.page - 1) * query.perPage;
+
+    const countRow =
+        (await readonlySelect(env.STATS_DB, `SELECT COUNT(*) AS total FROM installs`).first()) || {};
+
+    const rows =
+        (
+            await readonlySelect(
+                env.STATS_DB,
+                `SELECT
+                    install_id,
+                    first_seen,
+                    last_seen,
+                    revision,
+                    CASE
+                        WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.sessions') AS INTEGER), 0)
+                        ELSE 0
+                    END AS sessions,
+                    CASE
+                        WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.studiesImported') AS INTEGER), 0)
+                        ELSE 0
+                    END AS studies_imported
+                 FROM installs
+                 ORDER BY ${sortColumn} ${sortDirection}, install_id ${sortDirection}
+                 LIMIT ? OFFSET ?`,
+                [query.perPage, offset]
+            ).all()
+        ).results || [];
+
+    const total = normalizeCount(countRow.total);
+    const totalPages = Math.max(1, Math.ceil(total / query.perPage || 1));
+
+    return {
+        installs: rows.map(normalizeInstallRow),
         pagination: {
             page: query.page,
             per_page: query.perPage,
@@ -915,6 +1163,22 @@ export async function dispatchRequest(request, env, dashboardHtml) {
         return jsonResponse(await handleSubscribers(request, env));
     }
 
+    if (pathname === STATS_SUMMARY_PATH) {
+        requireGet(request);
+        if (!(await authenticate(request, env))) {
+            return await createUnauthorizedResponse(pathname, request);
+        }
+        return jsonResponse(await handleStatsSummary(env));
+    }
+
+    if (pathname === STATS_INSTALLS_PATH) {
+        requireGet(request);
+        if (!(await authenticate(request, env))) {
+            return await createUnauthorizedResponse(pathname, request);
+        }
+        return jsonResponse(await handleStatsInstalls(request, env));
+    }
+
     return jsonResponse({ error: 'Not found' }, 404);
 }
 
@@ -926,7 +1190,8 @@ export async function createErrorResponse(request, error) {
             const loginHtml = createLoginHtml(error.message);
             return htmlResponse(loginHtml, error.status, await buildInlineScriptCsp(loginHtml));
         }
-        return jsonResponse({ error: error.message }, error.status);
+        const payload = error.field ? { error: error.message, field: error.field } : { error: error.message };
+        return jsonResponse(payload, error.status);
     }
 
     console.error('dashboard worker failed', error);

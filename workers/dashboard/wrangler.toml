@@ -18,6 +18,11 @@ binding = "SUBSCRIBERS_DB"
 database_name = "myradone-subscribers"
 database_id = "33a16c5c-0618-47a8-b351-7af2f4f979e9"
 
+[[d1_databases]]
+binding = "STATS_DB"
+database_name = "myradone-stats"
+database_id = "5f9d6a5b-ef20-4a4d-8600-972ecebb690e"
+
 [[ratelimits]]
 name = "DASHBOARD_RATE_LIMIT"
 namespace_id = "2026041201"

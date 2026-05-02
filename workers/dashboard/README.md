@@ -1,7 +1,7 @@
-# myRadOne Subscriber Dashboard
+# myRadOne Dashboard
 
-Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
-`myradone-subscribers` D1 database.
+Internal Cloudflare Worker dashboard for viewing subscriber analytics from
+`myradone-subscribers` and anonymous install stats from `myradone-stats`.
 
 ## Files
 
@@ -25,6 +25,10 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
   signup totals.
 - `GET /api/subscribers` - Paginated subscriber list with allowlisted
   filters/sorts.
+- `GET /api/stats/summary` - Aggregate anonymous install, session, study, and
+  30-day new-install totals.
+- `GET /api/stats/installs` - Paginated anonymous install snapshots. Install
+  identifiers are truncated to an 8-character prefix.
 
 `/api/subscribers` supports these optional query parameters:
 
@@ -33,6 +37,14 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
 - `status` - `active` or `unsubscribed`
 - `source` - `landing`, `demo`, or `app`
 - `sort` - `subscribed_at`, `email`, `source`, or `status`
+- `order` - `asc` or `desc`
+
+`/api/stats/installs` supports these optional query parameters:
+
+- `page` - default `1`, minimum `1`
+- `per_page` - default `50`, maximum `100`
+- `sort` - `last_seen`, `first_seen`, `sessions`, `studies_imported`, or
+  `revision`
 - `order` - `asc` or `desc`
 
 ## Security Notes
@@ -53,8 +65,12 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
   serve instead of relying on hand-maintained hash constants.
 - `401` API responses include `WWW-Authenticate: Bearer realm="myradone-dashboard"`
   so CLI and browser tooling get a clearer auth signal.
-- D1 access is read-only by convention, not by enforced binding mode. This
-  worker only issues `SELECT` queries.
+- D1 access is read-only by convention, not by enforced binding mode. Dashboard
+  D1 reads go through `readonlySelect`, which rejects semicolons,
+  mutation/admin keywords, and anything other than `SELECT`/`WITH` after
+  stripping SQL comments.
+- Stats API responses never include full install identifiers. The install list
+  only returns `install_id_prefix`, the first 8 characters of the UUID.
 
 ## Token Contract
 
@@ -80,20 +96,26 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from the
    npx wrangler d1 migrations apply myradone-subscribers --remote --config workers/dashboard/wrangler.toml
    ```
 
-3. Deploy the worker:
+3. Confirm the existing stats schema has been applied to `myradone-stats`:
+
+   ```bash
+   npx wrangler d1 migrations apply myradone-stats --remote --config workers/stats/wrangler.toml
+   ```
+
+4. Deploy the worker:
 
    ```bash
    npx wrangler deploy --config workers/dashboard/wrangler.toml
    ```
 
-4. Route configuration is managed in `wrangler.toml` (`[[routes]]` block)
+5. Route configuration is managed in `wrangler.toml` (`[[routes]]` block)
    per [ADR 013](../../docs/decisions/013-worker-routing-as-code.md). The
    `wrangler deploy` step above reconciles the `dashboard.myradone.com/*`
    route automatically; no Cloudflare UI change is required. Do not add or
    edit the route through the Cloudflare dashboard -- it will drift from the
    repo and the next deploy may reconcile it away.
 
-5. Verify the deployed dashboard token configuration:
+6. Verify the deployed dashboard token configuration:
 
    ```bash
    echo -n 'YOUR_TOKEN' | shasum -a 256 | head -c 12
@@ -129,20 +151,33 @@ you want meaningful dashboard output.
    npx wrangler d1 migrations apply myradone-subscribers --local --config workers/dashboard/wrangler.toml
    ```
 
-4. Seed test rows:
+4. Apply the stats schema locally:
+
+   ```bash
+   npx wrangler d1 migrations apply myradone-stats --local --config workers/stats/wrangler.toml
+   ```
+
+5. Seed test rows:
 
    ```bash
    npx wrangler d1 execute myradone-subscribers --local --config workers/dashboard/wrangler.toml \
      --command "INSERT INTO subscribers (email, source) VALUES ('test@example.com', 'landing'), ('demo@example.com', 'demo');"
    ```
 
-5. Run the worker:
+6. Optionally seed a local stats row:
+
+   ```bash
+   npx wrangler d1 execute myradone-stats --local --config workers/dashboard/wrangler.toml \
+     --command "INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z');"
+   ```
+
+7. Run the worker:
 
    ```bash
    npx wrangler dev --config workers/dashboard/wrangler.toml
    ```
 
-6. Visit [http://localhost:8787/](http://localhost:8787/) and enter
+8. Visit [http://localhost:8787/](http://localhost:8787/) and enter
    `localtest-localtest-localtest-1234`.
 
 ## Verification
