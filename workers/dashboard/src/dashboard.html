@@ -133,6 +133,41 @@
       display: block;
     }
 
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 18px;
+    }
+
+    .tab-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tab-button:hover,
+    .tab-button.active {
+      border-color: var(--accent);
+      color: var(--accent-strong);
+    }
+
+    .tab-button.active {
+      background: var(--surface-alt);
+    }
+
+    .tab-panel.hidden {
+      display: none;
+    }
+
     .cards,
     .grid {
       display: grid;
@@ -396,123 +431,207 @@
 
     <div id="errorBanner" class="banner" role="alert"></div>
 
-    <section class="cards">
-      <article class="card">
-        <p class="card-label">Total subscribers</p>
-        <p id="totalCount" class="card-value">—</p>
-      </article>
-      <article class="card">
-        <p class="card-label">Active</p>
-        <p id="activeCount" class="card-value">—</p>
-      </article>
-      <article class="card">
-        <p class="card-label">Unsubscribed</p>
-        <p id="unsubscribedCount" class="card-value">—</p>
-      </article>
-    </section>
+    <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+      <button id="subscribersTabButton" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="subscribersTab">Subscribers</button>
+      <button id="statsTabButton" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="statsTab">Stats</button>
+    </nav>
 
-    <section class="grid grid-two">
-      <article class="panel">
+    <section id="subscribersTab" class="tab-panel" role="tabpanel" aria-labelledby="subscribersTabButton">
+      <section class="cards">
+        <article class="card">
+          <p class="card-label">Total subscribers</p>
+          <p id="totalCount" class="card-value">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Active</p>
+          <p id="activeCount" class="card-value">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Unsubscribed</p>
+          <p id="unsubscribedCount" class="card-value">—</p>
+        </article>
+      </section>
+
+      <section class="grid grid-two">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Source breakdown</h2>
+              <p class="panel-copy">Current mix by signup source.</p>
+            </div>
+          </div>
+          <div id="sourceBreakdown" class="source-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">Last 30 days</h2>
+              <p class="panel-copy">Daily signup volume.</p>
+            </div>
+          </div>
+          <div id="dailyChart" class="chart"></div>
+        </article>
+      </section>
+
+      <section class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Source breakdown</h2>
-            <p class="panel-copy">Current mix by signup source.</p>
+            <h2 class="panel-title">Recent signups</h2>
+            <p class="panel-copy">Latest entries, powered by the same subscriber listing endpoint.</p>
           </div>
         </div>
-        <div id="sourceBreakdown" class="source-list"></div>
-      </article>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Subscribed</th>
+              </tr>
+            </thead>
+            <tbody id="recentBody"></tbody>
+          </table>
+        </div>
+      </section>
 
-      <article class="panel">
+      <section class="panel" style="margin-top: 18px;">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Last 30 days</h2>
-            <p class="panel-copy">Daily signup volume.</p>
+            <h2 class="panel-title">All subscribers</h2>
+            <p class="panel-copy">Filterable, sortable, paginated list.</p>
           </div>
         </div>
-        <div id="dailyChart" class="chart"></div>
-      </article>
+
+        <form id="filtersForm" class="filters">
+          <div class="field">
+            <label for="statusFilter">Status</label>
+            <select id="statusFilter" name="status">
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="unsubscribed">Unsubscribed</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="sourceFilter">Source</label>
+            <select id="sourceFilter" name="source">
+              <option value="">All sources</option>
+              <option value="landing">Landing</option>
+              <option value="demo">Demo</option>
+              <option value="app">App</option>
+            </select>
+          </div>
+          <button type="submit" class="button">Apply filters</button>
+          <button id="clearFiltersButton" type="button" class="button">Clear</button>
+        </form>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><button class="sort-button subscriber-sort-button" data-sort="email" type="button">Email</button></th>
+                <th><button class="sort-button subscriber-sort-button" data-sort="status" type="button">Status</button></th>
+                <th><button class="sort-button subscriber-sort-button" data-sort="source" type="button">Source</button></th>
+                <th><button class="sort-button subscriber-sort-button" data-sort="subscribed_at" type="button">Subscribed</button></th>
+                <th>Consent</th>
+              </tr>
+            </thead>
+            <tbody id="subscribersBody"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <span id="paginationLabel" class="meta">Page 1</span>
+          <div class="pagination-buttons">
+            <button id="prevPageButton" class="button" type="button">Previous</button>
+            <button id="nextPageButton" class="button" type="button">Next</button>
+          </div>
+        </div>
+      </section>
     </section>
 
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Recent signups</h2>
-          <p class="panel-copy">Latest entries, powered by the same subscriber listing endpoint.</p>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Status</th>
-              <th>Source</th>
-              <th>Subscribed</th>
-            </tr>
-          </thead>
-          <tbody id="recentBody"></tbody>
-        </table>
-      </div>
-    </section>
+    <section id="statsTab" class="tab-panel hidden" role="tabpanel" aria-labelledby="statsTabButton">
+      <section class="cards">
+        <article class="card">
+          <p class="card-label">Total Installs</p>
+          <p id="statsTotalInstalls" class="card-value">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Active 24h</p>
+          <p id="statsActive24h" class="card-value">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Active 7d</p>
+          <p id="statsActive7d" class="card-value">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Active 30d</p>
+          <p id="statsActive30d" class="card-value">—</p>
+        </article>
+      </section>
 
-    <section class="panel" style="margin-top: 18px;">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">All subscribers</h2>
-          <p class="panel-copy">Filterable, sortable, paginated list.</p>
-        </div>
-      </div>
+      <section class="cards">
+        <article class="card">
+          <p class="card-label">Total Sessions</p>
+          <p id="statsTotalSessions" class="card-value">—</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Total Studies Imported</p>
+          <p id="statsTotalStudies" class="card-value">—</p>
+        </article>
+      </section>
 
-      <form id="filtersForm" class="filters">
-        <div class="field">
-          <label for="statusFilter">Status</label>
-          <select id="statusFilter" name="status">
-            <option value="">All statuses</option>
-            <option value="active">Active</option>
-            <option value="unsubscribed">Unsubscribed</option>
-          </select>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">New installs in last 30 days</h2>
+            <p class="panel-copy">Daily install volume.</p>
+          </div>
         </div>
-        <div class="field">
-          <label for="sourceFilter">Source</label>
-          <select id="sourceFilter" name="source">
-            <option value="">All sources</option>
-            <option value="landing">Landing</option>
-            <option value="demo">Demo</option>
-            <option value="app">App</option>
-          </select>
-        </div>
-        <button type="submit" class="button">Apply filters</button>
-        <button id="clearFiltersButton" type="button" class="button">Clear</button>
-      </form>
+        <div id="statsDailyList" class="source-list"></div>
+      </section>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th><button class="sort-button" data-sort="email" type="button">Email</button></th>
-              <th><button class="sort-button" data-sort="status" type="button">Status</button></th>
-              <th><button class="sort-button" data-sort="source" type="button">Source</button></th>
-              <th><button class="sort-button" data-sort="subscribed_at" type="button">Subscribed</button></th>
-              <th>Consent</th>
-            </tr>
-          </thead>
-          <tbody id="subscribersBody"></tbody>
-        </table>
-      </div>
-
-      <div class="pagination">
-        <span id="paginationLabel" class="meta">Page 1</span>
-        <div class="pagination-buttons">
-          <button id="prevPageButton" class="button" type="button">Previous</button>
-          <button id="nextPageButton" class="button" type="button">Next</button>
+      <section class="panel" style="margin-top: 18px;">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Installs</h2>
+            <p class="panel-copy">Paginated install activity, sorted by reporting metadata.</p>
+          </div>
         </div>
-      </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Install (prefix)</th>
+                <th><button class="sort-button stats-sort-button" data-stats-sort="first_seen" type="button">First seen</button></th>
+                <th><button class="sort-button stats-sort-button" data-stats-sort="last_seen" type="button">Last seen</button></th>
+                <th><button class="sort-button stats-sort-button" data-stats-sort="sessions" type="button">Sessions</button></th>
+                <th><button class="sort-button stats-sort-button" data-stats-sort="studies_imported" type="button">Studies</button></th>
+                <th><button class="sort-button stats-sort-button" data-stats-sort="revision" type="button">Revision</button></th>
+                <th>Version</th>
+              </tr>
+            </thead>
+            <tbody id="statsInstallsBody"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <span id="statsPaginationLabel" class="meta">Page 1</span>
+          <div class="pagination-buttons">
+            <button id="statsPrevPageButton" class="button" type="button">Previous</button>
+            <button id="statsNextPageButton" class="button" type="button">Next</button>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
 
   <script>
     (function () {
       const state = {
+        currentTab: 'subscribers',
         page: 1,
         perPage: 50,
         sort: 'subscribed_at',
@@ -520,6 +639,12 @@
         status: '',
         source: '',
         totalPages: 1,
+        statsLoaded: false,
+        statsPage: 1,
+        statsPerPage: 50,
+        statsSort: 'last_seen',
+        statsOrder: 'desc',
+        statsTotalPages: 1,
         refreshHandle: null
       };
 
@@ -538,8 +663,24 @@
         refreshButton: document.getElementById('refreshButton'),
         sourceBreakdown: document.getElementById('sourceBreakdown'),
         sourceFilter: document.getElementById('sourceFilter'),
-        sortButtons: Array.from(document.querySelectorAll('.sort-button')),
+        statsActive24h: document.getElementById('statsActive24h'),
+        statsActive7d: document.getElementById('statsActive7d'),
+        statsActive30d: document.getElementById('statsActive30d'),
+        statsDailyList: document.getElementById('statsDailyList'),
+        statsInstallsBody: document.getElementById('statsInstallsBody'),
+        statsNextPageButton: document.getElementById('statsNextPageButton'),
+        statsPaginationLabel: document.getElementById('statsPaginationLabel'),
+        statsPrevPageButton: document.getElementById('statsPrevPageButton'),
+        statsSortButtons: Array.from(document.querySelectorAll('.stats-sort-button')),
+        statsTab: document.getElementById('statsTab'),
+        statsTabButton: document.getElementById('statsTabButton'),
+        statsTotalInstalls: document.getElementById('statsTotalInstalls'),
+        statsTotalSessions: document.getElementById('statsTotalSessions'),
+        statsTotalStudies: document.getElementById('statsTotalStudies'),
         statusFilter: document.getElementById('statusFilter'),
+        subscribersSortButtons: Array.from(document.querySelectorAll('.subscriber-sort-button')),
+        subscribersTab: document.getElementById('subscribersTab'),
+        subscribersTabButton: document.getElementById('subscribersTabButton'),
         subscribersBody: document.getElementById('subscribersBody'),
         totalCount: document.getElementById('totalCount'),
         unsubscribedCount: document.getElementById('unsubscribedCount')
@@ -611,6 +752,10 @@
         elements.errorBanner.classList.add('visible');
       }
 
+      function formatNumber(value) {
+        return new Intl.NumberFormat().format(Number(value) || 0);
+      }
+
       function buildSubscribersPath(overrides) {
         const params = new URLSearchParams();
         const query = Object.assign(
@@ -637,6 +782,27 @@
         });
 
         return '/api/subscribers?' + params.toString();
+      }
+
+      function buildStatsInstallsPath(overrides) {
+        const params = new URLSearchParams();
+        const query = Object.assign(
+          {
+            page: state.statsPage,
+            per_page: state.statsPerPage,
+            sort: state.statsSort,
+            order: state.statsOrder
+          },
+          overrides || {}
+        );
+
+        Object.keys(query).forEach(function (key) {
+          if (query[key] !== '' && query[key] != null) {
+            params.set(key, String(query[key]));
+          }
+        });
+
+        return '/api/stats/installs?' + params.toString();
       }
 
       async function apiJson(path) {
@@ -792,7 +958,7 @@
       }
 
       function syncSortButtons() {
-        elements.sortButtons.forEach(function (button) {
+        elements.subscribersSortButtons.forEach(function (button) {
           const field = button.dataset.sort;
           const isActive = field === state.sort;
           const arrow = !isActive ? '' : state.order === 'asc' ? ' ▲' : ' ▼';
@@ -800,9 +966,153 @@
         });
       }
 
+      function syncStatsSortButtons() {
+        elements.statsSortButtons.forEach(function (button) {
+          const field = button.dataset.statsSort;
+          const isActive = field === state.statsSort;
+          const arrow = !isActive ? '' : state.statsOrder === 'asc' ? ' ▲' : ' ▼';
+          button.textContent = button.textContent.replace(/ [▲▼]$/, '') + arrow;
+        });
+      }
+
+      function setStatsLoading(isLoading) {
+        elements.statsPrevPageButton.disabled = isLoading || state.statsPage <= 1;
+        elements.statsNextPageButton.disabled = isLoading || state.statsPage >= state.statsTotalPages;
+        elements.statsSortButtons.forEach(function (button) {
+          button.disabled = isLoading;
+        });
+
+        if (isLoading && !state.statsLoaded) {
+          elements.statsInstallsBody.replaceChildren();
+          const row = document.createElement('tr');
+          row.className = 'empty-row';
+          row.innerHTML = '<td colspan="7">Loading install stats...</td>';
+          elements.statsInstallsBody.appendChild(row);
+        }
+      }
+
+      function renderStatsSummary(payload) {
+        const installs = payload.installs || {};
+        const sessions = payload.sessions || {};
+        const studies = payload.studies || {};
+        const daily = payload.new_installs_daily || [];
+
+        elements.statsTotalInstalls.textContent = formatNumber(installs.total);
+        elements.statsActive24h.textContent = formatNumber(installs.active_24h);
+        elements.statsActive7d.textContent = formatNumber(installs.active_7d);
+        elements.statsActive30d.textContent = formatNumber(installs.active_30d);
+        elements.statsTotalSessions.textContent = formatNumber(sessions.total);
+        elements.statsTotalStudies.textContent = formatNumber(studies.total);
+        elements.statsDailyList.replaceChildren();
+
+        if (!Number(installs.total)) {
+          const empty = document.createElement('p');
+          empty.className = 'chart-empty';
+          empty.textContent = 'No install history reporting yet.';
+          elements.statsDailyList.appendChild(empty);
+          return;
+        }
+
+        daily.forEach(function (entry) {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'source-row';
+
+          const topline = document.createElement('div');
+          topline.className = 'source-topline';
+          const day = document.createElement('span');
+          day.textContent = formatDay(entry.day);
+          const count = document.createElement('span');
+          count.textContent = formatNumber(entry.count);
+
+          topline.appendChild(day);
+          topline.appendChild(count);
+          wrapper.appendChild(topline);
+          elements.statsDailyList.appendChild(wrapper);
+        });
+      }
+
+      function createStatsInstallRow(install) {
+        const tr = document.createElement('tr');
+        const columns = [
+          'install_id_prefix',
+          'first_seen',
+          'last_seen',
+          'sessions',
+          'studies_imported',
+          'revision',
+          'version'
+        ];
+
+        columns.forEach(function (column) {
+          const td = document.createElement('td');
+          if (column === 'first_seen' || column === 'last_seen') {
+            td.textContent = formatDateTime(install[column]);
+          } else if (column === 'sessions' || column === 'studies_imported' || column === 'revision' || column === 'version') {
+            td.textContent = formatNumber(install[column]);
+          } else {
+            td.textContent = install[column] || '—';
+          }
+          tr.appendChild(td);
+        });
+
+        return tr;
+      }
+
+      function renderStatsInstalls(payload) {
+        elements.statsInstallsBody.replaceChildren();
+
+        state.statsTotalPages = payload.pagination.total_pages || 1;
+        state.statsPage = payload.pagination.page || 1;
+        elements.statsPaginationLabel.textContent =
+          'Page ' + state.statsPage + ' of ' + state.statsTotalPages + ' • ' + payload.pagination.total + ' total';
+        elements.statsPrevPageButton.disabled = state.statsPage <= 1;
+        elements.statsNextPageButton.disabled = state.statsPage >= state.statsTotalPages;
+
+        if (!payload.installs.length) {
+          const row = document.createElement('tr');
+          row.className = 'empty-row';
+          row.innerHTML = '<td colspan="7">No installs reporting yet.</td>';
+          elements.statsInstallsBody.appendChild(row);
+          return;
+        }
+
+        payload.installs.forEach(function (install) {
+          elements.statsInstallsBody.appendChild(createStatsInstallRow(install));
+        });
+      }
+
       async function loadSubscribers() {
         const payload = await apiJson(buildSubscribersPath());
         renderSubscribers(payload);
+      }
+
+      async function refreshStats(options) {
+        const opts = options || {};
+        if (!opts.force && state.statsLoaded) {
+          return;
+        }
+
+        setStatsLoading(true);
+        showError('');
+
+        try {
+          const [summary, installs] = await Promise.all([
+            apiJson('/api/stats/summary'),
+            apiJson(buildStatsInstallsPath())
+          ]);
+
+          renderStatsSummary(summary);
+          renderStatsInstalls(installs);
+          syncStatsSortButtons();
+          state.statsLoaded = true;
+          elements.lastUpdated.textContent =
+            'Updated ' +
+            new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
+        } catch (error) {
+          showError(error.message || 'Dashboard request failed.');
+        } finally {
+          setStatsLoading(false);
+        }
       }
 
       async function refreshAll() {
@@ -822,6 +1132,9 @@
           renderRecent(recentPayload);
           renderSubscribers(subscriberPayload);
           syncSortButtons();
+          if (state.currentTab === 'stats' || state.statsLoaded) {
+            await refreshStats({ force: true });
+          }
           elements.lastUpdated.textContent =
             'Updated ' +
             new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date());
@@ -829,6 +1142,22 @@
           showError(error.message || 'Dashboard request failed.');
         } finally {
           elements.refreshButton.disabled = false;
+        }
+      }
+
+      function switchTab(name) {
+        state.currentTab = name;
+        const isStats = name === 'stats';
+
+        elements.subscribersTab.classList.toggle('hidden', isStats);
+        elements.statsTab.classList.toggle('hidden', !isStats);
+        elements.subscribersTabButton.classList.toggle('active', !isStats);
+        elements.statsTabButton.classList.toggle('active', isStats);
+        elements.subscribersTabButton.setAttribute('aria-selected', isStats ? 'false' : 'true');
+        elements.statsTabButton.setAttribute('aria-selected', isStats ? 'true' : 'false');
+
+        if (isStats) {
+          refreshStats();
         }
       }
 
@@ -849,7 +1178,7 @@
         refreshAll();
       });
 
-      elements.sortButtons.forEach(function (button) {
+      elements.subscribersSortButtons.forEach(function (button) {
         button.addEventListener('click', function () {
           const field = button.dataset.sort;
           if (state.sort === field) {
@@ -860,6 +1189,20 @@
           }
           state.page = 1;
           refreshAll();
+        });
+      });
+
+      elements.statsSortButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          const field = button.dataset.statsSort;
+          if (state.statsSort === field) {
+            state.statsOrder = state.statsOrder === 'asc' ? 'desc' : 'asc';
+          } else {
+            state.statsSort = field;
+            state.statsOrder = field === 'last_seen' ? 'desc' : 'asc';
+          }
+          state.statsPage = 1;
+          refreshStats({ force: true });
         });
       });
 
@@ -879,8 +1222,32 @@
         refreshAll();
       });
 
+      elements.statsPrevPageButton.addEventListener('click', function () {
+        if (state.statsPage <= 1) {
+          return;
+        }
+        state.statsPage -= 1;
+        refreshStats({ force: true });
+      });
+
+      elements.statsNextPageButton.addEventListener('click', function () {
+        if (state.statsPage >= state.statsTotalPages) {
+          return;
+        }
+        state.statsPage += 1;
+        refreshStats({ force: true });
+      });
+
       elements.refreshButton.addEventListener('click', function () {
         refreshAll();
+      });
+
+      elements.subscribersTabButton.addEventListener('click', function () {
+        switchTab('subscribers');
+      });
+
+      elements.statsTabButton.addEventListener('click', function () {
+        switchTab('stats');
       });
 
       elements.logoutButton.addEventListener('click', function () {
