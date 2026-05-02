@@ -264,7 +264,12 @@ test('handleStats: OPTIONS returns 204 for CORS preflight', async () => {
 
 test('handleStats: Tauri desktop origins are allowed for CORS preflight', async () => {
     const env = createEnv();
-    for (const origin of ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']) {
+    for (const origin of [
+        'tauri://localhost',
+        'tauri://localhost:1430',
+        'http://tauri.localhost',
+        'https://tauri.localhost'
+    ]) {
         const request = createRequest(undefined, { method: 'OPTIONS', origin });
         const response = await handleStats(request, env);
         assert.equal(response.status, 204, `${origin} preflight should be allowed`);
@@ -320,7 +325,12 @@ test('handleStats: localhost origins are allowed', async () => {
 
 test('handleStats: Tauri desktop origins are allowed for POST', async () => {
     const env = createEnv();
-    for (const origin of ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']) {
+    for (const origin of [
+        'tauri://localhost',
+        'tauri://localhost:1430',
+        'http://tauri.localhost',
+        'https://tauri.localhost'
+    ]) {
         const response = await handleStats(createRequest(validPayload(), { origin }), env);
         assert.equal(response.status, 200, `${origin} should be allowed`);
         assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);

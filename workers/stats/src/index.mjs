@@ -41,7 +41,7 @@ const ALLOWED_PAYLOAD_FIELDS = new Set([
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const LOCALHOST_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
-const TAURI_ORIGIN_PATTERN = /^(?:tauri:\/\/localhost|https?:\/\/tauri\.localhost(?::\d+)?)$/;
+const TAURI_ORIGIN_PATTERN = /^(?:tauri:\/\/localhost(?::\d+)?|https?:\/\/tauri\.localhost(?::\d+)?)$/;
 
 // =====================================================================
 // CORS / HEADERS

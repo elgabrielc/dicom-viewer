@@ -95,8 +95,8 @@ CORS is a defense-in-depth check only -- the payload has no PHI, no
 credentials, and no authentication. The worker allows:
 
 - Requests with **no Origin** header (curl, same-origin, some Tauri builds)
-- Packaged Tauri desktop origins: `tauri://localhost`,
-  `http://tauri.localhost`, and `https://tauri.localhost`
+- Packaged Tauri desktop origins: `tauri://localhost`, optionally with a
+  port, plus `http://tauri.localhost` and `https://tauri.localhost`
 - `http://localhost:*` and `http://127.0.0.1:*` (pattern matched)
 - Origins in `ALLOWED_ORIGINS` (from `wrangler.toml [vars]`), currently
   `https://myradone.com` and `https://www.myradone.com`
