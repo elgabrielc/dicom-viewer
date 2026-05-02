@@ -497,14 +497,14 @@ function createLoginHtml(errorMessage = '') {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>myRadOne Subscriber Dashboard Login</title>
+  <title>myRadOne Dashboard Login</title>
   ${createAuthPageStyles()}
 </head>
 <body>
   <main class="card">
     <p class="eyebrow">Internal</p>
-    <h1>myRadOne Subscribers</h1>
-    <p>Enter the dashboard token to load the protected subscriber analytics view.</p>
+    <h1>myRadOne Dashboard</h1>
+    <p>Enter the dashboard token to load the protected analytics view.</p>
     <form id="loginForm">
       <label>
         Dashboard token
@@ -527,7 +527,7 @@ function createMisconfigHtml(reason) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>myRadOne Subscriber Dashboard Misconfigured</title>
+  <title>myRadOne Dashboard Misconfigured</title>
   ${createAuthPageStyles()}
 </head>
 <body>
