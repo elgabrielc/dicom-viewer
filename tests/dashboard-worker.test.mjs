@@ -9,13 +9,18 @@ import {
     SESSION_PATH,
     SUMMARY_PATH,
     SUBSCRIBERS_PATH,
+    STATS_INSTALLS_PATH,
+    STATS_SUMMARY_PATH,
     authenticate,
     createSignedSessionValue,
     createErrorResponse,
     dispatchRequest,
     handleDashboard,
+    handleStatsInstalls,
+    handleStatsSummary,
     handleSubscribers,
     handleSummary,
+    readonlySelect,
     verifySignedSessionValue
 } from '../workers/dashboard/src/lib.mjs';
 
@@ -41,18 +46,87 @@ function sha256Hex(value) {
 }
 
 function createEnv(options = {}) {
-    const { subscribers = [], rateLimitSuccess = true } = options;
+    const { subscribers = [], installs = [], rateLimitSuccess = true } = options;
     const token = Object.prototype.hasOwnProperty.call(options, 'token') ? options.token : VALID_TEST_TOKEN;
 
     return {
         DASHBOARD_TOKEN: token,
+        NOW: options.now,
         DASHBOARD_RATE_LIMIT: {
             async limit() {
                 return { success: rateLimitSuccess };
             }
         },
-        SUBSCRIBERS_DB: createDb(subscribers)
+        SUBSCRIBERS_DB: createDb(subscribers),
+        STATS_DB: createStatsDb(installs)
     };
+}
+
+function createStatsDb(initialInstalls) {
+    const installs = initialInstalls.map((install, index) => {
+        const statsJson = Object.prototype.hasOwnProperty.call(install, 'statsJson')
+            ? install.statsJson
+            : JSON.stringify({
+                sessions: install.sessions ?? 0,
+                studiesImported: install.studiesImported ?? 0
+            });
+
+        return {
+            install_id: install.installationId,
+            revision: install.revision ?? index,
+            first_seen: install.firstSeen ?? '2026-04-12T00:00:00.000Z',
+            last_seen: install.lastSeen ?? '2026-04-12T00:00:00.000Z',
+            created_at: install.createdAt ?? '2026-04-12T00:00:00.000Z',
+            stats_json: statsJson,
+            version: install.version ?? 1
+        };
+    });
+
+    const db = {
+        recordedQueries: [],
+        directPrepareCalls: [],
+        prepare(query) {
+            if (!this.__readonlySelectActive) {
+                this.directPrepareCalls.push(query);
+            }
+            this.recordedQueries.push(query);
+            return {
+                args: [],
+                bind(...args) {
+                    this.args = args;
+                    return this;
+                },
+                async first() {
+                    if (query.includes('COUNT(*) AS installs_total')) {
+                        return buildStatsTotals(installs, this.args);
+                    }
+
+                    if (query.startsWith('SELECT COUNT(*) AS total FROM installs')) {
+                        return { total: installs.length };
+                    }
+
+                    throw new Error(`Unhandled stats first() query: ${query}`);
+                },
+                async all() {
+                    if (query.startsWith('WITH RECURSIVE days(day) AS')) {
+                        return { results: buildInstallDailyRows(installs, this.args) };
+                    }
+
+                    if (query.includes('SELECT') && query.includes('install_id') && query.includes('FROM installs')) {
+                        const [limit, offset] = this.args;
+                        const { column, direction } = extractInstallSort(query);
+                        const rows = installs.map(normalizeStatsRecord);
+                        rows.sort((left, right) => compareInstallRows(left, right, column, direction));
+                        return { results: rows.slice(offset, offset + limit) };
+                    }
+
+                    throw new Error(`Unhandled stats all() query: ${query}`);
+                }
+            };
+        }
+    };
+
+    return db;
 }
 
 function createDb(initialSubscribers) {
@@ -170,6 +244,93 @@ function compareRows(left, right, column, direction) {
     if (leftValue > rightValue) return 1 * factor;
 
     return (left.id - right.id) * factor;
+}
+
+function parseStatsJson(statsJson) {
+    try {
+        const parsed = JSON.parse(statsJson);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function nonNegativeInteger(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function normalizeStatsRecord(row) {
+    const stats = parseStatsJson(row.stats_json);
+    return {
+        install_id: row.install_id,
+        first_seen: row.first_seen,
+        last_seen: row.last_seen,
+        revision: row.revision,
+        sessions: nonNegativeInteger(stats.sessions),
+        studies_imported: nonNegativeInteger(stats.studiesImported),
+        version: row.version
+    };
+}
+
+function buildStatsTotals(installs, args) {
+    const [active24hSince, active7dSince, active30dSince] = args;
+    return installs.reduce(
+        (totals, row) => {
+            const stats = parseStatsJson(row.stats_json);
+            totals.installs_total += 1;
+            totals.active_24h += Date.parse(row.last_seen) >= Date.parse(active24hSince) ? 1 : 0;
+            totals.active_7d += Date.parse(row.last_seen) >= Date.parse(active7dSince) ? 1 : 0;
+            totals.active_30d += Date.parse(row.last_seen) >= Date.parse(active30dSince) ? 1 : 0;
+            totals.sessions_total += nonNegativeInteger(stats.sessions);
+            totals.studies_total += nonNegativeInteger(stats.studiesImported);
+            return totals;
+        },
+        {
+            installs_total: 0,
+            active_24h: 0,
+            active_7d: 0,
+            active_30d: 0,
+            sessions_total: 0,
+            studies_total: 0
+        }
+    );
+}
+
+function buildInstallDailyRows(installs, args) {
+    const [startDay, todayDay] = args;
+    const counts = new Map();
+    for (const install of installs) {
+        const day = new Date(install.created_at).toISOString().slice(0, 10);
+        counts.set(day, (counts.get(day) || 0) + 1);
+    }
+
+    const today = new Date(`${todayDay}T00:00:00.000Z`);
+    const start = new Date(`${startDay}T00:00:00.000Z`);
+    const rows = [];
+    for (const date = new Date(start); date <= today; date.setUTCDate(date.getUTCDate() + 1)) {
+        const day = date.toISOString().slice(0, 10);
+        rows.push({ day, count: counts.get(day) || 0 });
+    }
+    return rows;
+}
+
+function extractInstallSort(query) {
+    const match = query.match(/ORDER BY ([a-z_]+) (ASC|DESC), install_id (ASC|DESC)/i);
+    return {
+        column: match ? match[1] : 'last_seen',
+        direction: match ? match[2].toLowerCase() : 'desc'
+    };
+}
+
+function compareInstallRows(left, right, column, direction) {
+    const factor = direction === 'asc' ? 1 : -1;
+    const leftValue = left[column];
+    const rightValue = right[column];
+
+    if (leftValue < rightValue) return -1 * factor;
+    if (leftValue > rightValue) return 1 * factor;
+    return left.install_id.localeCompare(right.install_id) * factor;
 }
 
 function buildDailyRows(subscribers) {
@@ -295,6 +456,97 @@ test('handleSummary returns empty shapes on an empty database', async () => {
     assert.equal(payload.daily.length, 30);
 });
 
+test('handleStatsSummary returns zero shape and 30 UTC days on an empty database', async () => {
+    const env = createEnv({ installs: [] });
+    const payload = await handleStatsSummary(env, { now: '2026-05-02T15:45:00.000Z' });
+
+    assert.deepEqual(payload.installs, {
+        total: 0,
+        active_24h: 0,
+        active_7d: 0,
+        active_30d: 0
+    });
+    assert.deepEqual(payload.sessions, { total: 0 });
+    assert.deepEqual(payload.studies, { total: 0 });
+    assert.equal(payload.new_installs_daily.length, 30);
+    assert.equal(payload.new_installs_daily.at(0).day, '2026-04-03');
+    assert.equal(payload.new_installs_daily.at(-1).day, '2026-05-02');
+    assert.deepEqual(payload.new_installs_daily.map((row) => row.count), Array(30).fill(0));
+    assert.deepEqual(
+        [...payload.new_installs_daily].sort((left, right) => left.day.localeCompare(right.day)),
+        payload.new_installs_daily
+    );
+});
+
+test('handleStatsSummary aggregates seeded installs defensively', async () => {
+    const env = createEnv({
+        installs: [
+            {
+                installationId: '11111111-1111-4111-8111-111111111111',
+                revision: 3,
+                firstSeen: '2026-04-01T00:00:00.000Z',
+                lastSeen: '2026-05-02T10:00:00.000Z',
+                createdAt: '2026-04-01T00:00:00.000Z',
+                sessions: 4,
+                studiesImported: 10,
+                version: 1
+            },
+            {
+                installationId: '22222222-2222-4222-8222-222222222222',
+                revision: 5,
+                firstSeen: '2026-03-01T00:00:00.000Z',
+                lastSeen: '2026-04-29T10:00:00.000Z',
+                createdAt: '2026-05-01T04:00:00.000Z',
+                sessions: 7,
+                studiesImported: 2,
+                version: 1
+            },
+            {
+                installationId: '33333333-3333-4333-8333-333333333333',
+                revision: 9,
+                firstSeen: '2026-05-02T00:00:00.000Z',
+                lastSeen: '2026-03-01T00:00:00.000Z',
+                createdAt: '2026-05-02T03:00:00.000Z',
+                statsJson: '{malformed-json',
+                version: 2
+            }
+        ]
+    });
+
+    const payload = await handleStatsSummary(env, { now: '2026-05-02T12:00:00.000Z' });
+
+    assert.deepEqual(payload.installs, {
+        total: 3,
+        active_24h: 1,
+        active_7d: 2,
+        active_30d: 2
+    });
+    assert.deepEqual(payload.sessions, { total: 11 });
+    assert.deepEqual(payload.studies, { total: 12 });
+    assert.equal(payload.new_installs_daily.find((row) => row.day === '2026-05-01').count, 1);
+    assert.equal(payload.new_installs_daily.find((row) => row.day === '2026-05-02').count, 1);
+});
+
+test('new installs daily uses created_at rather than first_seen', async () => {
+    const env = createEnv({
+        installs: [
+            {
+                installationId: '44444444-4444-4444-8444-444444444444',
+                firstSeen: '2026-05-02T11:00:00.000Z',
+                lastSeen: '2026-05-02T11:00:00.000Z',
+                createdAt: '2026-04-20T03:00:00.000Z',
+                sessions: 1,
+                studiesImported: 1
+            }
+        ]
+    });
+
+    const payload = await handleStatsSummary(env, { now: '2026-05-02T12:00:00.000Z' });
+
+    assert.equal(payload.new_installs_daily.find((row) => row.day === '2026-04-20').count, 1);
+    assert.equal(payload.new_installs_daily.find((row) => row.day === '2026-05-02').count, 0);
+});
+
 test('handleSubscribers rejects invalid filters and sort params', async () => {
     const env = createEnv();
 
@@ -362,6 +614,86 @@ test('handleSubscribers paginates and sorts seeded subscribers', async () => {
     assert.equal(payload.pagination.total_pages, 2);
 });
 
+test('handleStatsInstalls paginates, sorts, and redacts install identifiers', async () => {
+    const fullId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const env = createEnv({
+        installs: [
+            {
+                installationId: fullId,
+                revision: 1,
+                firstSeen: '2026-04-01T01:00:00.000Z',
+                lastSeen: '2026-05-01T01:00:00.000Z',
+                sessions: 9,
+                studiesImported: 3,
+                version: 1
+            },
+            {
+                installationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+                revision: 2,
+                firstSeen: '2026-04-02T01:00:00.000Z',
+                lastSeen: '2026-05-02T01:00:00.000Z',
+                sessions: 2,
+                studiesImported: 4,
+                version: 2
+            },
+            {
+                installationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+                revision: 3,
+                firstSeen: '2026-04-03T01:00:00.000Z',
+                lastSeen: '2026-04-30T01:00:00.000Z',
+                sessions: 5,
+                studiesImported: 6,
+                version: 1
+            }
+        ]
+    });
+
+    const payload = await handleStatsInstalls(
+        createRequest(`${STATS_INSTALLS_PATH}?sort=sessions&order=desc&per_page=2&page=1`),
+        env
+    );
+    const serialized = JSON.stringify(payload);
+
+    assert.equal(payload.installs.length, 2);
+    assert.equal(payload.installs[0].install_id_prefix, 'aaaaaaaa');
+    assert.equal(payload.installs[0].install_id_prefix.length, 8);
+    assert.equal(payload.installs[0].sessions, 9);
+    assert.equal(payload.installs[0].version, 1);
+    assert.deepEqual(payload.pagination, {
+        page: 1,
+        per_page: 2,
+        total: 3,
+        total_pages: 2
+    });
+    assert.doesNotMatch(serialized, new RegExp(fullId));
+    assert.doesNotMatch(serialized, /installationId/);
+    assert.doesNotMatch(serialized, /install_id"/);
+});
+
+test('handleStatsInstalls returns field-specific 400 payloads for invalid params', async () => {
+    const env = createEnv();
+    const cases = [
+        [`${STATS_INSTALLS_PATH}?page=0`, 'page'],
+        [`${STATS_INSTALLS_PATH}?per_page=200`, 'per_page'],
+        [`${STATS_INSTALLS_PATH}?sort=unknown`, 'sort'],
+        [`${STATS_INSTALLS_PATH}?order=sideways`, 'order']
+    ];
+
+    for (const [path, field] of cases) {
+        let response = null;
+        const request = createRequest(path, { token: VALID_TEST_TOKEN });
+        try {
+            await handleStatsInstalls(request, env);
+        } catch (error) {
+            response = await createErrorResponse(request, error);
+        }
+
+        assert.ok(response);
+        assert.equal(response.status, 400);
+        assert.equal((await response.json()).field, field);
+    }
+});
+
 test('dispatchRequest returns 401 for unauthenticated API requests and 429 when rate-limited', async () => {
     const env = createEnv();
 
@@ -373,6 +705,16 @@ test('dispatchRequest returns 401 for unauthenticated API requests and 429 when 
     const rateLimitedEnv = createEnv({ rateLimitSuccess: false });
     const rateLimited = await dispatchRequest(createRequest(SUMMARY_PATH), rateLimitedEnv, DASHBOARD_HTML);
     assert.equal(rateLimited.status, 429);
+});
+
+test('dispatchRequest returns 401 for unauthenticated stats endpoints', async () => {
+    const env = createEnv();
+
+    for (const path of [STATS_SUMMARY_PATH, STATS_INSTALLS_PATH]) {
+        const response = await dispatchRequest(createRequest(path), env, DASHBOARD_HTML);
+        assert.equal(response.status, 401);
+        assert.deepEqual(await response.json(), { error: 'Unauthorized' });
+    }
 });
 
 test('dispatchRequest creates and clears dashboard sessions', async () => {
@@ -513,6 +855,100 @@ test('GET /api/config bypasses the dashboard rate limiter', async () => {
 
     assert.equal(response.status, 200);
     assert.equal((await response.json()).status, 'ok');
+});
+
+test('readonlySelect accepts read-only SELECT and WITH forms', async () => {
+    const db = createStatsDb([]);
+    const accepted = [
+        'SELECT 1',
+        'select 1',
+        'SeLeCt 1',
+        'WITH rows AS (SELECT 1) SELECT * FROM rows',
+        '   SELECT 1',
+        '-- leading comment\nSELECT 1',
+        '/* leading block */ SELECT 1'
+    ];
+
+    for (const sql of accepted) {
+        assert.doesNotThrow(() => readonlySelect(db, sql));
+    }
+});
+
+test('readonlySelect rejects mutation keywords, semicolons, and comment-cloaked attacks', async () => {
+    const db = createStatsDb([]);
+    const rejected = [
+        'INSERT INTO installs DEFAULT VALUES',
+        'UPDATE installs SET revision = 1',
+        'DELETE FROM installs',
+        'DROP TABLE installs',
+        'ALTER TABLE installs ADD COLUMN x TEXT',
+        'CREATE TABLE x (id INTEGER)',
+        'TRUNCATE TABLE installs',
+        'REPLACE INTO installs DEFAULT VALUES',
+        'ATTACH DATABASE "x" AS x',
+        'DETACH DATABASE x',
+        'PRAGMA table_info(installs)',
+        'VACUUM',
+        'REINDEX',
+        'SELECT 1; SELECT 2',
+        '/* comment */ UPDATE installs SET revision = 1',
+        'SEL/*comment*/ECT 1',
+        'WITH rows AS (SELECT 1) DELETE FROM installs'
+    ];
+
+    for (const sql of rejected) {
+        assert.throws(() => readonlySelect(db, sql), /readonlySelect/);
+    }
+});
+
+test('stats handlers only access D1 through readonlySelect', async () => {
+    const env = createEnv({
+        installs: [
+            {
+                installationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+                lastSeen: '2026-05-02T10:00:00.000Z',
+                createdAt: '2026-05-02T10:00:00.000Z',
+                sessions: 1,
+                studiesImported: 1
+            }
+        ]
+    });
+
+    await handleStatsSummary(env, { now: '2026-05-02T12:00:00.000Z' });
+    await handleStatsInstalls(createRequest(STATS_INSTALLS_PATH), env);
+
+    assert.deepEqual(env.STATS_DB.directPrepareCalls, []);
+});
+
+test('stats aggregate queries are independently read-only valid', async () => {
+    const env = createEnv({
+        installs: [
+            {
+                installationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+                lastSeen: '2026-05-02T10:00:00.000Z',
+                createdAt: '2026-05-02T10:00:00.000Z',
+                sessions: 1,
+                studiesImported: 1
+            }
+        ]
+    });
+
+    await handleStatsSummary(env, { now: '2026-05-02T12:00:00.000Z' });
+
+    for (const sql of env.STATS_DB.recordedQueries) {
+        const validationDb = {
+            prepare() {
+                return {
+                    bind() {
+                        return this;
+                    },
+                    first() {},
+                    all() {}
+                };
+            }
+        };
+        assert.doesNotThrow(() => readonlySelect(validationDb, sql));
+    }
 });
 
 test('tampered dashboard cookies fall back to login and get cleared', async () => {
