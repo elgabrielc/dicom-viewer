@@ -15,9 +15,9 @@
 export const STATS_PATH = '/api/stats';
 export const SCHEMA_VERSION = 1;
 
-// Origins configured in wrangler.toml [vars]. Tauri desktop sends no Origin
-// header and is allowed implicitly. Localhost origins are matched by pattern
-// at request time (see isOriginAllowed).
+// Origins configured in wrangler.toml [vars]. Some Tauri desktop requests send
+// no Origin and are allowed implicitly; packaged WKWebView builds can also send
+// Tauri-specific origins, which are matched by pattern at request time.
 const DEFAULT_ALLOWED_ORIGINS = [
     'https://myradone.com',
     'https://www.myradone.com'
@@ -41,6 +41,7 @@ const ALLOWED_PAYLOAD_FIELDS = new Set([
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 const LOCALHOST_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
+const TAURI_ORIGIN_PATTERN = /^(?:tauri:\/\/localhost(?::\d+)?|https?:\/\/tauri\.localhost(?::\d+)?)$/;
 
 // =====================================================================
 // CORS / HEADERS
@@ -61,6 +62,7 @@ function isOriginAllowed(origin, env) {
     // defense-in-depth check rather than a security boundary.
     if (!origin) return true;
     if (LOCALHOST_ORIGIN_PATTERN.test(origin)) return true;
+    if (TAURI_ORIGIN_PATTERN.test(origin)) return true;
     return parseAllowedOrigins(env.ALLOWED_ORIGINS).has(origin);
 }
 
