@@ -262,6 +262,16 @@ test('handleStats: OPTIONS returns 204 for CORS preflight', async () => {
     assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://myradone.com');
 });
 
+test('handleStats: Tauri desktop origins are allowed for CORS preflight', async () => {
+    const env = createEnv();
+    for (const origin of ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']) {
+        const request = createRequest(undefined, { method: 'OPTIONS', origin });
+        const response = await handleStats(request, env);
+        assert.equal(response.status, 204, `${origin} preflight should be allowed`);
+        assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+    }
+});
+
 test('handleStats: unknown path returns 404', async () => {
     const env = createEnv();
     const response = await handleStats(createRequest(validPayload(), { path: '/api/other' }), env);
@@ -308,7 +318,16 @@ test('handleStats: localhost origins are allowed', async () => {
     }
 });
 
-test('handleStats: no Origin header is allowed (Tauri desktop case)', async () => {
+test('handleStats: Tauri desktop origins are allowed for POST', async () => {
+    const env = createEnv();
+    for (const origin of ['tauri://localhost', 'http://tauri.localhost', 'https://tauri.localhost']) {
+        const response = await handleStats(createRequest(validPayload(), { origin }), env);
+        assert.equal(response.status, 200, `${origin} should be allowed`);
+        assert.equal(response.headers.get('Access-Control-Allow-Origin'), origin);
+    }
+});
+
+test('handleStats: no Origin header is allowed', async () => {
     const env = createEnv();
     const response = await handleStats(createRequest(validPayload()), env);
     assert.equal(response.status, 200);
