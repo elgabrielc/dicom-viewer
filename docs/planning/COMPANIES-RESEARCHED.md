@@ -24,19 +24,19 @@ Cross-reference: see [DIVERGENT_CENTRAL_GUIDE.md → Primary Competitive Benchma
 
 | Company / Product | Role | Tier | Primary Research |
 |-------------------|------|------|------------------|
-| **MyMedicalImages.com** | #1 direct competitor; closest analog to myradone's plan; reach parity ASAP then surpass | T1 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) |
-| **3DICOM Patient** (Singular Health, ASX:SHG) | Strongest direct competitor by funding/engineering; benchmark for breadth and 3D roadmap | T1 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) |
-| **Falcon Mx** + Falcon Cloud | Mobile-first iOS competitor; benchmark for mobile UX | T1 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) |
-| **DicomShare** (share.dicomviewer.net) | Sharing-flow benchmark; share-link framing rather than library-first | T2 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) |
-| **PocketHealth** | Largest adjacent player (2M+ patients) but reached scale via B2B2C hospital partnerships; instructive for billing/cancellation pitfalls to avoid | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **PostDICOM** | Disqualified at consumer scale ($79+/mo clinic pricing) | Disqualified | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **Purview Image** | Disqualified at consumer scale ($3000+/yr enterprise) | Disqualified | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **CarePassport** | Hospital-integrated; not pure DTC | Disqualified | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **Medicai** | Free DICOM uploader for one-shot transfer; not persistent personal storage | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **DICOM Library** | Educational/anonymized teaching sharing only | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **LifeImage** (now Intelerad Patient Connect) | Acquired into B2B enterprise stack | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **PicnicHealth** | Different model (record retrieval on patient's behalf, not direct upload) | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) |
-| **IDV (IMAIOS DICOM Viewer)** | Free local viewer without cloud storage | Reference | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) |
+| **MyMedicalImages.com** | #1 direct competitor; closest analog to myradone's plan; reach parity ASAP then surpass | T1 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents.md) |
+| **3DICOM Patient** (Singular Health, ASX:SHG) | Strongest direct competitor by funding/engineering; benchmark for breadth and 3D roadmap | T1 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents.md) |
+| **Falcon Mx** + Falcon Cloud | Mobile-first iOS competitor; benchmark for mobile UX | T1 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents.md) |
+| **DicomShare** (share.dicomviewer.net) | Sharing-flow benchmark; share-link framing rather than library-first | T2 | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents.md) |
+| **PocketHealth** | Largest adjacent player (2M+ patients) but reached scale via B2B2C hospital partnerships; instructive for billing/cancellation pitfalls to avoid | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **PostDICOM** | Disqualified at consumer scale ($79+/mo clinic pricing) | Disqualified | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **Purview Image** | Disqualified at consumer scale ($3000+/yr enterprise) | Disqualified | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **CarePassport** | Hospital-integrated; not pure DTC | Disqualified | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **Medicai** | Free DICOM uploader for one-shot transfer; not persistent personal storage | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **DICOM Library** | Educational/anonymized teaching sharing only | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **LifeImage** (now Intelerad Patient Connect) | Acquired into B2B enterprise stack | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **PicnicHealth** | Different model (record retrieval on patient's behalf, not direct upload) | Adjacent | [Round 1: DTC](RESEARCH-direct-to-consumer-medical-imaging.md) |
+| **IDV (IMAIOS DICOM Viewer)** | Free local viewer without cloud storage | Reference | [Round 2: equivalents](RESEARCH-mymedicalimages-equivalents.md) |
 
 ---
 

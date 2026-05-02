@@ -85,8 +85,8 @@ No competitor has reached the scale or brand recognition required to "own" any f
 
 ### Full research
 
-- [RESEARCH-direct-to-consumer-medical-imaging](planning/RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) -- whether the space is fresh or a graveyard
-- [RESEARCH-mymedicalimages-equivalents](planning/RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) -- exhaustive search for products like MyMedicalImages
+- [RESEARCH-direct-to-consumer-medical-imaging](planning/RESEARCH-direct-to-consumer-medical-imaging.md) -- whether the space is fresh or a graveyard
+- [RESEARCH-mymedicalimages-equivalents](planning/RESEARCH-mymedicalimages-equivalents.md) -- exhaustive search for products like MyMedicalImages
 - [Companies Researched](planning/COMPANIES-RESEARCHED.md) -- running roster of every company we have benchmarked or cited, organized by category
 
 ---

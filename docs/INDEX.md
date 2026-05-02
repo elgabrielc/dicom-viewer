@@ -82,13 +82,13 @@ Feature design research (how to build things) and competitive intelligence (how 
 | [EasyRadiology](./planning/RESEARCH-easyradiology.md) | Competitive | easyRadiology AG architecture, market positioning, 35% German market share |
 | [Word + OneDrive Sync](./planning/RESEARCH-word-onedrive-sync-prompt_2026-03-25_1124.md) | Infrastructure | Microsoft Word and OneDrive sync architecture, conflict resolution, informing cloud sync design |
 | [Instrumentation: Todoist/Bitmapist](./planning/RESEARCH-instrumentation.md) | Instrumentation | Todoist analytics benchmarking, Bitmapist, Karma system, consent-first model |
-| [Instrumentation: Sublime Text](./planning/RESEARCH-sublime-instrumentation-prompt_2026-04-06_1333.md) | Instrumentation | Sublime Text near-zero telemetry benchmarking, Panic privacy policy as template |
-| [Instrumentation: Claude/Anthropic](./planning/RESEARCH-claude-instrumentation-prompt_2026-04-06_1345.md) | Instrumentation | Claude two-stream architecture, HIPAA BAA, enterprise compliance deep dive |
-| [Instrumentation: Spotify/Wrapped](./planning/RESEARCH-spotify-instrumentation-prompt_2026-04-06_1358.md) | Instrumentation | Spotify data-as-feature, Wrapped viral model, event taxonomy at scale |
-| [DICOM Sharing Compliance](./planning/RESEARCH-dicom-sharing-compliance-prompt_2026-04-06_1425.md) | Compliance | HIPAA/FTC classification, DICOMweb standards, Epic/Ambra integration paths |
-| [Healthcare Compliance Costs](./planning/RESEARCH-healthcare-compliance-costs-prompt_2026-04-06_1445.md) | Compliance | Itemized SOC 2/HITRUST/Epic/Ambra costs, three scenarios, startup examples |
-| [Direct-to-Consumer Imaging Cloud (Round 1)](./planning/RESEARCH-direct-to-consumer-medical-imaging-prompt_2026-05-01_0916.md) | Competitive | Whether patient-facing personal medical imaging cloud is fresh space or graveyard. Validates "occupied but not won" |
-| [MyMedicalImages Equivalents (Round 2)](./planning/RESEARCH-mymedicalimages-equivalents-prompt_2026-05-01_0934.md) | Competitive | Exhaustive search for products like MyMedicalImages: 3DICOM Patient (strongest competitor), DicomShare, Falcon Mx |
+| [Instrumentation: Sublime Text](./planning/archive/research-exhaust/RESEARCH-sublime-instrumentation-prompt.md) | Instrumentation | Sublime Text near-zero telemetry benchmarking, Panic privacy policy as template (research-exhaust archive; conclusions promoted into ADR 008) |
+| [Instrumentation: Claude/Anthropic](./planning/RESEARCH-claude-instrumentation.md) | Instrumentation | Claude two-stream architecture, HIPAA BAA, enterprise compliance deep dive |
+| [Instrumentation: Spotify/Wrapped](./planning/RESEARCH-spotify-instrumentation.md) | Instrumentation | Spotify data-as-feature, Wrapped viral model, event taxonomy at scale |
+| [DICOM Sharing Compliance](./planning/RESEARCH-dicom-sharing-compliance.md) | Compliance | HIPAA/FTC classification, DICOMweb standards, Epic/Ambra integration paths |
+| [Healthcare Compliance Costs](./planning/RESEARCH-healthcare-compliance-costs.md) | Compliance | Itemized SOC 2/HITRUST/Epic/Ambra costs, three scenarios, startup examples |
+| [Direct-to-Consumer Imaging Cloud (Round 1)](./planning/RESEARCH-direct-to-consumer-medical-imaging.md) | Competitive | Whether patient-facing personal medical imaging cloud is fresh space or graveyard. Validates "occupied but not won" |
+| [MyMedicalImages Equivalents (Round 2)](./planning/RESEARCH-mymedicalimages-equivalents.md) | Competitive | Exhaustive search for products like MyMedicalImages: 3DICOM Patient (strongest competitor), DicomShare, Falcon Mx |
 
 ### For Decisions
 
@@ -339,4 +339,4 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 
 ---
 
-*Last updated: 2026-04-06*
+*Last updated: 2026-05-02*
