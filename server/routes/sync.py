@@ -91,6 +91,64 @@ def _validate_device(db, user_id, device_id):
     return error_response is None
 
 
+def _process_client_changes(db, user_id, device_id, changes):
+    """Apply client changes and return accepted/rejected sync response entries."""
+    accepted = []
+    rejected = []
+
+    if not isinstance(changes, list):
+        return accepted, rejected
+
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+
+        # Validate required fields
+        required_fields = ('operation_uuid', 'table', 'key', 'operation')
+        if not all(change.get(f) for f in required_fields):
+            continue
+
+        # Belt-and-suspenders: reject comment changes with empty record_uuid.
+        # The comments.record_uuid column is nullable in SQLite (can't add
+        # NOT NULL to existing column), so we enforce non-null here.
+        change_key = (change.get('key') or '').strip()
+        if change.get('table') == 'comments' and not change_key:
+            rejected.append(
+                {
+                    'operation_uuid': change['operation_uuid'],
+                    'key': change.get('key', ''),
+                    'reason': 'empty_record_uuid',
+                    'current_sync_version': 0,
+                    'current_data': {},
+                }
+            )
+            continue
+
+        result = process_change(db, user_id, device_id, change)
+
+        if result['status'] == 'accepted':
+            accepted.append(
+                {
+                    'operation_uuid': result['operation_uuid'],
+                    'key': result['key'],
+                    'sync_version': result['sync_version'],
+                }
+            )
+            continue
+
+        rejected.append(
+            {
+                'operation_uuid': result['operation_uuid'],
+                'key': result['key'],
+                'reason': result['reason'],
+                'current_sync_version': result['current_sync_version'],
+                'current_data': result['current_data'],
+            }
+        )
+
+    return accepted, rejected
+
+
 @sync_bp.route('/api/sync', methods=['POST'])
 def sync():
     """Main sync endpoint per SYNC-CONTRACT-V1.md."""
@@ -124,67 +182,37 @@ def sync():
         except CursorInvalidError:
             return jsonify({'error': 'cursor_expired', 'hint': 'full_resync'}), 410
 
-    # -- Process client changes --
-    accepted = []
-    rejected = []
+    if db.in_transaction:
+        raise RuntimeError('sync validation opened a transaction before BEGIN IMMEDIATE')
 
-    if isinstance(changes, list):
-        for change in changes:
-            if not isinstance(change, dict):
-                continue
+    try:
+        # In WAL mode, BEGIN IMMEDIATE takes a RESERVED lock: readers continue,
+        # but writers serialize around sync_version allocation.
+        db.execute('BEGIN IMMEDIATE')
 
-            # Validate required fields
-            required_fields = ('operation_uuid', 'table', 'key', 'operation')
-            if not all(change.get(f) for f in required_fields):
-                continue
+        # -- Process client changes --
+        accepted, rejected = _process_client_changes(db, user_id, device_id, changes)
 
-            # Belt-and-suspenders: reject comment changes with empty record_uuid.
-            # The comments.record_uuid column is nullable in SQLite (can't add
-            # NOT NULL to existing column), so we enforce non-null here.
-            change_key = (change.get('key') or '').strip()
-            if change.get('table') == 'comments' and not change_key:
-                rejected.append(
-                    {
-                        'operation_uuid': change['operation_uuid'],
-                        'key': change.get('key', ''),
-                        'reason': 'empty_record_uuid',
-                        'current_sync_version': 0,
-                        'current_data': {},
-                    }
-                )
-                continue
+        # -- Compute remote changes --
+        remote_changes = compute_remote_changes(db, user_id, device_id, cursor_position)
 
-            result = process_change(db, user_id, device_id, change)
+        # -- Issue new cursor at current max sync_version for this user --
+        new_position = get_max_sync_version(db, user_id)
+        new_cursor = issue_cursor(db, user_id, device_id, new_position)
 
-            if result['status'] == 'accepted':
-                accepted.append(
-                    {
-                        'operation_uuid': result['operation_uuid'],
-                        'key': result['key'],
-                        'sync_version': result['sync_version'],
-                    }
-                )
-            else:
-                entry = {
-                    'operation_uuid': result['operation_uuid'],
-                    'key': result['key'],
-                    'reason': result['reason'],
-                    'current_sync_version': result['current_sync_version'],
-                    'current_data': result['current_data'],
-                }
-                rejected.append(entry)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
-    # -- Compute remote changes --
-    remote_changes = compute_remote_changes(db, user_id, device_id, cursor_position)
-
-    # -- Issue new cursor at current max sync_version for this user --
-    new_position = get_max_sync_version(db, user_id)
-    new_cursor = issue_cursor(db, user_id, device_id, new_position)
-
-    # Opportunistically clean up expired cursors (cheap, bounded work)
-    cleanup_expired_cursors(db)
-
-    db.commit()
+    try:
+        # Cursor cleanup is opportunistic and does not participate in version
+        # allocation, so keep it outside the write-serialization window.
+        cleanup_expired_cursors(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning('Failed to clean up expired sync cursors', exc_info=True)
 
     server_time = int(time.time() * 1000)
 
