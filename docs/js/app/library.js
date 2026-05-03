@@ -986,7 +986,7 @@
         const parts = [];
         if (copied > 0) parts.push(`${copied} copied`);
         if (skipped > 0) parts.push(`${skipped} skipped`);
-        if (invalid > 0) parts.push(`${invalid} invalid`);
+        if (invalid > 0) parts.push(`${invalid} non-DICOM`);
         if (errors > 0) parts.push(`${errors} errors`);
 
         let detail = `${processed}/${discovered} files processed`;
@@ -1027,7 +1027,7 @@
             messageParts.push(`${skipped} duplicate${skipped !== 1 ? 's' : ''} skipped`);
         }
         if (invalid > 0) {
-            messageParts.push(`${invalid} invalid`);
+            messageParts.push(`${invalid} non-DICOM file${invalid !== 1 ? 's' : ''} skipped`);
         }
         if (errors > 0) {
             messageParts.push(`${errors} error${errors !== 1 ? 's' : ''}`);
