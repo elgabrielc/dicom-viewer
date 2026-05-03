@@ -229,7 +229,16 @@ def get_max_sync_version(db, user_id=None):
 
 
 def _next_sync_version(db, table, key, device_id, user_id):
-    """Allocate the next sync_version for a user-scoped record."""
+    """Allocate the next sync_version for a user-scoped record.
+
+    Caller must hold an immediate write transaction before invoking this
+    function. The MAX(sync_version) read followed by the write below can
+    otherwise race under concurrent sync pushes, allocating duplicate versions
+    and causing cursor-based pulls to silently miss changes.
+    """
+    if not db.in_transaction:
+        raise RuntimeError('sync_version allocation requires an active write transaction')
+
     now = int(time.time())
     new_version = get_max_sync_version(db, user_id) + 1
     db.execute(
