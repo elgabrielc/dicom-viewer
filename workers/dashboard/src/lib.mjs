@@ -20,8 +20,6 @@ const SORT_COLUMNS = new Map([
     ['status', 'status']
 ]);
 const INSTALLS_SORT_COLUMNS = new Map([
-    ['last_seen', 'last_seen'],
-    ['first_seen', 'first_seen'],
     ['sessions', 'sessions'],
     ['studies_imported', 'studies_imported'],
     ['revision', 'revision']
@@ -635,7 +633,7 @@ function parseStatsInstallsQuery(request) {
     const url = new URL(request.url);
     const page = parseStatsIntegerParam(url.searchParams.get('page'), 1, 'page', { min: 1 });
     const perPage = parseStatsIntegerParam(url.searchParams.get('per_page'), 50, 'per_page', { min: 1, max: 100 });
-    const sort = (url.searchParams.get('sort') || 'last_seen').toLowerCase();
+    const sort = (url.searchParams.get('sort') || 'sessions').toLowerCase();
     const order = (url.searchParams.get('order') || 'desc').toLowerCase();
 
     if (!INSTALLS_SORT_COLUMNS.has(sort)) {
@@ -656,11 +654,6 @@ function normalizeCount(value) {
 
 function normalizeInt(value) {
     return normalizeCount(value);
-}
-
-function isoDateString(value) {
-    const timestamp = Date.parse(value);
-    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
 }
 
 function utcDay(value) {
@@ -872,20 +865,12 @@ export async function handleSubscribers(request, env) {
 
 export async function handleStatsSummary(env, options = {}) {
     const { startDay, todayDay } = statsDayBounds(options.now);
-    const now = options.now ? new Date(options.now) : new Date();
-    const nowMs = now.getTime();
-    const active24hSince = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
-    const active7dSince = new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const active30dSince = new Date(nowMs - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const totalsRow =
         (await readonlySelect(
             env.STATS_DB,
             `SELECT
                 COUNT(*) AS installs_total,
-                SUM(CASE WHEN last_seen >= ? THEN 1 ELSE 0 END) AS active_24h,
-                SUM(CASE WHEN last_seen >= ? THEN 1 ELSE 0 END) AS active_7d,
-                SUM(CASE WHEN last_seen >= ? THEN 1 ELSE 0 END) AS active_30d,
                 SUM(CASE
                     WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.sessions') AS INTEGER), 0)
                     ELSE 0
@@ -894,8 +879,7 @@ export async function handleStatsSummary(env, options = {}) {
                     WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.studiesImported') AS INTEGER), 0)
                     ELSE 0
                 END) AS studies_total
-             FROM installs`,
-            [active24hSince, active7dSince, active30dSince]
+             FROM installs`
         ).first()) || {};
 
     const dailyRows =
@@ -925,10 +909,7 @@ export async function handleStatsSummary(env, options = {}) {
 
     return {
         installs: {
-            total: normalizeCount(totalsRow.installs_total),
-            active_24h: normalizeCount(totalsRow.active_24h),
-            active_7d: normalizeCount(totalsRow.active_7d),
-            active_30d: normalizeCount(totalsRow.active_30d)
+            total: normalizeCount(totalsRow.installs_total)
         },
         sessions: {
             total: normalizeCount(totalsRow.sessions_total)
@@ -947,11 +928,10 @@ function normalizeInstallRow(row) {
     const installId = typeof row.install_id === 'string' ? row.install_id : '';
     return {
         install_id_prefix: installId.slice(0, 8),
-        first_seen: isoDateString(row.first_seen),
-        last_seen: isoDateString(row.last_seen),
         revision: normalizeInt(row.revision),
         sessions: normalizeInt(row.sessions),
-        studies_imported: normalizeInt(row.studies_imported)
+        studies_imported: normalizeInt(row.studies_imported),
+        version: normalizeInt(row.version)
     };
 }
 
@@ -970,8 +950,6 @@ export async function handleStatsInstalls(request, env) {
                 env.STATS_DB,
                 `SELECT
                     install_id,
-                    first_seen,
-                    last_seen,
                     revision,
                     CASE
                         WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.sessions') AS INTEGER), 0)
@@ -980,7 +958,8 @@ export async function handleStatsInstalls(request, env) {
                     CASE
                         WHEN json_valid(stats_json) THEN COALESCE(CAST(json_extract(stats_json, '$.studiesImported') AS INTEGER), 0)
                         ELSE 0
-                    END AS studies_imported
+                    END AS studies_imported,
+                    version
                  FROM installs
                  ORDER BY ${sortColumn} ${sortDirection}, install_id ${sortDirection}
                  LIMIT ? OFFSET ?`,

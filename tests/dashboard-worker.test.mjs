@@ -74,8 +74,6 @@ function createStatsDb(initialInstalls) {
         return {
             install_id: install.installationId,
             revision: install.revision ?? index,
-            first_seen: install.firstSeen ?? '2026-04-12T00:00:00.000Z',
-            last_seen: install.lastSeen ?? '2026-04-12T00:00:00.000Z',
             created_at: install.createdAt ?? '2026-04-12T00:00:00.000Z',
             stats_json: statsJson,
             version: install.version ?? 1
@@ -262,32 +260,24 @@ function normalizeStatsRecord(row) {
     const stats = parseStatsJson(row.stats_json);
     return {
         install_id: row.install_id,
-        first_seen: row.first_seen,
-        last_seen: row.last_seen,
         revision: row.revision,
         sessions: nonNegativeInteger(stats.sessions),
-        studies_imported: nonNegativeInteger(stats.studiesImported)
+        studies_imported: nonNegativeInteger(stats.studiesImported),
+        version: row.version
     };
 }
 
-function buildStatsTotals(installs, args) {
-    const [active24hSince, active7dSince, active30dSince] = args;
+function buildStatsTotals(installs) {
     return installs.reduce(
         (totals, row) => {
             const stats = parseStatsJson(row.stats_json);
             totals.installs_total += 1;
-            totals.active_24h += Date.parse(row.last_seen) >= Date.parse(active24hSince) ? 1 : 0;
-            totals.active_7d += Date.parse(row.last_seen) >= Date.parse(active7dSince) ? 1 : 0;
-            totals.active_30d += Date.parse(row.last_seen) >= Date.parse(active30dSince) ? 1 : 0;
             totals.sessions_total += nonNegativeInteger(stats.sessions);
             totals.studies_total += nonNegativeInteger(stats.studiesImported);
             return totals;
         },
         {
             installs_total: 0,
-            active_24h: 0,
-            active_7d: 0,
-            active_30d: 0,
             sessions_total: 0,
             studies_total: 0
         }
@@ -315,7 +305,7 @@ function buildInstallDailyRows(installs, args) {
 function extractInstallSort(query) {
     const match = query.match(/ORDER BY ([a-z_]+) (ASC|DESC), install_id (ASC|DESC)/i);
     return {
-        column: match ? match[1] : 'last_seen',
+        column: match ? match[1] : 'sessions',
         direction: match ? match[2].toLowerCase() : 'desc'
     };
 }
@@ -457,11 +447,9 @@ test('handleStatsSummary returns zero shape and 30 UTC days on an empty database
     const env = createEnv({ installs: [] });
     const payload = await handleStatsSummary(env, { now: '2026-05-02T15:45:00.000Z' });
 
+    assert.deepEqual(Object.keys(payload), ['installs', 'sessions', 'studies', 'new_installs_daily']);
     assert.deepEqual(payload.installs, {
-        total: 0,
-        active_24h: 0,
-        active_7d: 0,
-        active_30d: 0
+        total: 0
     });
     assert.deepEqual(payload.sessions, { total: 0 });
     assert.deepEqual(payload.studies, { total: 0 });
@@ -481,8 +469,6 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
             {
                 installationId: '11111111-1111-4111-8111-111111111111',
                 revision: 3,
-                firstSeen: '2026-04-01T00:00:00.000Z',
-                lastSeen: '2026-05-02T10:00:00.000Z',
                 createdAt: '2026-04-01T00:00:00.000Z',
                 sessions: 4,
                 studiesImported: 10
@@ -490,8 +476,6 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
             {
                 installationId: '22222222-2222-4222-8222-222222222222',
                 revision: 5,
-                firstSeen: '2026-03-01T00:00:00.000Z',
-                lastSeen: '2026-04-29T10:00:00.000Z',
                 createdAt: '2026-05-01T04:00:00.000Z',
                 sessions: 7,
                 studiesImported: 2
@@ -499,8 +483,6 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
             {
                 installationId: '33333333-3333-4333-8333-333333333333',
                 revision: 9,
-                firstSeen: '2026-05-02T00:00:00.000Z',
-                lastSeen: '2026-03-01T00:00:00.000Z',
                 createdAt: '2026-05-02T03:00:00.000Z',
                 statsJson: '{malformed-json'
             }
@@ -510,10 +492,7 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
     const payload = await handleStatsSummary(env, { now: '2026-05-02T12:00:00.000Z' });
 
     assert.deepEqual(payload.installs, {
-        total: 3,
-        active_24h: 1,
-        active_7d: 2,
-        active_30d: 2
+        total: 3
     });
     assert.deepEqual(payload.sessions, { total: 11 });
     assert.deepEqual(payload.studies, { total: 12 });
@@ -521,13 +500,11 @@ test('handleStatsSummary aggregates seeded installs defensively', async () => {
     assert.equal(payload.new_installs_daily.find((row) => row.day === '2026-05-02').count, 1);
 });
 
-test('new installs daily uses created_at rather than first_seen', async () => {
+test('new installs daily uses created_at for daily buckets', async () => {
     const env = createEnv({
         installs: [
             {
                 installationId: '44444444-4444-4444-8444-444444444444',
-                firstSeen: '2026-05-02T11:00:00.000Z',
-                lastSeen: '2026-05-02T11:00:00.000Z',
                 createdAt: '2026-04-20T03:00:00.000Z',
                 sessions: 1,
                 studiesImported: 1
@@ -615,41 +592,43 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
             {
                 installationId: fullId,
                 revision: 1,
-                firstSeen: '2026-04-01T01:00:00.000Z',
-                lastSeen: '2026-05-01T01:00:00.000Z',
                 sessions: 9,
-                studiesImported: 3
+                studiesImported: 3,
+                version: 7
             },
             {
                 installationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
                 revision: 2,
-                firstSeen: '2026-04-02T01:00:00.000Z',
-                lastSeen: '2026-05-02T01:00:00.000Z',
                 sessions: 2,
                 studiesImported: 4
             },
             {
                 installationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
                 revision: 3,
-                firstSeen: '2026-04-03T01:00:00.000Z',
-                lastSeen: '2026-04-30T01:00:00.000Z',
                 sessions: 5,
                 studiesImported: 6
             }
         ]
     });
 
-    const payload = await handleStatsInstalls(
-        createRequest(`${STATS_INSTALLS_PATH}?sort=sessions&order=desc&per_page=2&page=1`),
-        env
-    );
+    const payload = await handleStatsInstalls(createRequest(`${STATS_INSTALLS_PATH}?per_page=2&page=1`), env);
     const serialized = JSON.stringify(payload);
 
     assert.equal(payload.installs.length, 2);
-    assert.equal(payload.installs[0].install_id_prefix, 'aaaaaaaa');
-    assert.equal(payload.installs[0].install_id_prefix.length, 8);
-    assert.equal(payload.installs[0].sessions, 9);
-    assert.equal(Object.hasOwn(payload.installs[0], 'version'), false);
+    assert.deepEqual(Object.keys(payload.installs[0]), [
+        'install_id_prefix',
+        'revision',
+        'sessions',
+        'studies_imported',
+        'version'
+    ]);
+    assert.deepEqual(payload.installs[0], {
+        install_id_prefix: 'aaaaaaaa',
+        revision: 1,
+        sessions: 9,
+        studies_imported: 3,
+        version: 7
+    });
     assert.deepEqual(payload.pagination, {
         page: 1,
         per_page: 2,
@@ -659,7 +638,7 @@ test('handleStatsInstalls paginates, sorts, and redacts install identifiers', as
     assert.doesNotMatch(serialized, new RegExp(fullId));
     assert.doesNotMatch(serialized, /installationId/);
     assert.doesNotMatch(serialized, /install_id"/);
-    assert.doesNotMatch(serialized, /"version"/);
+    assert.doesNotMatch(serialized, /first_seen|last_seen/);
 });
 
 test('handleStatsInstalls returns field-specific 400 payloads for invalid params', async () => {
@@ -668,6 +647,8 @@ test('handleStatsInstalls returns field-specific 400 payloads for invalid params
         [`${STATS_INSTALLS_PATH}?page=0`, 'page'],
         [`${STATS_INSTALLS_PATH}?per_page=200`, 'per_page'],
         [`${STATS_INSTALLS_PATH}?sort=unknown`, 'sort'],
+        [`${STATS_INSTALLS_PATH}?sort=last_seen`, 'sort'],
+        [`${STATS_INSTALLS_PATH}?sort=first_seen`, 'sort'],
         [`${STATS_INSTALLS_PATH}?order=sideways`, 'order']
     ];
 
@@ -910,7 +891,6 @@ test('stats aggregate queries are independently read-only valid', async () => {
         installs: [
             {
                 installationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-                lastSeen: '2026-05-02T10:00:00.000Z',
                 createdAt: '2026-05-02T10:00:00.000Z',
                 sessions: 1,
                 studiesImported: 1

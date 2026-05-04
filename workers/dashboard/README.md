@@ -26,9 +26,11 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from
 - `GET /api/subscribers` - Paginated subscriber list with allowlisted
   filters/sorts.
 - `GET /api/stats/summary` - Aggregate anonymous install, session, study, and
-  30-day new-install totals.
+  30-day new-install totals based on `created_at`.
 - `GET /api/stats/installs` - Paginated anonymous install snapshots. Install
-  identifiers are truncated to an 8-character prefix.
+  identifiers are truncated to an 8-character prefix, and rows only include
+  `install_id_prefix`, `revision`, `sessions`, `studies_imported`, and
+  `version`.
 
 `/api/subscribers` supports these optional query parameters:
 
@@ -43,9 +45,33 @@ Internal Cloudflare Worker dashboard for viewing subscriber analytics from
 
 - `page` - default `1`, minimum `1`
 - `per_page` - default `50`, maximum `100`
-- `sort` - `last_seen`, `first_seen`, `sessions`, `studies_imported`, or
-  `revision`
-- `order` - `asc` or `desc`
+- `sort` - `sessions`, `studies_imported`, or `revision`; default `sessions`
+- `order` - `asc` or `desc`; default `desc`
+
+Example `/api/stats/summary` response:
+
+```json
+{
+  "installs": { "total": 12 },
+  "sessions": { "total": 84 },
+  "studies": { "total": 31 },
+  "new_installs_daily": [
+    { "day": "2026-05-01", "count": 2 }
+  ]
+}
+```
+
+Example `/api/stats/installs` row:
+
+```json
+{
+  "install_id_prefix": "00000000",
+  "revision": 4,
+  "sessions": 12,
+  "studies_imported": 8,
+  "version": 1
+}
+```
 
 ## Security Notes
 
@@ -168,8 +194,12 @@ you want meaningful dashboard output.
 
    ```bash
    npx wrangler d1 execute myradone-stats --local --config workers/dashboard/wrangler.toml \
-     --command "INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z');"
+     --command "INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen, version, created_at) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', 1, '2026-05-01T00:00:00.000Z');"
    ```
+
+   The stats schema still requires timestamp columns for ingestion, but the
+   dashboard APIs only use `created_at` for daily install counts and do not
+   return or sort by the ingestion timestamp fields.
 
 7. Run the worker:
 
