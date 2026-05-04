@@ -192,7 +192,7 @@ test.describe('Instrumentation: consent modal', () => {
         await waitForStats(page, (stats) => stats.sessions === 1);
 
         await waitForConsentDialog(page);
-        await expect(page.locator('#usageStatsConsentTitle')).toHaveText('Share anonymous usage stats?');
+        await expect(page.locator('#usageStatsConsentTitle')).toHaveText('Please help us improve myRadOne.');
         await expect(page.locator('#usageStatsConsentStatsTitle')).toHaveText('Stats that would be shared');
         await expect(page.locator('#usageStatsConsentDialog summary')).toHaveCount(0);
         const stats = await readStats(page);
