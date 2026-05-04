@@ -1,7 +1,7 @@
 # ADR 008: Local-First Instrumentation
 
 ## Status
-Accepted (Stage 1 implemented)
+Accepted (Stage 1 implemented; v0.4 consent update applied)
 
 ## Context
 
@@ -56,7 +56,7 @@ These five principles emerged from the benchmarking and guide this decision:
 
 ## Decision
 
-Implement local-only usage counters that are stored in app-data and surfaced to the user in a visible "Usage Stats" panel. No data leaves the machine. The user sees exactly what the app tracks -- the stats panel is the privacy policy.
+Implement local-first usage counters that are stored in app-data and surfaced to the user in a visible "Usage Stats" panel. No data leaves the machine until the user explicitly consents in the first-launch usage-stats dialog. The user sees exactly what the app tracks -- the stats panel is the privacy policy.
 
 ### Two-stream architecture
 
@@ -69,7 +69,7 @@ Implement local-only usage counters that are stored in app-data and surfaced to 
 **Telemetry stream** (usage counters):
 - Aggregate counters of app behavior (sessions, features used, modalities seen, errors)
 - No PHI, no patient identifiers, no file paths, no study content
-- Stored locally, surfaced to user, optionally synced in cloud mode
+- Stored locally, surfaced to user, optionally shared as aggregate counters after explicit consent
 - The app's operational data -- safe to collect and display
 
 These streams share no storage, no API, and no persistence layer. The separation is architectural, not just policy.
@@ -80,17 +80,17 @@ Stage 1 ships with a deliberately minimal counter set. The event taxonomy will g
 
 **Identity and timing:**
 - `installationId` -- per-installation UUID via `crypto.randomUUID()`. Survives `resetStats()` so a reset does not invalidate the cloud mapping. Will later be mapped to account IDs in cloud mode.
-- `firstSeen` -- ISO timestamp of the first app open (members-since date).
-- `lastSeen` -- ISO timestamp of the most recent mutation.
+- `firstSeen` -- ISO timestamp of the first app open (members-since date). Local-only. Shown to the user as "Using since" and never sent to the stats worker.
 
 **Usage counters:**
 - `sessions` -- incremented once per app open (`trackAppOpen()`).
 - `studiesImported` -- incremented by user-initiated imports only (`trackStudiesImported(count)`). This counter does NOT increase for viewer opens, refreshes, rescans, auto-loads, or sample-data loads.
 
 **Schema bookkeeping:**
-- `version` -- schema version (currently 1). `migrateStats()` runs on every read and adds missing fields with zero defaults; fields are never removed.
+- `version` -- schema version (currently 1). `migrateStats()` runs on every read, adds missing fields with defaults, and removes deprecated local fields such as `lastSeen`.
 - `revision` -- monotonic integer incremented on every `saveStats()` call. The server will upsert only if `incoming.revision > stored.revision`, preventing stale writes from overwriting newer local state.
 - `shareEnabled` -- boolean toggle for phone-home. Stored locally; not included in phone-home payloads.
+- `consentDecisionAt` -- ISO timestamp of the user's first-launch consent choice. Stored locally; required with `shareEnabled === true` before any phone-home request is allowed.
 
 Additional counters (feature usage, modality breakdown, errors) are deferred to a later stage. The sealed API means new counters are added via new helpers, not by opening a generic `trackEvent(category, action)` surface.
 
@@ -120,11 +120,12 @@ The stats panel is a section in the existing help modal (opened via the `?` butt
 
 Stage 1 shows:
 - **Using since** -- formatted `firstSeen` date
-- **Last opened** -- formatted `lastSeen` date
 - **Sessions** -- the `sessions` counter
 - **Studies imported** -- the `studiesImported` counter
 - **Share anonymous usage stats** -- checkbox bound to `setShareEnabled()`; off by default
 - A short disclosure paragraph explaining exactly what is and is not shared
+
+The first-launch consent dialog is the up-front sharing decision surface. It shows the same live local counters in plain language and records the decision through `recordConsentDecision()`. Closing the dialog without choosing leaves `consentDecisionAt` unset and prevents network sharing even if an older install had `shareEnabled === true`.
 
 This is not gamification (no levels, no points, no streaks). It is a transparent accounting of what the app knows about how it has been used. As counters are added in later stages, the panel grows inline -- the goal is a positive, identity-affirming portrait of the user's workflow rather than raw counter tables.
 
@@ -196,11 +197,12 @@ The module deliberately does NOT expose a free-form `trackEvent(category, action
 
 | Function | Notes |
 |---|---|
-| `trackAppOpen()` | Async. Awaits `initPromise`, increments `sessions`, updates `lastSeen`, flushes immediately so the session count persists before the next page navigation. |
-| `trackStudiesImported(count)` | Async. Awaits `initPromise`, validates `count` is a positive integer, increments `studiesImported`, updates `lastSeen`, flushes immediately. |
+| `trackAppOpen()` | Async. Awaits `initPromise`, increments `sessions`, flushes immediately so the session count persists before the next page navigation. |
+| `trackStudiesImported(count)` | Async. Awaits `initPromise`, validates `count` is a positive integer, increments `studiesImported`, flushes immediately. |
 | `getStats()` | Returns a defensive copy of the stats object, or `null` if instrumentation is disabled. |
-| `resetStats()` | Resets counters but preserves `installationId` and `shareEnabled`. |
-| `setShareEnabled(bool)` / `isShareEnabled()` | Phone-home toggle. Enabling (false to true) triggers one immediate POST after the flush settles. |
+| `resetStats()` | Resets counters but preserves `installationId`, `firstSeen`, `shareEnabled`, and `consentDecisionAt`. |
+| `recordConsentDecision(bool)` | Atomic first-launch consent write. Sets `shareEnabled`, stamps `consentDecisionAt`, persists, and sends one immediate POST only when the choice is share. |
+| `setShareEnabled(bool)` / `isShareEnabled()` | Existing stats-panel toggle. It can change sharing after a decision exists, but it does not stamp `consentDecisionAt`. |
 | `renderStatsPanel(container)` | Renders the stats table, share toggle, and disclosure paragraph into the help modal section. |
 | `ready` | Promise that resolves when `init()` has loaded stats from storage. Exposed for tests and for any caller that needs deterministic startup ordering. |
 
@@ -214,14 +216,14 @@ The module deliberately does NOT expose a free-form `trackEvent(category, action
   "revision": 42,
   "installationId": "e54ce9f8-2d2e-4c6b-9a7b-5a1c3b8b8c7a",
   "firstSeen": "2026-04-06T14:30:00.000Z",
-  "lastSeen": "2026-04-08T09:17:22.341Z",
   "sessions": 17,
   "studiesImported": 6,
-  "shareEnabled": false
+  "shareEnabled": false,
+  "consentDecisionAt": null
 }
 ```
 
-`migrateStats(blob)` runs on every read. Missing fields are added with zero/default values. Fields are never removed so old installs never lose data. The `version` field is rewritten to the current schema version on every load.
+`migrateStats(blob)` runs on every read. Missing fields are added with zero/default values, `firstSeen` is preserved for the user's own panel, and the deprecated `lastSeen` field is removed. The `version` field is rewritten to the current schema version on every load.
 
 **Desktop SQLite schema** (migration `desktop/src-tauri/migrations/008_instrumentation.sql`):
 
@@ -232,14 +234,14 @@ CREATE TABLE IF NOT EXISTS instrumentation (
     revision INTEGER NOT NULL DEFAULT 0,
     installation_id TEXT NOT NULL,
     first_seen TEXT NOT NULL,
-    last_seen TEXT NOT NULL,
     sessions INTEGER NOT NULL DEFAULT 0,
     studies_imported INTEGER NOT NULL DEFAULT 0,
-    share_enabled INTEGER NOT NULL DEFAULT 0
+    share_enabled INTEGER NOT NULL DEFAULT 0,
+    consent_decision_at TEXT
 );
 ```
 
-The `CHECK (id = 1)` guarantees a single row; writes use `INSERT ... ON CONFLICT(id) DO UPDATE`.
+The `CHECK (id = 1)` guarantees a single row; writes use `INSERT ... ON CONFLICT(id) DO UPDATE`. Migration `009_drop_last_seen.sql` removes the old desktop `last_seen` column for installs that already ran the earlier instrumentation schema.
 
 ### Write debouncing and flush lifecycle
 
@@ -259,11 +261,13 @@ Personal mode uses the raw new-study count from the drop handler, which is alrea
 
 ### Phone-home transport
 
-Phone-home is off by default. Enabling the toggle in the stats panel (`setShareEnabled(true)`):
+Phone-home is off by default and requires effective consent: `shareEnabled === true && consentDecisionAt != null`. The first-launch consent dialog records that decision with `recordConsentDecision(true)`:
 
-1. Persists `shareEnabled = true` via a normal flush.
+1. Persists `shareEnabled = true` and `consentDecisionAt = now` in the same stats write.
 2. Sends one immediate POST of the current persisted state.
 3. From then on, every subsequent `saveStats()` schedules a debounced POST 5 seconds later (debounced so a burst of saves produces a single network request).
+
+Closing the dialog without choosing leaves `consentDecisionAt` unset. This blocks phone-home for retroactive v0.3.2 upgraders even when their legacy local blob has `shareEnabled === true`.
 
 The endpoint is `https://api.myradone.com/api/stats` (allowlisted in Tauri CSP `connect-src`). Requests are fire-and-forget: failures are silent and never surface to the UI. The payload is:
 
@@ -272,14 +276,12 @@ The endpoint is `https://api.myradone.com/api/stats` (allowlisted in Tauri CSP `
   "version": 1,
   "revision": 42,
   "installationId": "e54ce9f8-...",
-  "firstSeen": "2026-04-06T14:30:00.000Z",
-  "lastSeen": "2026-04-08T09:17:22.341Z",
   "sessions": 17,
   "studiesImported": 6
 }
 ```
 
-`shareEnabled` is deliberately NOT in the payload. It is a local UI preference; the server does not need to know whether the client has the checkbox checked, only that a request arrived.
+`firstSeen`, `lastSeen`, `shareEnabled`, and `consentDecisionAt` are deliberately NOT in the payload. `firstSeen` is local-only; `lastSeen` is deprecated; the consent fields are local UI state. The stats worker continues to accept legacy `firstSeen` and `lastSeen` fields from older clients, validates them if present, and strips them before persistence.
 
 ### Integration points
 

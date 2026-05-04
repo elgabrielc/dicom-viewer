@@ -164,8 +164,23 @@ async function waitForStats(page, predicate, timeout = 5000) {
 // Consent modal and phone-home gating
 // ============================================================================
 
+test.describe('Instrumentation: consent modal local automation guard', () => {
+    test('skips first-launch consent modal on local WebDriver runs unless forced', async ({ page }) => {
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 1);
+
+        await expect(page.locator('#usageStatsConsentDialog')).toBeHidden();
+        const stats = await readStats(page);
+        expect(stats.consentDecisionAt).toBeNull();
+        expect(stats.shareEnabled).toBe(false);
+    });
+});
+
 test.describe('Instrumentation: consent modal', () => {
     test.beforeEach(async ({ page }) => {
+        // Local WebDriver runs skip the dialog by default so unrelated specs are
+        // not blocked by first-launch consent. These specs exercise it directly.
         await page.addInitScript(() => {
             window.__DICOM_VIEWER_FORCE_CONSENT_MODAL__ = true;
         });
