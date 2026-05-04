@@ -194,12 +194,11 @@ you want meaningful dashboard output.
 
    ```bash
    npx wrangler d1 execute myradone-stats --local --config workers/dashboard/wrangler.toml \
-     --command "INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen, version, created_at) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', 1, '2026-05-01T00:00:00.000Z');"
+     --command "INSERT INTO installs (install_id, revision, stats_json, version, created_at) VALUES ('00000000-0000-4000-8000-000000000000', 1, '{\"sessions\":1,\"studiesImported\":2}', 1, '2026-05-01T00:00:00.000Z');"
    ```
 
-   The stats schema still requires timestamp columns for ingestion, but the
-   dashboard APIs only use `created_at` for daily install counts and do not
-   return or sort by the ingestion timestamp fields.
+   The dashboard APIs use `created_at` for daily install counts and do not
+   return or sort by client-side timestamp fields.
 
 7. Run the worker:
 
