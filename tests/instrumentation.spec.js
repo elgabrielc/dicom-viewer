@@ -193,7 +193,8 @@ test.describe('Instrumentation: consent modal', () => {
 
         await waitForConsentDialog(page);
         await expect(page.locator('#usageStatsConsentTitle')).toHaveText('Share anonymous usage stats?');
-        await expect(page.locator('.usage-stats-consent-details')).toHaveJSProperty('open', true);
+        await expect(page.locator('#usageStatsConsentStatsTitle')).toHaveText('Stats that would be shared');
+        await expect(page.locator('#usageStatsConsentDialog summary')).toHaveCount(0);
         const stats = await readStats(page);
         await expect(page.locator('#usageStatsConsentInstallId')).toHaveText(stats.installationId.slice(0, 8));
         await expect(page.locator('#usageStatsConsentSessions')).toHaveText('1');

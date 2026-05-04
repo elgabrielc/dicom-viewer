@@ -1702,7 +1702,7 @@ header {
    ========================================================================== */
 
 .usage-stats-consent-dialog {
-    width: min(520px, calc(100vw - 2rem));
+    width: min(640px, calc(100vw - 2rem));
     max-height: calc(100vh - 2rem);
     padding: 0;
     border: none;
@@ -1737,17 +1737,18 @@ header {
     line-height: 1.55;
 }
 
-.usage-stats-consent-details {
+.usage-stats-consent-stats {
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid var(--color-border-subtle);
 }
 
-.usage-stats-consent-details summary {
+.usage-stats-consent-stats h3 {
+    margin: 0;
     color: var(--color-text-primary);
     font-size: 0.95rem;
     font-weight: 600;
-    cursor: pointer;
+    line-height: 1.35;
 }
 
 .usage-stats-consent-list {
