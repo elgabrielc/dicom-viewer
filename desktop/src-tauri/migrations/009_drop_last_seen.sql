@@ -1,3 +1,9 @@
+-- Move the desktop instrumentation table from the v0.3.2 shape to the v0.4
+-- consent shape. Migration 008 is intentionally kept as the historical schema
+-- that shipped with last_seen and without consent_decision_at; this migration
+-- adds consent_decision_at first, then rebuilds the table without last_seen.
+ALTER TABLE instrumentation ADD COLUMN consent_decision_at TEXT;
+
 DROP TABLE IF EXISTS instrumentation_next;
 
 CREATE TABLE IF NOT EXISTS instrumentation_next (
@@ -32,7 +38,7 @@ SELECT
     sessions,
     studies_imported,
     share_enabled,
-    NULL
+    consent_decision_at
 FROM instrumentation;
 
 DROP TABLE instrumentation;

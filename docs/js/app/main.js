@@ -486,12 +486,12 @@
 
     function shouldSkipUsageStatsConsentDialogForLocalAutomation() {
         const isLocalHost = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-        const forceDialog = window.__DICOM_VIEWER_FORCE_CONSENT_MODAL__ === true;
+        const allowDialogInTests = window.__ALLOW_CONSENT_MODAL_IN_TESTS__ === true;
 
         // Most Playwright specs exercise unrelated app flows on localhost. Keep
         // the first-launch dialog out of those local automated runs; consent
-        // specs opt in with __DICOM_VIEWER_FORCE_CONSENT_MODAL__.
-        return navigator.webdriver === true && isLocalHost && !forceDialog;
+        // specs opt in with __ALLOW_CONSENT_MODAL_IN_TESTS__.
+        return navigator.webdriver === true && isLocalHost && !allowDialogInTests;
     }
 
     function initializeUsageStatsConsentDialog(appOpenPromise) {

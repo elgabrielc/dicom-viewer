@@ -31,8 +31,8 @@
             // ADR 008: Local-first instrumentation. Singleton row (id = 1).
             // Desktop tests that do not exercise instrumentation still need
             // this table present so desktop SQL selects do not error out.
-            // The canonical schema lives in
-            // desktop/src-tauri/migrations/008_instrumentation.sql.
+            // The canonical schema is the post-009 desktop instrumentation
+            // shape: consent_decision_at present, last_seen retired.
             instrumentation: [],
             meta: {
                 lastCommentId: 0,

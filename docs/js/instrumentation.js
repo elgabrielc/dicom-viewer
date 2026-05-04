@@ -160,9 +160,9 @@ const Instrumentation = (() => {
     }
 
     async function ensureDesktopDb() {
-        // The instrumentation table is created by Rust migration 008
-        // (desktop/src-tauri/migrations/008_instrumentation.sql), which is
-        // the canonical schema. We only need to confirm the DB handle loads.
+        // The instrumentation table is created by Rust migration 008 and
+        // moved to the consent-aware shape by migration 009. We only need to
+        // confirm the DB handle loads.
         await getDesktopDb();
     }
 
@@ -557,8 +557,12 @@ const Instrumentation = (() => {
         const toggle = document.createElement('input');
         toggle.type = 'checkbox';
         toggle.id = 'statsShareToggle';
-        toggle.checked = !!stats.shareEnabled;
+        toggle.checked = hasEffectiveConsent();
         toggle.addEventListener('change', () => {
+            if (stats.consentDecisionAt == null) {
+                void recordConsentDecision(toggle.checked);
+                return;
+            }
             setShareEnabled(toggle.checked);
         });
         label.appendChild(toggle);

@@ -25,6 +25,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 // Fields the client is expected to send. Any field outside this set causes
 // the request to be rejected with 400 so schema drift fails loud.
+// TODO(cleanup 2026-08-01): remove firstSeen/lastSeen after v0.3.2 clients
+// are past EOL and all supported clients send the five-field v0.4+ shape.
 const ALLOWED_PAYLOAD_FIELDS = new Set([
     'version',
     'revision',

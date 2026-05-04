@@ -182,7 +182,7 @@ test.describe('Instrumentation: consent modal', () => {
         // Local WebDriver runs skip the dialog by default so unrelated specs are
         // not blocked by first-launch consent. These specs exercise it directly.
         await page.addInitScript(() => {
-            window.__DICOM_VIEWER_FORCE_CONSENT_MODAL__ = true;
+            window.__ALLOW_CONSENT_MODAL_IN_TESTS__ = true;
         });
     });
 
@@ -318,6 +318,35 @@ test.describe('Instrumentation: consent modal', () => {
         await page.waitForTimeout(5500);
 
         expect(posts).toHaveLength(1);
+        const stats = await readStats(page);
+        expect(stats.shareEnabled).toBe(true);
+        expect(stats.consentDecisionAt).toEqual(expect.any(String));
+    });
+
+    test('stats panel toggle records consent after dismissed first-launch modal', async ({ page }) => {
+        const posts = await collectPhoneHomePosts(page);
+
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        const dialog = await waitForConsentDialog(page);
+
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+
+        const toggleCheckedBefore = await page.evaluate(() => {
+            const container = document.createElement('div');
+            document.body.appendChild(container);
+            window.Instrumentation?.renderStatsPanel?.(container);
+            const toggle = container.querySelector('#statsShareToggle');
+            const checked = toggle?.checked;
+            toggle?.click();
+            return checked;
+        });
+
+        expect(toggleCheckedBefore).toBe(false);
+        await waitForStats(page, (stats) => stats.shareEnabled === true && stats.consentDecisionAt != null);
+        await expect.poll(() => posts.length).toBe(1);
+
         const stats = await readStats(page);
         expect(stats.shareEnabled).toBe(true);
         expect(stats.consentDecisionAt).toEqual(expect.any(String));

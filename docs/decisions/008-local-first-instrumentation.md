@@ -106,7 +106,7 @@ Additional counters (feature usage, modality breakdown, errors) are deferred to 
 
 ### Storage
 
-- Desktop: SQLite `instrumentation` table (single row enforced by `CHECK (id = 1)`), created by migration `008_instrumentation.sql`. Shares the existing `viewer.db` database.
+- Desktop: SQLite `instrumentation` table (single row enforced by `CHECK (id = 1)`), created by migration `008_instrumentation.sql` and moved to the consent-aware shape by `009_drop_last_seen.sql`. Shares the existing `viewer.db` database.
 - Personal (localhost Flask): `localStorage` under the key `dicom-viewer-instrumentation-v1`.
 - Demo (GitHub Pages): disabled. No storage writes, no network requests, no stats section in the help modal.
 - Preview (Vercel PR previews): disabled. Same behavior as demo so preview builds don't touch production state.
@@ -122,7 +122,7 @@ Stage 1 shows:
 - **Using since** -- formatted `firstSeen` date
 - **Sessions** -- the `sessions` counter
 - **Studies imported** -- the `studiesImported` counter
-- **Share anonymous usage stats** -- checkbox bound to `setShareEnabled()`; off by default
+- **Share anonymous usage stats** -- checkbox that records an initial consent choice when needed, then uses `setShareEnabled()` for later changes; off by default
 - A short disclosure paragraph explaining exactly what is and is not shared
 
 The first-launch consent dialog is the up-front sharing decision surface. It shows the same live local counters in plain language and records the decision through `recordConsentDecision()`. Closing the dialog without choosing leaves `consentDecisionAt` unset and prevents network sharing even if an older install had `shareEnabled === true`.
@@ -202,7 +202,7 @@ The module deliberately does NOT expose a free-form `trackEvent(category, action
 | `getStats()` | Returns a defensive copy of the stats object, or `null` if instrumentation is disabled. |
 | `resetStats()` | Resets counters but preserves `installationId`, `firstSeen`, `shareEnabled`, and `consentDecisionAt`. |
 | `recordConsentDecision(bool)` | Atomic first-launch consent write. Sets `shareEnabled`, stamps `consentDecisionAt`, persists, and sends one immediate POST only when the choice is share. |
-| `setShareEnabled(bool)` / `isShareEnabled()` | Existing stats-panel toggle. It can change sharing after a decision exists, but it does not stamp `consentDecisionAt`. |
+| `setShareEnabled(bool)` / `isShareEnabled()` | Existing stats-panel toggle helper. It can change sharing after a decision exists, but it does not stamp `consentDecisionAt`; the panel routes first-time choices through `recordConsentDecision()`. |
 | `renderStatsPanel(container)` | Renders the stats table, share toggle, and disclosure paragraph into the help modal section. |
 | `ready` | Promise that resolves when `init()` has loaded stats from storage. Exposed for tests and for any caller that needs deterministic startup ordering. |
 
@@ -225,7 +225,7 @@ The module deliberately does NOT expose a free-form `trackEvent(category, action
 
 `migrateStats(blob)` runs on every read. Missing fields are added with zero/default values, `firstSeen` is preserved for the user's own panel, and the deprecated `lastSeen` field is removed. The `version` field is rewritten to the current schema version on every load.
 
-**Desktop SQLite schema** (migration `desktop/src-tauri/migrations/008_instrumentation.sql`):
+**Desktop SQLite schema after migration `009_drop_last_seen.sql`:**
 
 ```sql
 CREATE TABLE IF NOT EXISTS instrumentation (
@@ -241,7 +241,7 @@ CREATE TABLE IF NOT EXISTS instrumentation (
 );
 ```
 
-The `CHECK (id = 1)` guarantees a single row; writes use `INSERT ... ON CONFLICT(id) DO UPDATE`. Migration `009_drop_last_seen.sql` removes the old desktop `last_seen` column for installs that already ran the earlier instrumentation schema.
+The `CHECK (id = 1)` guarantees a single row; writes use `INSERT ... ON CONFLICT(id) DO UPDATE`. Migration `008_instrumentation.sql` is intentionally kept as the historical v0.3.2 schema with `last_seen` and without `consent_decision_at`; migration `009_drop_last_seen.sql` adds `consent_decision_at`, preserves it during the table rebuild, and removes `last_seen`.
 
 ### Write debouncing and flush lifecycle
 
