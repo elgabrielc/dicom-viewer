@@ -1697,7 +1697,149 @@ header {
 }
 
 /* ==========================================================================
-   5b. ACCOUNT UI
+   5b. USAGE STATS CONSENT
+   First-launch consent dialog for anonymous instrumentation
+   ========================================================================== */
+
+.usage-stats-consent-dialog {
+    width: min(520px, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+}
+
+.usage-stats-consent-dialog::backdrop {
+    background-color: rgba(15, 30, 20, 0.72);
+}
+
+.usage-stats-consent-content {
+    padding: 1.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background-color: var(--color-bg-surface);
+    box-shadow: var(--shadow-lg);
+}
+
+.usage-stats-consent-content h2 {
+    margin: 0 0 0.75rem;
+    color: var(--color-charcoal);
+    font-family: var(--font-serif);
+    font-size: 1.35rem;
+    line-height: 1.25;
+}
+
+.usage-stats-consent-content p {
+    margin: 0 0 0.8rem;
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+
+.usage-stats-consent-details {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.usage-stats-consent-details summary {
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.usage-stats-consent-list {
+    margin: 0.9rem 0 0;
+}
+
+.usage-stats-consent-list div {
+    display: grid;
+    grid-template-columns: minmax(8rem, 1fr) minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.usage-stats-consent-list div:last-child {
+    border-bottom: none;
+}
+
+.usage-stats-consent-list dt,
+.usage-stats-consent-list dd {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.usage-stats-consent-list dt {
+    color: var(--color-text-secondary);
+}
+
+.usage-stats-consent-list dd {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    text-align: right;
+}
+
+.usage-stats-consent-negative {
+    margin-top: 0.9rem;
+}
+
+.usage-stats-consent-link {
+    margin-top: 0.1rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--color-accent);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.usage-stats-consent-link:focus-visible {
+    outline: 3px solid var(--color-amber-100);
+    outline-offset: 3px;
+}
+
+.usage-stats-consent-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-top: 1.35rem;
+}
+
+.usage-stats-consent-btn {
+    min-height: 42px;
+    padding: 0.7rem 0.85rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+.usage-stats-consent-btn:hover {
+    border-color: var(--color-accent);
+    background-color: var(--color-amber-50);
+}
+
+.usage-stats-consent-btn:focus-visible {
+    outline: 3px solid var(--color-amber-100);
+    outline-offset: 2px;
+}
+
+/* ==========================================================================
+   5c. ACCOUNT UI
    Login/signup modal and account status indicator (cloud mode)
    ========================================================================== */
 
@@ -2047,6 +2189,19 @@ header {
 
     .help-viewer-content {
         padding: 1.25rem;
+    }
+
+    .usage-stats-consent-content {
+        padding: 1.15rem;
+    }
+
+    .usage-stats-consent-actions,
+    .usage-stats-consent-list div {
+        grid-template-columns: 1fr;
+    }
+
+    .usage-stats-consent-list dd {
+        text-align: left;
     }
 }
 

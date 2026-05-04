@@ -263,6 +263,46 @@ Copyright (c) 2026 Divergent Health Technologies
         </div>
     </div>
 
+    <!-- USAGE STATS CONSENT MODAL -->
+    <dialog id="usageStatsConsentDialog" class="usage-stats-consent-dialog" aria-labelledby="usageStatsConsentTitle" aria-describedby="usageStatsConsentDescription">
+        <div class="usage-stats-consent-content">
+            <h2 id="usageStatsConsentTitle">Share anonymous usage stats?</h2>
+            <p id="usageStatsConsentDescription">
+                myRadOne can share a small usage stats payload with Divergent Health to help improve the app.
+                It includes only app opens and study import counts.
+            </p>
+            <p>
+                No medical images, patient data, file paths, study details, or report contents are included.
+            </p>
+            <details class="usage-stats-consent-details" open>
+                <summary>Stats that would be shared</summary>
+                <dl class="usage-stats-consent-list">
+                    <div>
+                        <dt>A random ID for this install</dt>
+                        <dd id="usageStatsConsentInstallId">Unknown</dd>
+                    </div>
+                    <div>
+                        <dt>Total times you've opened the app</dt>
+                        <dd id="usageStatsConsentSessions">0</dd>
+                    </div>
+                    <div>
+                        <dt>Total studies you've imported</dt>
+                        <dd id="usageStatsConsentStudiesImported">0</dd>
+                    </div>
+                </dl>
+                <p class="usage-stats-consent-negative">
+                    Nothing else. No images, no patient data, no file paths, no dates, no device name.
+                    We do not include your IP address in the stats payload or store it with your install stats.
+                </p>
+                <button id="usageStatsConsentOpenStats" class="usage-stats-consent-link" type="button">Open Usage Stats</button>
+            </details>
+            <div class="usage-stats-consent-actions">
+                <button id="usageStatsConsentDecline" class="usage-stats-consent-btn" type="button">Don't share</button>
+                <button id="usageStatsConsentShare" class="usage-stats-consent-btn" type="button">Share</button>
+            </div>
+        </div>
+    </dialog>
+
     <script src="js/app/state.js"></script>
     <script src="js/app/dom.js"></script>
     <script src="js/app/utils.js"></script>

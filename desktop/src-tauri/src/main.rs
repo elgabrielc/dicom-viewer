@@ -276,6 +276,12 @@ fn desktop_db_migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/008_instrumentation.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 9,
+            description: "drop_last_seen_from_instrumentation",
+            sql: include_str!("../migrations/009_drop_last_seen.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
