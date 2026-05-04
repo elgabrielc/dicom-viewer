@@ -487,6 +487,12 @@
     function initializeUsageStatsConsentDialog(appOpenPromise) {
         if (config?.features?.instrumentation !== true) return;
 
+        const isLocalAutomatedTestRun =
+            navigator.webdriver === true &&
+            window.__DICOM_VIEWER_FORCE_CONSENT_MODAL__ !== true &&
+            (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost');
+        if (isLocalAutomatedTestRun) return;
+
         const dialog = $('usageStatsConsentDialog');
         if (!dialog || typeof dialog.showModal !== 'function') return;
 

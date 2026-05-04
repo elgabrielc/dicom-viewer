@@ -165,6 +165,12 @@ async function waitForStats(page, predicate, timeout = 5000) {
 // ============================================================================
 
 test.describe('Instrumentation: consent modal', () => {
+    test.beforeEach(async ({ page }) => {
+        await page.addInitScript(() => {
+            window.__DICOM_VIEWER_FORCE_CONSENT_MODAL__ = true;
+        });
+    });
+
     test('shows first-launch consent modal with current local stats', async ({ page }) => {
         await clearInstrumentationStorage(page);
         await page.goto(APP_URL);
