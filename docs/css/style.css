@@ -1708,6 +1708,7 @@ header {
     border: none;
     background: transparent;
     color: var(--color-text-primary);
+    margin: auto;
 }
 
 .usage-stats-consent-dialog::backdrop {
