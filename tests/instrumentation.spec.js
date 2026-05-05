@@ -203,10 +203,10 @@ test.describe('Instrumentation: consent modal', () => {
         await expect(page.locator('#usageStatsConsentSessions')).toHaveText('1');
         await expect(page.locator('#usageStatsConsentStudiesImported')).toHaveText('0');
         await expect(page.locator('#usageStatsConsentDialog')).toContainText(
-            'Nothing else. No images, no patient data, no file paths, no dates, no device name.',
+            'No images, no personal information, absolutely nothing else. Just those three numbers.',
         );
         await expect(page.locator('#usageStatsConsentDialog')).toContainText(
-            'We do not include your IP address in the stats payload or store it with your install stats.',
+            "This information won't be sent elsewhere. It will be used exclusively to improve the application for users like you.",
         );
     });
 
