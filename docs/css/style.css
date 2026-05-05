@@ -1743,6 +1743,13 @@ header {
     border-top: 1px solid var(--color-border-subtle);
 }
 
+.usage-stats-consent-box {
+    padding: 0.9rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 8px;
+    background-color: var(--color-bg-surface);
+}
+
 .usage-stats-consent-stats h3 {
     margin: 0;
     color: var(--color-text-primary);
