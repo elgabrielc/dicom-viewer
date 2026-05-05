@@ -208,6 +208,7 @@ test.describe('Instrumentation: consent modal', () => {
         await expect(page.locator('#usageStatsConsentDialog')).toContainText(
             "This information won't be sent elsewhere. It will be used exclusively to improve the application for users like you.",
         );
+        await expect(page.getByRole('button', { name: 'Open Usage Stats' })).toHaveCount(0);
     });
 
     test('does not show consent modal after a decision has been recorded', async ({ page }) => {

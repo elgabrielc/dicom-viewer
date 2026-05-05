@@ -1796,24 +1796,6 @@ header {
     margin-bottom: 0;
 }
 
-.usage-stats-consent-link {
-    margin-top: 0.1rem;
-    padding: 0;
-    border: none;
-    background: transparent;
-    color: var(--color-accent);
-    font: inherit;
-    font-size: 0.9rem;
-    font-weight: 600;
-    text-decoration: underline;
-    cursor: pointer;
-}
-
-.usage-stats-consent-link:focus-visible {
-    outline: 3px solid var(--color-amber-100);
-    outline-offset: 3px;
-}
-
 .usage-stats-consent-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;

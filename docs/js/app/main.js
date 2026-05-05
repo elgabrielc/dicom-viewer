@@ -504,7 +504,6 @@
 
         const declineBtn = $('usageStatsConsentDecline');
         const shareBtn = $('usageStatsConsentShare');
-        const openStatsBtn = $('usageStatsConsentOpenStats');
         const buttons = [declineBtn, shareBtn].filter(Boolean);
 
         const setPending = (pending) => {
@@ -530,17 +529,6 @@
         });
         shareBtn?.addEventListener('click', () => {
             void choose(true);
-        });
-        openStatsBtn?.addEventListener('click', () => {
-            if (dialog.open) {
-                dialog.close('usage-stats');
-            }
-            openHelpViewer();
-            requestAnimationFrame(() => {
-                const contentEl = $('helpContent');
-                const statsSection = contentEl?.querySelector('#help-usage-stats');
-                statsSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
         });
 
         void (async () => {
