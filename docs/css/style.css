@@ -1739,8 +1739,6 @@ header {
 
 .usage-stats-consent-stats {
     margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--color-border-subtle);
 }
 
 .usage-stats-consent-box {
@@ -1791,9 +1789,7 @@ header {
 }
 
 .usage-stats-consent-negative {
-    margin-top: 0.65rem;
-    padding-top: 0.8rem;
-    border-top: 1px solid var(--color-border-subtle);
+    margin-top: 0.9rem;
 }
 
 .usage-stats-consent-negative p:last-child {
