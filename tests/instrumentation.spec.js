@@ -225,14 +225,14 @@ test.describe('Instrumentation: consent modal', () => {
         await expect(page.locator('#usageStatsConsentDialog')).toBeHidden();
     });
 
-    test("Don't share records consent without sending a POST", async ({ page }) => {
+    test("Deny records consent without sending a POST", async ({ page }) => {
         const posts = await collectPhoneHomePosts(page);
 
         await clearInstrumentationStorage(page);
         await page.goto(APP_URL);
         await waitForConsentDialog(page);
 
-        await page.getByRole('button', { name: "Don't share" }).click();
+        await page.getByRole('button', { name: 'Deny' }).click();
         await waitForStats(page, (stats) => stats.consentDecisionAt != null && stats.shareEnabled === false);
         await page.waitForTimeout(300);
 
@@ -242,14 +242,14 @@ test.describe('Instrumentation: consent modal', () => {
         expect(posts).toEqual([]);
     });
 
-    test('Share records consent and sends one POST with exact payload keys', async ({ page }) => {
+    test('Agree records consent and sends one POST with exact payload keys', async ({ page }) => {
         const posts = await collectPhoneHomePosts(page);
 
         await clearInstrumentationStorage(page);
         await page.goto(APP_URL);
         await waitForConsentDialog(page);
 
-        await page.getByRole('button', { name: 'Share', exact: true }).click();
+        await page.getByRole('button', { name: 'Agree', exact: true }).click();
         await expect.poll(() => posts.length).toBe(1);
 
         const payload = posts[0];
@@ -285,7 +285,7 @@ test.describe('Instrumentation: consent modal', () => {
         expect(stats.consentDecisionAt).toBeNull();
     });
 
-    test("retroactive shareEnabled true prompts and Don't share disables sharing", async ({ page }) => {
+    test("retroactive shareEnabled true prompts and Deny disables sharing", async ({ page }) => {
         const posts = await collectPhoneHomePosts(page);
         await seedInstrumentationStats(page, makeLegacyStats({ shareEnabled: true }));
 
@@ -293,7 +293,7 @@ test.describe('Instrumentation: consent modal', () => {
         await waitForStats(page, (stats) => stats.sessions === 5);
         await waitForConsentDialog(page);
 
-        await page.getByRole('button', { name: "Don't share" }).click();
+        await page.getByRole('button', { name: 'Deny' }).click();
         await waitForStats(page, (stats) => stats.consentDecisionAt != null && stats.shareEnabled === false);
         await page.waitForTimeout(300);
 
@@ -303,7 +303,7 @@ test.describe('Instrumentation: consent modal', () => {
         expect(posts).toEqual([]);
     });
 
-    test('legacy sharing leaks no POST before consent, then Share sends exactly one POST', async ({ page }) => {
+    test('legacy sharing leaks no POST before consent, then Agree sends exactly one POST', async ({ page }) => {
         const posts = await collectPhoneHomePosts(page);
         await seedInstrumentationStats(page, makeLegacyStats({ shareEnabled: true }));
 
@@ -317,7 +317,7 @@ test.describe('Instrumentation: consent modal', () => {
         await page.waitForTimeout(100);
         expect(posts).toEqual([]);
 
-        await page.getByRole('button', { name: 'Share', exact: true }).click();
+        await page.getByRole('button', { name: 'Agree', exact: true }).click();
         await expect.poll(() => posts.length).toBe(1);
         await page.waitForTimeout(5500);
 
@@ -423,7 +423,7 @@ test.describe('Instrumentation: consent modal', () => {
         expect(row.consent_decision_at).toBeNull();
 
         await waitForConsentDialog(page);
-        await page.getByRole('button', { name: "Don't share" }).click();
+        await page.getByRole('button', { name: 'Deny' }).click();
         await page.waitForFunction(() => {
             const raw = window.localStorage.getItem('mock-tauri-sql:sqlite:viewer.db');
             const state = raw ? JSON.parse(raw) : null;
