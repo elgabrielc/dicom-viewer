@@ -226,7 +226,7 @@ test.describe('Instrumentation: consent modal', () => {
         await expect(page.locator('#usageStatsConsentDialog')).toBeHidden();
     });
 
-    test("Deny records consent without sending a POST", async ({ page }) => {
+    test('Deny records consent without sending a POST', async ({ page }) => {
         const posts = await collectPhoneHomePosts(page);
 
         await clearInstrumentationStorage(page);
@@ -286,7 +286,7 @@ test.describe('Instrumentation: consent modal', () => {
         expect(stats.consentDecisionAt).toBeNull();
     });
 
-    test("retroactive shareEnabled true prompts and Deny disables sharing", async ({ page }) => {
+    test('retroactive shareEnabled true prompts and Deny disables sharing', async ({ page }) => {
         const posts = await collectPhoneHomePosts(page);
         await seedInstrumentationStats(page, makeLegacyStats({ shareEnabled: true }));
 
