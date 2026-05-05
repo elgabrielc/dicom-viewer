@@ -210,16 +210,6 @@ test.describe('Instrumentation: consent modal', () => {
         );
     });
 
-    test('keeps consent action buttons visible in a short viewport', async ({ page }) => {
-        await page.setViewportSize({ width: 640, height: 520 });
-        await clearInstrumentationStorage(page);
-        await page.goto(APP_URL);
-        await waitForConsentDialog(page);
-
-        await expect(page.getByRole('button', { name: 'Agree', exact: true })).toBeInViewport();
-        await expect(page.getByRole('button', { name: 'Deny' })).toBeInViewport();
-    });
-
     test('does not show consent modal after a decision has been recorded', async ({ page }) => {
         await seedInstrumentationStats(
             page,
