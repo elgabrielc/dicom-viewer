@@ -1784,7 +1784,13 @@ header {
 }
 
 .usage-stats-consent-negative {
-    margin-top: 0.9rem;
+    margin-top: 0.65rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+.usage-stats-consent-negative p:last-child {
+    margin-bottom: 0;
 }
 
 .usage-stats-consent-link {
