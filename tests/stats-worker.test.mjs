@@ -20,8 +20,6 @@ function validPayload(overrides = {}) {
         version: 1,
         revision: 1,
         installationId: VALID_INSTALL_ID,
-        firstSeen: '2026-04-08T12:00:00.000Z',
-        lastSeen: '2026-04-09T08:30:00.000Z',
         sessions: 3,
         studiesImported: 2,
         ...overrides
@@ -30,14 +28,18 @@ function validPayload(overrides = {}) {
 
 // In-memory D1 double. Stores one row per install_id and enforces the
 // "only upsert when incoming.revision > stored.revision" guard.
-function createDb(initialInstalls = []) {
+function createDb(initialInstalls = [], options = {}) {
     const installs = new Map(
         initialInstalls.map((row) => [row.install_id, { ...row }])
     );
+    const preparedQueries = [];
+    const now = () => new Date().toISOString();
 
     return {
         installs,
+        preparedQueries,
         prepare(query) {
+            preparedQueries.push(query);
             return {
                 args: [],
                 bind(...args) {
@@ -48,18 +50,29 @@ function createDb(initialInstalls = []) {
                     if (!query.startsWith('INSERT INTO installs')) {
                         throw new Error(`Unhandled run() query: ${query}`);
                     }
-                    const [installId, revision, statsJson, firstSeen, lastSeen, version] =
-                        this.args;
+                    if (
+                        options.requireSeenColumns &&
+                        query.includes('INSERT INTO installs (install_id, revision, stats_json, version)')
+                    ) {
+                        throw new Error('NOT NULL constraint failed: installs.first_seen');
+                    }
+                    const [installId, revision, statsJson, version] = this.args;
+                    const fallbackSeenColumns = query.includes('first_seen, last_seen');
                     const existing = installs.get(installId);
                     if (!existing) {
                         installs.set(installId, {
                             install_id: installId,
                             revision,
                             stats_json: statsJson,
-                            first_seen: firstSeen,
-                            last_seen: lastSeen,
+                            ...(fallbackSeenColumns
+                                ? {
+                                      first_seen: now(),
+                                      last_seen: now()
+                                  }
+                                : {}),
                             version,
-                            updated_at: new Date().toISOString()
+                            created_at: now(),
+                            updated_at: now()
                         });
                         return { success: true };
                     }
@@ -67,10 +80,11 @@ function createDb(initialInstalls = []) {
                     if (revision > existing.revision) {
                         existing.revision = revision;
                         existing.stats_json = statsJson;
-                        existing.last_seen = lastSeen;
+                        if (fallbackSeenColumns) {
+                            existing.last_seen = now();
+                        }
                         existing.version = version;
-                        existing.updated_at = new Date().toISOString();
-                        // first_seen intentionally not updated.
+                        existing.updated_at = now();
                     }
                     return { success: true };
                 }
@@ -101,7 +115,7 @@ function createEnv({ db = createDb(), allowedOrigins = 'https://myradone.com' } 
 // validateStatsPayload
 // -----------------------------------------------------------------------
 
-test('validateStatsPayload: accepts a well-formed payload', () => {
+test('validateStatsPayload: accepts a well-formed payload without timestamps', () => {
     const result = validateStatsPayload(validPayload());
     assert.equal(result.ok, true);
     assert.equal(result.payload.installationId, VALID_INSTALL_ID);
@@ -111,11 +125,28 @@ test('validateStatsPayload: accepts a well-formed payload', () => {
         'version',
         'revision',
         'installationId',
-        'firstSeen',
-        'lastSeen',
         'sessions',
         'studiesImported'
     ]);
+});
+
+test('validateStatsPayload: accepts and strips legacy timestamps', () => {
+    const result = validateStatsPayload(
+        validPayload({
+            firstSeen: '2026-04-08T12:00:00.000Z',
+            lastSeen: '2026-04-09T08:30:00.000Z'
+        })
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(Object.keys(result.payload), [
+        'version',
+        'revision',
+        'installationId',
+        'sessions',
+        'studiesImported'
+    ]);
+    assert.equal('firstSeen' in result.payload, false);
+    assert.equal('lastSeen' in result.payload, false);
 });
 
 test('validateStatsPayload: rejects non-objects', () => {
@@ -163,11 +194,16 @@ test('validateStatsPayload: rejects non-integer or negative counters', () => {
     }
 });
 
-test('validateStatsPayload: rejects invalid timestamps', () => {
+test('validateStatsPayload: rejects invalid timestamps when present', () => {
     const badDates = ['', null, undefined, 'not-a-date', 123456];
     for (const bad of badDates) {
         const result = validateStatsPayload(validPayload({ firstSeen: bad }));
         assert.equal(result.ok, false, `firstSeen=${bad} should fail`);
+        assert.equal(result.field, 'firstSeen');
+
+        const lastSeenResult = validateStatsPayload(validPayload({ lastSeen: bad }));
+        assert.equal(lastSeenResult.ok, false, `lastSeen=${bad} should fail`);
+        assert.equal(lastSeenResult.field, 'lastSeen');
     }
 });
 
@@ -198,7 +234,9 @@ test('upsertInstall: inserts a new row on first write', async () => {
     assert.equal(db.installs.size, 1);
     const row = db.installs.get(VALID_INSTALL_ID);
     assert.equal(row.revision, 1);
-    assert.equal(row.first_seen, '2026-04-08T12:00:00.000Z');
+    assert.equal(row.version, 1);
+    assert.equal('first_seen' in row, false);
+    assert.equal('last_seen' in row, false);
 });
 
 test('upsertInstall: higher revision overwrites stored row', async () => {
@@ -208,13 +246,11 @@ test('upsertInstall: higher revision overwrites stored row', async () => {
         db,
         validPayload({
             revision: 5,
-            sessions: 10,
-            lastSeen: '2026-04-10T00:00:00.000Z'
+            sessions: 10
         })
     );
     const row = db.installs.get(VALID_INSTALL_ID);
     assert.equal(row.revision, 5);
-    assert.equal(row.last_seen, '2026-04-10T00:00:00.000Z');
     const stored = JSON.parse(row.stats_json);
     assert.equal(stored.sessions, 10);
 });
@@ -229,12 +265,74 @@ test('upsertInstall: stale revision is silently ignored', async () => {
     assert.equal(stored.sessions, 10, 'stale write should not overwrite');
 });
 
-test('upsertInstall: first_seen is preserved on upsert', async () => {
+test('upsertInstall: created_at is preserved on upsert', async () => {
     const db = createDb();
-    await upsertInstall(db, validPayload({ revision: 1, firstSeen: '2026-01-01T00:00:00.000Z' }));
-    await upsertInstall(db, validPayload({ revision: 2, firstSeen: '2099-12-31T23:59:59.000Z' }));
+    await upsertInstall(db, validPayload({ revision: 1, sessions: 1 }));
+    const insertedCreatedAt = db.installs.get(VALID_INSTALL_ID).created_at;
+    await upsertInstall(db, validPayload({ revision: 2, sessions: 2 }));
     const row = db.installs.get(VALID_INSTALL_ID);
-    assert.equal(row.first_seen, '2026-01-01T00:00:00.000Z');
+    assert.equal(row.created_at, insertedCreatedAt);
+});
+
+test('upsertInstall: stores exact normalized JSON keys', async () => {
+    const legacyPayload = validPayload({
+        firstSeen: '2026-04-08T12:00:00.000Z',
+        lastSeen: '2026-04-09T08:30:00.000Z'
+    });
+    const validation = validateStatsPayload(legacyPayload);
+    assert.equal(validation.ok, true);
+
+    const db = createDb();
+    await upsertInstall(db, legacyPayload);
+    const row = db.installs.get(VALID_INSTALL_ID);
+    const stored = JSON.parse(row.stats_json);
+    assert.deepEqual(Object.keys(stored), [
+        'version',
+        'revision',
+        'installationId',
+        'sessions',
+        'studiesImported'
+    ]);
+    assert.deepEqual(stored, validation.payload);
+});
+
+test('upsertInstall: retries old NOT NULL seen-column schema without storing timestamps in stats_json', async () => {
+    const db = createDb([], { requireSeenColumns: true });
+    await upsertInstall(
+        db,
+        validPayload({
+            firstSeen: '2026-04-08T12:00:00.000Z',
+            lastSeen: '2026-04-09T08:30:00.000Z'
+        })
+    );
+
+    assert.equal(db.preparedQueries.length, 2);
+    assert.match(db.preparedQueries[0], /INSERT INTO installs \(install_id, revision, stats_json, version\)/);
+    assert.match(db.preparedQueries[1], /INSERT INTO installs \(install_id, revision, stats_json, first_seen, last_seen, version\)/);
+
+    const row = db.installs.get(VALID_INSTALL_ID);
+    assert.equal(typeof row.first_seen, 'string');
+    assert.equal(typeof row.last_seen, 'string');
+    const stored = JSON.parse(row.stats_json);
+    assert.deepEqual(Object.keys(stored), [
+        'version',
+        'revision',
+        'installationId',
+        'sessions',
+        'studiesImported'
+    ]);
+    assert.equal('firstSeen' in stored, false);
+    assert.equal('lastSeen' in stored, false);
+});
+
+test('upsertInstall: INSERT column shape does not reference seen columns', async () => {
+    const db = createDb();
+    await upsertInstall(db, validPayload());
+    const query = db.preparedQueries[0];
+    assert.match(query, /INSERT INTO installs \(install_id, revision, stats_json, version\)/);
+    assert.match(query, /VALUES \(\?, \?, \?, \?\)/);
+    assert.doesNotMatch(query, /\bfirst_seen\b/);
+    assert.doesNotMatch(query, /\blast_seen\b/);
 });
 
 // -----------------------------------------------------------------------

@@ -471,6 +471,86 @@
             });
     }
 
+    function updateUsageStatsConsentDialog() {
+        const stats = window.Instrumentation?.getStats?.();
+        if (!stats) return;
+
+        const installIdEl = $('usageStatsConsentInstallId');
+        const sessionsEl = $('usageStatsConsentSessions');
+        const studiesEl = $('usageStatsConsentStudiesImported');
+
+        if (installIdEl) installIdEl.textContent = String(stats.installationId || '').slice(0, 8) || 'Unknown';
+        if (sessionsEl) sessionsEl.textContent = String(stats.sessions ?? 0);
+        if (studiesEl) studiesEl.textContent = String(stats.studiesImported ?? 0);
+    }
+
+    function shouldSkipUsageStatsConsentDialogForLocalAutomation() {
+        const isLocalHost = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+        const allowDialogInTests = window.__ALLOW_CONSENT_MODAL_IN_TESTS__ === true;
+
+        // Most Playwright specs exercise unrelated app flows on localhost. Keep
+        // the first-launch dialog out of those local automated runs; consent
+        // specs opt in with __ALLOW_CONSENT_MODAL_IN_TESTS__.
+        return navigator.webdriver === true && isLocalHost && !allowDialogInTests;
+    }
+
+    function initializeUsageStatsConsentDialog(appOpenPromise) {
+        if (config?.features?.instrumentation !== true) return;
+
+        if (shouldSkipUsageStatsConsentDialogForLocalAutomation()) return;
+
+        const dialog = $('usageStatsConsentDialog');
+        if (!dialog || typeof dialog.showModal !== 'function') return;
+
+        const declineBtn = $('usageStatsConsentDecline');
+        const shareBtn = $('usageStatsConsentShare');
+        const buttons = [declineBtn, shareBtn].filter(Boolean);
+
+        const setPending = (pending) => {
+            for (const button of buttons) {
+                button.disabled = pending;
+            }
+        };
+
+        const choose = async (enabled) => {
+            setPending(true);
+            try {
+                await window.Instrumentation?.recordConsentDecision?.(enabled);
+                if (dialog.open) {
+                    dialog.close(enabled ? 'share' : 'decline');
+                }
+            } finally {
+                setPending(false);
+            }
+        };
+
+        declineBtn?.addEventListener('click', () => {
+            void choose(false);
+        });
+        shareBtn?.addEventListener('click', () => {
+            void choose(true);
+        });
+
+        void (async () => {
+            try {
+                await window.Instrumentation?.ready;
+                if (appOpenPromise && typeof appOpenPromise.then === 'function') {
+                    await appOpenPromise;
+                }
+            } catch {
+                return;
+            }
+
+            const stats = window.Instrumentation?.getStats?.();
+            if (!stats || stats.consentDecisionAt != null) return;
+
+            updateUsageStatsConsentDialog();
+            if (!dialog.open) {
+                dialog.showModal();
+            }
+        })();
+    }
+
     studiesTableHead.addEventListener('click', handleSortClick);
     studiesTableHead.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -676,7 +756,9 @@
     // ---- Instrumentation: track app open (ADR 008) ----
     // Fire-and-forget. trackAppOpen awaits the module's init promise
     // internally so the first session is not dropped during the startup race.
-    void window.Instrumentation?.trackAppOpen();
+    const appOpenInstrumentationPromise = window.Instrumentation?.trackAppOpen();
+    void appOpenInstrumentationPromise;
+    initializeUsageStatsConsentDialog(appOpenInstrumentationPromise);
 
     // ---- App initialization ----
 

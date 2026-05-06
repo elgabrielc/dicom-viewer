@@ -47,16 +47,16 @@ const Instrumentation = (() => {
             revision: 0,
             installationId: crypto.randomUUID(),
             firstSeen: new Date().toISOString(),
-            lastSeen: new Date().toISOString(),
             sessions: 0,
             studiesImported: 0,
             shareEnabled: false,
+            consentDecisionAt: null,
         };
     }
 
     /**
      * Migrate a loaded stats blob to the current schema.
-     * Adds missing fields with sensible defaults. Never removes fields.
+     * Adds missing fields with sensible defaults and removes retired fields.
      */
     function migrateStats(blob) {
         if (!blob || typeof blob !== 'object') {
@@ -75,9 +75,6 @@ const Instrumentation = (() => {
         if (typeof migrated.firstSeen !== 'string' || !migrated.firstSeen) {
             migrated.firstSeen = now;
         }
-        if (typeof migrated.lastSeen !== 'string' || !migrated.lastSeen) {
-            migrated.lastSeen = now;
-        }
         if (typeof migrated.sessions !== 'number' || !Number.isFinite(migrated.sessions)) {
             migrated.sessions = 0;
         }
@@ -87,8 +84,12 @@ const Instrumentation = (() => {
         if (typeof migrated.shareEnabled !== 'boolean') {
             migrated.shareEnabled = false;
         }
+        if (typeof migrated.consentDecisionAt !== 'string' || !migrated.consentDecisionAt) {
+            migrated.consentDecisionAt = null;
+        }
 
         migrated.version = SCHEMA_VERSION;
+        delete migrated.lastSeen;
         return migrated;
     }
 
@@ -159,9 +160,9 @@ const Instrumentation = (() => {
     }
 
     async function ensureDesktopDb() {
-        // The instrumentation table is created by Rust migration 008
-        // (desktop/src-tauri/migrations/008_instrumentation.sql), which is
-        // the canonical schema. We only need to confirm the DB handle loads.
+        // The instrumentation table is created by Rust migration 008 and
+        // moved to the consent-aware shape by migration 009. We only need to
+        // confirm the DB handle loads.
         await getDesktopDb();
     }
 
@@ -176,10 +177,10 @@ const Instrumentation = (() => {
                 revision: row.revision,
                 installationId: row.installation_id,
                 firstSeen: row.first_seen,
-                lastSeen: row.last_seen,
                 sessions: row.sessions,
                 studiesImported: row.studies_imported,
                 shareEnabled: row.share_enabled === 1,
+                consentDecisionAt: row.consent_decision_at || null,
             };
         } catch (error) {
             console.warn('Instrumentation: failed to load from desktop SQL:', error);
@@ -191,26 +192,26 @@ const Instrumentation = (() => {
         try {
             const db = await getDesktopDb();
             await db.execute(
-                `INSERT INTO ${DESKTOP_TABLE} (id, version, revision, installation_id, first_seen, last_seen, sessions, studies_imported, share_enabled)
+                `INSERT INTO ${DESKTOP_TABLE} (id, version, revision, installation_id, first_seen, sessions, studies_imported, share_enabled, consent_decision_at)
                  VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(id) DO UPDATE SET
                      version = excluded.version,
                      revision = excluded.revision,
                      installation_id = excluded.installation_id,
                      first_seen = excluded.first_seen,
-                     last_seen = excluded.last_seen,
                      sessions = excluded.sessions,
                      studies_imported = excluded.studies_imported,
-                     share_enabled = excluded.share_enabled`,
+                     share_enabled = excluded.share_enabled,
+                     consent_decision_at = excluded.consent_decision_at`,
                 [
                     blob.version,
                     blob.revision,
                     blob.installationId,
                     blob.firstSeen,
-                    blob.lastSeen,
                     blob.sessions,
                     blob.studiesImported,
                     blob.shareEnabled ? 1 : 0,
+                    blob.consentDecisionAt,
                 ],
             );
         } catch (error) {
@@ -229,9 +230,10 @@ const Instrumentation = (() => {
         return migrateStats(loadFromLocalStorage());
     }
 
-    async function saveStats() {
+    async function saveStats(options = {}) {
         if (!stats) return;
 
+        const { schedule = true } = options;
         stats.revision += 1;
 
         if (useDesktopSql) {
@@ -241,7 +243,9 @@ const Instrumentation = (() => {
         }
 
         dirty = false;
-        schedulePhoneHome();
+        if (schedule) {
+            schedulePhoneHome();
+        }
     }
 
     // =====================================================================
@@ -254,15 +258,17 @@ const Instrumentation = (() => {
             version: stats.version,
             revision: stats.revision,
             installationId: stats.installationId,
-            firstSeen: stats.firstSeen,
-            lastSeen: stats.lastSeen,
             sessions: stats.sessions,
             studiesImported: stats.studiesImported,
         };
     }
 
+    function hasEffectiveConsent() {
+        return stats?.shareEnabled === true && stats?.consentDecisionAt != null;
+    }
+
     function sendPhoneHome() {
-        if (!stats?.shareEnabled) return;
+        if (!hasEffectiveConsent()) return;
 
         const payload = buildPayload();
         if (!payload) return;
@@ -281,7 +287,7 @@ const Instrumentation = (() => {
     }
 
     function schedulePhoneHome() {
-        if (!stats?.shareEnabled) return;
+        if (!hasEffectiveConsent()) return;
 
         if (phoneHomeTimer) {
             clearTimeout(phoneHomeTimer);
@@ -319,7 +325,6 @@ const Instrumentation = (() => {
         if (!stats) return;
 
         stats.sessions += 1;
-        stats.lastSeen = new Date().toISOString();
         dirty = true;
 
         // Flush immediately on app open so the session count persists
@@ -350,7 +355,6 @@ const Instrumentation = (() => {
         if (!Number.isInteger(count) || count <= 0) return;
 
         stats.studiesImported += count;
-        stats.lastSeen = new Date().toISOString();
         dirty = true;
         await flush();
     }
@@ -364,13 +368,17 @@ const Instrumentation = (() => {
     function resetStats() {
         if (!stats) return;
 
-        // Preserve installationId and shareEnabled across reset
+        // Preserve stable identity and consent metadata across reset.
         const preservedId = stats.installationId;
         const preservedShare = stats.shareEnabled;
+        const preservedConsentDecisionAt = stats.consentDecisionAt;
+        const preservedFirstSeen = stats.firstSeen;
 
         const fresh = createDefaultStats();
         fresh.installationId = preservedId;
+        fresh.firstSeen = preservedFirstSeen;
         fresh.shareEnabled = preservedShare;
+        fresh.consentDecisionAt = preservedConsentDecisionAt;
 
         stats = fresh;
         dirty = true;
@@ -381,20 +389,29 @@ const Instrumentation = (() => {
         if (!stats) return;
 
         const value = !!enabled;
+        if (stats.shareEnabled === value) return;
+
+        const wasEffectivelyEnabled = hasEffectiveConsent();
         const wasEnabled = stats.shareEnabled;
         stats.shareEnabled = value;
         dirty = true;
-        void flush();
+        const shouldSendImmediate = value && !wasEffectivelyEnabled && hasEffectiveConsent();
+        const flushPromise = flush({ schedule: !shouldSendImmediate });
+
+        if (!value && phoneHomeTimer) {
+            clearTimeout(phoneHomeTimer);
+            phoneHomeTimer = null;
+        }
 
         // Enabling sharing sends one immediate POST of current persisted state
-        if (value && !wasEnabled) {
+        // when a prior consent decision makes it effective.
+        if (value && !wasEnabled && shouldSendImmediate) {
             // Clear any pending debounced POST and send immediately
             if (phoneHomeTimer) {
                 clearTimeout(phoneHomeTimer);
                 phoneHomeTimer = null;
             }
-            // Wait a tick for flush to complete, then send
-            setTimeout(() => sendPhoneHome(), 100);
+            void flushPromise.then(() => sendPhoneHome());
         }
     }
 
@@ -402,13 +419,40 @@ const Instrumentation = (() => {
         return stats?.shareEnabled === true;
     }
 
+    async function recordConsentDecision(enabled) {
+        if (initPromise) {
+            try {
+                await initPromise;
+            } catch {
+                // init() never throws, but be defensive.
+            }
+        }
+
+        if (!stats) return;
+
+        stats.shareEnabled = !!enabled;
+        stats.consentDecisionAt = new Date().toISOString();
+        dirty = true;
+
+        if (phoneHomeTimer) {
+            clearTimeout(phoneHomeTimer);
+            phoneHomeTimer = null;
+        }
+
+        await flush({ schedule: false });
+
+        if (enabled) {
+            sendPhoneHome();
+        }
+    }
+
     // =====================================================================
     // LIFECYCLE
     // =====================================================================
 
-    async function flush() {
+    async function flush(options = {}) {
         if (!dirty || !stats) return;
-        await saveStats();
+        await saveStats(options);
     }
 
     async function init() {
@@ -481,7 +525,7 @@ const Instrumentation = (() => {
         }
 
         // Build the panel via DOM construction + textContent rather than
-        // innerHTML interpolation. stats.firstSeen and stats.lastSeen come
+        // innerHTML interpolation. stats.firstSeen comes
         // from persistent storage (localStorage or SQLite) and formatDate
         // falls back to the raw ISO string if parsing fails -- any process
         // with write access to app storage could otherwise inject HTML.
@@ -505,7 +549,6 @@ const Instrumentation = (() => {
         };
 
         addRow('Using since', formatDate(stats.firstSeen));
-        addRow('Last opened', formatDate(stats.lastSeen));
         addRow('Sessions', stats.sessions);
         addRow('Studies imported', stats.studiesImported);
 
@@ -514,8 +557,12 @@ const Instrumentation = (() => {
         const toggle = document.createElement('input');
         toggle.type = 'checkbox';
         toggle.id = 'statsShareToggle';
-        toggle.checked = !!stats.shareEnabled;
+        toggle.checked = hasEffectiveConsent();
         toggle.addEventListener('change', () => {
+            if (stats.consentDecisionAt == null) {
+                void recordConsentDecision(toggle.checked);
+                return;
+            }
             setShareEnabled(toggle.checked);
         });
         label.appendChild(toggle);
@@ -546,6 +593,7 @@ const Instrumentation = (() => {
         getStats,
         resetStats,
         setShareEnabled,
+        recordConsentDecision,
         isShareEnabled,
         renderStatsPanel,
         ready: initPromise,

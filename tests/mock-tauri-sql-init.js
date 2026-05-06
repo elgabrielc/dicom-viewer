@@ -2,7 +2,7 @@
 //
 // Mock Tauri SQL plugin for Playwright desktop tests.
 // Simulates plugin:sql commands using localStorage-backed in-memory tables.
-// Schema mirrors desktop/src-tauri/migrations/ (001 through 007).
+// Schema mirrors desktop/src-tauri/migrations/ (001 through 009).
 (() => {
     if (typeof window === 'undefined') return;
 
@@ -31,8 +31,8 @@
             // ADR 008: Local-first instrumentation. Singleton row (id = 1).
             // Desktop tests that do not exercise instrumentation still need
             // this table present so desktop SQL selects do not error out.
-            // The canonical schema lives in
-            // desktop/src-tauri/migrations/008_instrumentation.sql.
+            // The canonical schema is the post-009 desktop instrumentation
+            // shape: consent_decision_at present, last_seen retired.
             instrumentation: [],
             meta: {
                 lastCommentId: 0,
@@ -553,10 +553,10 @@
                         revision,
                         installationId,
                         firstSeen,
-                        lastSeen,
                         sessions,
                         studiesImported,
                         shareEnabled,
+                        consentDecisionAt,
                     ] = values;
                     const existing = state.instrumentation.find((row) => row.id === 1);
                     if (existing) {
@@ -564,10 +564,11 @@
                         existing.revision = revision;
                         existing.installation_id = installationId;
                         existing.first_seen = firstSeen;
-                        existing.last_seen = lastSeen;
+                        delete existing.last_seen;
                         existing.sessions = sessions;
                         existing.studies_imported = studiesImported;
                         existing.share_enabled = shareEnabled;
+                        existing.consent_decision_at = consentDecisionAt ?? null;
                     } else {
                         state.instrumentation.push({
                             id: 1,
@@ -575,10 +576,10 @@
                             revision,
                             installation_id: installationId,
                             first_seen: firstSeen,
-                            last_seen: lastSeen,
                             sessions,
                             studies_imported: studiesImported,
                             share_enabled: shareEnabled,
+                            consent_decision_at: consentDecisionAt ?? null,
                         });
                     }
                     persistState(db, state);

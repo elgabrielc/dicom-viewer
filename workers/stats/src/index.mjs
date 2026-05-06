@@ -25,6 +25,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
 
 // Fields the client is expected to send. Any field outside this set causes
 // the request to be rejected with 400 so schema drift fails loud.
+// TODO(cleanup 2026-08-01): remove firstSeen/lastSeen after v0.3.2 clients
+// are past EOL and all supported clients send the five-field v0.4+ shape.
 const ALLOWED_PAYLOAD_FIELDS = new Set([
     'version',
     'revision',
@@ -39,6 +41,7 @@ const ALLOWED_PAYLOAD_FIELDS = new Set([
 // starts with 8/9/a/b. Lowercase only because crypto.randomUUID() emits
 // lowercase in every runtime we support.
 const UUID_V4_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const ISO_8601_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const LOCALHOST_ORIGIN_PATTERN = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
 const TAURI_ORIGIN_PATTERN = /^(?:tauri:\/\/localhost(?::\d+)?|https?:\/\/tauri\.localhost(?::\d+)?)$/;
@@ -114,8 +117,13 @@ function isNonNegativeInteger(value) {
 
 function isParseableIsoDate(value) {
     if (typeof value !== 'string' || !value) return false;
+    if (!ISO_8601_TIMESTAMP_PATTERN.test(value)) return false;
     const timestamp = Date.parse(value);
     return Number.isFinite(timestamp);
+}
+
+function hasOwn(raw, key) {
+    return Object.prototype.hasOwnProperty.call(raw, key);
 }
 
 /**
@@ -164,10 +172,10 @@ export function validateStatsPayload(raw) {
         };
     }
 
-    if (!isParseableIsoDate(raw.firstSeen)) {
+    if (hasOwn(raw, 'firstSeen') && !isParseableIsoDate(raw.firstSeen)) {
         return { ok: false, error: 'firstSeen must be an ISO-8601 timestamp', field: 'firstSeen' };
     }
-    if (!isParseableIsoDate(raw.lastSeen)) {
+    if (hasOwn(raw, 'lastSeen') && !isParseableIsoDate(raw.lastSeen)) {
         return { ok: false, error: 'lastSeen must be an ISO-8601 timestamp', field: 'lastSeen' };
     }
 
@@ -177,8 +185,6 @@ export function validateStatsPayload(raw) {
         version: raw.version,
         revision: raw.revision,
         installationId: raw.installationId,
-        firstSeen: raw.firstSeen,
-        lastSeen: raw.lastSeen,
         sessions: raw.sessions,
         studiesImported: raw.studiesImported
     };
@@ -190,39 +196,92 @@ export function validateStatsPayload(raw) {
 // PERSISTENCE
 // =====================================================================
 
+function normalizeStatsPayload(payload) {
+    return {
+        version: payload.version,
+        revision: payload.revision,
+        installationId: payload.installationId,
+        sessions: payload.sessions,
+        studiesImported: payload.studiesImported
+    };
+}
+
+function isLegacySeenColumnConstraintError(error) {
+    const message = String(error?.message || error || '');
+    return (
+        message.includes('NOT NULL constraint failed: installs.first_seen') ||
+        message.includes('NOT NULL constraint failed: installs.last_seen')
+    );
+}
+
+async function runModernUpsert(db, statsPayload, statsJson) {
+    await db
+        .prepare(
+            `INSERT INTO installs (install_id, revision, stats_json, version)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(install_id) DO UPDATE SET
+                 revision = excluded.revision,
+                 stats_json = excluded.stats_json,
+                 version = excluded.version,
+                 updated_at = datetime('now')
+             WHERE excluded.revision > installs.revision`
+        )
+        .bind(
+            statsPayload.installationId,
+            statsPayload.revision,
+            statsJson,
+            statsPayload.version
+        )
+        .run();
+}
+
+async function runLegacySchemaCompatUpsert(db, statsPayload, statsJson) {
+    await db
+        .prepare(
+            `INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen, version)
+             VALUES (?, ?, ?, datetime('now'), datetime('now'), ?)
+             ON CONFLICT(install_id) DO UPDATE SET
+                 revision = excluded.revision,
+                 stats_json = excluded.stats_json,
+                 last_seen = datetime('now'),
+                 version = excluded.version,
+                 updated_at = datetime('now')
+             WHERE excluded.revision > installs.revision`
+        )
+        .bind(
+            statsPayload.installationId,
+            statsPayload.revision,
+            statsJson,
+            statsPayload.version
+        )
+        .run();
+}
+
 /**
  * Upsert the install row. Returns a short status string used only for
  * logging (never leaked to the client).
  *
  * The WHERE clause on the ON CONFLICT target ensures that a stale write
  * (one whose revision is not strictly greater than what is already stored)
- * is silently ignored. `first_seen` is intentionally never updated on
- * conflict so the original install date is preserved.
+ * is silently ignored.
  */
 export async function upsertInstall(db, payload) {
-    const statsJson = JSON.stringify(payload);
+    const statsPayload = normalizeStatsPayload(payload);
+    const statsJson = JSON.stringify(statsPayload);
 
-    await db
-        .prepare(
-            `INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen, version)
-             VALUES (?, ?, ?, ?, ?, ?)
-             ON CONFLICT(install_id) DO UPDATE SET
-                 revision = excluded.revision,
-                 stats_json = excluded.stats_json,
-                 last_seen = excluded.last_seen,
-                 version = excluded.version,
-                 updated_at = datetime('now')
-             WHERE excluded.revision > installs.revision`
-        )
-        .bind(
-            payload.installationId,
-            payload.revision,
-            statsJson,
-            payload.firstSeen,
-            payload.lastSeen,
-            payload.version
-        )
-        .run();
+    try {
+        await runModernUpsert(db, statsPayload, statsJson);
+    } catch (error) {
+        // The production deploy sequence updates the worker before the
+        // destructive D1 migration. During that short window, the old table
+        // still has NOT NULL first_seen/last_seen columns with no defaults.
+        // Retry with server-generated compatibility values, while keeping
+        // stats_json clean and payload timestamps ignored.
+        if (!isLegacySeenColumnConstraintError(error)) {
+            throw error;
+        }
+        await runLegacySchemaCompatUpsert(db, statsPayload, statsJson);
+    }
 }
 
 // =====================================================================

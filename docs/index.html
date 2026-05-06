@@ -33,7 +33,7 @@ Copyright (c) 2026 Divergent Health Technologies
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost https://api.myradone.com; img-src 'self' data: blob: asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; worker-src 'self' blob: 'wasm-unsafe-eval'; object-src 'none'; base-uri 'self'">
     <title>myradone</title>
-    <link rel="stylesheet" href="css/style.css?v=7">
+    <link rel="stylesheet" href="css/style.css?v=12">
 
     <!-- DICOM parsing library -->
     <script src="js/vendor/dicomParser.min.js"></script>
@@ -262,6 +262,46 @@ Copyright (c) 2026 Divergent Health Technologies
             <div class="help-viewer-content" id="helpContent"></div>
         </div>
     </div>
+
+    <!-- USAGE STATS CONSENT MODAL -->
+    <dialog id="usageStatsConsentDialog" class="usage-stats-consent-dialog" aria-labelledby="usageStatsConsentTitle" aria-describedby="usageStatsConsentDescription">
+        <div class="usage-stats-consent-content">
+            <h2 id="usageStatsConsentTitle">Please help us improve myRadOne.</h2>
+            <p id="usageStatsConsentDescription">
+                Only if you allow it, myRadOne can share the following stats back to the developer:
+            </p>
+            <section class="usage-stats-consent-stats" aria-labelledby="usageStatsConsentStatsTitle">
+                <div class="usage-stats-consent-box">
+                    <h3 id="usageStatsConsentStatsTitle">Stats</h3>
+                    <dl class="usage-stats-consent-list">
+                        <div>
+                            <dt>A random ID for this install</dt>
+                            <dd id="usageStatsConsentInstallId">Unknown</dd>
+                        </div>
+                        <div>
+                            <dt>Total times you've opened the app</dt>
+                            <dd id="usageStatsConsentSessions">0</dd>
+                        </div>
+                        <div>
+                            <dt>Total studies you've imported</dt>
+                            <dd id="usageStatsConsentStudiesImported">0</dd>
+                        </div>
+                    </dl>
+                </div>
+                <div class="usage-stats-consent-negative">
+                    <p>No images, no personal information, absolutely nothing else. Just those three numbers.</p>
+                    <p>
+                        This information won't be sent elsewhere. It will be used exclusively to improve the application
+                        for users like you. Thanks in advance for your support!
+                    </p>
+                </div>
+            </section>
+            <div class="usage-stats-consent-actions">
+                <button id="usageStatsConsentShare" class="usage-stats-consent-btn" type="button">Agree</button>
+                <button id="usageStatsConsentDecline" class="usage-stats-consent-btn" type="button">Deny</button>
+            </div>
+        </div>
+    </dialog>
 
     <script src="js/app/state.js"></script>
     <script src="js/app/dom.js"></script>

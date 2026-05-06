@@ -38,11 +38,14 @@
 // is off by default on fresh install.
 //
 const { test, expect } = require('@playwright/test');
+const path = require('path');
 
 const APP_URL = 'http://127.0.0.1:5001/?nolib';
 const TEST_URL = 'http://127.0.0.1:5001/?test';
 const STORAGE_KEY = 'dicom-viewer-instrumentation-v1';
 const DESKTOP_RUNTIME_WAIT_TIMEOUT_MS = 5_000;
+const PHONE_HOME_URL = 'https://api.myradone.com/api/stats';
+const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 
 /**
  * Playwright gives each test a fresh browser context with empty localStorage
@@ -73,6 +76,68 @@ async function readStats(page) {
     }, STORAGE_KEY);
 }
 
+async function seedInstrumentationStats(page, blob) {
+    await page.addInitScript(
+        ({ key, stats }) => {
+            if (!window.localStorage.getItem(key)) {
+                window.localStorage.setItem(key, JSON.stringify(stats));
+            }
+        },
+        { key: STORAGE_KEY, stats: blob },
+    );
+}
+
+function makeLegacyStats(overrides = {}) {
+    return {
+        version: 1,
+        revision: 7,
+        installationId: 'legacy-installation-id',
+        firstSeen: '2026-01-02T03:04:05.000Z',
+        lastSeen: '2026-02-03T04:05:06.000Z',
+        sessions: 4,
+        studiesImported: 9,
+        shareEnabled: false,
+        ...overrides,
+    };
+}
+
+async function collectPhoneHomePosts(page) {
+    const posts = [];
+    await page.route(PHONE_HOME_URL, async (route) => {
+        const request = route.request();
+        const corsHeaders = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'content-type',
+        };
+
+        if (request.method() === 'OPTIONS') {
+            await route.fulfill({ status: 204, headers: corsHeaders, body: '' });
+            return;
+        }
+
+        if (request.method() === 'POST') {
+            posts.push(request.postDataJSON());
+        }
+
+        await route.fulfill({ status: 204, headers: corsHeaders, body: '' });
+    });
+    return posts;
+}
+
+async function waitForConsentDialog(page) {
+    const dialog = page.locator('#usageStatsConsentDialog');
+    await expect(dialog).toBeVisible();
+    return dialog;
+}
+
+async function readMockDesktopDb(page) {
+    return await page.evaluate(() => {
+        const raw = window.localStorage.getItem('mock-tauri-sql:sqlite:viewer.db');
+        return raw ? JSON.parse(raw) : null;
+    });
+}
+
 /**
  * Poll the in-memory instrumentation stats until a predicate holds.
  * Useful for awaiting async flush() writes without relying on timers.
@@ -94,6 +159,285 @@ async function waitForStats(page, predicate, timeout = 5000) {
         { timeout },
     );
 }
+
+// ============================================================================
+// Consent modal and phone-home gating
+// ============================================================================
+
+test.describe('Instrumentation: consent modal local automation guard', () => {
+    test('skips first-launch consent modal on local WebDriver runs unless forced', async ({ page }) => {
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 1);
+
+        await expect(page.locator('#usageStatsConsentDialog')).toBeHidden();
+        const stats = await readStats(page);
+        expect(stats.consentDecisionAt).toBeNull();
+        expect(stats.shareEnabled).toBe(false);
+    });
+});
+
+test.describe('Instrumentation: consent modal', () => {
+    test.beforeEach(async ({ page }) => {
+        // Local WebDriver runs skip the dialog by default so unrelated specs are
+        // not blocked by first-launch consent. These specs exercise it directly.
+        await page.addInitScript(() => {
+            window.__ALLOW_CONSENT_MODAL_IN_TESTS__ = true;
+        });
+    });
+
+    test('shows first-launch consent modal with current local stats', async ({ page }) => {
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 1);
+
+        await waitForConsentDialog(page);
+        await expect(page.locator('#usageStatsConsentTitle')).toHaveText('Please help us improve myRadOne.');
+        await expect(page.locator('#usageStatsConsentDescription')).toHaveText(
+            'Only if you allow it, myRadOne can share the following stats back to the developer:',
+        );
+        await expect(page.locator('#usageStatsConsentStatsTitle')).toHaveText('Stats');
+        await expect(page.locator('#usageStatsConsentDialog summary')).toHaveCount(0);
+        const stats = await readStats(page);
+        await expect(page.locator('#usageStatsConsentInstallId')).toHaveText(stats.installationId.slice(0, 8));
+        await expect(page.locator('#usageStatsConsentSessions')).toHaveText('1');
+        await expect(page.locator('#usageStatsConsentStudiesImported')).toHaveText('0');
+        await expect(page.locator('#usageStatsConsentDialog')).toContainText(
+            'No images, no personal information, absolutely nothing else. Just those three numbers.',
+        );
+        await expect(page.locator('#usageStatsConsentDialog')).toContainText(
+            "This information won't be sent elsewhere. It will be used exclusively to improve the application for users like you.",
+        );
+        await expect(page.getByRole('button', { name: 'Open Usage Stats' })).toHaveCount(0);
+    });
+
+    test('does not show consent modal after a decision has been recorded', async ({ page }) => {
+        await seedInstrumentationStats(
+            page,
+            makeLegacyStats({
+                shareEnabled: false,
+                consentDecisionAt: '2026-03-04T05:06:07.000Z',
+            }),
+        );
+
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 5);
+
+        await expect(page.locator('#usageStatsConsentDialog')).toBeHidden();
+    });
+
+    test('Deny records consent without sending a POST', async ({ page }) => {
+        const posts = await collectPhoneHomePosts(page);
+
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        await waitForConsentDialog(page);
+
+        await page.getByRole('button', { name: 'Deny' }).click();
+        await waitForStats(page, (stats) => stats.consentDecisionAt != null && stats.shareEnabled === false);
+        await page.waitForTimeout(300);
+
+        const stats = await readStats(page);
+        expect(stats.consentDecisionAt).toEqual(expect.any(String));
+        expect(stats.shareEnabled).toBe(false);
+        expect(posts).toEqual([]);
+    });
+
+    test('Agree records consent and sends one POST with exact payload keys', async ({ page }) => {
+        const posts = await collectPhoneHomePosts(page);
+
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        await waitForConsentDialog(page);
+
+        await page.getByRole('button', { name: 'Agree', exact: true }).click();
+        await expect.poll(() => posts.length).toBe(1);
+
+        const payload = posts[0];
+        expect(Object.keys(payload).sort()).toEqual(
+            ['installationId', 'revision', 'sessions', 'studiesImported', 'version'].sort(),
+        );
+        expect(payload.sessions).toBe(1);
+        expect(payload.studiesImported).toBe(0);
+        expect(payload.firstSeen).toBeUndefined();
+        expect(payload.lastSeen).toBeUndefined();
+
+        const stats = await readStats(page);
+        expect(stats.shareEnabled).toBe(true);
+        expect(stats.consentDecisionAt).toEqual(expect.any(String));
+    });
+
+    test('Escape closes without stamping consent and reprompts on next launch', async ({ page }) => {
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        const dialog = await waitForConsentDialog(page);
+
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+
+        let stats = await readStats(page);
+        expect(stats.consentDecisionAt).toBeNull();
+
+        await page.reload();
+        await waitForStats(page, (nextStats) => nextStats.sessions === 2);
+        await waitForConsentDialog(page);
+
+        stats = await readStats(page);
+        expect(stats.consentDecisionAt).toBeNull();
+    });
+
+    test('retroactive shareEnabled true prompts and Deny disables sharing', async ({ page }) => {
+        const posts = await collectPhoneHomePosts(page);
+        await seedInstrumentationStats(page, makeLegacyStats({ shareEnabled: true }));
+
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 5);
+        await waitForConsentDialog(page);
+
+        await page.getByRole('button', { name: 'Deny' }).click();
+        await waitForStats(page, (stats) => stats.consentDecisionAt != null && stats.shareEnabled === false);
+        await page.waitForTimeout(300);
+
+        const stats = await readStats(page);
+        expect(stats.shareEnabled).toBe(false);
+        expect(stats.consentDecisionAt).toEqual(expect.any(String));
+        expect(posts).toEqual([]);
+    });
+
+    test('legacy sharing leaks no POST before consent, then Agree sends exactly one POST', async ({ page }) => {
+        const posts = await collectPhoneHomePosts(page);
+        await seedInstrumentationStats(page, makeLegacyStats({ shareEnabled: true }));
+
+        await page.goto(APP_URL);
+        await waitForConsentDialog(page);
+
+        await page.waitForTimeout(5500);
+        await page.evaluate(() => {
+            window.dispatchEvent(new Event('beforeunload'));
+        });
+        await page.waitForTimeout(100);
+        expect(posts).toEqual([]);
+
+        await page.getByRole('button', { name: 'Agree', exact: true }).click();
+        await expect.poll(() => posts.length).toBe(1);
+        await page.waitForTimeout(5500);
+
+        expect(posts).toHaveLength(1);
+        const stats = await readStats(page);
+        expect(stats.shareEnabled).toBe(true);
+        expect(stats.consentDecisionAt).toEqual(expect.any(String));
+    });
+
+    test('stats panel toggle records consent after dismissed first-launch modal', async ({ page }) => {
+        const posts = await collectPhoneHomePosts(page);
+
+        await clearInstrumentationStorage(page);
+        await page.goto(APP_URL);
+        const dialog = await waitForConsentDialog(page);
+
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+
+        const toggleCheckedBefore = await page.evaluate(() => {
+            const container = document.createElement('div');
+            document.body.appendChild(container);
+            window.Instrumentation?.renderStatsPanel?.(container);
+            const toggle = container.querySelector('#statsShareToggle');
+            const checked = toggle?.checked;
+            toggle?.click();
+            return checked;
+        });
+
+        expect(toggleCheckedBefore).toBe(false);
+        await waitForStats(page, (stats) => stats.shareEnabled === true && stats.consentDecisionAt != null);
+        await expect.poll(() => posts.length).toBe(1);
+
+        const stats = await readStats(page);
+        expect(stats.shareEnabled).toBe(true);
+        expect(stats.consentDecisionAt).toEqual(expect.any(String));
+    });
+
+    test('reset preserves installation identity, firstSeen, and consent fields', async ({ page }) => {
+        await seedInstrumentationStats(
+            page,
+            makeLegacyStats({
+                shareEnabled: false,
+                consentDecisionAt: '2026-03-04T05:06:07.000Z',
+            }),
+        );
+
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 5);
+
+        const before = await readStats(page);
+        await page.evaluate(() => {
+            window.Instrumentation?.resetStats?.();
+        });
+        await waitForStats(page, (stats) => stats.sessions === 0 && stats.studiesImported === 0);
+
+        const after = await readStats(page);
+        expect(after.installationId).toBe(before.installationId);
+        expect(after.firstSeen).toBe(before.firstSeen);
+        expect(after.shareEnabled).toBe(before.shareEnabled);
+        expect(after.consentDecisionAt).toBe(before.consentDecisionAt);
+        expect(after.sessions).toBe(0);
+        expect(after.studiesImported).toBe(0);
+    });
+
+    test('stats migration removes lastSeen and preserves firstSeen', async ({ page }) => {
+        await seedInstrumentationStats(page, makeLegacyStats({ shareEnabled: false }));
+
+        await page.goto(APP_URL);
+        await waitForStats(page, (stats) => stats.sessions === 5);
+
+        const stats = await readStats(page);
+        expect(stats.firstSeen).toBe('2026-01-02T03:04:05.000Z');
+        expect(stats.lastSeen).toBeUndefined();
+        expect(stats.consentDecisionAt).toBeNull();
+    });
+
+    test('desktop SQL bridge persists consent schema without last_seen', async ({ page }) => {
+        await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+        await page.addInitScript(() => {
+            window.__TAURI__ = {
+                sql: window.__createMockTauriSql(),
+            };
+            window.__DICOM_VIEWER_TAURI_STORAGE_READY__ = Promise.resolve(window.__TAURI__);
+            window.__DICOM_VIEWER_TAURI_READY__ = Promise.resolve(window.__TAURI__);
+        });
+
+        await page.goto(APP_URL);
+        await page.waitForFunction(() => {
+            const raw = window.localStorage.getItem('mock-tauri-sql:sqlite:viewer.db');
+            if (!raw) return false;
+            const state = JSON.parse(raw);
+            return state.instrumentation?.[0]?.sessions === 1;
+        });
+
+        const localRaw = await page.evaluate((key) => window.localStorage.getItem(key), STORAGE_KEY);
+        expect(localRaw).toBeNull();
+
+        let db = await readMockDesktopDb(page);
+        let row = db.instrumentation[0];
+        expect(row.first_seen).toEqual(expect.any(String));
+        expect(row.last_seen).toBeUndefined();
+        expect(row.consent_decision_at).toBeNull();
+
+        await waitForConsentDialog(page);
+        await page.getByRole('button', { name: 'Deny' }).click();
+        await page.waitForFunction(() => {
+            const raw = window.localStorage.getItem('mock-tauri-sql:sqlite:viewer.db');
+            const state = raw ? JSON.parse(raw) : null;
+            return state?.instrumentation?.[0]?.consent_decision_at != null;
+        });
+
+        db = await readMockDesktopDb(page);
+        row = db.instrumentation[0];
+        expect(row.share_enabled).toBe(0);
+        expect(row.consent_decision_at).toEqual(expect.any(String));
+        expect(row.last_seen).toBeUndefined();
+    });
+});
 
 // ============================================================================
 // Personal mode: basic counters
@@ -118,10 +462,10 @@ test.describe('Instrumentation: personal mode counters', () => {
                         revision: params[1],
                         installation_id: params[2],
                         first_seen: params[3],
-                        last_seen: params[4],
-                        sessions: params[5],
-                        studies_imported: params[6],
-                        share_enabled: params[7],
+                        sessions: params[4],
+                        studies_imported: params[5],
+                        share_enabled: params[6],
+                        consent_decision_at: params[7],
                     };
                     return { rowsAffected: 1 };
                 },
@@ -158,6 +502,8 @@ test.describe('Instrumentation: personal mode counters', () => {
         expect(dbState.loadCount).toBeGreaterThan(0);
         expect(dbState.row).not.toBeNull();
         expect(dbState.row.sessions).toBe(1);
+        expect(dbState.row.last_seen).toBeUndefined();
+        expect(dbState.row.consent_decision_at).toBeNull();
     });
 
     test('records first session on fresh load (no startup race drop)', async ({ page }) => {

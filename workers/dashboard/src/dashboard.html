@@ -558,21 +558,6 @@
           <p id="statsTotalInstalls" class="card-value">—</p>
         </article>
         <article class="card">
-          <p class="card-label">Active 24h</p>
-          <p id="statsActive24h" class="card-value">—</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Active 7d</p>
-          <p id="statsActive7d" class="card-value">—</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Active 30d</p>
-          <p id="statsActive30d" class="card-value">—</p>
-        </article>
-      </section>
-
-      <section class="cards">
-        <article class="card">
           <p class="card-label">Total Sessions</p>
           <p id="statsTotalSessions" class="card-value">—</p>
         </article>
@@ -604,12 +589,11 @@
           <table>
             <thead>
               <tr>
-                <th>Install (prefix)</th>
-                <th><button class="sort-button stats-sort-button" data-stats-sort="first_seen" type="button">First seen</button></th>
-                <th><button class="sort-button stats-sort-button" data-stats-sort="last_seen" type="button">Last seen</button></th>
+                <th>Install</th>
                 <th><button class="sort-button stats-sort-button" data-stats-sort="sessions" type="button">Sessions</button></th>
                 <th><button class="sort-button stats-sort-button" data-stats-sort="studies_imported" type="button">Studies</button></th>
                 <th><button class="sort-button stats-sort-button" data-stats-sort="revision" type="button">Revision</button></th>
+                <th>Version</th>
               </tr>
             </thead>
             <tbody id="statsInstallsBody"></tbody>
@@ -641,7 +625,7 @@
         statsLoaded: false,
         statsPage: 1,
         statsPerPage: 50,
-        statsSort: 'last_seen',
+        statsSort: 'sessions',
         statsOrder: 'desc',
         statsTotalPages: 1,
         subscribersRefreshPromise: null,
@@ -664,9 +648,6 @@
         refreshButton: document.getElementById('refreshButton'),
         sourceBreakdown: document.getElementById('sourceBreakdown'),
         sourceFilter: document.getElementById('sourceFilter'),
-        statsActive24h: document.getElementById('statsActive24h'),
-        statsActive7d: document.getElementById('statsActive7d'),
-        statsActive30d: document.getElementById('statsActive30d'),
         statsDailyList: document.getElementById('statsDailyList'),
         statsInstallsBody: document.getElementById('statsInstallsBody'),
         statsNextPageButton: document.getElementById('statsNextPageButton'),
@@ -989,7 +970,7 @@
 
         if (isLoading && !state.statsLoaded) {
           elements.statsInstallsBody.replaceChildren();
-          appendEmptyRow(elements.statsInstallsBody, 6, 'Loading install stats...');
+          appendEmptyRow(elements.statsInstallsBody, 5, 'Loading install stats...');
         }
       }
 
@@ -1000,9 +981,6 @@
         const daily = payload.new_installs_daily || [];
 
         elements.statsTotalInstalls.textContent = formatNumber(installs.total);
-        elements.statsActive24h.textContent = formatNumber(installs.active_24h);
-        elements.statsActive7d.textContent = formatNumber(installs.active_7d);
-        elements.statsActive30d.textContent = formatNumber(installs.active_30d);
         elements.statsTotalSessions.textContent = formatNumber(sessions.total);
         elements.statsTotalStudies.textContent = formatNumber(studies.total);
         elements.statsDailyList.replaceChildren();
@@ -1037,18 +1015,15 @@
         const tr = document.createElement('tr');
         const columns = [
           'install_id_prefix',
-          'first_seen',
-          'last_seen',
           'sessions',
           'studies_imported',
-          'revision'
+          'revision',
+          'version'
         ];
 
         columns.forEach(function (column) {
           const td = document.createElement('td');
-          if (column === 'first_seen' || column === 'last_seen') {
-            td.textContent = formatDateTime(install[column]);
-          } else if (column === 'sessions' || column === 'studies_imported' || column === 'revision') {
+          if (column === 'sessions' || column === 'studies_imported' || column === 'revision' || column === 'version') {
             td.textContent = formatNumber(install[column]);
           } else {
             td.textContent = install[column] || '—';
@@ -1070,7 +1045,7 @@
         elements.statsNextPageButton.disabled = state.statsPage >= state.statsTotalPages;
 
         if (!payload.installs.length) {
-          appendEmptyRow(elements.statsInstallsBody, 6, 'No installs reporting yet.');
+          appendEmptyRow(elements.statsInstallsBody, 5, 'No installs reporting yet.');
           return;
         }
 
@@ -1220,7 +1195,7 @@
             state.statsOrder = state.statsOrder === 'asc' ? 'desc' : 'asc';
           } else {
             state.statsSort = field;
-            state.statsOrder = field === 'last_seen' ? 'desc' : 'asc';
+            state.statsOrder = field === 'sessions' ? 'desc' : 'asc';
           }
           state.statsPage = 1;
           refreshStats({ force: true });

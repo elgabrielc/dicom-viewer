@@ -27,6 +27,23 @@ usage stats" checkbox in the Help panel.
   "version": 1,
   "revision": 42,
   "installationId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
+  "sessions": 12,
+  "studiesImported": 5
+}
+```
+
+These five fields are required. Unknown fields are rejected with 400 so
+schema drift is a loud failure. Note that `shareEnabled` is client-only
+state and is deliberately NOT part of the wire payload.
+
+For backward compatibility with older clients, `firstSeen` and `lastSeen`
+may also be sent as optional ISO-8601 timestamp strings:
+
+```json
+{
+  "version": 1,
+  "revision": 42,
+  "installationId": "a1b2c3d4-e5f6-4789-abcd-ef0123456789",
   "firstSeen": "2026-04-08T12:00:00.000Z",
   "lastSeen": "2026-04-09T09:30:00.000Z",
   "sessions": 12,
@@ -34,60 +51,54 @@ usage stats" checkbox in the Help panel.
 }
 ```
 
-All fields are required. Unknown fields are rejected with 400 so schema
-drift is a loud failure. Note that `shareEnabled` is client-only state and
-is deliberately NOT part of the wire payload.
+When present, legacy timestamps are validated and then stripped before the
+payload is stored. `stats_json` always contains only `version`, `revision`,
+`installationId`, `sessions`, and `studiesImported`.
 
 Rules:
 
 - `version` must be exactly `1`
 - `installationId` must be a lowercase UUID v4
 - `revision`, `sessions`, `studiesImported` must be non-negative integers
-- `firstSeen`, `lastSeen` must be ISO-8601 timestamp strings
+- Optional legacy `firstSeen`, `lastSeen` values must be ISO-8601 timestamp strings
 
 ## Data model
 
-D1 table (see `migrations/0001_create_installs.sql`):
+D1 table after applying `migrations/0001_create_installs.sql` and
+`migrations/0002_drop_seen_columns.sql`:
 
 ```sql
-CREATE TABLE IF NOT EXISTS installs (
+CREATE TABLE installs (
     install_id TEXT PRIMARY KEY,
     revision INTEGER NOT NULL DEFAULT 0,
     stats_json TEXT NOT NULL,
-    first_seen TEXT NOT NULL,
-    last_seen TEXT NOT NULL,
     version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE INDEX IF NOT EXISTS idx_installs_last_seen ON installs(last_seen);
 ```
 
 One row per installation, keyed by the client-generated UUID. The full
 payload is stored as JSON in `stats_json` for future schema flexibility,
-and the frequently-queried fields (`revision`, `first_seen`, `last_seen`,
-`version`) are extracted into columns so common queries do not have to
-parse JSON.
+and the frequently-queried fields (`revision`, `version`, `created_at`,
+`updated_at`) are columns so common queries do not have to parse JSON.
 
 ### Upsert semantics
 
 ```sql
-INSERT INTO installs (install_id, revision, stats_json, first_seen, last_seen, version)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO installs (install_id, revision, stats_json, version)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(install_id) DO UPDATE SET
     revision = excluded.revision,
     stats_json = excluded.stats_json,
-    last_seen = excluded.last_seen,
     version = excluded.version,
     updated_at = datetime('now')
 WHERE excluded.revision > installs.revision;
 ```
 
 The `WHERE excluded.revision > installs.revision` clause causes stale writes
-to be silently ignored. `first_seen` is never updated on conflict, so the
-original install date is preserved even if the client ever reports a
-different value.
+to be silently ignored. `created_at` is left to the table default on insert
+and is never updated on conflict.
 
 ## CORS
 
@@ -131,6 +142,7 @@ trivial abuse.
 
    ```bash
    npx wrangler d1 execute myradone-stats --remote --file=migrations/0001_create_installs.sql
+   npx wrangler d1 execute myradone-stats --remote --file=migrations/0002_drop_seen_columns.sql
    ```
 
 5. Create a rate-limit namespace (via the Cloudflare dashboard, or let
@@ -160,8 +172,6 @@ curl -i -X POST https://api.myradone.com/api/stats \
     "version": 1,
     "revision": 1,
     "installationId": "11111111-2222-4333-8444-555555555555",
-    "firstSeen": "2026-04-08T12:00:00.000Z",
-    "lastSeen": "2026-04-08T12:00:00.000Z",
     "sessions": 1,
     "studiesImported": 0
   }'
@@ -173,7 +183,7 @@ Inspect the most recent rows in D1:
 
 ```bash
 npx wrangler d1 execute myradone-stats --remote --command \
-  "SELECT install_id, revision, stats_json, first_seen, last_seen FROM installs ORDER BY updated_at DESC LIMIT 10;"
+  "SELECT install_id, revision, stats_json, version, created_at, updated_at FROM installs ORDER BY updated_at DESC LIMIT 10;"
 ```
 
 Replay the same request with a lower `revision` and confirm the row is
@@ -191,6 +201,7 @@ the local database with:
 
 ```bash
 npx wrangler d1 execute myradone-stats --local --file=migrations/0001_create_installs.sql
+npx wrangler d1 execute myradone-stats --local --file=migrations/0002_drop_seen_columns.sql
 ```
 
 Then POST to the local worker URL printed by `wrangler dev`.
