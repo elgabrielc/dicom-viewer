@@ -22,7 +22,7 @@ Known issues, bugs, and their resolution status.
 | **Resolved** | 2026-05-11 |
 | **Scope** | Image rendering, window/level resolution path |
 | **Tracked at** | [#109](https://github.com/elgabrielc/dicom-viewer/issues/109) |
-| **PR** | Pending (`codex/bug-012-window-level`) |
+| **PR** | #110 |
 
 **How Encountered:**
 An EOS full-body DX scoliosis study rendered with almost no visible contrast in the
