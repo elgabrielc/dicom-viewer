@@ -396,6 +396,49 @@
     }
 
     /**
+     * Detect stored full-range window/level values that act as a no-op placeholder.
+     * Only raw stored-space windows are considered; rescaled modalities keep their
+     * explicit W/L because the comparison would otherwise need modality-unit math.
+     * @param {number} windowCenter - Stored Window Center
+     * @param {number} windowWidth - Stored Window Width
+     * @param {number} bitsStored - DICOM Bits Stored
+     * @param {number} pixelRepresentation - 0=unsigned, 1=signed
+     * @param {number} rescaleSlope - Rescale slope
+     * @param {number} rescaleIntercept - Rescale intercept
+     * @returns {boolean} True when the window covers the full storable pixel range
+     */
+    function isPlaceholderWindowLevel(
+        windowCenter,
+        windowWidth,
+        bitsStored,
+        pixelRepresentation = 0,
+        rescaleSlope = 1,
+        rescaleIntercept = 0,
+    ) {
+        if (rescaleSlope !== 1 || rescaleIntercept !== 0) {
+            return false;
+        }
+        if (!Number.isInteger(bitsStored) || bitsStored < 1 || bitsStored > 32) {
+            return false;
+        }
+        if (!Number.isFinite(windowCenter) || !Number.isFinite(windowWidth)) {
+            return false;
+        }
+
+        const storableRange = 2 ** bitsStored;
+        const isSigned = Number(pixelRepresentation) === 1;
+        const minStorable = isSigned ? -(storableRange / 2) : 0;
+        const maxStorable = isSigned ? storableRange / 2 - 1 : storableRange - 1;
+
+        if (windowWidth < storableRange - 1) {
+            return false;
+        }
+
+        const halfWidth = windowWidth / 2;
+        return windowCenter - halfWidth <= minStorable + 1 && windowCenter + halfWidth >= maxStorable - 1;
+    }
+
+    /**
      * Calculate auto window/level from pixel data statistics
      * Useful for MRI and other modalities without standard units
      * @param {TypedArray} pixelData - Raw pixel values
@@ -946,6 +989,7 @@
         isJpeg2000,
         getTransferSyntaxInfo,
         getModalityDefaults,
+        isPlaceholderWindowLevel,
         calculateAutoWindowLevel,
         isBlankSlice,
         displayBlankSlice,

@@ -12,6 +12,82 @@ Known issues, bugs, and their resolution status.
 
 ## Resolved Bugs
 
+### BUG-012: DX images render washed out when stored W/L is the full 16-bit range placeholder
+
+| Field | Value |
+|-------|-------|
+| **Status** | Resolved |
+| **Priority** | High |
+| **Found** | 2026-05-11 |
+| **Resolved** | 2026-05-11 |
+| **Scope** | Image rendering, window/level resolution path |
+| **Tracked at** | [#109](https://github.com/elgabrielc/dicom-viewer/issues/109) |
+| **PR** | Pending (`codex/bug-012-window-level`) |
+
+**How Encountered:**
+An EOS full-body DX scoliosis study rendered with almost no visible contrast in the
+desktop viewer. The body silhouette was visible against black, but bone and
+soft-tissue detail were compressed into a very narrow gray band. The toolbar and
+metadata panel reported `C: 32767 W: 65536`.
+
+The source files are two 16-bit unsigned JPEG Lossless SV1 DX slices from the
+`3-26-26_XR NYU` study folder:
+- `1.2.250.1.118.8.2104.1033.142.1774535757.dcm`
+- `1.2.250.1.118.8.2104.1033.143.1774535757.dcm`
+
+Both files store `WindowCenter=32767` and `WindowWidth=65536` with
+`RescaleSlope=1` and `RescaleIntercept=0`. That W/L covers the full 16-bit stored
+range, so the real anatomy values occupy only a small fraction of the display ramp.
+
+**Root Cause:**
+`resolveWindowLevel()` treated any present `WindowCenter` and `WindowWidth` tags as
+authoritative. Because the BUG-012 files include a full-range placeholder W/L, the
+viewer skipped its existing pixel-statistics auto window/level path and rendered the
+entire storable range across black-to-white.
+
+The auto-W/L fallback was also limited to MR/PT/NM when no W/L was present, leaving
+DX/CR/MG/XA/RF images with placeholder W/L stuck on the producer's no-op values.
+
+**Solution:**
+Added `isPlaceholderWindowLevel()` to detect raw stored-space windows that cover the
+entire storable pixel range. The helper only fires when `RescaleSlope=1` and
+`RescaleIntercept=0`, so CT and other rescaled modality-unit windows keep their
+explicit DICOM W/L values.
+
+`resolveWindowLevel()` now treats detected placeholder stored W/L as absent. If the
+native decoder's preferred W/L merely echoes the stored placeholder, that preferred
+value is also treated as absent so the existing auto-W/L fallback can run. A native
+preferred W/L that differs from the stored tags still wins.
+
+The auto-W/L modality list now includes `DX`, `CR`, `MG`, `XA`, and `RF` in addition
+to the existing `MR`, `PT`, and `NM`.
+
+**Why This Solution:**
+Alternatives considered:
+- *Always auto-window DX/CR/MG/XA/RF even when stored W/L is present* - Rejected.
+  Some producers provide useful W/L values; those should remain authoritative.
+- *Use modality defaults for placeholder DX values* - Rejected. The existing
+  DX/CR defaults are generic fallbacks and can still be full-range no-ops for
+  12-bit data. Pixel statistics are closer to the actual image content.
+- *Apply placeholder detection to rescaled CT* - Rejected. CT W/L values live in
+  Hounsfield units after slope/intercept; comparing them directly to stored bit
+  depth is unsafe.
+
+**Prevention Controls:**
+- Added Playwright coverage for the full-range placeholder truth table, including
+  unsigned, signed, rescaled, and invalid-input cases.
+- Added synthetic DX decode coverage for the JS path to prove stored placeholder
+  W/L routes to `calculateAutoWindowLevel()`.
+- Added synthetic native decode coverage where the native bridge echoes the stored
+  placeholder W/L, matching the current desktop failure mode.
+
+**Files Changed:**
+- `docs/js/app/dicom.js`
+- `docs/js/app/rendering.js`
+- `tests/dicom-window-level.spec.js`
+- `docs/BUGS.md`
+- `CHANGELOG.md`
+
 ### BUG-011: Desktop release build blocked by missing signing key and stale DMG mounts
 
 | Field | Value |
