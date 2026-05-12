@@ -21,12 +21,15 @@ For architecture decision records, see [docs/decisions/](decisions/).
 
 ## Primary Competitive Benchmarks
 
-This section moved to the private companion repo. See
-[Primary Competitive Benchmarks](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks)
-in `myradone-internal`.
+**Moved to the private companion repo:** <https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks>
+
+(Section retained here as an anchor target so inbound deep-links from
+`COMPANIES-RESEARCHED.md`, `INDEX.md`, and other repo material degrade
+gracefully to this redirect instead of returning 404.)
 
 ## Reference Architecture
 
-This section moved to the private companion repo. See
-[Reference Architecture](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#reference-architecture)
-in `myradone-internal`.
+**Moved to the private companion repo:** <https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#reference-architecture>
+
+(Section retained here as an anchor target so inbound deep-links degrade
+gracefully to this redirect.)

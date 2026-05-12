@@ -201,7 +201,11 @@ npm run build:plain-dmg -- --skip-build
 
 ### Known gotchas (encountered 2026-04-09)
 
-See `docs/BUGS.md` BUG-011 for full context. Short version:
+For full context see BUG-011 in the private bug tracker
+([`myradone-internal/BUGS.md`](https://github.com/elgabrielc/myradone-internal/blob/main/BUGS.md#bug-011-desktop-release-build-blocked-by-missing-signing-key-and-stale-dmg-mounts)),
+or the pre-split snapshot in public git history
+([`dicom-viewer@c5a242e:docs/BUGS.md`](https://github.com/elgabrielc/dicom-viewer/blob/c5a242e/docs/BUGS.md#bug-011-desktop-release-build-blocked-by-missing-signing-key-and-stale-dmg-mounts)).
+Short version:
 
 **1. `TAURI_SIGNING_PRIVATE_KEY` missing on non-signing hosts**
 
