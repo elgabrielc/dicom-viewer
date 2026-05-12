@@ -581,11 +581,7 @@
         }
 
         let { windowCenter, windowWidth } = decoded;
-        if (
-            !hasWindowLevel &&
-            decoded.samplesPerPixel === 1 &&
-            AUTO_WL_MODALITIES.has(decoded.modality)
-        ) {
+        if (!hasWindowLevel && decoded.samplesPerPixel === 1 && AUTO_WL_MODALITIES.has(decoded.modality)) {
             const autoWL = calculateAutoWindowLevel(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept);
             windowCenter = autoWL.windowCenter;
             windowWidth = autoWL.windowWidth;
