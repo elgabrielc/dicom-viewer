@@ -139,7 +139,7 @@
         setDragActive(false);
         abortLibraryLoad();
 
-        if (state.managedLibrary) {
+        if (app.desktopLibrary?.canImportToManagedLibrary?.()) {
             state.libraryAbort = new AbortController();
             try {
                 const importResult = await app.desktopLibrary.runImport(paths, {
@@ -347,9 +347,12 @@
                 const libraryPath = await app.importPipeline.getLibraryPath();
 
                 const cachedStudies = await app.desktopLibrary.loadCachedStudies(libraryPath);
+                const cacheRepairNotice = app.desktopLibrary.consumeCacheRepairNotice?.();
                 if (cachedStudies && Object.keys(cachedStudies).length > 0) {
                     await applyDesktopLibrarySnapshot(libraryPath, cachedStudies);
                     setLibraryFolderMessage('Showing cached library while refreshing...', 'info');
+                } else if (cacheRepairNotice?.message) {
+                    setLibraryFolderMessage(cacheRepairNotice.message, 'info');
                 } else {
                     setLibraryFolderMessage('Loading managed library...', 'info');
                 }
@@ -366,7 +369,7 @@
                 });
                 await applyDesktopLibraryScan(libraryPath, studies);
             } else {
-                // Direct scan mode: existing behavior
+                // Legacy fallback for environments without the managed import pipeline.
                 if (!state.libraryFolder) {
                     await displayStudies();
                     return;

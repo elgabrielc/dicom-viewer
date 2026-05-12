@@ -3123,14 +3123,15 @@ test.describe('Desktop library scanning', () => {
             },
             dirs: {
                 '/slow-library': [],
+                '/appdata/library': [],
             },
             readDirDelayMs: 500,
         });
 
         await page.goto(AUTOLOAD_URL);
-        await expect(page.locator('#libraryFolderConfig')).toBeVisible();
+        await expect(page.locator('#libraryFolderConfig')).toBeHidden();
         await expect(page.locator('#libraryFolderInput')).toHaveValue('/slow-library');
-        await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
+        await expect(page.locator('#libraryFolderMessage')).toContainText('Loading managed library...');
     });
 
     test('desktop library config falls back to the mirrored local config when native storage is unavailable', async ({
@@ -3144,15 +3145,16 @@ test.describe('Desktop library scanning', () => {
             },
             dirs: {
                 '/slow-library': [],
+                '/appdata/library': [],
             },
             readDirDelayMs: 500,
             sqlLoadError: 'mock desktop sqlite unavailable',
         });
 
         await page.goto(AUTOLOAD_URL);
-        await expect(page.locator('#libraryFolderConfig')).toBeVisible();
+        await expect(page.locator('#libraryFolderConfig')).toBeHidden();
         await expect(page.locator('#libraryFolderInput')).toHaveValue('/slow-library');
-        await expect(page.locator('#libraryFolderMessage')).toContainText('Loading saved library folder...');
+        await expect(page.locator('#libraryFolderMessage')).toContainText('Loading managed library...');
     });
 
     test('desktop auto-load shows a cached library snapshot while refresh is in flight', async ({ page }) => {
@@ -3178,7 +3180,7 @@ test.describe('Desktop library scanning', () => {
                             {
                                 instanceNumber: 1,
                                 sliceLocation: 0,
-                                source: { kind: 'path', path: '/slow-library/image.dcm' },
+                                source: { kind: 'path', path: '/appdata/library/image.dcm' },
                             },
                         ],
                     },
@@ -3188,7 +3190,7 @@ test.describe('Desktop library scanning', () => {
         const snapshotBytes = new TextEncoder().encode(
             JSON.stringify({
                 version: 1,
-                folder: '/slow-library',
+                folder: '/appdata/library',
                 savedAt: '2026-03-22T00:00:00.000Z',
                 studies: cachedStudies,
             }),
@@ -3202,6 +3204,7 @@ test.describe('Desktop library scanning', () => {
             },
             dirs: {
                 '/slow-library': [],
+                '/appdata/library': [],
             },
             readDirDelayMs: 3000,
             storedFiles: {
@@ -3210,12 +3213,158 @@ test.describe('Desktop library scanning', () => {
         });
 
         await page.goto(AUTOLOAD_URL);
-        await expect(page.locator('#libraryFolderConfig')).toBeVisible();
-        await expect(page.locator('#libraryFolderInput')).toHaveValue('/slow-library');
+        await expect(page.locator('#libraryFolderConfig')).toBeHidden();
+        await expect(page.locator('#libraryFolderInput')).toHaveValue('/appdata/library');
         await expect(page.locator('#studiesBody')).toContainText('Cached Patient');
     });
 
-    test('desktop library cache round-trips through app data', async ({ page }) => {
+    test('desktop library cache reports repair message for out-of-root cached snapshot', async ({ page }) => {
+        const cachedStudies = {
+            '1.2.840.cached.study': {
+                patientName: 'Cached Patient',
+                studyDate: '20260322',
+                studyDescription: 'Cached Study',
+                studyInstanceUid: '1.2.840.cached.study',
+                modality: 'MR',
+                seriesCount: 1,
+                imageCount: 1,
+                comments: [],
+                reports: [],
+                series: {
+                    '1.2.840.cached.series': {
+                        seriesInstanceUid: '1.2.840.cached.series',
+                        seriesDescription: 'Cached Series',
+                        seriesNumber: 1,
+                        modality: 'MR',
+                        comments: [],
+                        slices: [
+                            {
+                                instanceNumber: 1,
+                                sliceLocation: 0,
+                                source: { kind: 'path', path: '/external/image.dcm' },
+                            },
+                        ],
+                    },
+                },
+            },
+        };
+        const snapshotBytes = new TextEncoder().encode(
+            JSON.stringify({
+                version: 1,
+                folder: '/appdata/library',
+                savedAt: '2026-03-22T00:00:00.000Z',
+                studies: cachedStudies,
+            }),
+        );
+
+        await installMockDesktop(page, {
+            initialConfig: {
+                folder: '/slow-library',
+                lastScan: '2026-03-07T12:00:00.000Z',
+                managedLibrary: false,
+            },
+            dirs: {
+                '/slow-library': [],
+                '/appdata/library': [],
+            },
+            readDirDelayMs: 15000,
+            storedFiles: {
+                '/appdata/desktop-library-cache.json': snapshotBytes,
+            },
+        });
+
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const loaded = await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/appdata/library');
+            const notice = window.DicomViewerApp.desktopLibrary.consumeCacheRepairNotice?.();
+            return {
+                loaded,
+                notice,
+            };
+        });
+
+        expect(result.loaded).toBeNull();
+        expect(result.notice).toEqual(
+            expect.objectContaining({
+                reason: 'out-of-root-sources',
+                message: 'Library cache repaired. Re-scanning managed library...',
+                folderPath: '/appdata/library',
+                count: 1,
+            }),
+        );
+    });
+
+    test('desktop library cache refuses out-of-root source paths on save', async ({ page }) => {
+        await installMockDesktop(page);
+        await page.goto(HOME_URL);
+        await expect(page.locator('#libraryView')).toBeVisible();
+
+        const result = await page.evaluate(async () => {
+            const studies = {
+                '1.2.840.cached.study': {
+                    patientName: 'Roundtrip Patient',
+                    studyDate: '20260322',
+                    studyDescription: 'Roundtrip Study',
+                    studyInstanceUid: '1.2.840.cached.study',
+                    modality: 'MR',
+                    seriesCount: 1,
+                    imageCount: 1,
+                    comments: [],
+                    reports: [],
+                    series: {
+                        '1.2.840.cached.series': {
+                            seriesInstanceUid: '1.2.840.cached.series',
+                            seriesDescription: 'Roundtrip Series',
+                            seriesNumber: 1,
+                            modality: 'MR',
+                            comments: [],
+                            slices: [
+                                {
+                                    instanceNumber: 1,
+                                    sliceLocation: 0,
+                                    source: { kind: 'path', path: '/library/image.dcm' },
+                                },
+                            ],
+                        },
+                    },
+                },
+            };
+
+            const saved = await window.DicomViewerApp.desktopLibrary.saveCachedStudies('/library', studies);
+            const rawBefore = localStorage.getItem('mock-desktop-fs:/appdata/desktop-library-cache.json');
+            const externalStudies = structuredClone(studies);
+            externalStudies['1.2.840.cached.study'].series['1.2.840.cached.series'].slices[0].source.path =
+                '/external/image.dcm';
+            const rejectedWrite = await window.DicomViewerApp.desktopLibrary.saveCachedStudies(
+                '/library',
+                externalStudies,
+            );
+            const rawAfter = localStorage.getItem('mock-desktop-fs:/appdata/desktop-library-cache.json');
+            return {
+                saved,
+                rejectedWrite,
+                loaded: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/library'),
+                rawUnchanged: rawAfter === rawBefore,
+                rawText: rawAfter ? new TextDecoder().decode(Uint8Array.from(JSON.parse(rawAfter))) : '',
+            };
+        });
+
+        expect(result.saved).toBe(true);
+        expect(result.rejectedWrite).toBe(false);
+        expect(result.loaded).toEqual(
+            expect.objectContaining({
+                '1.2.840.cached.study': expect.objectContaining({
+                    patientName: 'Roundtrip Patient',
+                }),
+            }),
+        );
+        expect(result.rawUnchanged).toBe(true);
+        expect(result.rawText).toContain('"folder":"/library"');
+    });
+
+    test('desktop library cache round-trips compliant source paths through app data', async ({ page }) => {
         await installMockDesktop(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
