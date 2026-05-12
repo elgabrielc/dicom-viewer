@@ -28,7 +28,7 @@ claude 0/                          # Workspace/inbox - drop files here for Claud
 | `AGENT_WORKTREES_EXPLAINER.md` | Detailed beginner walkthrough of the multi-agent cleanup, why the workflow changed, and how to avoid shared-checkout collisions |
 | `RESEARCH_POLICY.md` | Policy for which benchmark and planning research belongs in git, what should stay local, and when research docs should be PRs |
 | `design/` | Persistent design handbook: bootstrap, brand system, surfaces, patterns, decisions, open questions, and session closeout template |
-| `BUGS.md` | Bug tracking and known issues |
+| `BUGS.md` | Pointer to the private bug tracker at [`elgabrielc/myradone-internal`](https://github.com/elgabrielc/myradone-internal); see CLAUDE.md for workflow |
 | `CODE_REVIEWS.md` | PR review findings and resolution tracking |
 | `DEPLOY.md` | Deployment guide: local dev, GitHub Pages, CI/CD workflow |
 | `DEVELOPMENT_PHILOSOPHY.md` | Learning guide: why branches, CI/CD, preview environments, code review exist |
@@ -208,9 +208,9 @@ dicom-viewer/
 │   ├── decisions/         # ADRs and architecture rationale
 │   ├── design/            # Persistent design handbook and closeout workflow
 │   ├── zARCHIVE/          # Timestamped snapshots before destructive edits
-│   ├── DIVERGENT_CENTRAL_GUIDE.md  # Canonical product vision and strategy
+│   ├── DIVERGENT_CENTRAL_GUIDE.md  # Pointer -- canonical doc in private myradone-internal
 │   ├── INDEX.md           # Master documentation index
-│   ├── BUGS.md            # Bug tracking
+│   ├── BUGS.md            # Pointer -- active tracking in private myradone-internal
 │   ├── DEPLOY.md          # Deployment guide
 │   ├── DEVELOPMENT_PHILOSOPHY.md  # Why we work this way
 │   └── TESTING.md         # Test documentation

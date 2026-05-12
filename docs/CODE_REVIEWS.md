@@ -2,7 +2,7 @@
 
 PR review findings and their resolution status.
 
-**Scoping**: This file tracks what was found and recommended during PR reviews (pre-merge quality gate). For bugs found in the running codebase, see [BUGS.md](BUGS.md). When a finding outlives its PR, it gets promoted to BUGS.md with a `Promoted (BUG-XXX)` status here.
+**Scoping**: This file tracks what was found and recommended during PR reviews (pre-merge quality gate). For bugs found in the running codebase, see the private [`myradone-internal`](https://github.com/elgabrielc/myradone-internal) tracker (the public [BUGS.md](BUGS.md) here is now a pointer). When a finding outlives its PR, it gets promoted to the private bug tracker with a `Promoted (BUG-XXX)` status here.
 
 ---
 

@@ -16,8 +16,7 @@ Master index of all project documentation, organized by audience and purpose.
 
 | Document | Location | Description |
 |----------|----------|-------------|
-| [Divergent Central Guide](./DIVERGENT_CENTRAL_GUIDE.md) | docs/ | Canonical product vision, market position, primary competitive benchmarks (Tier 1: MyMedicalImages, 3DICOM Patient, Falcon Mx), architecture trajectory, and roadmap |
-| [Primary Competitive Benchmarks](./DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks) | docs/ | Tier 1 / Tier 2 competitor priority and the build sequence implied by them. Anchor: MyMedicalImages -- reach parity ASAP, then surpass |
+| [Divergent Central Guide](./DIVERGENT_CENTRAL_GUIDE.md) | docs/ | Pointer file -- canonical product/strategy doc now lives in the private [`myradone-internal`](https://github.com/elgabrielc/myradone-internal) repo |
 | [Companies Researched](./planning/COMPANIES-RESEARCHED.md) | docs/planning/ | Running roster of every company / product / platform researched or cited in this project. The "have we looked at X?" reference |
 
 ### For Users
@@ -45,7 +44,7 @@ Master index of all project documentation, organized by audience and purpose.
 | [Design Handbook](./design/README.md) | docs/design/ | Persistent product and brand design canon: bootstrap, brand system, surfaces, decisions, and closeout workflow |
 | [Deployment Guide](./DEPLOY.md) | docs/ | Local development, GitHub Pages, custom domains, troubleshooting |
 | [Contributing](../CONTRIBUTING.md) | Root | Code style, git workflow, pull request process, issue templates |
-| [Bug Tracking](./BUGS.md) | docs/ | Known issues, resolved bugs with root cause analysis, bug template |
+| [Bug Tracking](./BUGS.md) | docs/ | Pointer file -- active bug tracking lives in the private [`myradone-internal`](https://github.com/elgabrielc/myradone-internal) repo |
 | [Code Reviews](./CODE_REVIEWS.md) | docs/ | PR review findings, severity grouping, and resolution status |
 | [Desktop Library Diagnostics](./desktop-library-diagnostics.md) | docs/ | Quick reference for rerunning desktop library scan diagnostics |
 | [Changelog](../CHANGELOG.md) | Root | Version history and release notes |
@@ -144,7 +143,7 @@ docs/
 ├── CONFIG.md              # Configuration reference
 ├── DEPLOY.md              # Deployment guide
 ├── TESTING.md             # Testing documentation
-├── BUGS.md                # Bug tracking
+├── BUGS.md                # Pointer to private bug tracker (elgabrielc/myradone-internal)
 ├── CODE_REVIEWS.md        # PR review findings and resolution status
 ├── desktop-library-diagnostics.md  # Desktop library scan diagnostics reference
 ├── planning/              # Planning and research documents
@@ -284,7 +283,7 @@ Operational rules for running multiple AI coding sessions in parallel. Defines t
 Beginner-friendly walkthrough of the cleanup that led to the current workflow. Explains what went wrong with shared dirty state, why commits beat stashes here, why worktrees must live outside the repo root, and how to reason about multi-agent Git safety.
 
 **BUGS.md**
-Bug tracking with full context. Each bug includes how it was encountered, root cause analysis, solution, why that solution was chosen, and prevention controls. Uses a standard template for consistency.
+Pointer file. Active bug tracking moved to the private companion repo [`elgabrielc/myradone-internal`](https://github.com/elgabrielc/myradone-internal) on 2026-05-11. The private repo holds the durable `BUGS.md` (with full context: encounter, root cause, solution, rationale, prevention) and the paired GitHub Issues tracker. External contributor bug reports still use public Issues on this repo.
 
 **docs/design/**
 Persistent design handbook. Holds the canonical design bootstrap, brand system,
@@ -325,7 +324,7 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 | CONFIG.md | New configuration options |
 | DEPLOY.md | Deployment process changes |
 | TESTING.md | New test patterns, helper functions |
-| BUGS.md | Bug discovery and resolution |
+| BUGS.md (private repo) | Bug discovery and resolution -- tracked in [`myradone-internal`](https://github.com/elgabrielc/myradone-internal) |
 | SITEMAP.md | File structure changes |
 | INDEX.md | New documentation files |
 | docs/decisions/README.md and ADR-*.md | New significant decisions, status transitions, or superseding prior decisions |
@@ -333,7 +332,7 @@ Architecture Decision Records for significant choices. ADRs capture context, dec
 ### Documentation Requirements (from CLAUDE.md)
 
 - Keep SITEMAP.md accurate when project structure changes
-- Track bugs in BUGS.md with full context (symptoms, root cause, solution, prevention)
+- Track bugs in the private [`myradone-internal`](https://github.com/elgabrielc/myradone-internal) repo with full context (symptoms, root cause, solution, prevention)
 - Record major decisions and rationale in ADRs under `docs/decisions/`
 - Document "why" not just "what" - future developers need context
 

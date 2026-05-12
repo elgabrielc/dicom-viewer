@@ -379,7 +379,7 @@ Merging to `main` triggers:
 
 4. **Update documentation if needed**
    - Update `docs/planning/SITEMAP.md` for structural changes
-   - Add entries to `docs/BUGS.md` if fixing bugs
+   - For maintainers: log bug fixes in the private [`myradone-internal`](https://github.com/elgabrielc/myradone-internal) tracker. External contributors: open a GitHub Issue on this repo (see "Reporting Issues" below)
 
 ### Submitting a PR
 
@@ -413,7 +413,7 @@ Merging to `main` triggers:
 
 ### Bug Reports
 
-Create an issue using this format (based on `docs/BUGS.md` template):
+Create an issue using this format (mirrors the internal bug template used in the maintainers' private tracker):
 
 ```markdown
 ### Summary

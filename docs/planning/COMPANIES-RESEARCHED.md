@@ -16,7 +16,7 @@ A running, durable index of every company, product, or platform that has been re
 
 ## Strategic Priority Anchors
 
-Cross-reference: see [DIVERGENT_CENTRAL_GUIDE.md → Primary Competitive Benchmarks](../DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks) for the canonical Tier 1 / Tier 2 ranking. The list below is the broader competitive and reference universe; the Central Guide names which of these are operationally load-bearing.
+Cross-reference: see [Central Guide → Primary Competitive Benchmarks](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks) (private repo) for the canonical Tier 1 / Tier 2 ranking. The list below is the broader competitive and reference universe; the Central Guide names which of these are operationally load-bearing.
 
 ---
 
@@ -52,11 +52,11 @@ Cross-reference: see [DIVERGENT_CENTRAL_GUIDE.md → Primary Competitive Benchma
 | **Ambra Health** (now Intelerad) | Web-based zero-footprint viewer, 510(k) cleared; measurement and reports reference | [Measurement tool](RESEARCH-measurement-tool.md), [Ambra Reports](RESEARCH-ambra-reports_2026-02-02.md) |
 | **NilRead** | Web-based zero-footprint diagnostic viewer; measurement reference | [Measurement tool](RESEARCH-measurement-tool.md) |
 | **AWS HealthLake Imaging** | HTJ2K + DICOMweb + OIDC reference; informs cloud Transport layer ([ADR 004](../decisions/004-cloud-platform-rendering-architecture.md)) | [HealthLake Imaging](RESEARCH-aws-healthlake-imaging.md) |
-| **Google Healthcare Imaging API** | DICOMweb + HTJ2K at hyperscale; Transport layer benchmark | Cited in [Central Guide → Reference Architecture](../DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) |
+| **Google Healthcare Imaging API** | DICOMweb + HTJ2K at hyperscale; Transport layer benchmark | Cited in [Central Guide → Reference Architecture](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) (private) |
 | **EasyRadiology AG** | 35% German market share; competitor analysis | [EasyRadiology research](RESEARCH-easyradiology.md) |
 | **Horos** | Mature macOS desktop DICOM viewer; library-management and update pattern reference | [Horos library](RESEARCH-horos-library-management.md), [Horos updates](RESEARCH-horos-updates.md), [Horos library model](RESEARCH-horos-library-model-prompt_2026-03-27_2021.md) |
 | **OsiriX / OsiriX MD** | Commercial fork of Horos; Cocoa-based; mentioned in 3D and update research | [3D benchmarks](RESEARCH-3d-volume-rendering-benchmarks.md), [Horos updates](RESEARCH-horos-updates.md) |
-| **Cornerstone3D** | Client-side DICOM rendering library powering OHIF and many web viewers | Cited in [Central Guide → Reference Architecture](../DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) |
+| **Cornerstone3D** | Client-side DICOM rendering library powering OHIF and many web viewers | Cited in [Central Guide → Reference Architecture](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) (private) |
 | **vtk.js / VTK** | Volume rendering library backed by Kitware (NIH-funded) | [3D benchmarks](RESEARCH-3d-volume-rendering-benchmarks.md) |
 | **3D Slicer** | Open-source desktop medical imaging platform; VTK/ITK foundation | [3D benchmarks](RESEARCH-3d-volume-rendering-benchmarks.md) |
 
@@ -91,8 +91,8 @@ Cross-reference: see [DIVERGENT_CENTRAL_GUIDE.md → Primary Competitive Benchma
 | **Apple Photos** | Library-character benchmark (warm consumer lineage) | Cited in [Central Guide](../DIVERGENT_CENTRAL_GUIDE.md) |
 | **Dropbox** | Cloud storage / opt-in sync model reference | Cited in [Central Guide](../DIVERGENT_CENTRAL_GUIDE.md) |
 | **Google Drive** | "Stream" vs "Mirror" mode reference for opt-in offline pinning | Cited in [Central Guide](../DIVERGENT_CENTRAL_GUIDE.md) |
-| **Netflix** | Ephemeral working-set state benchmark | Cited in [Central Guide → Reference Architecture](../DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) |
-| **Spotify** | Opt-in offline pinning UX reference | Cited in [Central Guide → Reference Architecture](../DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) |
+| **Netflix** | Ephemeral working-set state benchmark | Cited in [Central Guide → Reference Architecture](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) (private) |
+| **Spotify** | Opt-in offline pinning UX reference | Cited in [Central Guide → Reference Architecture](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#reference-architecture) (private) |
 | **Figma** | Large-document streaming + CRDT-style collaborative metadata; closest cross-domain analog for our two-domain split | Cited in [Central Guide](../DIVERGENT_CENTRAL_GUIDE.md) |
 | **Linear** | Local-first-with-cloud-sync product pattern reference | Cited in [Central Guide](../DIVERGENT_CENTRAL_GUIDE.md) |
 | **Notion** | Web-first cloud product pattern reference | Cited in [Central Guide](../DIVERGENT_CENTRAL_GUIDE.md) |
@@ -159,6 +159,6 @@ Cross-reference: see [DIVERGENT_CENTRAL_GUIDE.md → Primary Competitive Benchma
 
 1. When new research adds a company or product, add a row in the appropriate category. If a category doesn't fit, add a new section (and update the table of contents above).
 2. Cite the primary research doc in the row. If a company appears across multiple research docs, list the most relevant one and note "and others" if needed.
-3. Strategic priority changes (e.g., a Tier 2 competitor moves to Tier 1) require updating BOTH this file and [DIVERGENT_CENTRAL_GUIDE.md → Primary Competitive Benchmarks](../DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks).
+3. Strategic priority changes (e.g., a Tier 2 competitor moves to Tier 1) require updating BOTH this file and the [Central Guide → Primary Competitive Benchmarks](https://github.com/elgabrielc/myradone-internal/blob/main/DIVERGENT_CENTRAL_GUIDE.md#primary-competitive-benchmarks) section in the private `myradone-internal` repo.
 4. Do not delete entries -- mark `[archived]` if a company falls out of relevance, so institutional memory survives.
 5. This file is the canonical roster. The Central Guide names which subset is operationally load-bearing.
