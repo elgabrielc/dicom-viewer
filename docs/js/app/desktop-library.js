@@ -3,23 +3,62 @@
     window.DicomViewerApp = app;
     const notesApi = window.NotesAPI;
     const LEGACY_LIBRARY_CONFIG_KEY = 'dicom-viewer-library-config';
+    const normalizeDesktopConfig = window._NotesDesktop?.normalizeDesktopLibraryConfig;
 
-    function normalizeDesktopConfig(config) {
+    if (typeof normalizeDesktopConfig !== 'function') {
+        throw new Error('Desktop library config normalizer is unavailable.');
+    }
+
+    function normalizeComparablePath(path) {
+        return String(path || '')
+            .replace(/\\/g, '/')
+            .replace(/\/+$/g, '');
+    }
+
+    function isPathInsideRoot(path, rootPath) {
+        const normalizedPath = normalizeComparablePath(path);
+        const normalizedRoot = normalizeComparablePath(rootPath);
+        return !!(
+            normalizedPath &&
+            normalizedRoot &&
+            (normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`))
+        );
+    }
+
+    function findOutOfRootStudySources(studies, rootPath) {
+        const violations = [];
+        for (const [studyUid, study] of Object.entries(studies || {})) {
+            for (const series of Object.values(study?.series || {})) {
+                for (const slice of series?.slices || []) {
+                    const source = slice?.source;
+                    if (source?.kind !== 'path' || !isPathInsideRoot(source.path, rootPath)) {
+                        return [
+                            {
+                                studyUid,
+                                sourceKind: source?.kind || '',
+                                path: source?.path || '',
+                            },
+                        ];
+                    }
+                }
+            }
+        }
+        return violations;
+    }
+
+    function canImportToManagedLibrary() {
+        return !!(
+            typeof app.desktopLibrary?.runImport === 'function' &&
+            typeof app.importPipeline?.getLibraryPath === 'function' &&
+            typeof app.importPipeline?.importFromPaths === 'function'
+        );
+    }
+
+    function createCacheRepairNotice(reason, details = {}) {
         return {
-            folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
-            lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
-            managedLibrary: config?.managedLibrary !== false,
-            importHistory: Array.isArray(config?.importHistory)
-                ? config.importHistory.filter(
-                      (entry) =>
-                          entry &&
-                          typeof entry === 'object' &&
-                          typeof entry.sourcePath === 'string' &&
-                          typeof entry.importedAt === 'string' &&
-                          typeof entry.fileCount === 'number' &&
-                          typeof entry.studyCount === 'number',
-                  )
-                : [],
+            reason,
+            message: 'Library cache repaired. Re-scanning managed library...',
+            ...details,
         };
     }
 
@@ -42,6 +81,15 @@
         SCAN_TIMING_KEY: 'dicom-viewer-debug-scan-timing',
         SNAPSHOT_VERSION: 1,
         SNAPSHOT_FILENAME: 'desktop-library-cache.json',
+        _lastCacheRepairNotice: null,
+
+        canImportToManagedLibrary,
+
+        consumeCacheRepairNotice() {
+            const notice = this._lastCacheRepairNotice;
+            this._lastCacheRepairNotice = null;
+            return notice;
+        },
 
         getRuntime() {
             const tauri = window.__TAURI__;
@@ -128,6 +176,7 @@
         },
 
         async loadCachedStudies(folderPath) {
+            this._lastCacheRepairNotice = null;
             if (!folderPath) {
                 return null;
             }
@@ -153,6 +202,20 @@
                 if (!payload?.studies || typeof payload.studies !== 'object') {
                     return null;
                 }
+                const outOfRootSources = findOutOfRootStudySources(payload.studies, folderPath);
+                if (outOfRootSources.length > 0) {
+                    this._lastCacheRepairNotice = createCacheRepairNotice('out-of-root-sources', {
+                        folderPath,
+                        count: outOfRootSources.length,
+                        sample: outOfRootSources,
+                    });
+                    console.warn('DesktopLibrary: cached library snapshot references files outside its folder:', {
+                        folderPath,
+                        count: outOfRootSources.length,
+                        sample: outOfRootSources,
+                    });
+                    return null;
+                }
                 return payload.studies;
             } catch (error) {
                 console.warn('DesktopLibrary: failed to read cached library snapshot:', error);
@@ -162,7 +225,16 @@
 
         async saveCachedStudies(folderPath, studies) {
             if (!folderPath) {
-                return;
+                return false;
+            }
+
+            const outOfRootSources = findOutOfRootStudySources(studies, folderPath);
+            if (outOfRootSources.length > 0) {
+                console.warn('DesktopLibrary: refusing to cache studies outside the library folder:', {
+                    folderPath,
+                    sample: outOfRootSources,
+                });
+                return false;
             }
 
             const tauri = this.getRuntime();
@@ -175,6 +247,7 @@
             };
             const bytes = new TextEncoder().encode(`${JSON.stringify(payload)}\n`);
             await tauri.fs.writeFile(snapshotPath, bytes);
+            return true;
         },
 
         async writeScanTimingReport(report) {
@@ -260,8 +333,8 @@
             const tauri = this.getRuntime();
             const state = app.state;
 
-            if (state.managedLibrary) {
-                // In managed library mode, picking a folder triggers an import
+            if (this.canImportToManagedLibrary()) {
+                // Picking a folder in the desktop app imports it into the managed library.
                 const selected = await tauri.dialog.open({
                     directory: true,
                     recursive: true,
@@ -283,7 +356,7 @@
                 return folder;
             }
 
-            // Direct scan mode: existing behavior
+            // Browser-only/test fallback for environments without the import pipeline.
             const selected = await tauri.dialog.open({
                 directory: true,
                 recursive: true,

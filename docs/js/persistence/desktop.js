@@ -53,7 +53,7 @@ const _NotesDesktop = (() => {
         return {
             folder: typeof config?.folder === 'string' && config.folder ? config.folder : null,
             lastScan: typeof config?.lastScan === 'string' && config.lastScan ? config.lastScan : null,
-            managedLibrary: config?.managedLibrary !== false,
+            managedLibrary: true,
             importHistory: Array.isArray(config?.importHistory)
                 ? config.importHistory.filter(
                       (entry) =>
@@ -1119,6 +1119,7 @@ const _NotesDesktop = (() => {
     return {
         DesktopBackend,
         initializeDesktopStorage,
+        normalizeDesktopLibraryConfig,
         loadDesktopLibraryConfig,
         saveDesktopLibraryConfig,
         loadDesktopScanCache,

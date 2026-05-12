@@ -72,7 +72,7 @@
         importInProgress: false,
         importProgress: null, // {phase, discovered, processed, copied, skipped, invalid, errors, collisions, currentPath}
         importResult: null, // {imported, skipped, invalid, errors, collisions, duration}
-        managedLibrary: false, // mirrors config.managedLibrary
+        managedLibrary: false, // desktop managed-library mode once config loads
         studySort: { column: 'date', direction: 'desc' },
         currentTool: 'wl',
         viewTransform: { panX: 0, panY: 0, zoom: 1 },

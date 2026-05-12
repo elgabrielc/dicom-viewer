@@ -1417,10 +1417,10 @@ test.describe('Desktop import integration', () => {
     });
 
     // -----------------------------------------------------------------------
-    // Test 2: Drop does NOT trigger import when managedLibrary is false
+    // Test 2: stale managedLibrary=false config is upgraded to managed imports
     // -----------------------------------------------------------------------
 
-    test('standard scan path does not write to managed library when managedLibrary is false', async ({ page }) => {
+    test('stale managedLibrary false config still routes Tauri drops through managed import', async ({ page }) => {
         const dicomBytes = buildSyntheticDicomBytes({
             studyInstanceUid: '1.2.study.scan.1',
             seriesInstanceUid: '1.2.series.scan.1',
@@ -1435,8 +1435,8 @@ test.describe('Desktop import integration', () => {
                 managedLibrary: false,
                 importHistory: [],
             },
-            // Supply the same file as both a manifest entry (for importFromPaths)
-            // and as readFileBytes so the standard scan path can read it
+            // Supply the same file as both a manifest entry and readFileBytes
+            // so the stale false config can still flow through managed import.
             manifestEntries: [
                 {
                     path: '/source/scan1.dcm',
@@ -1449,39 +1449,63 @@ test.describe('Desktop import integration', () => {
             readFileBytes: {
                 '/source/scan1.dcm': dicomBytes,
             },
+            dirs: {
+                [LIBRARY_ROOT]: [
+                    {
+                        name: '1.2.study.scan.1',
+                        isFile: false,
+                        isDirectory: true,
+                        children: [
+                            {
+                                name: '1.2.series.scan.1',
+                                isFile: false,
+                                isDirectory: true,
+                                children: [
+                                    {
+                                        name: '1.2.sop.scan.1.dcm',
+                                        isFile: true,
+                                        isDirectory: false,
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
         });
 
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
+        await page.waitForFunction(() => typeof window.__capturedDragDropHandler === 'function');
 
-        // Verify managedLibrary is false
         const configCheck = await page.evaluate(async () => {
             const config = await window.DicomViewerApp.desktopLibrary.getConfig();
             return config.managedLibrary;
         });
-        expect(configCheck).toBe(false);
+        expect(configCheck).toBe(true);
 
-        // When managedLibrary is false, the app should NOT call importFromPaths.
-        // Verify that calling importFromPaths is what writes to the library path,
-        // and that simply reading the manifest without importing does not.
-        const result = await page.evaluate(async () => {
-            // Read the manifest entries (what read_scan_manifest returns) to
-            // confirm they exist, but do NOT call importFromPaths. This simulates
-            // the non-managed-library flow where files are scanned in place.
-            const invoke = window.__TAURI__.core.invoke;
-            const manifest = await invoke('read_scan_manifest', { roots: ['/source'], maxDepth: 20 });
-            const state = window.__importMockState;
-            return {
-                manifestCount: manifest.length,
-                writeFileCalls: state.writeFileCalls.filter((call) => call.path.startsWith('/mock-app-data/library')),
-            };
+        await page.evaluate(() => {
+            window.__capturedDragDropHandler({
+                payload: {
+                    type: 'drop',
+                    paths: ['/source'],
+                },
+            });
         });
 
-        // Files exist in the source folder
-        expect(result.manifestCount).toBe(1);
+        await page.waitForFunction(
+            (libraryRoot) => window.__importMockState.writeFileCalls.some((call) => call.path.startsWith(libraryRoot)),
+            LIBRARY_ROOT,
+        );
 
-        // No files should have been written to the managed library path
-        expect(result.writeFileCalls).toHaveLength(0);
+        const result = await page.evaluate((libraryRoot) => {
+            const state = window.__importMockState;
+            return {
+                writeFileCalls: state.writeFileCalls.filter((call) => call.path.startsWith(libraryRoot)),
+            };
+        }, LIBRARY_ROOT);
+
+        expect(result.writeFileCalls).toHaveLength(1);
     });
 
     // -----------------------------------------------------------------------

@@ -137,7 +137,7 @@ Migration from v1 requires care. A user with a large library folder could face a
 
 1. On first launch with a v1 config, the app detects the old `folder` value and shows a migration prompt -- not an auto-import.
 2. **Preflight check**: Calculate total size of DICOM files in the old folder. Show the user: "Your library at [path] contains N files (X GB). Importing will copy these into the app's managed folder, using approximately X GB of additional disk space. Available disk: Y GB."
-3. **User confirms** before any copying begins. If they decline, the app continues with the old reference-in-place behavior until they're ready.
+3. **User confirms** before any copying begins. If they decline, the app does not import that source. Reference-in-place mode is not a supported long-term desktop library state.
 4. **Resumable import**: If the import is interrupted (crash, quit, power loss), it picks up where it left off on next launch. Files already copied are detected by the dedup check.
 5. After successful import, the v2 config is persisted. The old folder is untouched -- the user can delete it manually if they want to reclaim space.
 
@@ -249,3 +249,5 @@ Negative:
 4. **[P2] "Indexed in SQLite" was vague.** `addSliceToStudies()` is an in-memory assembler, not a persistent index. Fixed: added Metadata Index section clarifying the flow (SQLite scan cache -> in-memory assembly -> UI display) and confirming `desktop_scan_cache` is sufficient for v1.
 
 5. **[P3] "No offline drive problems" overstated.** If `libraryPath` is configured to an external drive, that drive must be mounted. Fixed: qualified the claim in Consequences.
+
+**BUG-013 hardening (2026-05-12):** Stale `managedLibrary: false` desktop config values are normalized back to managed mode, Tauri folder drops prefer the import pipeline whenever it is available, and cached library snapshots are rejected if any slice source points outside the snapshot folder. This closes the copy-on-import bypass and adds a startup cache invariant check.

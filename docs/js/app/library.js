@@ -295,7 +295,7 @@
                     return;
                 }
 
-                if (state.managedLibrary) {
+                if (app.desktopLibrary?.canImportToManagedLibrary?.()) {
                     // Import already ran inside pickAndSetFolder; now rescan the managed library
                     const libraryPath = await app.importPipeline.getLibraryPath();
                     const studies = await app.desktopLibrary.loadStudies(libraryPath, {
