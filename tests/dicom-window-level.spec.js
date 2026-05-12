@@ -199,3 +199,59 @@ test('decodeNative auto-windows DX images when native W/L only echoes the stored
     expect(result.windowWidth).not.toBe(65536);
     expect(result.windowWidth).toBeLessThan(10000);
 });
+
+test('decodeNative keeps meaningful native W/L when stored W/L is a placeholder', async ({ page }) => {
+    await page.goto(HOME_URL);
+
+    const result = await page.evaluate((pixelValues) => {
+        const app = window.DicomViewerApp;
+        const pixels = Uint16Array.from(pixelValues);
+
+        app.desktopDecode.decodeFrameWithPixels = async () => ({
+            pixelData: pixels.slice(),
+            rows: 10,
+            cols: 10,
+            bitsAllocated: 16,
+            bitsStored: 16,
+            pixelRepresentation: 0,
+            samplesPerPixel: 1,
+            planarConfiguration: 0,
+            photometricInterpretation: 'MONOCHROME2',
+            windowCenter: 1500,
+            windowWidth: 2000,
+            rescaleSlope: 1,
+            rescaleIntercept: 0,
+        });
+
+        const dataSet = {
+            string(tag) {
+                const values = {
+                    x00020010: '1.2.840.10008.1.2.1',
+                    x00080060: 'DX',
+                    x00280004: 'MONOCHROME2',
+                    x00281050: '32767',
+                    x00281051: '65536',
+                    x00281052: '0',
+                    x00281053: '1',
+                };
+                return values[tag] || '';
+            },
+            uint16(tag) {
+                const values = {
+                    x00280101: 16,
+                };
+                return values[tag];
+            },
+        };
+
+        return app.rendering.decodeNative(dataSet, '/mock/native-window-dx.dcm', 0).then((decoded) => ({
+            windowCenter: decoded.windowCenter,
+            windowWidth: decoded.windowWidth,
+            isBlank: decoded.isBlank,
+        }));
+    }, DX_PIXEL_VALUES);
+
+    expect(result.isBlank).toBe(false);
+    expect(result.windowCenter).toBe(1500);
+    expect(result.windowWidth).toBe(2000);
+});

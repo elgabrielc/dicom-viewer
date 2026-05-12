@@ -27,6 +27,7 @@
         ['1.2.840.10008.1.2.4.90', new Set(['RF', 'XA'])],
         ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])],
     ]);
+    // MG only auto-WLs when no explicit producer W/L survives; MQSA compliance depends on producer-supplied values.
     const AUTO_WL_MODALITIES = new Set(['MR', 'PT', 'NM', 'DX', 'CR', 'MG', 'XA', 'RF']);
     const DEBUG_DECODE_MODE_STORAGE_KEY = 'dicom-viewer-debug-decode-mode';
     const DEBUG_PRELOAD_MODE_STORAGE_KEY = 'dicom-viewer-debug-preload-mode';
