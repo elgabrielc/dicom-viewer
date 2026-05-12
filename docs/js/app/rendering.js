@@ -13,6 +13,7 @@
         getNumberOfFrames,
         getTransferSyntaxInfo,
         getModalityDefaults,
+        isPlaceholderWindowLevel,
         calculateAutoWindowLevel,
         isBlankSlice,
         displayBlankSlice,
@@ -26,6 +27,8 @@
         ['1.2.840.10008.1.2.4.90', new Set(['RF', 'XA'])],
         ['1.2.840.10008.1.2.4.91', new Set(['RF', 'XA'])],
     ]);
+    // MG only auto-WLs when no explicit producer W/L survives; MQSA compliance depends on producer-supplied values.
+    const AUTO_WL_MODALITIES = new Set(['MR', 'PT', 'NM', 'DX', 'CR', 'MG', 'XA', 'RF']);
     const DEBUG_DECODE_MODE_STORAGE_KEY = 'dicom-viewer-debug-decode-mode';
     const DEBUG_PRELOAD_MODE_STORAGE_KEY = 'dicom-viewer-debug-preload-mode';
     let desktopDebugSettings = {
@@ -482,12 +485,45 @@
         };
     }
 
-    function resolveWindowLevel(dataSet, modality, preferredWindowCenter = null, preferredWindowWidth = null) {
+    function resolveWindowLevel(
+        dataSet,
+        modality,
+        preferredWindowCenter = null,
+        preferredWindowWidth = null,
+        bitsStored = null,
+        pixelRepresentation = 0,
+        rescaleSlope = 1,
+        rescaleIntercept = 0,
+    ) {
         const modalityDefaults = getModalityDefaults(modality);
         const storedWindowCenter = getOptionalNumber(dataSet, 'x00281050'); // (0028,1050)
         const storedWindowWidth = getOptionalNumber(dataSet, 'x00281051'); // (0028,1051)
-        const hasPreferredWindowLevel = Number.isFinite(preferredWindowCenter) && Number.isFinite(preferredWindowWidth);
-        const hasStoredWindowLevel = Number.isFinite(storedWindowCenter) && Number.isFinite(storedWindowWidth);
+        let hasPreferredWindowLevel = Number.isFinite(preferredWindowCenter) && Number.isFinite(preferredWindowWidth);
+        let hasStoredWindowLevel = Number.isFinite(storedWindowCenter) && Number.isFinite(storedWindowWidth);
+        const preferredEchoesStored =
+            hasPreferredWindowLevel &&
+            hasStoredWindowLevel &&
+            preferredWindowCenter === storedWindowCenter &&
+            preferredWindowWidth === storedWindowWidth;
+
+        if (
+            hasStoredWindowLevel &&
+            (!hasPreferredWindowLevel || preferredEchoesStored) &&
+            isPlaceholderWindowLevel(
+                storedWindowCenter,
+                storedWindowWidth,
+                bitsStored,
+                pixelRepresentation,
+                rescaleSlope,
+                rescaleIntercept,
+            )
+        ) {
+            hasStoredWindowLevel = false;
+            if (preferredEchoesStored) {
+                hasPreferredWindowLevel = false;
+            }
+        }
+
         const hasWindowLevel = hasPreferredWindowLevel || hasStoredWindowLevel;
 
         let windowCenter = hasPreferredWindowLevel ? preferredWindowCenter : storedWindowCenter;
@@ -546,11 +582,7 @@
         }
 
         let { windowCenter, windowWidth } = decoded;
-        if (
-            !hasWindowLevel &&
-            decoded.samplesPerPixel === 1 &&
-            (decoded.modality === 'MR' || decoded.modality === 'PT' || decoded.modality === 'NM')
-        ) {
+        if (!hasWindowLevel && decoded.samplesPerPixel === 1 && AUTO_WL_MODALITIES.has(decoded.modality)) {
             const autoWL = calculateAutoWindowLevel(decoded.pixelData, decoded.rescaleSlope, decoded.rescaleIntercept);
             windowCenter = autoWL.windowCenter;
             windowWidth = autoWL.windowWidth;
@@ -703,7 +735,16 @@
         const rescaleIntercept = getNumber(dataSet, 'x00281052', 0); // (0028,1052)
 
         // Window/level for display - use modality-appropriate defaults
-        const { windowCenter, windowWidth, hasWindowLevel } = resolveWindowLevel(dataSet, modality);
+        const { windowCenter, windowWidth, hasWindowLevel } = resolveWindowLevel(
+            dataSet,
+            modality,
+            null,
+            null,
+            bitsStored,
+            pixelRepresentation,
+            rescaleSlope,
+            rescaleIntercept,
+        );
 
         // Extract pixel spacing for measurement calibration
         const pixelSpacing = app.tools.extractPixelSpacing(dataSet);
@@ -873,18 +914,22 @@
         const pixelRepresentation = Number(nativeDecoded.pixelRepresentation);
         const samplesPerPixel = Number(nativeDecoded.samplesPerPixel || 1);
         const planarConfiguration = Number(nativeDecoded.planarConfiguration || 0);
-        const { windowCenter, windowWidth, hasWindowLevel } = resolveWindowLevel(
-            dataSet,
-            modality,
-            nativeDecoded.windowCenter,
-            nativeDecoded.windowWidth,
-        );
         const rescaleSlope = Number.isFinite(nativeDecoded.rescaleSlope)
             ? nativeDecoded.rescaleSlope
             : getNumber(dataSet, 'x00281053', 1);
         const rescaleIntercept = Number.isFinite(nativeDecoded.rescaleIntercept)
             ? nativeDecoded.rescaleIntercept
             : getNumber(dataSet, 'x00281052', 0);
+        const { windowCenter, windowWidth, hasWindowLevel } = resolveWindowLevel(
+            dataSet,
+            modality,
+            nativeDecoded.windowCenter,
+            nativeDecoded.windowWidth,
+            bitsStored,
+            pixelRepresentation,
+            rescaleSlope,
+            rescaleIntercept,
+        );
         const decoded = {
             pixelData: nativeDecoded.pixelData,
             rows,

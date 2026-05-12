@@ -8,6 +8,9 @@ Copyright 2026 Divergent Health Technologies
 
 ## [Unreleased]
 
+### Fixed
+- DX/CR radiographs with full-range placeholder W/L now use pixel-statistics auto W/L instead of rendering washed out (BUG-012)
+
 ## [2026-04-10]
 
 ### Added
