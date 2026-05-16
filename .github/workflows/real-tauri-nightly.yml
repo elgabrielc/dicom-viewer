@@ -47,6 +47,7 @@ jobs:
         run: npm run test:real-tauri
         env:
           CI: true
+          DICOM_REAL_TAURI_PORT: '15320'
 
       - name: Upload real Tauri diagnostics
         uses: actions/upload-artifact@v4

@@ -48,7 +48,7 @@ function recordVersions() {
             `macos=${runVersionCommand('sw_vers', ['-productVersion'])}`,
             `rustc=${runVersionCommand('rustc', ['--version'])}`,
             `cargo=${runVersionCommand('cargo', ['--version'])}`,
-            `tauri=${runVersionCommand('npm', ['run', 'tauri', '--', '--version'], DESKTOP_DIR)}`,
+            `tauri=${runVersionCommand('npx', ['tauri', '--version'], DESKTOP_DIR)}`,
         ].join('\n'),
     );
 }
@@ -71,6 +71,7 @@ function terminateProcessTree(child) {
     try {
         process.kill(-child.pid, 'SIGTERM');
     } catch (_error) {
+        // detached: true makes the child a process-group leader on Unix; fall back if the platform refuses group signaling.
         try {
             child.kill('SIGTERM');
         } catch {}
@@ -136,10 +137,9 @@ test.describe('real Tauri desktop launch smoke', () => {
             appendDiagnostic('app-stderr.log', text);
         });
 
-        captureScreenshot('startup.png');
-
         try {
             const startupOutput = await waitForStartup(child, () => `${stdout}\n${stderr}`);
+            captureScreenshot('startup.png');
             expect(startupOutput).toContain(`[startup] bundle identifier: ${DEV_IDENTIFIER}`);
             expect(startupOutput).toContain(`Application Support/${DEV_IDENTIFIER}`);
 
