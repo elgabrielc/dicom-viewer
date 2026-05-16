@@ -8,6 +8,7 @@ DOCS_DIR="$(cd "${DESKTOP_DIR}/../docs" && pwd)"
 DEV_HOST="${DICOM_DESKTOP_DEV_HOST:-127.0.0.1}"
 DEV_PORT="${DICOM_DESKTOP_DEV_PORT:-1420}"
 DEV_URL="http://${DEV_HOST}:${DEV_PORT}/"
+PROD_APP_SUPPORT_DIR="${HOME}/Library/Application Support/health.divergent.dicomviewer"
 WEB_SERVER_PID=""
 
 require_command() {
@@ -42,6 +43,22 @@ PY
 
 desktop_binary_running() {
     pgrep -f "${DESKTOP_DIR}/src-tauri/target[^/]*/debug/dicom-viewer-desktop" >/dev/null 2>&1
+}
+
+warn_about_shared_prod_state() {
+    if [[ ! -d "$PROD_APP_SUPPORT_DIR" ]]; then
+        return 0
+    fi
+
+    cat >&2 <<EOF
+Note: existing production app data is present at:
+  ${PROD_APP_SUPPORT_DIR}
+
+Dev builds now use health.divergent.dicomviewer.dev instead. Treat the
+production directory above as shared production state; back it up before
+manual repair, and only clean up old dev experiments after identifying exactly
+which files belong to that experiment.
+EOF
 }
 
 listener_command() {
@@ -124,6 +141,9 @@ require_command pgrep
 
 clear_stale_dev_server_if_needed
 
+TAURI_CONFIG_VALUE="$(dev_tauri_config)"
+warn_about_shared_prod_state
+
 cd "$DESKTOP_DIR"
 python3 -m http.server "$DEV_PORT" --bind "$DEV_HOST" --directory "$DOCS_DIR" &
 WEB_SERVER_PID="$!"
@@ -133,5 +153,5 @@ wait_for_dev_server
 
 echo "Launching desktop app..."
 CARGO_TARGET_DIR="${DESKTOP_DIR}/src-tauri/target-dev" \
-TAURI_CONFIG="$(dev_tauri_config)" \
+TAURI_CONFIG="$TAURI_CONFIG_VALUE" \
     cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --color always -- "$@"
