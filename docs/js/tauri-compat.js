@@ -369,11 +369,8 @@
             if (!promise || typeof promise.then !== 'function') continue;
             promise
                 .then((resolved) => {
-                    if (validator(resolved)) {
-                        readyRuntime = resolved;
-                        return;
-                    }
-                    readyRuntime = resolveDesktopRuntime(validator);
+                    const runtime = validator(resolved) ? resolved : resolveDesktopRuntime(validator);
+                    if (runtime) readyRuntime = runtime;
                 })
                 .catch(() => {});
         }
