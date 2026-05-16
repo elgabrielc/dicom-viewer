@@ -109,6 +109,9 @@ metadata such as the app menu label.
   channel's updater endpoint config from the merged Tauri config. The Rust
   updater plugin is still registered, but the dev channel has no production
   update endpoint configured.
+- The secure auth store uses the compiled bundle identifier as its Keychain
+  service name. Production continues to use `health.divergent.dicomviewer`; dev
+  uses `health.divergent.dicomviewer.dev`.
 - The full `windows[0]` block is repeated in the overlay because JSON merge
   behavior for arrays replaces the window entry rather than merging individual
   fields.
@@ -136,6 +139,11 @@ Tradeoffs:
 - Keychain and secure-store entries are channel-specific because the bundle
   identifier changes. This is desirable for isolation but should not surprise
   anyone testing credentials.
+- Any developer who previously launched dev builds before this ADR should treat
+  `~/Library/Application Support/health.divergent.dicomviewer/` as shared
+  production state. Back up that directory before manual repair, and clean up
+  old dev experiments only after identifying exactly which files belong to the
+  experiment.
 - If the dev channel is ever bundled for distribution, signing and provisioning
   must be configured explicitly for the `.dev` identifier. The current workflow
   launches dev with `cargo run`, so this ADR does not introduce a dev release

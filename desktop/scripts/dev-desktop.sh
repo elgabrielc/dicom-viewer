@@ -22,7 +22,8 @@ listener_pid_for_dev_port() {
 }
 
 dev_tauri_config() {
-    python3 - "$DESKTOP_DIR/src-tauri/tauri.conf.dev.json" "$DEV_URL" <<'PY'
+    local config
+    if ! config="$(python3 - "$DESKTOP_DIR/src-tauri/tauri.conf.dev.json" "$DEV_URL" <<'PY'
 import json
 import sys
 
@@ -32,10 +33,15 @@ with open(sys.argv[1], encoding="utf-8") as config_file:
 config.setdefault("build", {})["devUrl"] = sys.argv[2].rstrip("/")
 print(json.dumps(config, separators=(",", ":")))
 PY
+    )"; then
+        echo "Failed to build TAURI_CONFIG overlay from src-tauri/tauri.conf.dev.json." >&2
+        return 1
+    fi
+    printf '%s\n' "$config"
 }
 
 desktop_binary_running() {
-    pgrep -f "${DESKTOP_DIR}/src-tauri/target.*/debug/dicom-viewer-desktop" >/dev/null 2>&1
+    pgrep -f "${DESKTOP_DIR}/src-tauri/target[^/]*/debug/dicom-viewer-desktop" >/dev/null 2>&1
 }
 
 listener_command() {
