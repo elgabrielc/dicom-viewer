@@ -374,6 +374,10 @@
                 })
                 .catch(() => {});
         }
+        if (readyPromises.some((promise) => promise && typeof promise.then === 'function')) {
+            await Promise.resolve();
+            if (readyRuntime) return readyRuntime;
+        }
 
         const deadline = performance.now() + timeoutMs;
         while (performance.now() < deadline) {

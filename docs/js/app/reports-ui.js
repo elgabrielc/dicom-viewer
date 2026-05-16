@@ -251,6 +251,7 @@
         app.desktopBridge = {
             async getRuntime() {
                 return await window.DicomViewerTauriCompat.waitForRuntime({
+                    ready: window.__DICOM_VIEWER_TAURI_READY__,
                     validator: (runtime) => typeof runtime?.core?.invoke === 'function',
                 });
             },
