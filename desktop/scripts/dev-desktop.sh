@@ -21,8 +21,21 @@ listener_pid_for_dev_port() {
     lsof -tiTCP:"${DEV_PORT}" -sTCP:LISTEN -n -P 2>/dev/null | head -n 1
 }
 
+dev_tauri_config() {
+    python3 - "$DESKTOP_DIR/src-tauri/tauri.conf.dev.json" "$DEV_URL" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as config_file:
+    config = json.load(config_file)
+
+config.setdefault("build", {})["devUrl"] = sys.argv[2].rstrip("/")
+print(json.dumps(config, separators=(",", ":")))
+PY
+}
+
 desktop_binary_running() {
-    pgrep -f "${DESKTOP_DIR}/src-tauri/target/debug/dicom-viewer-desktop" >/dev/null 2>&1
+    pgrep -f "${DESKTOP_DIR}/src-tauri/target.*/debug/dicom-viewer-desktop" >/dev/null 2>&1
 }
 
 listener_command() {
@@ -113,4 +126,6 @@ echo "Serving docs/ at ${DEV_URL}"
 wait_for_dev_server
 
 echo "Launching desktop app..."
-cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --color always -- "$@"
+CARGO_TARGET_DIR="${DESKTOP_DIR}/src-tauri/target-dev" \
+TAURI_CONFIG="$(dev_tauri_config)" \
+    cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --color always -- "$@"

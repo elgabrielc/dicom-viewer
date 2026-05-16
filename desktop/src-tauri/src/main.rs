@@ -498,6 +498,9 @@ fn main() {
             let menu = build_menu(app)?;
             app.set_menu(menu)?;
 
+            #[cfg(debug_assertions)]
+            eprintln!("[startup] bundle identifier: {}", app.config().identifier);
+
             // Register $APPDATA as an always-allowed root so desktop
             // persistence (decode cache, database, etc.) works without
             // the user explicitly selecting it via a file dialog.
