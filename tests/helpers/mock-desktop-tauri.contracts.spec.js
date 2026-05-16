@@ -48,9 +48,9 @@ test.describe('mock desktop Tauri contract', () => {
 
         expect(result.exists).toBe(false);
         expect(result.readError).toContain('No such file or directory');
-        expect(result.readIsError).toBe(true);
+        expect(result.readIsError).toBe(false);
         expect(result.statError).toContain('No such file or directory');
-        expect(result.statIsError).toBe(true);
+        expect(result.statIsError).toBe(false);
     });
 
     test('mkdir accepts and records Tauri options', async ({ page }) => {

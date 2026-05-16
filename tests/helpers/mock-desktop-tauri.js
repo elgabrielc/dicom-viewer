@@ -14,7 +14,6 @@ async function installMockDesktopTauri(page, options = {}) {
         ({ options, readyPromiseNames }) => {
             const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
             const SECURE_AUTH_STORAGE_KEY = 'mock-tauri-secure-auth-state';
-            const SECURE_AUTH_SEEDED_KEY = 'mock-tauri-secure-auth-state-seeded';
             const fsOptions = options.fs || {};
             const invokeOptions = options.invoke || {};
             const sqlOptions = options.sql || {};
@@ -57,7 +56,7 @@ async function installMockDesktopTauri(page, options = {}) {
             }
 
             function makeMissingFileError(filePath) {
-                return new Error(`No such file or directory: ${filePath}`);
+                return `No such file or directory: ${filePath}`;
             }
 
             function serializeBytes(bytes) {
@@ -87,9 +86,8 @@ async function installMockDesktopTauri(page, options = {}) {
                 seedFile(filePath, bytes);
             }
 
-            if (options.secureAuthState && sessionStorage.getItem(SECURE_AUTH_SEEDED_KEY) !== '1') {
+            if (options.secureAuthState) {
                 localStorage.setItem(SECURE_AUTH_STORAGE_KEY, JSON.stringify(options.secureAuthState));
-                sessionStorage.setItem(SECURE_AUTH_SEEDED_KEY, '1');
             }
 
             const sqlPlugin = window.__createMockTauriSql(tauriSqlOptions);
