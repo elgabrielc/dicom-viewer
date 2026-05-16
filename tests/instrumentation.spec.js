@@ -38,7 +38,7 @@
 // is off by default on fresh install.
 //
 const { test, expect } = require('@playwright/test');
-const path = require('path');
+const path = require('node:path');
 
 const APP_URL = 'http://127.0.0.1:5001/?nolib';
 const TEST_URL = 'http://127.0.0.1:5001/?test';

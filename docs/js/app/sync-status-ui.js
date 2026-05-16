@@ -51,7 +51,7 @@ const _SyncStatusUI = (() => {
         if (initialized) return;
 
         const config = window.CONFIG;
-        if (!config || !config.features || !config.features.cloudSync) {
+        if (!config?.features?.cloudSync) {
             return;
         }
 
@@ -177,14 +177,14 @@ const _SyncStatusUI = (() => {
         if (!iconEl || !textEl || !statusEl) return;
 
         // Update the CSS class for color/animation
-        statusEl.className = 'sync-status sync-status--' + status;
+        statusEl.className = `sync-status sync-status--${status}`;
 
         // Update the label
         textEl.textContent = STATE_LABELS[status] || status;
 
         // Build tooltip with relative time for synced state
         if (status === 'synced' && lastSyncTimestamp) {
-            statusEl.title = 'Last synced: ' + formatRelativeTime(lastSyncTimestamp);
+            statusEl.title = `Last synced: ${formatRelativeTime(lastSyncTimestamp)}`;
         } else if (status === 'error') {
             statusEl.title = 'Sync failed. Will retry automatically.';
         } else if (status === 'offline') {
@@ -239,7 +239,7 @@ const _SyncStatusUI = (() => {
 
         const statusEl = document.getElementById('syncStatus');
         if (statusEl) {
-            statusEl.title = 'Last synced: ' + formatRelativeTime(lastSyncTimestamp);
+            statusEl.title = `Last synced: ${formatRelativeTime(lastSyncTimestamp)}`;
         }
     }
 
@@ -253,15 +253,15 @@ const _SyncStatusUI = (() => {
         const deltaSec = Math.floor(deltaMs / 1000);
 
         if (deltaSec < 10) return 'just now';
-        if (deltaSec < 60) return deltaSec + ' seconds ago';
+        if (deltaSec < 60) return `${deltaSec} seconds ago`;
 
         const deltaMin = Math.floor(deltaSec / 60);
         if (deltaMin === 1) return '1 minute ago';
-        if (deltaMin < 60) return deltaMin + ' minutes ago';
+        if (deltaMin < 60) return `${deltaMin} minutes ago`;
 
         const deltaHour = Math.floor(deltaMin / 60);
         if (deltaHour === 1) return '1 hour ago';
-        return deltaHour + ' hours ago';
+        return `${deltaHour} hours ago`;
     }
 
     /**
