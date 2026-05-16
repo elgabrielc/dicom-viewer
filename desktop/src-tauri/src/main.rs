@@ -498,11 +498,22 @@ fn main() {
             let menu = build_menu(app)?;
             app.set_menu(menu)?;
 
+            let bundle_identifier = app.config().identifier.clone();
+            app.manage(secure_store::SecureStoreConfig::new(
+                bundle_identifier.clone(),
+            ));
+
+            #[cfg(debug_assertions)]
+            eprintln!("[startup] bundle identifier: {bundle_identifier}");
+
             // Register $APPDATA as an always-allowed root so desktop
             // persistence (decode cache, database, etc.) works without
             // the user explicitly selecting it via a file dialog.
             let allowed = app.state::<path_util::AllowedPaths>();
             if let Ok(app_data) = app.path().app_data_dir() {
+                #[cfg(debug_assertions)]
+                eprintln!("[startup] app data dir: {}", app_data.display());
+
                 if let Ok(canonical) = app_data.canonicalize() {
                     allowed.add_root(canonical);
                 } else {

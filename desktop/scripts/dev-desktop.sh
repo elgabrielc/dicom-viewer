@@ -8,6 +8,7 @@ DOCS_DIR="$(cd "${DESKTOP_DIR}/../docs" && pwd)"
 DEV_HOST="${DICOM_DESKTOP_DEV_HOST:-127.0.0.1}"
 DEV_PORT="${DICOM_DESKTOP_DEV_PORT:-1420}"
 DEV_URL="http://${DEV_HOST}:${DEV_PORT}/"
+PROD_APP_SUPPORT_DIR="${HOME}/Library/Application Support/health.divergent.dicomviewer"
 WEB_SERVER_PID=""
 
 require_command() {
@@ -21,8 +22,43 @@ listener_pid_for_dev_port() {
     lsof -tiTCP:"${DEV_PORT}" -sTCP:LISTEN -n -P 2>/dev/null | head -n 1
 }
 
+dev_tauri_config() {
+    local config
+    if ! config="$(python3 - "$DESKTOP_DIR/src-tauri/tauri.conf.dev.json" "$DEV_URL" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as config_file:
+    config = json.load(config_file)
+
+config.setdefault("build", {})["devUrl"] = sys.argv[2].rstrip("/")
+print(json.dumps(config, separators=(",", ":")))
+PY
+    )"; then
+        echo "Failed to build TAURI_CONFIG overlay from src-tauri/tauri.conf.dev.json." >&2
+        return 1
+    fi
+    printf '%s\n' "$config"
+}
+
 desktop_binary_running() {
-    pgrep -f "${DESKTOP_DIR}/src-tauri/target/debug/dicom-viewer-desktop" >/dev/null 2>&1
+    pgrep -f "${DESKTOP_DIR}/src-tauri/target[^/]*/debug/dicom-viewer-desktop" >/dev/null 2>&1
+}
+
+warn_about_shared_prod_state() {
+    if [[ ! -d "$PROD_APP_SUPPORT_DIR" ]]; then
+        return 0
+    fi
+
+    cat >&2 <<EOF
+Note: existing production app data is present at:
+  ${PROD_APP_SUPPORT_DIR}
+
+Dev builds now use health.divergent.dicomviewer.dev instead. Treat the
+production directory above as shared production state; back it up before
+manual repair, and only clean up old dev experiments after identifying exactly
+which files belong to that experiment.
+EOF
 }
 
 listener_command() {
@@ -105,6 +141,9 @@ require_command pgrep
 
 clear_stale_dev_server_if_needed
 
+TAURI_CONFIG_VALUE="$(dev_tauri_config)"
+warn_about_shared_prod_state
+
 cd "$DESKTOP_DIR"
 python3 -m http.server "$DEV_PORT" --bind "$DEV_HOST" --directory "$DOCS_DIR" &
 WEB_SERVER_PID="$!"
@@ -113,4 +152,6 @@ echo "Serving docs/ at ${DEV_URL}"
 wait_for_dev_server
 
 echo "Launching desktop app..."
-cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --color always -- "$@"
+CARGO_TARGET_DIR="${DESKTOP_DIR}/src-tauri/target-dev" \
+TAURI_CONFIG="$TAURI_CONFIG_VALUE" \
+    cargo run --manifest-path src-tauri/Cargo.toml --no-default-features --color always -- "$@"

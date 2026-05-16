@@ -1,11 +1,28 @@
 use keyring::{Entry, Error as KeyringError};
 use serde::{Deserialize, Serialize};
+use tauri::State;
 
-const SERVICE_NAME: &str = "health.divergent.dicomviewer";
 const ACCESS_TOKEN_KEY: &str = "access_token";
 const REFRESH_TOKEN_KEY: &str = "refresh_token";
 const USER_EMAIL_KEY: &str = "user_email";
 const USER_NAME_KEY: &str = "user_name";
+
+#[derive(Debug, Clone)]
+pub struct SecureStoreConfig {
+    service_name: String,
+}
+
+impl SecureStoreConfig {
+    pub fn new(service_name: impl Into<String>) -> Self {
+        Self {
+            service_name: service_name.into(),
+        }
+    }
+
+    fn service_name(&self) -> &str {
+        &self.service_name
+    }
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SecureAuthState {
@@ -15,12 +32,12 @@ pub struct SecureAuthState {
     pub user_name: Option<String>,
 }
 
-fn entry_for(key: &str) -> Result<Entry, String> {
-    Entry::new(SERVICE_NAME, key).map_err(|error| error.to_string())
+fn entry_for(service_name: &str, key: &str) -> Result<Entry, String> {
+    Entry::new(service_name, key).map_err(|error| error.to_string())
 }
 
-fn read_value(key: &str) -> Result<Option<String>, String> {
-    let entry = entry_for(key)?;
+fn read_value(service_name: &str, key: &str) -> Result<Option<String>, String> {
+    let entry = entry_for(service_name, key)?;
     match entry.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(KeyringError::NoEntry) => Ok(None),
@@ -28,8 +45,8 @@ fn read_value(key: &str) -> Result<Option<String>, String> {
     }
 }
 
-fn write_value(key: &str, value: Option<&str>) -> Result<(), String> {
-    let entry = entry_for(key)?;
+fn write_value(service_name: &str, key: &str, value: Option<&str>) -> Result<(), String> {
+    let entry = entry_for(service_name, key)?;
     match value {
         Some(raw) if !raw.is_empty() => entry.set_password(raw).map_err(|error| error.to_string()),
         _ => match entry.delete_credential() {
@@ -40,29 +57,45 @@ fn write_value(key: &str, value: Option<&str>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn load_secure_auth_state() -> Result<SecureAuthState, String> {
+pub fn load_secure_auth_state(
+    config: State<'_, SecureStoreConfig>,
+) -> Result<SecureAuthState, String> {
+    let service_name = config.service_name();
     Ok(SecureAuthState {
-        access_token: read_value(ACCESS_TOKEN_KEY)?,
-        refresh_token: read_value(REFRESH_TOKEN_KEY)?,
-        user_email: read_value(USER_EMAIL_KEY)?,
-        user_name: read_value(USER_NAME_KEY)?,
+        access_token: read_value(service_name, ACCESS_TOKEN_KEY)?,
+        refresh_token: read_value(service_name, REFRESH_TOKEN_KEY)?,
+        user_email: read_value(service_name, USER_EMAIL_KEY)?,
+        user_name: read_value(service_name, USER_NAME_KEY)?,
     })
 }
 
 #[tauri::command]
-pub fn store_secure_auth_state(state: SecureAuthState) -> Result<bool, String> {
-    write_value(ACCESS_TOKEN_KEY, state.access_token.as_deref())?;
-    write_value(REFRESH_TOKEN_KEY, state.refresh_token.as_deref())?;
-    write_value(USER_EMAIL_KEY, state.user_email.as_deref())?;
-    write_value(USER_NAME_KEY, state.user_name.as_deref())?;
+pub fn store_secure_auth_state(
+    config: State<'_, SecureStoreConfig>,
+    state: SecureAuthState,
+) -> Result<bool, String> {
+    let service_name = config.service_name();
+    write_value(
+        service_name,
+        ACCESS_TOKEN_KEY,
+        state.access_token.as_deref(),
+    )?;
+    write_value(
+        service_name,
+        REFRESH_TOKEN_KEY,
+        state.refresh_token.as_deref(),
+    )?;
+    write_value(service_name, USER_EMAIL_KEY, state.user_email.as_deref())?;
+    write_value(service_name, USER_NAME_KEY, state.user_name.as_deref())?;
     Ok(true)
 }
 
 #[tauri::command]
-pub fn clear_secure_auth_state() -> Result<bool, String> {
-    write_value(ACCESS_TOKEN_KEY, None)?;
-    write_value(REFRESH_TOKEN_KEY, None)?;
-    write_value(USER_EMAIL_KEY, None)?;
-    write_value(USER_NAME_KEY, None)?;
+pub fn clear_secure_auth_state(config: State<'_, SecureStoreConfig>) -> Result<bool, String> {
+    let service_name = config.service_name();
+    write_value(service_name, ACCESS_TOKEN_KEY, None)?;
+    write_value(service_name, REFRESH_TOKEN_KEY, None)?;
+    write_value(service_name, USER_EMAIL_KEY, None)?;
+    write_value(service_name, USER_NAME_KEY, None)?;
     Ok(true)
 }
