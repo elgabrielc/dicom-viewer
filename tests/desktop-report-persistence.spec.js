@@ -1,159 +1,16 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
-const path = require('node:path');
 const { test, expect } = require('@playwright/test');
+const { installMockDesktopTauri } = require('./helpers/mock-desktop-tauri');
 
 const HOME_URL = 'http://127.0.0.1:5001/?nolib';
-const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
-
-async function installMockTauri(page, options = {}) {
-    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
-    await page.addInitScript((options) => {
-        const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
-        const SECURE_AUTH_STORAGE_KEY = 'mock-tauri-secure-auth-state';
-        const failRemoveAll = !!options.failRemoveAll;
-        const failWritePatterns = Array.isArray(options.failWritePatterns) ? options.failWritePatterns : [];
-        const selectDelayMs = Number.isFinite(Number(options.selectDelayMs)) ? Number(options.selectDelayMs) : 0;
-        const selectDelayPatterns = Array.isArray(options.selectDelayPatterns)
-            ? options.selectDelayPatterns.map((pattern) => String(pattern).toLowerCase())
-            : [];
-        const sqlPlugin = window.__createMockTauriSql(options);
-
-        if (selectDelayMs > 0) {
-            const originalLoad = sqlPlugin.load.bind(sqlPlugin);
-            sqlPlugin.load = async (db) => {
-                const connection = await originalLoad(db);
-                const originalSelect = connection.select.bind(connection);
-                connection.select = async (query, values) => {
-                    const normalizedQuery = String(query || '').toLowerCase();
-                    const shouldDelay =
-                        !selectDelayPatterns.length ||
-                        selectDelayPatterns.some((pattern) => normalizedQuery.includes(pattern));
-
-                    if (shouldDelay) {
-                        await new Promise((resolve) => setTimeout(resolve, selectDelayMs));
-                    }
-
-                    return originalSelect(query, values);
-                };
-                return connection;
-            };
-        }
-
-        if (options.initialSecureAuthState) {
-            localStorage.setItem(SECURE_AUTH_STORAGE_KEY, JSON.stringify(options.initialSecureAuthState));
-        }
-
-        function joinPaths(...parts) {
-            const cleaned = parts
-                .filter((part) => part !== null && part !== undefined && part !== '')
-                .map((part, index) => {
-                    const text = String(part);
-                    if (index === 0) {
-                        return text.replace(/\/+$/g, '') || '/';
-                    }
-                    return text.replace(/^\/+/g, '').replace(/\/+$/g, '');
-                })
-                .filter(Boolean);
-
-            if (!cleaned.length) return '';
-            const joined = cleaned.join('/');
-            return joined.startsWith('/') ? joined : `/${joined}`;
-        }
-
-        window.__TAURI__ = {
-            core: {
-                convertFileSrc(filePath) {
-                    return `asset://local/${encodeURIComponent(filePath)}`;
-                },
-                async invoke(cmd, args) {
-                    if (cmd === 'apply_desktop_migration') {
-                        return window.__applyMockDesktopMigration(args.db, args.batch, options);
-                    }
-                    if (cmd === 'load_legacy_desktop_browser_stores') {
-                        return options.legacyDesktopStores || [];
-                    }
-                    if (cmd === 'load_secure_auth_state') {
-                        const raw = localStorage.getItem(SECURE_AUTH_STORAGE_KEY);
-                        return raw
-                            ? JSON.parse(raw)
-                            : {
-                                  access_token: null,
-                                  refresh_token: null,
-                                  user_email: null,
-                                  user_name: null,
-                              };
-                    }
-                    if (cmd === 'store_secure_auth_state') {
-                        localStorage.setItem(SECURE_AUTH_STORAGE_KEY, JSON.stringify(args.state || {}));
-                        return true;
-                    }
-                    if (cmd === 'clear_secure_auth_state') {
-                        localStorage.removeItem(SECURE_AUTH_STORAGE_KEY);
-                        return true;
-                    }
-                    throw new Error(`Unhandled core invoke: ${cmd}`);
-                },
-            },
-            fs: {
-                async exists(filePath) {
-                    return localStorage.getItem(`${FILE_STORAGE_PREFIX}${filePath}`) !== null;
-                },
-                async mkdir() {
-                    return undefined;
-                },
-                async remove(filePath) {
-                    if (failRemoveAll) {
-                        throw new Error(`Mock remove failure for ${filePath}`);
-                    }
-                    localStorage.removeItem(`${FILE_STORAGE_PREFIX}${filePath}`);
-                },
-                async rename(fromPath, toPath) {
-                    const raw = localStorage.getItem(`${FILE_STORAGE_PREFIX}${fromPath}`);
-                    if (raw === null) {
-                        throw new Error(`Mock rename missing source ${fromPath}`);
-                    }
-                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${toPath}`, raw);
-                    localStorage.removeItem(`${FILE_STORAGE_PREFIX}${fromPath}`);
-                },
-                async writeFile(filePath, bytes) {
-                    if (failWritePatterns.some((pattern) => String(filePath).includes(String(pattern)))) {
-                        throw new Error(`Mock write failure for ${filePath}`);
-                    }
-                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${filePath}`, JSON.stringify(Array.from(bytes)));
-                },
-            },
-            path: {
-                async appDataDir() {
-                    return '/mock/appdata';
-                },
-                async join(...parts) {
-                    return joinPaths(...parts);
-                },
-                async normalize(path) {
-                    return joinPaths(path);
-                },
-            },
-            sql: sqlPlugin,
-            webview: {
-                getCurrentWebview() {
-                    return {
-                        onDragDropEvent() {
-                            return Promise.resolve(() => {});
-                        },
-                    };
-                },
-            },
-        };
-    }, options);
-}
 
 test.describe('Desktop report persistence', () => {
     test('desktop comment writes use canonical UUID ids for update and delete', async ({ page }) => {
         const studyUid = '1.2.840.desktop.comment-uuid.study';
         const seriesUid = '1.2.840.desktop.comment-uuid.series';
 
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
@@ -207,7 +64,7 @@ test.describe('Desktop report persistence', () => {
         const studyUid = '1.2.840.desktop.manual-migrate.study';
         const seriesUid = '1.2.840.desktop.manual-migrate.series';
 
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
@@ -268,7 +125,7 @@ test.describe('Desktop report persistence', () => {
             lastScan: '2026-03-21T18:00:00.000Z',
         };
 
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
@@ -381,46 +238,51 @@ test.describe('Desktop report persistence', () => {
             lastScan: '2026-03-20T14:51:37.855Z',
         };
 
-        await installMockTauri(page, {
-            initialState: {
-                'sqlite:viewer.db': {
-                    study_notes: [],
-                    series_notes: [],
-                    comments: [],
-                    reports: [],
-                    app_config: [
-                        { key: 'desktop_library_config', value: JSON.stringify(libraryConfig), updated_at: 1 },
-                        { key: 'localstorage_migrated', value: '1', updated_at: 1 },
-                    ],
-                    meta: { lastCommentId: 0 },
+        await installMockDesktopTauri(page, {
+            sql: {
+                initialState: {
+                    'sqlite:viewer.db': {
+                        study_notes: [],
+                        series_notes: [],
+                        comments: [],
+                        reports: [],
+                        app_config: [
+                            { key: 'desktop_library_config', value: JSON.stringify(libraryConfig), updated_at: 1 },
+                            { key: 'localstorage_migrated', value: '1', updated_at: 1 },
+                        ],
+                        meta: { lastCommentId: 0 },
+                    },
                 },
             },
-            legacyDesktopStores: [
-                {
-                    sourcePath: '/Users/gabriel/Library/WebKit/health.divergent.dicomviewer/.../localstorage.sqlite3',
-                    notesJson: JSON.stringify({
-                        studies: {
-                            [studyUid]: {
-                                description: '',
-                                comments: [],
-                                series: {},
-                                reports: [
-                                    {
-                                        id: reportId,
-                                        name: 'Migrated report.pdf',
-                                        type: 'pdf',
-                                        size: 123,
-                                        filePath: reportPath,
-                                        addedAt: 303,
-                                        updatedAt: 404,
-                                    },
-                                ],
+            invoke: {
+                legacyDesktopStores: [
+                    {
+                        sourcePath:
+                            '/Users/gabriel/Library/WebKit/health.divergent.dicomviewer/.../localstorage.sqlite3',
+                        notesJson: JSON.stringify({
+                            studies: {
+                                [studyUid]: {
+                                    description: '',
+                                    comments: [],
+                                    series: {},
+                                    reports: [
+                                        {
+                                            id: reportId,
+                                            name: 'Migrated report.pdf',
+                                            type: 'pdf',
+                                            size: 123,
+                                            filePath: reportPath,
+                                            addedAt: 303,
+                                            updatedAt: 404,
+                                        },
+                                    ],
+                                },
                             },
-                        },
-                    }),
-                    libraryConfigJson: JSON.stringify(libraryConfig),
-                },
-            ],
+                        }),
+                        libraryConfigJson: JSON.stringify(libraryConfig),
+                    },
+                ],
+            },
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -461,8 +323,10 @@ test.describe('Desktop report persistence', () => {
         const failedReportId = 'desktop-legacy-report-fail';
         const goodReportId = 'desktop-legacy-report-good';
 
-        await installMockTauri(page, {
-            failWritePatterns: [failedReportId],
+        await installMockDesktopTauri(page, {
+            fs: {
+                failWritePatterns: [failedReportId],
+            },
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -536,21 +400,23 @@ test.describe('Desktop report persistence', () => {
             lastScan: '2026-03-22T10:00:00.000Z',
         };
 
-        await installMockTauri(page, {
-            legacyDesktopStores: [
-                {
-                    sourcePath: '/Users/gabriel/Library/WebKit/zzz/localstorage.sqlite3',
-                    modifiedMs: 10,
-                    notesJson: JSON.stringify({ studies: {} }),
-                    libraryConfigJson: JSON.stringify(olderConfig),
-                },
-                {
-                    sourcePath: '/Users/gabriel/Library/WebKit/aaa/localstorage.sqlite3',
-                    modifiedMs: 20,
-                    notesJson: JSON.stringify({ studies: {} }),
-                    libraryConfigJson: JSON.stringify(newerConfig),
-                },
-            ],
+        await installMockDesktopTauri(page, {
+            invoke: {
+                legacyDesktopStores: [
+                    {
+                        sourcePath: '/Users/gabriel/Library/WebKit/zzz/localstorage.sqlite3',
+                        modifiedMs: 10,
+                        notesJson: JSON.stringify({ studies: {} }),
+                        libraryConfigJson: JSON.stringify(olderConfig),
+                    },
+                    {
+                        sourcePath: '/Users/gabriel/Library/WebKit/aaa/localstorage.sqlite3',
+                        modifiedMs: 20,
+                        notesJson: JSON.stringify({ studies: {} }),
+                        libraryConfigJson: JSON.stringify(newerConfig),
+                    },
+                ],
+            },
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -564,8 +430,10 @@ test.describe('Desktop report persistence', () => {
     });
 
     test('desktop sqlite init backs off repeated failures before retrying', async ({ page }) => {
-        await installMockTauri(page, {
-            sqlLoadError: 'mock desktop sqlite unavailable',
+        await installMockDesktopTauri(page, {
+            sql: {
+                loadError: 'mock desktop sqlite unavailable',
+            },
         });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
@@ -604,7 +472,7 @@ test.describe('Desktop report persistence', () => {
     test('desktop auth store migrates legacy browser tokens into secure storage and clears localStorage', async ({
         page,
     }) => {
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
@@ -668,7 +536,7 @@ test.describe('Desktop report persistence', () => {
     test('desktop sync state and outbox persist via sqlite across reload without legacy localStorage', async ({
         page,
     }) => {
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.addInitScript(() => {
             if (sessionStorage.getItem('desktop-sync-migration-seeded') === '1') {
                 return;
@@ -804,33 +672,35 @@ test.describe('Desktop report persistence', () => {
     });
 
     test('desktop hydration merges pre-hydration sync writes instead of clobbering them', async ({ page }) => {
-        await installMockTauri(page, {
-            selectDelayMs: 150,
-            selectDelayPatterns: ['sync_state', 'sync_outbox'],
-            initialState: {
-                'sqlite:viewer.db': {
-                    sync_state: [
-                        { key: 'delta_cursor', value: 'legacy-cursor', updated_at: 1000 },
-                        { key: 'device_id', value: 'legacy-device', updated_at: 1001 },
-                    ],
-                    sync_outbox: [
-                        {
-                            id: 1,
-                            operation_uuid: 'legacy-op-1',
-                            table_name: 'comments',
-                            record_key: 'legacy-comment-1',
-                            operation: 'insert',
-                            base_sync_version: 0,
-                            created_at: 1000,
-                            synced_at: null,
-                            attempts: 0,
-                            last_error: null,
+        await installMockDesktopTauri(page, {
+            sql: {
+                selectDelayMs: 150,
+                selectDelayPatterns: ['sync_state', 'sync_outbox'],
+                initialState: {
+                    'sqlite:viewer.db': {
+                        sync_state: [
+                            { key: 'delta_cursor', value: 'legacy-cursor', updated_at: 1000 },
+                            { key: 'device_id', value: 'legacy-device', updated_at: 1001 },
+                        ],
+                        sync_outbox: [
+                            {
+                                id: 1,
+                                operation_uuid: 'legacy-op-1',
+                                table_name: 'comments',
+                                record_key: 'legacy-comment-1',
+                                operation: 'insert',
+                                base_sync_version: 0,
+                                created_at: 1000,
+                                synced_at: null,
+                                attempts: 0,
+                                last_error: null,
+                            },
+                        ],
+                        meta: {
+                            lastCommentId: 0,
+                            lastOutboxId: 1,
+                            loadCalls: 0,
                         },
-                    ],
-                    meta: {
-                        lastCommentId: 0,
-                        lastOutboxId: 1,
-                        loadCalls: 0,
                     },
                 },
             },
@@ -876,7 +746,7 @@ test.describe('Desktop report persistence', () => {
         const studyUid = '1.2.840.desktop.test.study';
         const reportId = 'desktop-report-001';
 
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
@@ -970,7 +840,7 @@ test.describe('Desktop report persistence', () => {
         const secondStudyUid = '1.2.840.desktop.cross.study.b';
         const reportId = 'desktop-cross-study-report';
 
-        await installMockTauri(page);
+        await installMockDesktopTauri(page);
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
@@ -1033,7 +903,7 @@ test.describe('Desktop report persistence', () => {
         const studyUid = '1.2.840.desktop.test.study';
         const reportId = 'desktop-report-delete-failure';
 
-        await installMockTauri(page, { failRemoveAll: true });
+        await installMockDesktopTauri(page, { fs: { failRemoveAll: true } });
         await page.goto(HOME_URL);
         await expect(page.locator('#libraryView')).toBeVisible();
 
