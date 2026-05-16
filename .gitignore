@@ -38,6 +38,7 @@ data/
 dist/
 build/
 desktop/src-tauri/target/
+desktop/src-tauri/target-dev/
 desktop/src-tauri/gen/
 .wrangler/
 
@@ -57,6 +58,8 @@ test-data/
 # Playwright test results
 test-results/
 .playwright-mcp/
+tests/real-tauri/diagnostics/*
+!tests/real-tauri/diagnostics/.gitkeep
 
 # Session logs (contain local paths)
 docs/planning/SESSION-*.md

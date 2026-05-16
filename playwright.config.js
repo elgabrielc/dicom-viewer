@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Divergent Health Technologies
 const { defineConfig, devices } = require('@playwright/test');
 
+const enableRealTauri = process.env.DICOM_ENABLE_REAL_TAURI === '1';
+
 /**
  * Playwright configuration for DICOM Viewer tests
  *
@@ -58,12 +60,21 @@ module.exports = defineConfig({
   },
 
   /* Configure projects for major browsers */
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-  ],
+  projects: enableRealTauri
+    ? [
+        {
+          name: 'real-tauri',
+          testMatch: /real-tauri\/.*\.spec\.js/,
+          retries: 1,
+        },
+      ]
+    : [
+        {
+          name: 'chromium',
+          testIgnore: /real-tauri\/.*\.spec\.js/,
+          use: { ...devices['Desktop Chrome'] },
+        },
+      ],
 
   /* Timeout settings */
   timeout: 60000, // 60 seconds per test - DICOM rendering can be slow with large files
@@ -87,10 +98,12 @@ module.exports = defineConfig({
    *   often has server running in another terminal)
    * - CI environment: Always start fresh to ensure clean, reproducible state
    */
-  webServer: {
-    command: 'FLASK_ENV=test ./venv/bin/flask run --host=127.0.0.1 --port=5001',
-    url: 'http://127.0.0.1:5001/api/test-data/info',
-    reuseExistingServer: !process.env.CI,
-    timeout: 60000,
-  },
+  webServer: enableRealTauri
+    ? undefined
+    : {
+        command: 'FLASK_ENV=test ./venv/bin/flask run --host=127.0.0.1 --port=5001',
+        url: 'http://127.0.0.1:5001/api/test-data/info',
+        reuseExistingServer: !process.env.CI,
+        timeout: 60000,
+      },
 });

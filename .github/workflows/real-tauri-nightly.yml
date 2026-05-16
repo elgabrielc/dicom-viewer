@@ -1,0 +1,58 @@
+# Copyright (c) 2026 Divergent Health Technologies
+# Nightly real-Tauri smoke workflow.
+
+name: Real Tauri Nightly Smoke
+
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: real-tauri-nightly-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: macOS Real Tauri Launch Smoke
+    runs-on: macos-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Run real Tauri smoke
+        run: npm run test:real-tauri
+        env:
+          CI: true
+          DICOM_REAL_TAURI_PORT: '15320'
+
+      - name: Upload real Tauri diagnostics
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-tauri-diagnostics
+          path: tests/real-tauri/diagnostics/
+          retention-days: 14
