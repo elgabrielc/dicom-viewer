@@ -15,8 +15,5 @@
   },
   "bundle": {
     "createUpdaterArtifacts": false
-  },
-  "plugins": {
-    "updater": null
   }
 }
