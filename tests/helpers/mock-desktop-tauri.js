@@ -147,6 +147,7 @@ async function installMockDesktopTauri(page, options = {}) {
                             window.__mockDesktopTauriState.secureAuthState = null;
                             return true;
                         }
+                        // Harness-only sentinel for unmocked commands; throws Error (not bare string) so the stack trace points at test setup.
                         throw new Error(`Unhandled core invoke: ${cmd}`);
                     },
                 },
@@ -211,7 +212,7 @@ async function installMockDesktopTauri(page, options = {}) {
                             failRemoveAll ||
                             failRemovePatterns.some((pattern) => String(filePath).includes(String(pattern)))
                         ) {
-                            throw new Error(`Mock remove failure for ${filePath}`);
+                            throw `Mock remove failure for ${filePath}`;
                         }
                         localStorage.removeItem(`${FILE_STORAGE_PREFIX}${filePath}`);
                     },
@@ -227,7 +228,7 @@ async function installMockDesktopTauri(page, options = {}) {
                     async writeFile(filePath, bytes) {
                         window.__mockDesktopTauriState.writes.push({ filePath, byteLength: bytes?.length || 0 });
                         if (failWritePatterns.some((pattern) => String(filePath).includes(String(pattern)))) {
-                            throw new Error(`Mock write failure for ${filePath}`);
+                            throw `Mock write failure for ${filePath}`;
                         }
                         localStorage.setItem(`${FILE_STORAGE_PREFIX}${filePath}`, serializeBytes(bytes));
                     },
