@@ -81,7 +81,8 @@ Options are grouped by runtime subsystem:
 - `invoke.legacyDesktopStores`: returned by
   `load_legacy_desktop_browser_stores`.
 - `sql.initialState`: initial mock SQLite state.
-- `sql.loadError` / `sql.sqlLoadError`: make SQL load fail.
+- `sql.loadError`: make SQL load fail. Prefer this spelling in new tests.
+- `sql.sqlLoadError`: migration alias for older mock-SQL option naming.
 - `sql.selectDelayMs`: delay matching `select` calls.
 - `sql.selectDelayPatterns`: lower-case query substrings that receive the
   delay.
@@ -123,4 +124,3 @@ Start with per-spec setup when a behavior is unique. Promote it into the
 harness only when it models desktop runtime behavior and appears in at least
 three specs, or when keeping it local would make tests disagree about the same
 Tauri contract.
-

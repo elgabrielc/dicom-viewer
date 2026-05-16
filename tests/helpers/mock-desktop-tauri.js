@@ -57,7 +57,7 @@ async function installMockDesktopTauri(page, options = {}) {
             }
 
             function makeMissingFileError(filePath) {
-                return `No such file or directory: ${filePath}`;
+                return new Error(`No such file or directory: ${filePath}`);
             }
 
             function serializeBytes(bytes) {
@@ -172,7 +172,8 @@ async function installMockDesktopTauri(page, options = {}) {
                         return readDirEntries[dirPath] || [];
                     },
                     async stat(filePath) {
-                        const isFile = localStorage.getItem(`${FILE_STORAGE_PREFIX}${filePath}`) !== null;
+                        const raw = localStorage.getItem(`${FILE_STORAGE_PREFIX}${filePath}`);
+                        const isFile = raw !== null;
                         const isDirectory =
                             window.__mockDesktopTauriDirectories.has(joinPaths(filePath)) ||
                             Object.hasOwn(readDirEntries, filePath);
@@ -183,9 +184,7 @@ async function installMockDesktopTauri(page, options = {}) {
                             isFile,
                             isDirectory,
                             isSymlink: false,
-                            size: isFile
-                                ? JSON.parse(localStorage.getItem(`${FILE_STORAGE_PREFIX}${filePath}`)).length
-                                : 0,
+                            size: isFile ? JSON.parse(raw).length : 0,
                             mtime: null,
                             atime: null,
                             birthtime: null,
@@ -202,9 +201,9 @@ async function installMockDesktopTauri(page, options = {}) {
                             blocks: null,
                         };
                     },
-                    async mkdir(dirPath) {
+                    async mkdir(dirPath, options = {}) {
                         const normalized = joinPaths(dirPath);
-                        window.__mockDesktopTauriState.mkdirCalls.push(normalized);
+                        window.__mockDesktopTauriState.mkdirCalls.push({ dirPath: normalized, options });
                         window.__mockDesktopTauriDirectories.add(normalized);
                         return undefined;
                     },
@@ -270,7 +269,18 @@ async function installMockDesktopTauri(page, options = {}) {
     );
 }
 
+async function gotoMockDesktopPage(page) {
+    await page.route('http://mock.local/blank', async (route) => {
+        await route.fulfill({
+            contentType: 'text/html',
+            body: '<html><body>mock</body></html>',
+        });
+    });
+    await page.goto('http://mock.local/blank');
+}
+
 module.exports = {
     READY_PROMISE_NAMES,
+    gotoMockDesktopPage,
     installMockDesktopTauri,
 };

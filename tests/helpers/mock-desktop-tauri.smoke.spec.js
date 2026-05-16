@@ -1,17 +1,7 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
 const { test, expect } = require('@playwright/test');
-const { READY_PROMISE_NAMES, installMockDesktopTauri } = require('./mock-desktop-tauri');
-
-async function gotoMockPage(page) {
-    await page.route('http://mock.local/blank', async (route) => {
-        await route.fulfill({
-            contentType: 'text/html',
-            body: '<html><body>mock</body></html>',
-        });
-    });
-    await page.goto('http://mock.local/blank');
-}
+const { READY_PROMISE_NAMES, gotoMockDesktopPage, installMockDesktopTauri } = require('./mock-desktop-tauri');
 
 test('mock desktop Tauri harness installs the baseline runtime on a blank page', async ({ page }) => {
     await installMockDesktopTauri(page, {
@@ -22,7 +12,7 @@ test('mock desktop Tauri harness installs the baseline runtime on a blank page',
             },
         },
     });
-    await gotoMockPage(page);
+    await gotoMockDesktopPage(page);
 
     const result = await page.evaluate(async (readyPromiseNames) => {
         const ready = await Promise.all(readyPromiseNames.map((name) => window[name]));
