@@ -29,10 +29,6 @@ const _UpdateUI = (() => {
     // Brief message display time for "up to date" on manual check
     const UP_TO_DATE_DISPLAY_MS = 4000;
 
-    // Max time to wait for Tauri runtime APIs to become available
-    const RUNTIME_WAIT_TIMEOUT_MS = 5000;
-    const RUNTIME_POLL_INTERVAL_MS = 50;
-
     let initialized = false;
     let pendingUpdate = null;
     let installing = false;
@@ -85,28 +81,10 @@ const _UpdateUI = (() => {
     }
 
     async function waitForUpdaterRuntime() {
-        // Check if already available
-        if (hasUpdaterApis(window.__TAURI__)) {
-            return window.__TAURI__;
-        }
-
-        // Wait for the ready promise if available
-        const ready = window.__DICOM_VIEWER_TAURI_READY__;
-        if (ready && typeof ready.then === 'function') {
-            const resolved = await ready;
-            if (hasUpdaterApis(resolved)) return resolved;
-        }
-
-        // Poll for late-arriving runtime
-        const deadline = performance.now() + RUNTIME_WAIT_TIMEOUT_MS;
-        while (performance.now() < deadline) {
-            if (hasUpdaterApis(window.__TAURI__)) {
-                return window.__TAURI__;
-            }
-            await new Promise((resolve) => setTimeout(resolve, RUNTIME_POLL_INTERVAL_MS));
-        }
-
-        return null;
+        return await window.DicomViewerTauriCompat.waitForRuntime({
+            validator: hasUpdaterApis,
+            fallbackRuntime: false,
+        });
     }
 
     function hasUpdaterApis(runtime) {
@@ -142,7 +120,7 @@ const _UpdateUI = (() => {
 
             if (update) {
                 pendingUpdate = update;
-                showBanner('Version ' + update.version + ' is available.', 'Download and Install');
+                showBanner(`Version ${update.version} is available.`, 'Download and Install');
             } else if (manual) {
                 showBanner('You are on the latest version.', null);
                 setTimeout(hideBanner, UP_TO_DATE_DISPLAY_MS);

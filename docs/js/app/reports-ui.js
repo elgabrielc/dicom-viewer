@@ -250,20 +250,9 @@
     if (!app.desktopBridge) {
         app.desktopBridge = {
             async getRuntime() {
-                const runtime = window.__TAURI__;
-                if (typeof runtime?.core?.invoke === 'function') {
-                    return runtime;
-                }
-
-                const ready = window.__DICOM_VIEWER_TAURI_READY__;
-                if (ready && typeof ready.then === 'function') {
-                    const resolved = await ready;
-                    if (typeof resolved?.core?.invoke === 'function') {
-                        return resolved;
-                    }
-                }
-
-                return window.__TAURI__ || null;
+                return await window.DicomViewerTauriCompat.waitForRuntime({
+                    validator: (runtime) => typeof runtime?.core?.invoke === 'function',
+                });
             },
             async revealInFinder(path) {
                 if (!path) return false;

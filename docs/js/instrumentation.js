@@ -15,7 +15,6 @@ const Instrumentation = (() => {
     const PHONE_HOME_DEBOUNCE_MS = 5_000;
     const PHONE_HOME_URL = 'https://api.myradone.com/api/stats';
     const SCHEMA_VERSION = 1;
-    const DESKTOP_RUNTIME_TIMEOUT_MS = 5_000;
 
     // Desktop SQL table and DB
     const DESKTOP_DB_URL = 'sqlite:viewer.db';
@@ -27,7 +26,6 @@ const Instrumentation = (() => {
 
     let stats = null;
     let dirty = false;
-    let flushTimer = null;
     let phoneHomeTimer = null;
     let desktopDbPromise = null;
     let useDesktopSql = false;
@@ -129,19 +127,10 @@ const Instrumentation = (() => {
     }
 
     async function waitForDesktopRuntime() {
-        const ready = window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || window.__DICOM_VIEWER_TAURI_READY__;
-        if (ready && typeof ready.then === 'function') {
-            await ready;
-        }
-        if (window.__TAURI__?.sql?.load) return window.__TAURI__;
-
-        const deadline = performance.now() + DESKTOP_RUNTIME_TIMEOUT_MS;
-        while (performance.now() < deadline) {
-            if (window.__TAURI__?.sql?.load) return window.__TAURI__;
-            await new Promise((resolve) => setTimeout(resolve, 50));
-        }
-
-        return window.__TAURI__ || null;
+        return await window.DicomViewerTauriCompat.waitForRuntime({
+            validator: (runtime) => typeof runtime?.sql?.load === 'function',
+            ready: [window.__DICOM_VIEWER_TAURI_STORAGE_READY__, window.__DICOM_VIEWER_TAURI_READY__],
+        });
     }
 
     async function getDesktopDb() {
@@ -170,7 +159,7 @@ const Instrumentation = (() => {
         try {
             const db = await getDesktopDb();
             const rows = await db.select(`SELECT * FROM ${DESKTOP_TABLE} WHERE id = 1 LIMIT 1`);
-            if (!rows || !rows.length) return null;
+            if (!rows?.length) return null;
             const row = rows[0];
             return {
                 version: row.version,
@@ -473,7 +462,7 @@ const Instrumentation = (() => {
         stats = await loadStats();
 
         // Start periodic flush
-        flushTimer = setInterval(() => {
+        setInterval(() => {
             if (dirty) {
                 void flush();
             }
