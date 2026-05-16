@@ -10,6 +10,8 @@
     };
     const MAX_ATTEMPTS = 1200;
     const RETRY_DELAY_MS = 25;
+    const DEFAULT_RUNTIME_WAIT_MS = 5000;
+    const DEFAULT_RUNTIME_POLL_MS = 50;
 
     function hasReadyDesktopStorageApis(runtime) {
         return !!(
@@ -349,10 +351,54 @@
         });
     }
 
+    async function waitForRuntime(options = {}) {
+        const {
+            validator = hasReadyDesktopApis,
+            ready = window.__DICOM_VIEWER_TAURI_READY__,
+            timeoutMs = DEFAULT_RUNTIME_WAIT_MS,
+            pollMs = DEFAULT_RUNTIME_POLL_MS,
+            fallbackRuntime = true,
+        } = options;
+
+        const current = resolveDesktopRuntime(validator);
+        if (current) return current;
+
+        let readyRuntime = null;
+        const readyPromises = Array.isArray(ready) ? ready : [ready];
+        for (const promise of readyPromises) {
+            if (!promise || typeof promise.then !== 'function') continue;
+            promise
+                .then((resolved) => {
+                    const runtime = validator(resolved) ? resolved : resolveDesktopRuntime(validator);
+                    if (runtime) readyRuntime = runtime;
+                })
+                .catch(() => {});
+        }
+        if (readyPromises.some((promise) => promise && typeof promise.then === 'function')) {
+            await Promise.resolve();
+            if (readyRuntime) return readyRuntime;
+        }
+
+        const deadline = performance.now() + timeoutMs;
+        while (performance.now() < deadline) {
+            if (readyRuntime) return readyRuntime;
+            const runtime = resolveDesktopRuntime(validator);
+            if (runtime) return runtime;
+            await new Promise((resolve) => setTimeout(resolve, pollMs));
+        }
+
+        return fallbackRuntime ? window.__TAURI__ || null : null;
+    }
+
     window.__DICOM_VIEWER_TAURI_STORAGE_READY__ =
         window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || createReadyPromise(hasReadyDesktopStorageApis);
 
     window.__DICOM_VIEWER_TAURI_READY__ =
         window.__DICOM_VIEWER_TAURI_READY__ || createReadyPromise(hasReadyDesktopApis);
+    window.DicomViewerTauriCompat = Object.freeze({
+        waitForRuntime,
+        hasReadyDesktopApis,
+        hasReadyDesktopStorageApis,
+    });
     resolveDesktopRuntime(hasReadyDesktopStorageApis) || resolveDesktopRuntime();
 })();

@@ -117,62 +117,6 @@ const CONFIG = {
             instrumentation: mode === 'desktop' || mode === 'personal',
         };
     },
-
-    /**
-     * Check if notes should persist
-     * Always true; storage backend depends on deployment mode
-     * @returns {boolean}
-     */
-    shouldPersistNotes() {
-        return this.features.notesPersistence;
-    },
-
-    /**
-     * Check if running on the cloud platform
-     * @returns {boolean}
-     */
-    isCloudPlatform() {
-        return this.deploymentMode === 'cloud';
-    },
-
-    /**
-     * Check if running in demo mode (GitHub Pages)
-     * @returns {boolean}
-     */
-    isDemo() {
-        return this.deploymentMode === 'demo';
-    },
-
-    /**
-     * Check if running in a preview environment (Vercel)
-     * @returns {boolean}
-     */
-    isPreview() {
-        return this.deploymentMode === 'preview';
-    },
-
-    /**
-     * Check if running locally or self-hosted
-     * @returns {boolean}
-     */
-    isPersonal() {
-        return this.deploymentMode === 'personal';
-    },
-
-    /**
-     * Get human-readable deployment mode name
-     * @returns {string}
-     */
-    getModeName() {
-        const names = {
-            demo: 'Demo',
-            preview: 'Preview',
-            cloud: 'Cloud',
-            desktop: 'Desktop',
-            personal: 'Personal',
-        };
-        return names[this.deploymentMode] || 'Unknown';
-    },
 };
 
 // Freeze to prevent modification

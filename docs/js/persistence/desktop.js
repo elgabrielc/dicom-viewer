@@ -145,18 +145,10 @@ const _NotesDesktop = (() => {
     }
 
     async function waitForDesktopRuntime() {
-        const ready = window.__DICOM_VIEWER_TAURI_STORAGE_READY__ || window.__DICOM_VIEWER_TAURI_READY__;
-        if (ready && typeof ready.then === 'function') {
-            await ready;
-        }
-        if (window.__TAURI__?.sql?.load) return window.__TAURI__;
-
-        const deadline = performance.now() + 5000;
-        while (performance.now() < deadline) {
-            if (window.__TAURI__?.sql?.load) return window.__TAURI__;
-            await new Promise((r) => setTimeout(r, 50));
-        }
-        return window.__TAURI__ || null;
+        return await window.DicomViewerTauriCompat.waitForRuntime({
+            validator: (runtime) => typeof runtime?.sql?.load === 'function',
+            ready: [window.__DICOM_VIEWER_TAURI_STORAGE_READY__, window.__DICOM_VIEWER_TAURI_READY__],
+        });
     }
 
     async function getDesktopDb() {

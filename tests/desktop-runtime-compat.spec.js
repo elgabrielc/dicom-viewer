@@ -740,6 +740,30 @@ test('desktop scan uses read_scan_manifest and read_scan_header through producti
     expect(result.headerPaths).toContain('/library/IMG001.dcm');
 });
 
+test('waitForRuntime returns an already-settled ready runtime before the first poll delay', async ({ page }) => {
+    await page.goto('http://127.0.0.1:5001/?nolib');
+
+    const result = await page.evaluate(async () => {
+        const runtime = { core: { invoke() {} } };
+        const startedAt = performance.now();
+        const resolved = await window.DicomViewerTauriCompat.waitForRuntime({
+            ready: Promise.resolve(runtime),
+            validator: (candidate) => candidate === runtime,
+            timeoutMs: 1200,
+            pollMs: 1000,
+            fallbackRuntime: false,
+        });
+
+        return {
+            matched: resolved === runtime,
+            elapsedMs: performance.now() - startedAt,
+        };
+    });
+
+    expect(result.matched).toBe(true);
+    expect(result.elapsedMs).toBeLessThan(250);
+});
+
 // Regression: waitForDesktopRuntime() did a one-shot check for window.__TAURI__.sql.load
 // and returned null immediately if it wasn't there yet. On cold start the SQL plugin is
 // injected asynchronously, so getDesktopDb() would throw before the plugin was ready.

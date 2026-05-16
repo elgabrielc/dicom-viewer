@@ -48,10 +48,6 @@ const NotesAPI = (() => {
     }
 
     function isEnabled() {
-        const config = getConfig();
-        if (config?.shouldPersistNotes) {
-            return config.shouldPersistNotes();
-        }
         return true;
     }
 
@@ -131,7 +127,6 @@ const NotesAPI = (() => {
     }
 
     async function loadNotes(studyUids) {
-        if (!isEnabled()) return { studies: {} };
         return await withFallback(
             () => ServerBackend.loadNotes(studyUids),
             () => LocalBackend.loadNotes(studyUids),
@@ -140,7 +135,6 @@ const NotesAPI = (() => {
     }
 
     async function saveStudyDescription(studyUid, description) {
-        if (!isEnabled()) return null;
         const baseSyncVersion = getBaseSyncVersion(getStudyState(studyUid));
         const result = await withFallback(
             () => ServerBackend.saveStudyDescription(studyUid, description),
@@ -154,7 +148,6 @@ const NotesAPI = (() => {
     }
 
     async function saveSeriesDescription(studyUid, seriesUid, description) {
-        if (!isEnabled()) return null;
         const studyEntry = getStudyState(studyUid);
         const seriesEntry = studyEntry?.series?.[seriesUid] || null;
         const baseSyncVersion = getBaseSyncVersion(seriesEntry);
@@ -170,7 +163,6 @@ const NotesAPI = (() => {
     }
 
     async function addComment(studyUid, payload) {
-        if (!isEnabled()) return null;
         const result = await withFallback(
             () => ServerBackend.addComment(studyUid, payload),
             () => LocalBackend.addComment(studyUid, payload),
@@ -184,7 +176,6 @@ const NotesAPI = (() => {
     }
 
     async function updateComment(studyUid, commentId, payload) {
-        if (!isEnabled()) return null;
         const comment = findCommentRecord(studyUid, commentId);
         const baseSyncVersion = getBaseSyncVersion(comment);
         const result = await withFallback(
@@ -200,7 +191,6 @@ const NotesAPI = (() => {
     }
 
     async function deleteComment(studyUid, commentId) {
-        if (!isEnabled()) return false;
         const comment = findCommentRecord(studyUid, commentId);
         const baseSyncVersion = getBaseSyncVersion(comment);
         const result = await withFallback(
@@ -216,7 +206,6 @@ const NotesAPI = (() => {
     }
 
     async function uploadReport(studyUid, file, meta) {
-        if (!isEnabled()) return null;
         const result = await withFallback(
             () => ServerBackend.uploadReport(studyUid, file, meta),
             () => LocalBackend.uploadReport(studyUid, file, meta),
@@ -230,7 +219,6 @@ const NotesAPI = (() => {
     }
 
     async function deleteReport(studyUid, reportId) {
-        if (!isEnabled()) return false;
         const report = findReportRecord(studyUid, reportId);
         const baseSyncVersion = getBaseSyncVersion(report);
         const result = await withFallback(
@@ -246,7 +234,6 @@ const NotesAPI = (() => {
     }
 
     async function migrate(payload) {
-        if (!isEnabled()) return null;
         return await withFallback(
             () => ServerBackend.migrate(payload),
             () => LocalBackend.migrate(payload),
@@ -255,7 +242,6 @@ const NotesAPI = (() => {
     }
 
     function getReportFileUrl(reportId) {
-        if (!isEnabled()) return '';
         const backend = getBackend();
         if (backend === 'server') {
             return ServerBackend.getReportFileUrl(reportId);
@@ -267,7 +253,7 @@ const NotesAPI = (() => {
     }
 
     function getReportFilePath(reportId) {
-        if (!isEnabled() || getBackend() !== 'desktop') return '';
+        if (getBackend() !== 'desktop') return '';
         return DesktopBackend.getReportFilePath(reportId);
     }
 

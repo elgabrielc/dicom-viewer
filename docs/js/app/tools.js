@@ -66,11 +66,11 @@
     function formatDistance(distanceMm, distancePixels) {
         if (distanceMm !== null) {
             if (distanceMm >= 100) {
-                return (distanceMm / 10).toFixed(2) + ' cm';
+                return `${(distanceMm / 10).toFixed(2)} cm`;
             }
-            return distanceMm.toFixed(2) + ' mm';
+            return `${distanceMm.toFixed(2)} mm`;
         }
-        return distancePixels.toFixed(1) + ' px';
+        return `${distancePixels.toFixed(1)} px`;
     }
 
     function createMeasurement(start, end) {

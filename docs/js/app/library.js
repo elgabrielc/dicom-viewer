@@ -556,7 +556,7 @@
                                         <div class="series-main-row">
                                             <span class="series-icon">&#128196;</span>
                                             ${warningIcon}
-                                            <span class="series-name">${escapeHtml(series.seriesDescription || 'Series ' + (series.seriesNumber || '?'))}</span>
+                                            <span class="series-name">${escapeHtml(series.seriesDescription || `Series ${series.seriesNumber || '?'}`)}</span>
                                             <span class="series-count">${series.slices.length} slices</span>
                                             <button class="comment-toggle series-comment-toggle" data-study-uid="${escapeHtml(study.studyInstanceUid)}" data-series-uid="${escapeHtml(series.seriesInstanceUid)}">
                                                 ${seriesCommentCount > 0 ? `${seriesCommentCount} comment${seriesCommentCount > 1 ? 's' : ''}` : 'Add comment'}
@@ -1033,7 +1033,7 @@
             messageParts.push(`${errors} error${errors !== 1 ? 's' : ''}`);
         }
 
-        let message = messageParts.join('. ') + '.';
+        let message = `${messageParts.join('. ')}.`;
         if (duration != null) {
             const seconds = (duration / 1000).toFixed(1);
             message += ` (${seconds}s)`;

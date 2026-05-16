@@ -224,7 +224,7 @@
         if (typeof value === 'string') {
             // Redact absolute paths to filename only (may contain patient names in directory structure)
             if ((value.startsWith('/') && value.includes('/', 1)) || /^[A-Z]:\\/.test(value)) {
-                return '.../' + value.split(/[\\/]/).pop();
+                return `.../${value.split(/[\\/]/).pop()}`;
             }
             return value;
         }

@@ -665,7 +665,7 @@
             .map(
                 (series) => `
             <div class="series-item" data-uid="${escapeHtml(series.seriesInstanceUid)}">
-                <div class="series-name">${escapeHtml(series.seriesDescription || 'Series ' + (series.seriesNumber || '?'))}</div>
+                <div class="series-name">${escapeHtml(series.seriesDescription || `Series ${series.seriesNumber || '?'}`)}</div>
                 <div class="series-info">${series.slices.length} slices</div>
             </div>
         `,
