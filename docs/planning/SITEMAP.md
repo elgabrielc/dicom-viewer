@@ -132,6 +132,7 @@ asks to preserve the research process itself.
 | `REMEDIATION-PLAN.md` | Prioritized remediation plan cross-referencing both audits. 5 tiers from image correctness to accept-as-is |
 | `CODEBASE-AUDIT-2026-04-08.md` | Multi-agent codebase audit: hardening, security, and correctness findings captured as historical planning input |
 | `TODO-pr42-hardener-findings.md` | PR #42 hardener follow-up list for desktop security, sync, and context-menu improvements |
+| `TODO-pr118-compat-runtime-followups.md` | PR #118 compat-runtime refactor follow-ups: Node-side unit test migration, immutability assertion, `window.__TAURI__` restoration |
 
 ### Other
 

@@ -517,20 +517,7 @@ test('desktop storage ready promise resolves before the full desktop shell is av
 });
 
 test.describe('installCompatFromInternals (direct unit tests via _testInternals)', () => {
-    // Follow-ups (do not address in this PR):
-    //   1. Migrate these direct unit tests to a Node-side harness (Vitest or
-    //      node:test) since installCompatFromInternals has no DOM dependencies.
-    //      Faster than Playwright, eliminates the page.evaluate JSON boundary
-    //      that drove the buildMinimalInternals duplication bug in PR #118, and
-    //      lets us assert on returned objects directly. Once the Node test
-    //      exists, this Playwright describe block can be thinned to a single
-    //      smoke test ("bootstrap doesn't throw") covering the no-library page
-    //      load path end-to-end.
-    //   2. Add an assertion that installCompatFromInternals does not mutate its
-    //      input internals object. Production callers may pass the same
-    //      internals (or share references with native code) and depend on
-    //      immutability. Verify by deep-cloning the input before the call and
-    //      deep-comparing after.
+    // Deferred follow-ups tracked in docs/planning/TODO-pr118-compat-runtime-followups.md
     const NOLIB_URL = 'http://127.0.0.1:5001/?nolib';
 
     test('returns null when internals are missing or have no invoke', async ({ page }) => {
