@@ -14,7 +14,6 @@ async function installMockDesktopTauri(page, options = {}) {
         ({ options, readyPromiseNames }) => {
             const FILE_STORAGE_PREFIX = 'mock-tauri-fs:';
             const SECURE_AUTH_STORAGE_KEY = 'mock-tauri-secure-auth-state';
-            const SECURE_AUTH_SEEDED_KEY = 'mock-tauri-secure-auth-state-seeded';
             const fsOptions = options.fs || {};
             const invokeOptions = options.invoke || {};
             const sqlOptions = options.sql || {};
@@ -57,7 +56,7 @@ async function installMockDesktopTauri(page, options = {}) {
             }
 
             function makeMissingFileError(filePath) {
-                return new Error(`No such file or directory: ${filePath}`);
+                return `No such file or directory: ${filePath}`;
             }
 
             function serializeBytes(bytes) {
@@ -87,9 +86,8 @@ async function installMockDesktopTauri(page, options = {}) {
                 seedFile(filePath, bytes);
             }
 
-            if (options.secureAuthState && sessionStorage.getItem(SECURE_AUTH_SEEDED_KEY) !== '1') {
+            if (options.secureAuthState) {
                 localStorage.setItem(SECURE_AUTH_STORAGE_KEY, JSON.stringify(options.secureAuthState));
-                sessionStorage.setItem(SECURE_AUTH_SEEDED_KEY, '1');
             }
 
             const sqlPlugin = window.__createMockTauriSql(tauriSqlOptions);
@@ -149,6 +147,7 @@ async function installMockDesktopTauri(page, options = {}) {
                             window.__mockDesktopTauriState.secureAuthState = null;
                             return true;
                         }
+                        // Harness-only sentinel for unmocked commands; throws Error (not bare string) so the stack trace points at test setup.
                         throw new Error(`Unhandled core invoke: ${cmd}`);
                     },
                 },
@@ -213,7 +212,7 @@ async function installMockDesktopTauri(page, options = {}) {
                             failRemoveAll ||
                             failRemovePatterns.some((pattern) => String(filePath).includes(String(pattern)))
                         ) {
-                            throw new Error(`Mock remove failure for ${filePath}`);
+                            throw `Mock remove failure for ${filePath}`;
                         }
                         localStorage.removeItem(`${FILE_STORAGE_PREFIX}${filePath}`);
                     },
@@ -229,7 +228,7 @@ async function installMockDesktopTauri(page, options = {}) {
                     async writeFile(filePath, bytes) {
                         window.__mockDesktopTauriState.writes.push({ filePath, byteLength: bytes?.length || 0 });
                         if (failWritePatterns.some((pattern) => String(filePath).includes(String(pattern)))) {
-                            throw new Error(`Mock write failure for ${filePath}`);
+                            throw `Mock write failure for ${filePath}`;
                         }
                         localStorage.setItem(`${FILE_STORAGE_PREFIX}${filePath}`, serializeBytes(bytes));
                     },

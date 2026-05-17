@@ -48,9 +48,47 @@ test.describe('mock desktop Tauri contract', () => {
 
         expect(result.exists).toBe(false);
         expect(result.readError).toContain('No such file or directory');
-        expect(result.readIsError).toBe(true);
+        expect(result.readIsError).toBe(false);
         expect(result.statError).toContain('No such file or directory');
-        expect(result.statIsError).toBe(true);
+        expect(result.statIsError).toBe(false);
+    });
+
+    test('chaos-test write/remove failures throw bare strings (not Error instances)', async ({ page }) => {
+        await installMockDesktopTauri(page, {
+            fs: {
+                files: { '/mock/appdata/seed.txt': [0x00] },
+                failWritePatterns: ['will-fail'],
+                failRemovePatterns: ['will-fail'],
+            },
+        });
+        await gotoMockDesktopPage(page);
+
+        const result = await page.evaluate(async () => {
+            let writeError = null;
+            let writeIsError = null;
+            try {
+                await window.__TAURI__.fs.writeFile('/mock/appdata/will-fail.txt', new Uint8Array([0x01]));
+            } catch (error) {
+                writeError = String(error?.message || error);
+                writeIsError = error instanceof Error;
+            }
+
+            let removeError = null;
+            let removeIsError = null;
+            try {
+                await window.__TAURI__.fs.remove('/mock/appdata/will-fail.txt');
+            } catch (error) {
+                removeError = String(error?.message || error);
+                removeIsError = error instanceof Error;
+            }
+
+            return { writeError, writeIsError, removeError, removeIsError };
+        });
+
+        expect(result.writeError).toContain('Mock write failure');
+        expect(result.writeIsError).toBe(false);
+        expect(result.removeError).toContain('Mock remove failure');
+        expect(result.removeIsError).toBe(false);
     });
 
     test('mkdir accepts and records Tauri options', async ({ page }) => {
