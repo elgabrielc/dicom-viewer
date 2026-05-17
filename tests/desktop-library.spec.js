@@ -117,12 +117,14 @@ async function installMockDesktop(page, options = {}) {
             return originalInvoke(cmd, args);
         };
 
-        // fs.exists: in-memory fileBytes OR harness fallthrough (which checks localStorage).
+        // fs.exists: in-memory fileBytes OR harness fallthrough. Both lookups use the
+        // normalized path so paths arriving with double slashes / trailing slashes
+        // resolve consistently — the original spec normalized both sides too.
         const originalExists = window.__TAURI__.fs.exists;
         window.__TAURI__.fs.exists = async (filePath) => {
             const normalized = normalizePath(filePath);
             if (hasOwn(fileBytes, normalized)) return true;
-            return originalExists(filePath);
+            return originalExists(normalized);
         };
 
         // fs.readFile: failures → in-memory fileBytes → harness fallthrough → default [0].
