@@ -63,6 +63,21 @@ async function installMockDesktopTauri(page, options = {}) {
                 if (typeof bytes === 'string') {
                     return JSON.stringify(Array.from(new TextEncoder().encode(bytes)));
                 }
+                // Uint8Array values round-tripped through Playwright's addInitScript JSON
+                // serialization arrive as plain objects with numeric-string keys (no .length).
+                // Array.from on those returns [] — silently corrupting seeded binary data.
+                // Reconstruct the byte sequence in that case.
+                if (
+                    bytes &&
+                    typeof bytes === 'object' &&
+                    !Array.isArray(bytes) &&
+                    typeof bytes.length !== 'number'
+                ) {
+                    const keys = Object.keys(bytes)
+                        .filter((key) => /^\d+$/.test(key))
+                        .sort((a, b) => Number(a) - Number(b));
+                    return JSON.stringify(keys.map((key) => Number(bytes[key]) || 0));
+                }
                 return JSON.stringify(Array.from(bytes || []));
             }
 

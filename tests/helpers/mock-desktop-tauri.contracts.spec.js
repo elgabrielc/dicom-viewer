@@ -112,6 +112,28 @@ test.describe('mock desktop Tauri contract', () => {
         ]);
     });
 
+    test('fs.files seeded with Uint8Array values round-trips through Playwright serialization', async ({ page }) => {
+        // Regression: Uint8Array doesn't survive addInitScript's JSON serialization —
+        // it arrives in the browser as a plain object with numeric-string keys, no .length.
+        // The harness's serializeBytes must reconstruct the byte sequence from those keys
+        // or the seeded file silently becomes empty.
+        const payload = new TextEncoder().encode('hello world');
+
+        await installMockDesktopTauri(page, {
+            fs: {
+                files: { '/mock/appdata/seed.bin': payload },
+            },
+        });
+        await gotoMockDesktopPage(page);
+
+        const result = await page.evaluate(async () => {
+            const bytes = await window.__TAURI__.fs.readFile('/mock/appdata/seed.bin');
+            return Array.from(bytes);
+        });
+
+        expect(result).toEqual(Array.from(payload));
+    });
+
     test('ready promises resolve to the installed runtime', async ({ page }) => {
         await installMockDesktopTauri(page);
         await gotoMockDesktopPage(page);
