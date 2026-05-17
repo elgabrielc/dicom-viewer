@@ -52,6 +52,22 @@ test('throws when the [Unreleased] section is missing', () => {
     assert.throws(() => promoteChangelog(noUnreleased, '0.4.1', '2026-05-17'), /not found/);
 });
 
+test('throws when multiple [Unreleased] headings are present', () => {
+    const duplicate = `# Changelog
+
+## [Unreleased]
+
+### Fixed
+- first entry
+
+## [Unreleased]
+
+### Added
+- second entry
+`;
+    assert.throws(() => promoteChangelog(duplicate, '0.4.1', '2026-05-17'), /exactly once/);
+});
+
 test('throws when the [Unreleased] section is empty', () => {
     const empty = '# Changelog\n\n## [Unreleased]\n\n## [2026-04-10]\n\n### Added\n- x\n';
     assert.throws(() => promoteChangelog(empty, '0.4.1', '2026-05-17'), /empty/);

@@ -199,7 +199,7 @@ echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted. Reverting changes..."
     trap - ERR
-    git checkout -- .
+    git restore --staged --worktree -- "${RELEASE_FILES[@]}"
     exit 0
 fi
 

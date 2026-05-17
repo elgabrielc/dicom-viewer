@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const UNRELEASED_HEADING = '## [Unreleased]';
+const UNRELEASED_HEADING_PATTERN = /^## \[Unreleased\]$/gm;
 
 // Promote the [Unreleased] section to a versioned release heading. Returns the
 // rewritten changelog text. Throws if [Unreleased] is absent or has no content
@@ -23,11 +24,15 @@ export function promoteChangelog(markdown, version, date) {
         throw new Error('promoteChangelog: date is required');
     }
 
-    const markerIndex = markdown.indexOf(UNRELEASED_HEADING);
-    if (markerIndex === -1) {
+    const headings = markdown.match(UNRELEASED_HEADING_PATTERN) || [];
+    if (headings.length === 0) {
         throw new Error(`CHANGELOG: "${UNRELEASED_HEADING}" section not found`);
     }
+    if (headings.length !== 1) {
+        throw new Error(`CHANGELOG: "${UNRELEASED_HEADING}" section must appear exactly once`);
+    }
 
+    const markerIndex = markdown.search(UNRELEASED_HEADING_PATTERN);
     const afterMarker = markdown.slice(markerIndex + UNRELEASED_HEADING.length);
     const nextHeadingOffset = afterMarker.search(/\n## \[/);
     const sectionBody = nextHeadingOffset === -1 ? afterMarker : afterMarker.slice(0, nextHeadingOffset);
