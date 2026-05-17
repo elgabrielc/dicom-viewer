@@ -152,6 +152,8 @@ async function installMockDesktop(page, options = {}) {
     // Delegate the Tauri runtime to the shared harness, then layer
     // import-pipeline-specific commands and per-path overrides on top.
     await installMockDesktopTauri(page, {
+        // Intentionally overrides the harness default ('/mock/appdata') to match this
+        // spec's pre-migration default ('/mock-app-data'). Tests assert on this exact path.
         appDataDir: options.appDataDir || '/mock-app-data',
         sql: {
             initialState: options.initialState || {},
@@ -268,9 +270,10 @@ async function installMockDesktop(page, options = {}) {
             return originalMkdir(dirPath, mkdirOptions);
         };
 
-        // remove/rename were no-ops in the original; preserve that shape.
-        window.__TAURI__.fs.remove = async () => {};
-        window.__TAURI__.fs.rename = async () => {};
+        // remove/rename intentionally not overridden — the harness's implementations
+        // track __mockDesktopTauriState.{removeCalls,renameCalls} and update localStorage.
+        // The import unit tests don't currently call these, so the harness defaults are
+        // both correct (no-throw) and useful (full tracking) for any future test that does.
 
         // Harness doesn't install dialog; the import pipeline expects dialog.open to return null.
         window.__TAURI__.dialog = {
@@ -1138,6 +1141,8 @@ async function installMockDesktopIntegration(page, options = {}) {
     // integration-test specifics (drag-drop capture, event.listen,
     // managed-library config, readDir scans, per-path overrides).
     await installMockDesktopTauri(page, {
+        // Intentionally overrides the harness default ('/mock/appdata') to match this
+        // spec's pre-migration default ('/mock-app-data'). Tests assert on this exact path.
         appDataDir: options.appDataDir || '/mock-app-data',
         fs: {
             files: options.storedFiles || {},
@@ -1264,9 +1269,9 @@ async function installMockDesktopIntegration(page, options = {}) {
             return originalMkdir(dirPath, mkdirOptions);
         };
 
-        // remove/rename were no-ops in the original; preserve that shape.
-        window.__TAURI__.fs.remove = async () => {};
-        window.__TAURI__.fs.rename = async () => {};
+        // remove/rename intentionally not overridden — the harness's implementations
+        // track __mockDesktopTauriState.{removeCalls,renameCalls} and update localStorage,
+        // which is the correct behavior for integration scenarios that may exercise them.
 
         // Harness doesn't install dialog or event; the integration spec needs both.
         window.__TAURI__.dialog = {
