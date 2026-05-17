@@ -133,6 +133,7 @@ asks to preserve the research process itself.
 | `CODEBASE-AUDIT-2026-04-08.md` | Multi-agent codebase audit: hardening, security, and correctness findings captured as historical planning input |
 | `TODO-pr42-hardener-findings.md` | PR #42 hardener follow-up list for desktop security, sync, and context-menu improvements |
 | `TODO-pr118-compat-runtime-followups.md` | PR #118 compat-runtime refactor follow-ups: Node-side unit test migration, immutability assertion, `window.__TAURI__` restoration |
+| `TODO-pr120-harness-promotions.md` | PR #120 harness promotion follow-ups: per-spec wrappers ready to graduate into the shared mock-desktop-tauri harness defaults |
 
 ### Other
 
