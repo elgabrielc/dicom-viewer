@@ -46,6 +46,27 @@ jobs:
       - name: Check JS and Python lint rules
         run: npm run lint:js && npm run lint:py
 
+  node-tests:
+    name: Run Node Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run Node unit tests
+        run: npm run test:node
+
   test:
     name: Run Playwright Tests
     runs-on: ubuntu-latest
@@ -100,9 +121,6 @@ jobs:
           elif [ -d "docs/sample" ]; then
             cp -r docs/sample/* test-data/
           fi
-
-      - name: Run Node unit tests
-        run: npm run test:node
 
       - name: Run Playwright tests
         run: |
