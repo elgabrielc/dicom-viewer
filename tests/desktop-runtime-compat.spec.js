@@ -516,6 +516,147 @@ test('desktop storage ready promise resolves before the full desktop shell is av
     expect(result.fullSettledEarly).toBe(false);
 });
 
+test.describe('installCompatFromInternals (direct unit tests via _testInternals)', () => {
+    // Deferred follow-ups tracked in docs/planning/TODO-pr118-compat-runtime-followups.md
+    const NOLIB_URL = 'http://127.0.0.1:5001/?nolib';
+
+    test('returns null when internals are missing or have no invoke', async ({ page }) => {
+        await page.goto(NOLIB_URL);
+
+        const result = await page.evaluate(() => {
+            const { installCompatFromInternals } = window.DicomViewerTauriCompat._testInternals;
+            // Reset to ensure the early-return falls through to null, not a stale __TAURI__.
+            window.__TAURI__ = undefined;
+            return {
+                nullCase: installCompatFromInternals(null),
+                emptyCase: installCompatFromInternals({}),
+                noInvokeCase: installCompatFromInternals({ transformCallback: () => null }),
+            };
+        });
+
+        expect(result.nullCase).toBeNull();
+        expect(result.emptyCase).toBeNull();
+        expect(result.noInvokeCase).toBeNull();
+    });
+
+    test('builds a complete Tauri surface from a minimal internals stub', async ({ page }) => {
+        await page.goto(NOLIB_URL);
+
+        const result = await page.evaluate(() => {
+            window.__TAURI__ = undefined;
+            const { installCompatFromInternals } = window.DicomViewerTauriCompat._testInternals;
+            // Build internals in-page: functions cannot cross the page.evaluate JSON boundary.
+            const internals = {
+                metadata: {
+                    currentWindow: { label: 'main' },
+                    currentWebview: { label: 'main', windowLabel: 'main' },
+                },
+                convertFileSrc: (filePath, protocol = 'asset') =>
+                    `${protocol}://localhost/${encodeURIComponent(filePath)}`,
+                transformCallback: (callback) => callback,
+                unregisterCallback: () => {},
+                invoke: () => Promise.resolve(null),
+            };
+            const tauri = installCompatFromInternals(internals);
+            return {
+                hasCoreInvoke: typeof tauri?.core?.invoke === 'function',
+                hasCoreConvertFileSrc: typeof tauri?.core?.convertFileSrc === 'function',
+                hasDialogOpen: typeof tauri?.dialog?.open === 'function',
+                hasEventListen: typeof tauri?.event?.listen === 'function',
+                hasFsExists: typeof tauri?.fs?.exists === 'function',
+                hasFsReadFile: typeof tauri?.fs?.readFile === 'function',
+                hasFsWriteFile: typeof tauri?.fs?.writeFile === 'function',
+                hasFsStat: typeof tauri?.fs?.stat === 'function',
+                hasFsRename: typeof tauri?.fs?.rename === 'function',
+                hasFsMkdir: typeof tauri?.fs?.mkdir === 'function',
+                hasFsReadDir: typeof tauri?.fs?.readDir === 'function',
+                hasFsRemove: typeof tauri?.fs?.remove === 'function',
+                hasPathAppDataDir: typeof tauri?.path?.appDataDir === 'function',
+                hasPathJoin: typeof tauri?.path?.join === 'function',
+                hasPathNormalize: typeof tauri?.path?.normalize === 'function',
+                hasSqlLoad: typeof tauri?.sql?.load === 'function',
+                hasWebviewGetCurrent: typeof tauri?.webview?.getCurrentWebview === 'function',
+                globalAssigned: window.__TAURI__ === tauri,
+            };
+        });
+
+        expect(result).toEqual({
+            hasCoreInvoke: true,
+            hasCoreConvertFileSrc: true,
+            hasDialogOpen: true,
+            hasEventListen: true,
+            hasFsExists: true,
+            hasFsReadFile: true,
+            hasFsWriteFile: true,
+            hasFsStat: true,
+            hasFsRename: true,
+            hasFsMkdir: true,
+            hasFsReadDir: true,
+            hasFsRemove: true,
+            hasPathAppDataDir: true,
+            hasPathJoin: true,
+            hasPathNormalize: true,
+            hasSqlLoad: true,
+            hasWebviewGetCurrent: true,
+            globalAssigned: true,
+        });
+    });
+
+    test('preserves existing __TAURI__ members when augmenting from internals', async ({ page }) => {
+        await page.goto(NOLIB_URL);
+
+        const result = await page.evaluate(() => {
+            const nativeInvokeSentinel = () => Promise.resolve('native-invoke');
+            window.__TAURI__ = { core: { invoke: nativeInvokeSentinel } };
+
+            const { installCompatFromInternals } = window.DicomViewerTauriCompat._testInternals;
+            const internals = {
+                metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+                convertFileSrc: (filePath, protocol = 'asset') =>
+                    `${protocol}://localhost/${encodeURIComponent(filePath)}`,
+                transformCallback: (callback) => callback,
+                unregisterCallback: () => {},
+                invoke: () => Promise.resolve('shim-invoke'),
+            };
+            const tauri = installCompatFromInternals(internals);
+            return {
+                preservedCoreInvoke: tauri.core.invoke === nativeInvokeSentinel,
+                augmentedFsExists: typeof tauri?.fs?.exists === 'function',
+                augmentedPathAppDataDir: typeof tauri?.path?.appDataDir === 'function',
+                augmentedSqlLoad: typeof tauri?.sql?.load === 'function',
+            };
+        });
+
+        expect(result.preservedCoreInvoke).toBe(true);
+        expect(result.augmentedFsExists).toBe(true);
+        expect(result.augmentedPathAppDataDir).toBe(true);
+        expect(result.augmentedSqlLoad).toBe(true);
+    });
+
+    test('guard: no file under docs/js/ (except tauri-compat.js) references _testInternals', () => {
+        const docsJsRoot = path.join(__dirname, '..', 'docs', 'js');
+        const violations = [];
+
+        function walk(dir) {
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    walk(fullPath);
+                } else if (entry.isFile() && entry.name.endsWith('.js') && entry.name !== 'tauri-compat.js') {
+                    const content = fs.readFileSync(fullPath, 'utf8');
+                    if (content.includes('_testInternals')) {
+                        violations.push(path.relative(docsJsRoot, fullPath));
+                    }
+                }
+            }
+        }
+        walk(docsJsRoot);
+
+        // Empty array means no production file references the test-only surface.
+        expect(violations).toEqual([]);
+    });
+});
+
 test('OpenJPEG asset URL resolves when the decoder bundle is worker-loaded', async ({ page }) => {
     await page.goto('http://127.0.0.1:5001/?nolib');
 

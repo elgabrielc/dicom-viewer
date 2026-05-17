@@ -399,6 +399,18 @@
         waitForRuntime,
         hasReadyDesktopApis,
         hasReadyDesktopStorageApis,
+        /**
+         * @private — exported for the desktop runtime-compat contract tests.
+         * Not part of the public API. The guard test in
+         * tests/desktop-runtime-compat.spec.js fails if any file under
+         * docs/js/ (except this one) references `_testInternals`. If
+         * production code needs this behavior, call the public
+         * `DicomViewerTauriCompat` surface above — do NOT import from
+         * `_testInternals` directly.
+         */
+        _testInternals: Object.freeze({
+            installCompatFromInternals,
+        }),
     });
     resolveDesktopRuntime(hasReadyDesktopStorageApis) || resolveDesktopRuntime();
 })();
