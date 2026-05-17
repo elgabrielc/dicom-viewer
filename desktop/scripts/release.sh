@@ -121,6 +121,11 @@ case "$VERSION_ARG" in
         ;;
 esac
 
+# Assert the version actually changes -- release.sh cannot create an empty bump
+if [ "$NEW_VERSION" = "$CURRENT" ]; then
+    die "New version equals current version ($CURRENT) -- nothing to bump. Choose a higher version."
+fi
+
 # Assert tag doesn't exist
 TAG="v$NEW_VERSION"
 if git -C "$REPO_ROOT" tag -l "$TAG" | grep -q "$TAG"; then
@@ -135,6 +140,26 @@ echo ""
 
 echo "Updating version files..."
 
+# Files touched by release prep -- used for rollback and for staging the commit.
+RELEASE_FILES=(
+    desktop/src-tauri/tauri.conf.json
+    desktop/src-tauri/Cargo.toml
+    desktop/src-tauri/Cargo.lock
+    desktop/package.json
+    desktop/package-lock.json
+    CHANGELOG.md
+)
+
+# Restore every prepared file if any step below fails before the commit.
+rollback_prep() {
+    echo "" >&2
+    echo "Release prep failed -- rolling back prepared files." >&2
+    if ! git -C "$REPO_ROOT" restore --staged --worktree -- "${RELEASE_FILES[@]}"; then
+        echo "Warning: rollback failed; inspect release files before retrying." >&2
+    fi
+}
+trap rollback_prep ERR
+
 # tauri.conf.json
 node -e "
 const fs = require('fs');
@@ -148,21 +173,26 @@ sed -i '' "s/^version = \"$CURRENT\"/version = \"$NEW_VERSION\"/" "$CARGO_TOML"
 
 # package.json + package-lock.json
 cd "$DESKTOP_DIR"
-npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version > /dev/null 2>&1
+npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version > /dev/null
 
 # Cargo.lock
 echo "Updating Cargo.lock..."
 cd "$DESKTOP_DIR/src-tauri"
-cargo check --quiet 2>/dev/null
+cargo check --quiet
 
 cd "$REPO_ROOT"
+
+# CHANGELOG.md: promote the [Unreleased] section to a versioned, dated heading.
+# Exits non-zero (triggering rollback_prep) if [Unreleased] is missing or empty.
+echo "Promoting CHANGELOG.md..."
+node "$SCRIPT_DIR/promote-changelog.mjs" "$NEW_VERSION" "$(date +%F)"
 
 # Show diff
 echo ""
 echo "--- Changes ---"
 git diff --stat
 echo ""
-git diff -- desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml desktop/package.json
+git diff -- desktop/src-tauri/tauri.conf.json desktop/src-tauri/Cargo.toml desktop/package.json CHANGELOG.md
 echo ""
 
 # Confirm
@@ -170,19 +200,16 @@ read -p "Commit Release $TAG? (y/n) " -n 1 -r
 echo ""
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted. Reverting changes..."
-    git checkout -- .
+    trap - ERR
+    git restore --staged --worktree -- "${RELEASE_FILES[@]}"
     exit 0
 fi
 
 # Commit
-git add \
-    desktop/src-tauri/tauri.conf.json \
-    desktop/src-tauri/Cargo.toml \
-    desktop/src-tauri/Cargo.lock \
-    desktop/package.json \
-    desktop/package-lock.json
+git add -- "${RELEASE_FILES[@]}"
 
 git commit -m "Release $TAG"
+trap - ERR
 
 echo ""
 echo "Committed: Release $TAG"
