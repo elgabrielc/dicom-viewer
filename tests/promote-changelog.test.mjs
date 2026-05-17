@@ -2,8 +2,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
-import { promoteChangelog } from '../desktop/scripts/promote-changelog.mjs';
+import { promoteChangelog, writeFileAtomically } from '../desktop/scripts/promote-changelog.mjs';
 
 const SAMPLE = `# Changelog
 
@@ -88,4 +91,19 @@ test('promotes when [Unreleased] is the last section with content', () => {
 test('throws when version or date is missing', () => {
     assert.throws(() => promoteChangelog(SAMPLE, '', '2026-05-17'), /version is required/);
     assert.throws(() => promoteChangelog(SAMPLE, '0.4.1', ''), /date is required/);
+});
+
+test('writes changelog updates through a same-directory temporary file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'promote-changelog-'));
+    try {
+        const changelogPath = join(dir, 'CHANGELOG.md');
+        writeFileSync(changelogPath, 'old\n');
+
+        writeFileAtomically(changelogPath, 'new\n');
+
+        assert.equal(readFileSync(changelogPath, 'utf8'), 'new\n');
+        assert.deepEqual(readdirSync(dir), ['CHANGELOG.md']);
+    } finally {
+        rmSync(dir, { force: true, recursive: true });
+    }
 });

@@ -6,8 +6,8 @@
 // Usage: node desktop/scripts/promote-changelog.mjs <version> <YYYY-MM-DD>
 // Invoked by desktop/scripts/release.sh as part of cutting a release.
 
-import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const UNRELEASED_HEADING = '## [Unreleased]';
@@ -48,6 +48,19 @@ export function promoteChangelog(markdown, version, date) {
     return markdown.replace(UNRELEASED_HEADING, `${UNRELEASED_HEADING}\n\n## [${version}] - ${date}`);
 }
 
+export function writeFileAtomically(filePath, content) {
+    const parentDir = dirname(filePath);
+    const tmpDir = mkdtempSync(join(parentDir, '.promote-changelog-'));
+    const tmpPath = join(tmpDir, basename(filePath));
+
+    try {
+        writeFileSync(tmpPath, content);
+        renameSync(tmpPath, filePath);
+    } finally {
+        rmSync(tmpDir, { force: true, recursive: true });
+    }
+}
+
 function main() {
     const [version, date] = process.argv.slice(2);
     if (!version || !date) {
@@ -61,7 +74,7 @@ function main() {
 
     try {
         const current = readFileSync(changelogPath, 'utf8');
-        writeFileSync(changelogPath, promoteChangelog(current, version, date));
+        writeFileAtomically(changelogPath, promoteChangelog(current, version, date));
         console.log(`CHANGELOG: promoted [Unreleased] -> [${version}] - ${date}`);
     } catch (error) {
         console.error(error.message);
