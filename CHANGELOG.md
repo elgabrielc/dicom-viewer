@@ -8,11 +8,6 @@ Copyright 2026 Divergent Health Technologies
 
 ## [Unreleased]
 
-### Fixed
-- DX/CR radiographs with full-range placeholder W/L now use pixel-statistics auto W/L instead of rendering washed out (BUG-012)
-
-## [2026-04-10]
-
 ### Added
 - Optional Usage Stats panel in Help for app opens and studies imported
 - Opt-in anonymous instrumentation snapshot support for desktop and personal modes
@@ -22,6 +17,7 @@ Copyright 2026 Divergent Health Technologies
 - Added repo-wide linting and formatting infrastructure to tighten release quality
 
 ### Fixed
+- DX/CR radiographs with full-range placeholder W/L now use pixel-statistics auto W/L instead of rendering washed out (BUG-012)
 - macOS app icon refresh after in-app updates
 - Several instrumentation correctness issues before first release
 
