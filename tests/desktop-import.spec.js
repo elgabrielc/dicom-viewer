@@ -273,7 +273,11 @@ async function installMockDesktop(page, options = {}) {
         window.__TAURI__.fs.rename = async () => {};
 
         // Harness doesn't install dialog; the import pipeline expects dialog.open to return null.
-        window.__TAURI__.dialog = { async open() { return null; } };
+        window.__TAURI__.dialog = {
+            async open() {
+                return null;
+            },
+        };
 
         // Normalize appDataDir for parity with the original mock (strips trailing slashes).
         const originalAppDataDir = window.__TAURI__.path.appDataDir;
@@ -1265,8 +1269,16 @@ async function installMockDesktopIntegration(page, options = {}) {
         window.__TAURI__.fs.rename = async () => {};
 
         // Harness doesn't install dialog or event; the integration spec needs both.
-        window.__TAURI__.dialog = { async open() { return null; } };
-        window.__TAURI__.event = { async listen() { return () => {}; } };
+        window.__TAURI__.dialog = {
+            async open() {
+                return null;
+            },
+        };
+        window.__TAURI__.event = {
+            async listen() {
+                return () => {};
+            },
+        };
 
         // Replace harness's no-op getCurrentWebview with one that captures the drag-drop handler.
         window.__TAURI__.webview.getCurrentWebview = () => ({
