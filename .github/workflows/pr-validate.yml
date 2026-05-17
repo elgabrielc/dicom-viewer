@@ -101,6 +101,9 @@ jobs:
             cp -r docs/sample/* test-data/
           fi
 
+      - name: Run Node unit tests
+        run: npm run test:node
+
       - name: Run Playwright tests
         run: |
           source venv/bin/activate
