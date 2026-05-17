@@ -33,7 +33,7 @@ async function installMockDesktop(page, options = {}) {
     });
 
     await page.addInitScript((opts) => {
-        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+        const hasOwn = (object, key) => Object.hasOwn(object, key);
 
         function toByteArray(value) {
             if (Array.isArray(value)) {
