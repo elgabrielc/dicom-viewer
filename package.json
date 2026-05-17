@@ -24,6 +24,7 @@
     "lint:py:fix": "./scripts/run-ruff.sh check --fix app.py server/",
     "lint:rust": "cargo clippy --locked --manifest-path desktop/src-tauri/Cargo.toml --all-targets -- -D warnings",
     "test": "npx playwright test",
+    "test:node": "node --test tests/*.test.mjs",
     "test:real-tauri": "DICOM_ENABLE_REAL_TAURI=1 npx playwright test --project=real-tauri",
     "worktree:new": "./scripts/agent-worktree-new.sh",
     "worktree:list": "./scripts/agent-worktree-list.sh",
