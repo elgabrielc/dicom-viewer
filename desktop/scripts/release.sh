@@ -154,7 +154,9 @@ RELEASE_FILES=(
 rollback_prep() {
     echo "" >&2
     echo "Release prep failed -- rolling back prepared files." >&2
-    git -C "$REPO_ROOT" restore --staged --worktree -- "${RELEASE_FILES[@]}" 2>/dev/null || true
+    if ! git -C "$REPO_ROOT" restore --staged --worktree -- "${RELEASE_FILES[@]}"; then
+        echo "Warning: rollback failed; inspect release files before retrying." >&2
+    fi
 }
 trap rollback_prep ERR
 

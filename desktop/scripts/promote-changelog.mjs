@@ -34,6 +34,8 @@ export function promoteChangelog(markdown, version, date) {
 
     const markerIndex = markdown.search(UNRELEASED_HEADING_PATTERN);
     const afterMarker = markdown.slice(markerIndex + UNRELEASED_HEADING.length);
+    // CHANGELOG sections are delimited by top-level release headings that use
+    // the "## [version]" form.
     const nextHeadingOffset = afterMarker.search(/\n## \[/);
     const sectionBody = nextHeadingOffset === -1 ? afterMarker : afterMarker.slice(0, nextHeadingOffset);
 
@@ -41,6 +43,8 @@ export function promoteChangelog(markdown, version, date) {
         throw new Error(`CHANGELOG: "${UNRELEASED_HEADING}" section is empty -- nothing to release`);
     }
 
+    // Leave the new [Unreleased] section intentionally empty. The next release
+    // should fail until a real changelog entry is added.
     return markdown.replace(UNRELEASED_HEADING, `${UNRELEASED_HEADING}\n\n## [${version}] - ${date}`);
 }
 
