@@ -162,7 +162,7 @@ async function installMockDesktop(page, options = {}) {
     });
 
     await page.addInitScript((opts) => {
-        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+        const hasOwn = (object, key) => Object.hasOwn(object, key);
 
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
@@ -1154,7 +1154,7 @@ async function installMockDesktopIntegration(page, options = {}) {
     });
 
     await page.addInitScript((opts) => {
-        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+        const hasOwn = (object, key) => Object.hasOwn(object, key);
 
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
