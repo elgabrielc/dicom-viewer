@@ -8,6 +8,8 @@ Copyright 2026 Divergent Health Technologies
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-05-17
+
 ### Added
 - Optional Usage Stats panel in Help for app opens and studies imported
 - Opt-in anonymous instrumentation snapshot support for desktop and personal modes
