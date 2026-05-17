@@ -1,6 +1,6 @@
 # PR #120 — Harness Promotion Follow-Ups
 
-Filed: 2026-05-17. After PR #120 completed the v3 plan's migration sequence (all four desktop specs now share `installMockDesktopTauri`), the v3 plan's 3-spec promotion rule is triggered for three behaviors that were kept spec-local during PRs #4 and #5. Documenting them here so future work can promote without re-deriving the analysis.
+Filed: 2026-05-17. After PR #120 completed the v3 plan's migration sequence (all four desktop specs now share `installMockDesktopTauri`), the v3 plan's 3-spec promotion rule is triggered for three behaviors that were kept spec-local during PRs #4 and #5 of the v3 plan (which map to GitHub PRs #119 and #120 respectively). Documenting them here so future work can promote without re-deriving the analysis.
 
 Context: the v3 plan's promotion rule states that "if a per-command handler or behavior appears in three specs, graduate it from spec-local to a first-class harness option. If a graduation happens, the same PR must update the harness, the README, and the contract tests."
 
@@ -55,7 +55,7 @@ Recommend (a) for simplicity; only graduate the static case. Specs needing mutat
 
 ### 4. Consider promoting the `mock-tauri-fs:` keyspace prefix as a documented constant
 
-The harness's `FILE_STORAGE_PREFIX = 'mock-tauri-fs:'` is currently a private closure constant. PR #5 had to manually update three direct-localStorage assertions in `desktop-library.spec.js` (lines 3316/3324/3384) to switch from the bespoke `mock-desktop-fs:` prefix. Exposing the prefix as a named export (`FILE_STORAGE_PREFIX`) would let future tests reference it symbolically instead of hardcoding the string.
+The harness's `FILE_STORAGE_PREFIX = 'mock-tauri-fs:'` is currently a private closure constant. PR #5 (GitHub PR #120) had to manually update three direct-localStorage assertions in `desktop-library.spec.js` (lines 3318/3326/3386 on `origin/main` after the migration) to switch from the bespoke `mock-desktop-fs:` prefix. Exposing the prefix as a named export (`FILE_STORAGE_PREFIX`) would let future tests reference it symbolically instead of hardcoding the string.
 
 This is purely a clarity / refactor improvement; no behavioral change. Defer unless a future migration needs it.
 
