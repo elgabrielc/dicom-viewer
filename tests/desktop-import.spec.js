@@ -1,11 +1,10 @@
 // @ts-check
 // Copyright (c) 2026 Divergent Health Technologies
-const path = require('node:path');
 const { test, expect } = require('@playwright/test');
+const { installMockDesktopTauri } = require('./helpers/mock-desktop-tauri');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
-const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 const MOCK_APP_DATA = '/mock-app-data';
 const LIBRARY_ROOT = `${MOCK_APP_DATA}/library`;
 
@@ -150,10 +149,18 @@ function buildSyntheticDicomBytes(options = {}) {
  * but tailored for import pipeline testing.
  */
 async function installMockDesktop(page, options = {}) {
-    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    // Delegate the Tauri runtime to the shared harness, then layer
+    // import-pipeline-specific commands and per-path overrides on top.
+    await installMockDesktopTauri(page, {
+        appDataDir: options.appDataDir || '/mock-app-data',
+        sql: {
+            initialState: options.initialState || {},
+            ...(options.sql || {}),
+        },
+    });
+
     await page.addInitScript((opts) => {
-        const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
-        const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
+        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
@@ -163,23 +170,8 @@ async function installMockDesktop(page, options = {}) {
             return collapsed.replace(/\/+$/g, '');
         }
 
-        function joinPaths(...parts) {
-            const cleaned = parts
-                .filter((part) => part !== null && part !== undefined && part !== '')
-                .map((part, index) => {
-                    const value = String(part).replace(/\\/g, '/');
-                    if (index === 0) {
-                        return value.replace(/\/+$/g, '') || '/';
-                    }
-                    return value.replace(/^\/+/g, '').replace(/\/+$/g, '');
-                })
-                .filter(Boolean);
-
-            if (!cleaned.length) return '';
-            return normalizePath(cleaned.join('/'));
-        }
-
-        // Track mock FS operations for assertions
+        // Spec-local mutable state. The harness tracks invokeCalls / reads / writes
+        // in __mockDesktopTauriState; the import tests assert on these shapes here.
         window.__importMockState = {
             mkdirCalls: [],
             writeFileCalls: [],
@@ -193,115 +185,99 @@ async function installMockDesktop(page, options = {}) {
             headerReadBytes: Object.assign({}, opts.headerReadBytes || {}),
         };
 
-        window.__TAURI__ = {
-            core: {
-                async invoke(cmd, args) {
-                    if (cmd === 'apply_desktop_migration') {
-                        return window.__applyMockDesktopMigration(args.db, args.batch, opts);
-                    }
-                    if (cmd === 'load_legacy_desktop_browser_stores') {
-                        return [];
-                    }
-                    if (cmd === 'read_scan_manifest') {
-                        return window.__importMockState.manifestEntries;
-                    }
-                    if (cmd === 'read_scan_header') {
-                        const normalized = normalizePath(args.path);
-                        const state = window.__importMockState;
-                        state.headerReadCalls.push({
-                            path: normalized,
-                            maxBytes: Number(args.maxBytes) || 0,
-                        });
-                        if (hasOwn(state.readFileErrors, normalized)) {
-                            throw new Error(state.readFileErrors[normalized]);
-                        }
-                        const bytes = state.headerReadBytes[normalized] || state.readFileBytes[normalized];
-                        if (bytes) {
-                            return Uint8Array.from(bytes.slice(0, Math.max(0, Number(args.maxBytes) || 0)));
-                        }
-                        return Uint8Array.from([]);
-                    }
-                    throw new Error(`Unhandled core invoke: ${cmd}`);
-                },
-            },
-            dialog: {
-                async open() {
-                    return null;
-                },
-            },
-            fs: {
-                async exists(filePath) {
-                    const normalized = normalizePath(filePath);
-                    const state = window.__importMockState;
-                    if (hasOwn(state.existsResults, normalized)) {
-                        return state.existsResults[normalized];
-                    }
-                    // Check if writeFile has already written to this path
-                    return state.writeFileCalls.some((call) => call.path === normalized);
-                },
-                async stat(filePath) {
-                    const normalized = normalizePath(filePath);
-                    const state = window.__importMockState;
-                    if (hasOwn(state.statResults, normalized)) {
-                        return state.statResults[normalized];
-                    }
-                    throw new Error(`Stat not found: ${normalized}`);
-                },
-                async readFile(filePath) {
-                    const normalized = normalizePath(filePath);
-                    const state = window.__importMockState;
-                    state.readFileCalls.push(normalized);
-                    if (hasOwn(state.readFileErrors, normalized)) {
-                        throw new Error(state.readFileErrors[normalized]);
-                    }
-                    const bytes = state.readFileBytes[normalized];
-                    if (bytes) {
-                        return Uint8Array.from(bytes);
-                    }
-                    return Uint8Array.from([0]);
-                },
-                async readDir() {
-                    return [];
-                },
-                async writeFile(filePath, bytes) {
-                    const normalized = normalizePath(filePath);
-                    window.__importMockState.writeFileCalls.push({
-                        path: normalized,
-                        size: bytes.byteLength || bytes.length,
-                    });
-                },
-                async mkdir(dirPath, mkdirOptions) {
-                    const normalized = normalizePath(dirPath);
-                    window.__importMockState.mkdirCalls.push({
-                        path: normalized,
-                        recursive: !!mkdirOptions?.recursive,
-                    });
-                },
-                async remove() {},
-                async rename() {},
-            },
-            path: {
-                async appDataDir() {
-                    return normalizePath(opts.appDataDir || '/mock-app-data');
-                },
-                async join(...parts) {
-                    return joinPaths(...parts);
-                },
-                async normalize(filePath) {
-                    return normalizePath(filePath);
-                },
-            },
-            sql: window.__createMockTauriSql(opts),
-            webview: {
-                getCurrentWebview() {
-                    return {
-                        onDragDropEvent() {
-                            return Promise.resolve(() => {});
-                        },
-                    };
-                },
-            },
+        // Wrap core.invoke for import-pipeline commands; fall through to the harness
+        // for apply_desktop_migration / load_legacy_desktop_browser_stores / etc.
+        const originalInvoke = window.__TAURI__.core.invoke;
+        window.__TAURI__.core.invoke = async (cmd, args = {}) => {
+            if (cmd === 'read_scan_manifest') {
+                return window.__importMockState.manifestEntries;
+            }
+            if (cmd === 'read_scan_header') {
+                const normalized = normalizePath(args.path);
+                const state = window.__importMockState;
+                state.headerReadCalls.push({
+                    path: normalized,
+                    maxBytes: Number(args.maxBytes) || 0,
+                });
+                if (hasOwn(state.readFileErrors, normalized)) {
+                    throw new Error(state.readFileErrors[normalized]);
+                }
+                const bytes = state.headerReadBytes[normalized] || state.readFileBytes[normalized];
+                if (bytes) {
+                    return Uint8Array.from(bytes.slice(0, Math.max(0, Number(args.maxBytes) || 0)));
+                }
+                return Uint8Array.from([]);
+            }
+            return originalInvoke(cmd, args);
         };
+
+        // Per-path fs overrides take precedence over the harness defaults.
+        window.__TAURI__.fs.exists = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const state = window.__importMockState;
+            if (hasOwn(state.existsResults, normalized)) {
+                return state.existsResults[normalized];
+            }
+            return state.writeFileCalls.some((call) => call.path === normalized);
+        };
+
+        window.__TAURI__.fs.stat = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const state = window.__importMockState;
+            if (hasOwn(state.statResults, normalized)) {
+                return state.statResults[normalized];
+            }
+            throw new Error(`Stat not found: ${normalized}`);
+        };
+
+        window.__TAURI__.fs.readFile = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const state = window.__importMockState;
+            state.readFileCalls.push(normalized);
+            if (hasOwn(state.readFileErrors, normalized)) {
+                throw new Error(state.readFileErrors[normalized]);
+            }
+            const bytes = state.readFileBytes[normalized];
+            if (bytes) {
+                return Uint8Array.from(bytes);
+            }
+            return Uint8Array.from([0]);
+        };
+
+        // Import unit tests don't exercise readDir scans; keep deterministic empty result.
+        window.__TAURI__.fs.readDir = async () => [];
+
+        // Track writes/mkdir in spec-local state; the harness also tracks these in __mockDesktopTauriState.
+        const originalWriteFile = window.__TAURI__.fs.writeFile;
+        window.__TAURI__.fs.writeFile = async (filePath, bytes) => {
+            const normalized = normalizePath(filePath);
+            window.__importMockState.writeFileCalls.push({
+                path: normalized,
+                size: bytes.byteLength || bytes.length,
+            });
+            return originalWriteFile(filePath, bytes);
+        };
+
+        const originalMkdir = window.__TAURI__.fs.mkdir;
+        window.__TAURI__.fs.mkdir = async (dirPath, mkdirOptions) => {
+            const normalized = normalizePath(dirPath);
+            window.__importMockState.mkdirCalls.push({
+                path: normalized,
+                recursive: !!mkdirOptions?.recursive,
+            });
+            return originalMkdir(dirPath, mkdirOptions);
+        };
+
+        // remove/rename were no-ops in the original; preserve that shape.
+        window.__TAURI__.fs.remove = async () => {};
+        window.__TAURI__.fs.rename = async () => {};
+
+        // Harness doesn't install dialog; the import pipeline expects dialog.open to return null.
+        window.__TAURI__.dialog = { async open() { return null; } };
+
+        // Normalize appDataDir for parity with the original mock (strips trailing slashes).
+        const originalAppDataDir = window.__TAURI__.path.appDataDir;
+        window.__TAURI__.path.appDataDir = async () => normalizePath(await originalAppDataDir());
     }, options);
 }
 
@@ -1154,11 +1130,22 @@ const AUTOLOAD_URL = `${TEST_BASE_URL}/`;
  *   - Desktop directory listing for library scan (readDir + file bytes for scan)
  */
 async function installMockDesktopIntegration(page, options = {}) {
-    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
+    // Delegate the Tauri runtime to the shared harness, then layer
+    // integration-test specifics (drag-drop capture, event.listen,
+    // managed-library config, readDir scans, per-path overrides).
+    await installMockDesktopTauri(page, {
+        appDataDir: options.appDataDir || '/mock-app-data',
+        fs: {
+            files: options.storedFiles || {},
+        },
+        sql: {
+            initialState: options.initialState || {},
+            ...(options.sql || {}),
+        },
+    });
+
     await page.addInitScript((opts) => {
-        const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
-        const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
-        const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
+        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
         function normalizePath(input) {
             const text = String(input || '').replace(/\\/g, '/');
@@ -1168,41 +1155,17 @@ async function installMockDesktopIntegration(page, options = {}) {
             return collapsed.replace(/\/+$/g, '');
         }
 
-        function joinPaths(...parts) {
-            const cleaned = parts
-                .filter((part) => part !== null && part !== undefined && part !== '')
-                .map((part, index) => {
-                    const value = String(part).replace(/\\/g, '/');
-                    if (index === 0) {
-                        return value.replace(/\/+$/g, '') || '/';
-                    }
-                    return value.replace(/^\/+/g, '').replace(/\/+$/g, '');
-                })
-                .filter(Boolean);
-
-            if (!cleaned.length) return '';
-            return normalizePath(cleaned.join('/'));
-        }
-
-        // Persist initial desktop config so getConfig picks it up
+        // Persist initial desktop config so getConfig picks it up.
         if (opts.initialConfig) {
             localStorage.setItem('dicom-viewer-library-config', JSON.stringify(opts.initialConfig));
         }
 
-        // Pre-populate stored files (scan cache, etc.)
-        for (const [path, value] of Object.entries(opts.storedFiles || {})) {
-            const normalized = normalizePath(path);
-            const bytes = Array.isArray(value) ? value : Array.from(value);
-            localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalized}`, JSON.stringify(bytes));
-        }
-
-        // Directory listing for readDir-based scans
+        // Directory listing for readDir-based scans (normalized keys).
         const dirs = {};
         for (const [dirPath, entries] of Object.entries(opts.dirs || {})) {
             dirs[normalizePath(dirPath)] = entries;
         }
 
-        // Track mock FS operations for assertions
         window.__importMockState = {
             mkdirCalls: [],
             writeFileCalls: [],
@@ -1213,122 +1176,109 @@ async function installMockDesktopIntegration(page, options = {}) {
             readFileErrors: Object.assign({}, opts.readFileErrors || {}),
         };
 
-        // Capture the drag-drop handler so tests can fire synthetic events
+        // Container for drag-drop handler captured from webview.getCurrentWebview.
         window.__capturedDragDropHandler = null;
 
-        window.__TAURI__ = {
-            core: {
-                async invoke(cmd, args) {
-                    if (cmd === 'apply_desktop_migration') {
-                        return window.__applyMockDesktopMigration(args.db, args.batch, opts);
-                    }
-                    if (cmd === 'load_legacy_desktop_browser_stores') {
-                        return [];
-                    }
-                    if (cmd === 'read_scan_manifest') {
-                        return window.__importMockState.manifestEntries;
-                    }
-                    throw new Error(`Unhandled core invoke: ${cmd}`);
-                },
-            },
-            dialog: {
-                async open() {
-                    return null;
-                },
-            },
-            event: {
-                async listen() {
-                    return () => {};
-                },
-            },
-            fs: {
-                async exists(filePath) {
-                    const normalized = normalizePath(filePath);
-                    const state = window.__importMockState;
-                    if (hasOwn(state.existsResults, normalized)) {
-                        return state.existsResults[normalized];
-                    }
-                    // Check if writeFile has already written to this path
-                    if (state.writeFileCalls.some((call) => call.path === normalized)) {
-                        return true;
-                    }
-                    // Check localStorage for persisted files
-                    return localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null;
-                },
-                async stat(filePath) {
-                    const normalized = normalizePath(filePath);
-                    const state = window.__importMockState;
-                    if (hasOwn(state.statResults, normalized)) {
-                        return state.statResults[normalized];
-                    }
-                    throw new Error(`Stat not found: ${normalized}`);
-                },
-                async readFile(filePath) {
-                    const normalized = normalizePath(filePath);
-                    const state = window.__importMockState;
-                    if (hasOwn(state.readFileErrors, normalized)) {
-                        throw new Error(state.readFileErrors[normalized]);
-                    }
-                    const bytes = state.readFileBytes[normalized];
-                    if (bytes) {
-                        return Uint8Array.from(bytes);
-                    }
-                    // Check localStorage for persisted files (scan cache, etc.)
-                    const persisted = localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`);
-                    if (persisted) {
-                        return Uint8Array.from(JSON.parse(persisted));
-                    }
-                    return Uint8Array.from([0]);
-                },
-                async readDir(dirPath) {
-                    const normalized = normalizePath(dirPath);
-                    if (!hasOwn(dirs, normalized)) {
-                        throw new Error(`Path not found: ${normalized}`);
-                    }
-                    return dirs[normalized];
-                },
-                async writeFile(filePath, bytes) {
-                    const normalized = normalizePath(filePath);
-                    window.__importMockState.writeFileCalls.push({
-                        path: normalized,
-                        size: bytes.byteLength || bytes.length,
-                    });
-                    // Also persist to localStorage so readFile can find it later
-                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalized}`, JSON.stringify(Array.from(bytes)));
-                },
-                async mkdir(dirPath, mkdirOptions) {
-                    const normalized = normalizePath(dirPath);
-                    window.__importMockState.mkdirCalls.push({
-                        path: normalized,
-                        recursive: !!mkdirOptions?.recursive,
-                    });
-                },
-                async remove() {},
-                async rename() {},
-            },
-            path: {
-                async appDataDir() {
-                    return normalizePath(opts.appDataDir || '/mock-app-data');
-                },
-                async join(...parts) {
-                    return joinPaths(...parts);
-                },
-                async normalize(filePath) {
-                    return normalizePath(filePath);
-                },
-            },
-            sql: window.__createMockTauriSql(opts),
-            webview: {
-                getCurrentWebview() {
-                    return {
-                        onDragDropEvent(handler) {
-                            window.__capturedDragDropHandler = handler;
-                            return Promise.resolve(() => {});
-                        },
-                    };
-                },
-            },
+        // Wrap core.invoke for the integration spec's read_scan_manifest command.
+        const originalInvoke = window.__TAURI__.core.invoke;
+        window.__TAURI__.core.invoke = async (cmd, args = {}) => {
+            if (cmd === 'read_scan_manifest') {
+                return window.__importMockState.manifestEntries;
+            }
+            return originalInvoke(cmd, args);
         };
+
+        // fs.exists: per-path overrides → writeFileCalls → harness localStorage fallthrough.
+        const originalExists = window.__TAURI__.fs.exists;
+        window.__TAURI__.fs.exists = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const state = window.__importMockState;
+            if (hasOwn(state.existsResults, normalized)) {
+                return state.existsResults[normalized];
+            }
+            if (state.writeFileCalls.some((call) => call.path === normalized)) {
+                return true;
+            }
+            return originalExists(filePath);
+        };
+
+        window.__TAURI__.fs.stat = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const state = window.__importMockState;
+            if (hasOwn(state.statResults, normalized)) {
+                return state.statResults[normalized];
+            }
+            throw new Error(`Stat not found: ${normalized}`);
+        };
+
+        // fs.readFile: per-path errors → readFileBytes override → harness storage fallthrough.
+        const originalReadFile = window.__TAURI__.fs.readFile;
+        window.__TAURI__.fs.readFile = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const state = window.__importMockState;
+            if (hasOwn(state.readFileErrors, normalized)) {
+                throw new Error(state.readFileErrors[normalized]);
+            }
+            const bytes = state.readFileBytes[normalized];
+            if (bytes) {
+                return Uint8Array.from(bytes);
+            }
+            try {
+                return await originalReadFile(filePath);
+            } catch {
+                return Uint8Array.from([0]);
+            }
+        };
+
+        // readDir: dirs map → throw "Path not found".
+        window.__TAURI__.fs.readDir = async (dirPath) => {
+            const normalized = normalizePath(dirPath);
+            if (!hasOwn(dirs, normalized)) {
+                throw new Error(`Path not found: ${normalized}`);
+            }
+            return dirs[normalized];
+        };
+
+        // Track writeFile / mkdir in spec-local state. Persistence handled by the harness's writeFile.
+        const originalWriteFile = window.__TAURI__.fs.writeFile;
+        window.__TAURI__.fs.writeFile = async (filePath, bytes) => {
+            const normalized = normalizePath(filePath);
+            window.__importMockState.writeFileCalls.push({
+                path: normalized,
+                size: bytes.byteLength || bytes.length,
+            });
+            return originalWriteFile(filePath, bytes);
+        };
+
+        const originalMkdir = window.__TAURI__.fs.mkdir;
+        window.__TAURI__.fs.mkdir = async (dirPath, mkdirOptions) => {
+            const normalized = normalizePath(dirPath);
+            window.__importMockState.mkdirCalls.push({
+                path: normalized,
+                recursive: !!mkdirOptions?.recursive,
+            });
+            return originalMkdir(dirPath, mkdirOptions);
+        };
+
+        // remove/rename were no-ops in the original; preserve that shape.
+        window.__TAURI__.fs.remove = async () => {};
+        window.__TAURI__.fs.rename = async () => {};
+
+        // Harness doesn't install dialog or event; the integration spec needs both.
+        window.__TAURI__.dialog = { async open() { return null; } };
+        window.__TAURI__.event = { async listen() { return () => {}; } };
+
+        // Replace harness's no-op getCurrentWebview with one that captures the drag-drop handler.
+        window.__TAURI__.webview.getCurrentWebview = () => ({
+            onDragDropEvent(handler) {
+                window.__capturedDragDropHandler = handler;
+                return Promise.resolve(() => {});
+            },
+        });
+
+        // Normalize appDataDir for parity with the original mock.
+        const originalAppDataDir = window.__TAURI__.path.appDataDir;
+        window.__TAURI__.path.appDataDir = async () => normalizePath(await originalAppDataDir());
     }, options);
 }
 
