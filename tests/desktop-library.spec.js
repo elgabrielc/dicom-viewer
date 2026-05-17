@@ -5,19 +5,35 @@ const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 const { createSyntheticDicomFolder, removeSyntheticDicomFolder } = require('./dicom-fixture-helper');
 const { joinPaths } = require('./helpers/desktop-test-utils');
+const { installMockDesktopTauri } = require('./helpers/mock-desktop-tauri');
 
 const TEST_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:5001';
 const HOME_URL = `${TEST_BASE_URL}/?nolib`;
 const AUTOLOAD_URL = `${TEST_BASE_URL}/`;
 const JPEG_BASELINE_RGB_FIXTURE_PATH = path.join(__dirname, '..', 'test-fixtures', 'SC_RGB_JPEG_BASELINE_YBR422.dcm');
-const MOCK_SQL_INIT_PATH = path.join(__dirname, 'mock-tauri-sql-init.js');
 
 async function installMockDesktop(page, options = {}) {
-    await page.addInitScript({ path: MOCK_SQL_INIT_PATH });
-    await page.addInitScript((options) => {
-        const FILE_STORAGE_PREFIX = 'mock-desktop-fs:';
-        const hasOwnPropertyFn = Object.prototype.hasOwnProperty;
-        const hasOwn = (object, key) => hasOwnPropertyFn.call(object, key);
+    // Delegate the Tauri runtime to the shared harness, then layer
+    // library-spec specifics (debug settings, decode trace, readDir scans
+    // with delay/errors, in-memory fileBytes, transient read failures) on top.
+    await installMockDesktopTauri(page, {
+        // Intentionally overrides the harness default ('/mock/appdata') to match
+        // this spec's pre-migration default ('/appdata'). Tests assert on this path.
+        appDataDir: options.appDataDir || '/appdata',
+        fs: {
+            files: options.storedFiles || {},
+        },
+        sql: {
+            initialState: options.initialState || {},
+            ...(options.sql || {}),
+        },
+        invoke: {
+            legacyDesktopStores: options.legacyDesktopStores || [],
+        },
+    });
+
+    await page.addInitScript((opts) => {
+        const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
         function toByteArray(value) {
             if (Array.isArray(value)) {
@@ -43,174 +59,140 @@ async function installMockDesktop(page, options = {}) {
             return collapsed.replace(/\/+$/g, '');
         }
 
-        function joinPaths(...parts) {
-            const cleaned = parts
-                .filter((part) => part !== null && part !== undefined && part !== '')
-                .map((part, index) => {
-                    const value = String(part).replace(/\\/g, '/');
-                    if (index === 0) {
-                        return value.replace(/\/+$/g, '') || '/';
-                    }
-                    return value.replace(/^\/+/g, '').replace(/\/+$/g, '');
-                })
-                .filter(Boolean);
-
-            if (!cleaned.length) return '';
-            return normalizePath(cleaned.join('/'));
+        if (opts.initialConfig) {
+            localStorage.setItem('dicom-viewer-library-config', JSON.stringify(opts.initialConfig));
         }
 
-        if (options.initialConfig) {
-            localStorage.setItem('dicom-viewer-library-config', JSON.stringify(options.initialConfig));
-        }
-
+        // Normalize the spec's option maps once at install time.
         const dirs = {};
-        for (const [path, entries] of Object.entries(options.dirs || {})) {
-            dirs[normalizePath(path)] = entries;
+        for (const [p, entries] of Object.entries(opts.dirs || {})) {
+            dirs[normalizePath(p)] = entries;
         }
-
         const readDirErrors = {};
-        for (const [path, message] of Object.entries(options.readDirErrors || {})) {
-            readDirErrors[normalizePath(path)] = message;
+        for (const [p, message] of Object.entries(opts.readDirErrors || {})) {
+            readDirErrors[normalizePath(p)] = message;
         }
-
-        const readDirDelayMs = Number(options.readDirDelayMs || 0);
-
+        const readDirDelayMs = Number(opts.readDirDelayMs || 0);
         const stats = {};
-        for (const [path, value] of Object.entries(options.stats || {})) {
-            stats[normalizePath(path)] = value;
+        for (const [p, value] of Object.entries(opts.stats || {})) {
+            stats[normalizePath(p)] = value;
         }
-
+        // In-memory file bytes (distinct from harness localStorage). rename mutates
+        // this map; the original semantic was "rename only works for fileBytes,
+        // not for arbitrary persisted localStorage files." Preserved verbatim.
         const fileBytes = {};
-        for (const [path, value] of Object.entries(options.fileBytes || {})) {
-            fileBytes[normalizePath(path)] = value;
+        for (const [p, value] of Object.entries(opts.fileBytes || {})) {
+            fileBytes[normalizePath(p)] = toByteArray(value);
         }
-
-        for (const [path, value] of Object.entries(options.storedFiles || {})) {
-            localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalizePath(path)}`, JSON.stringify(toByteArray(value)));
-        }
-
+        // Mutable per-path failure counter for readFile.
         const readFileFailures = {};
-        for (const [path, value] of Object.entries(options.readFileFailures || {})) {
-            readFileFailures[normalizePath(path)] = Number(value || 0);
+        for (const [p, value] of Object.entries(opts.readFileFailures || {})) {
+            readFileFailures[normalizePath(p)] = Number(value || 0);
         }
 
+        // Browser-side library-spec tracking that tests assert on.
         window.__frontendDecodeTraceCalls = [];
 
-        window.__TAURI__ = {
-            core: {
-                async invoke(cmd, args) {
-                    if (cmd === 'apply_desktop_migration') {
-                        return window.__applyMockDesktopMigration(args.db, args.batch, options);
+        // Wrap core.invoke for library-specific commands; fall through to the harness
+        // for apply_desktop_migration / load_legacy_desktop_browser_stores / etc.
+        const originalInvoke = window.__TAURI__.core.invoke;
+        window.__TAURI__.core.invoke = async (cmd, args = {}) => {
+            if (cmd === 'read_scan_manifest') {
+                return opts.nativeScanManifest || null;
+            }
+            if (cmd === 'get_debug_settings') {
+                return (
+                    opts.debugSettings || {
+                        decodeMode: 'auto',
+                        preloadMode: 'auto',
+                        frontendDecodeTrace: false,
+                        nativeDecodeDebug: false,
                     }
-                    if (cmd === 'load_legacy_desktop_browser_stores') {
-                        return options.legacyDesktopStores || [];
-                    }
-                    if (cmd === 'read_scan_manifest') {
-                        return options.nativeScanManifest || null;
-                    }
-                    if (cmd === 'get_debug_settings') {
-                        return (
-                            options.debugSettings || {
-                                decodeMode: 'auto',
-                                preloadMode: 'auto',
-                                frontendDecodeTrace: false,
-                                nativeDecodeDebug: false,
-                            }
-                        );
-                    }
-                    if (cmd === 'log_frontend_decode_event') {
-                        window.__frontendDecodeTraceCalls.push(args?.message || '');
-                        return null;
-                    }
-                    throw new Error(`Unhandled core invoke: ${cmd}`);
-                },
-            },
-            dialog: {
-                async open() {
-                    return null;
-                },
-            },
-            fs: {
-                async exists(path) {
-                    const normalized = normalizePath(path);
-                    return (
-                        hasOwn(fileBytes, normalized) ||
-                        localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`) !== null
-                    );
-                },
-                async readDir(path) {
-                    if (readDirDelayMs > 0) {
-                        await new Promise((resolve) => setTimeout(resolve, readDirDelayMs));
-                    }
-                    const normalized = normalizePath(path);
-                    if (hasOwn(readDirErrors, normalized)) {
-                        throw new Error(readDirErrors[normalized]);
-                    }
-                    if (!hasOwn(dirs, normalized)) {
-                        throw new Error(`Path not found: ${normalized}`);
-                    }
-                    return dirs[normalized];
-                },
-                async readFile(path) {
-                    const normalized = normalizePath(path);
-                    const remainingFailures = readFileFailures[normalized] || 0;
-                    if (remainingFailures > 0) {
-                        readFileFailures[normalized] = remainingFailures - 1;
-                        throw new Error(`Transient read failure: ${normalized}`);
-                    }
-                    const persisted = localStorage.getItem(`${FILE_STORAGE_PREFIX}${normalized}`);
-                    const bytes = fileBytes[normalized] || (persisted ? JSON.parse(persisted) : null) || [0];
-                    return Uint8Array.from(bytes);
-                },
-                async writeFile(path, bytes) {
-                    const normalized = normalizePath(path);
-                    localStorage.setItem(`${FILE_STORAGE_PREFIX}${normalized}`, JSON.stringify(Array.from(bytes)));
-                },
-                async mkdir() {
-                    return undefined;
-                },
-                async remove(path) {
-                    localStorage.removeItem(`${FILE_STORAGE_PREFIX}${normalizePath(path)}`);
-                },
-                async stat(path) {
-                    const normalized = normalizePath(path);
-                    if (!hasOwn(stats, normalized)) {
-                        throw new Error(`Stat not found: ${normalized}`);
-                    }
-                    return stats[normalized];
-                },
-                async rename(fromPath, toPath) {
-                    const normalizedFrom = normalizePath(fromPath);
-                    const normalizedTo = normalizePath(toPath);
-                    if (!hasOwn(fileBytes, normalizedFrom)) {
-                        throw new Error(`Rename source not found: ${normalizedFrom}`);
-                    }
-                    fileBytes[normalizedTo] = fileBytes[normalizedFrom];
-                    delete fileBytes[normalizedFrom];
-                },
-            },
-            path: {
-                async appDataDir() {
-                    return normalizePath(options.appDataDir || '/appdata');
-                },
-                async join(...parts) {
-                    return joinPaths(...parts);
-                },
-                async normalize(path) {
-                    return normalizePath(path);
-                },
-            },
-            sql: window.__createMockTauriSql(options),
-            webview: {
-                getCurrentWebview() {
-                    return {
-                        onDragDropEvent() {
-                            return Promise.resolve(() => {});
-                        },
-                    };
-                },
+                );
+            }
+            if (cmd === 'log_frontend_decode_event') {
+                window.__frontendDecodeTraceCalls.push(args?.message || '');
+                return null;
+            }
+            return originalInvoke(cmd, args);
+        };
+
+        // fs.exists: in-memory fileBytes OR harness fallthrough. Both lookups use the
+        // normalized path so paths arriving with double slashes / trailing slashes
+        // resolve consistently — the original spec normalized both sides too.
+        const originalExists = window.__TAURI__.fs.exists;
+        window.__TAURI__.fs.exists = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            if (hasOwn(fileBytes, normalized)) return true;
+            return originalExists(normalized);
+        };
+
+        // fs.readFile: failures → in-memory fileBytes → harness fallthrough → default [0].
+        const originalReadFile = window.__TAURI__.fs.readFile;
+        window.__TAURI__.fs.readFile = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            const remainingFailures = readFileFailures[normalized] || 0;
+            if (remainingFailures > 0) {
+                readFileFailures[normalized] = remainingFailures - 1;
+                throw new Error(`Transient read failure: ${normalized}`);
+            }
+            if (hasOwn(fileBytes, normalized)) {
+                return Uint8Array.from(fileBytes[normalized]);
+            }
+            try {
+                return await originalReadFile(filePath);
+            } catch {
+                return Uint8Array.from([0]);
+            }
+        };
+
+        // fs.readDir: dirs map + per-path errors + global delay; throws if path not in dirs.
+        window.__TAURI__.fs.readDir = async (dirPath) => {
+            if (readDirDelayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, readDirDelayMs));
+            }
+            const normalized = normalizePath(dirPath);
+            if (hasOwn(readDirErrors, normalized)) {
+                throw new Error(readDirErrors[normalized]);
+            }
+            if (!hasOwn(dirs, normalized)) {
+                throw new Error(`Path not found: ${normalized}`);
+            }
+            return dirs[normalized];
+        };
+
+        // fs.stat: stats map; throws if path not present (matches the original).
+        window.__TAURI__.fs.stat = async (filePath) => {
+            const normalized = normalizePath(filePath);
+            if (!hasOwn(stats, normalized)) {
+                throw new Error(`Stat not found: ${normalized}`);
+            }
+            return stats[normalized];
+        };
+
+        // fs.rename: in-memory fileBytes mutation only. Errors if source not in fileBytes.
+        // Preserves the library spec's specific semantic: rename works only for
+        // explicitly-seeded fileBytes, NOT for arbitrary persisted localStorage files.
+        window.__TAURI__.fs.rename = async (fromPath, toPath) => {
+            const normalizedFrom = normalizePath(fromPath);
+            const normalizedTo = normalizePath(toPath);
+            if (!hasOwn(fileBytes, normalizedFrom)) {
+                throw new Error(`Rename source not found: ${normalizedFrom}`);
+            }
+            fileBytes[normalizedTo] = fileBytes[normalizedFrom];
+            delete fileBytes[normalizedFrom];
+        };
+
+        // Harness doesn't install dialog; the library spec expects dialog.open to return null.
+        window.__TAURI__.dialog = {
+            async open() {
+                return null;
             },
         };
+
+        // Normalize appDataDir for parity with the original mock (strips trailing slashes).
+        const originalAppDataDir = window.__TAURI__.path.appDataDir;
+        window.__TAURI__.path.appDataDir = async () => normalizePath(await originalAppDataDir());
     }, options);
 }
 
@@ -3333,7 +3315,7 @@ test.describe('Desktop library scanning', () => {
             };
 
             const saved = await window.DicomViewerApp.desktopLibrary.saveCachedStudies('/library', studies);
-            const rawBefore = localStorage.getItem('mock-desktop-fs:/appdata/desktop-library-cache.json');
+            const rawBefore = localStorage.getItem('mock-tauri-fs:/appdata/desktop-library-cache.json');
             const externalStudies = structuredClone(studies);
             externalStudies['1.2.840.cached.study'].series['1.2.840.cached.series'].slices[0].source.path =
                 '/external/image.dcm';
@@ -3341,7 +3323,7 @@ test.describe('Desktop library scanning', () => {
                 '/library',
                 externalStudies,
             );
-            const rawAfter = localStorage.getItem('mock-desktop-fs:/appdata/desktop-library-cache.json');
+            const rawAfter = localStorage.getItem('mock-tauri-fs:/appdata/desktop-library-cache.json');
             return {
                 saved,
                 rejectedWrite,
@@ -3401,7 +3383,7 @@ test.describe('Desktop library scanning', () => {
             };
 
             await window.DicomViewerApp.desktopLibrary.saveCachedStudies('/library', studies);
-            const raw = localStorage.getItem('mock-desktop-fs:/appdata/desktop-library-cache.json');
+            const raw = localStorage.getItem('mock-tauri-fs:/appdata/desktop-library-cache.json');
             return {
                 loaded: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/library'),
                 mismatch: await window.DicomViewerApp.desktopLibrary.loadCachedStudies('/other-library'),
