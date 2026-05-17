@@ -517,24 +517,21 @@ test('desktop storage ready promise resolves before the full desktop shell is av
 });
 
 test.describe('installCompatFromInternals (direct unit tests via _testInternals)', () => {
+    // Follow-ups (do not address in this PR):
+    //   1. Migrate these direct unit tests to a Node-side harness (Vitest or
+    //      node:test) since installCompatFromInternals has no DOM dependencies.
+    //      Faster than Playwright, eliminates the page.evaluate JSON boundary
+    //      that drove the buildMinimalInternals duplication bug in PR #118, and
+    //      lets us assert on returned objects directly. Once the Node test
+    //      exists, this Playwright describe block can be thinned to a single
+    //      smoke test ("bootstrap doesn't throw") covering the no-library page
+    //      load path end-to-end.
+    //   2. Add an assertion that installCompatFromInternals does not mutate its
+    //      input internals object. Production callers may pass the same
+    //      internals (or share references with native code) and depend on
+    //      immutability. Verify by deep-cloning the input before the call and
+    //      deep-comparing after.
     const NOLIB_URL = 'http://127.0.0.1:5001/?nolib';
-
-    function buildMinimalInternals() {
-        return {
-            metadata: {
-                currentWindow: { label: 'main' },
-                currentWebview: { label: 'main', windowLabel: 'main' },
-            },
-            convertFileSrc(filePath, protocol = 'asset') {
-                return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
-            },
-            transformCallback(callback) {
-                return callback;
-            },
-            unregisterCallback() {},
-            invoke: () => Promise.resolve(null),
-        };
-    }
 
     test('returns null when internals are missing or have no invoke', async ({ page }) => {
         await page.goto(NOLIB_URL);
@@ -558,12 +555,15 @@ test.describe('installCompatFromInternals (direct unit tests via _testInternals)
     test('builds a complete Tauri surface from a minimal internals stub', async ({ page }) => {
         await page.goto(NOLIB_URL);
 
-        const result = await page.evaluate((internalsStub) => {
+        const result = await page.evaluate(() => {
             window.__TAURI__ = undefined;
             const { installCompatFromInternals } = window.DicomViewerTauriCompat._testInternals;
-            // Re-attach functions stripped by JSON serialization across the page boundary.
+            // Build internals in-page: functions cannot cross the page.evaluate JSON boundary.
             const internals = {
-                ...internalsStub,
+                metadata: {
+                    currentWindow: { label: 'main' },
+                    currentWebview: { label: 'main', windowLabel: 'main' },
+                },
                 convertFileSrc: (filePath, protocol = 'asset') =>
                     `${protocol}://localhost/${encodeURIComponent(filePath)}`,
                 transformCallback: (callback) => callback,
@@ -591,7 +591,7 @@ test.describe('installCompatFromInternals (direct unit tests via _testInternals)
                 hasWebviewGetCurrent: typeof tauri?.webview?.getCurrentWebview === 'function',
                 globalAssigned: window.__TAURI__ === tauri,
             };
-        }, buildMinimalInternals());
+        });
 
         expect(result).toEqual({
             hasCoreInvoke: true,
