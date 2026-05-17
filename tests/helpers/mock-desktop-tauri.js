@@ -67,12 +67,7 @@ async function installMockDesktopTauri(page, options = {}) {
                 // serialization arrive as plain objects with numeric-string keys (no .length).
                 // Array.from on those returns [] — silently corrupting seeded binary data.
                 // Reconstruct the byte sequence in that case.
-                if (
-                    bytes &&
-                    typeof bytes === 'object' &&
-                    !Array.isArray(bytes) &&
-                    typeof bytes.length !== 'number'
-                ) {
+                if (bytes && typeof bytes === 'object' && !Array.isArray(bytes) && typeof bytes.length !== 'number') {
                     const keys = Object.keys(bytes)
                         .filter((key) => /^\d+$/.test(key))
                         .sort((a, b) => Number(a) - Number(b));
