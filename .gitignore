@@ -70,6 +70,9 @@ docs/history/
 docs/planning/archive/research-exhaust/
 docs/planning/archive/screenshots/
 
+# Personal scratch TODO (promote durable items to GitHub Issues or scoped docs/planning/TODO-*.md)
+/docs/planning/TODO-scratch.md
+
 # Generated one-off tool output
 /MacUpdater.js
 /wrangler.toml
