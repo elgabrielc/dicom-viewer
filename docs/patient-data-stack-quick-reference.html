@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!--
+  patient-data-stack-quick-reference.html — The US Patient Data Stack (Quick Reference)
+  Copyright (c) 2026 Divergent Health Technologies
+  https://divergent.health/
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The US Patient Data Stack — Quick Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f3ee;
+    --bg-card: #fdfcfa;
+    --bg-deep: #0f1d24;
+    --ink: #14252d;
+    --ink-soft: #4d5a60;
+    --ink-mute: #7d878c;
+    --rule: #e6dfd2;
+    --primary: #0e4d4e;
+    --primary-soft: #d9e6e3;
+    --primary-bright: #1b6f70;
+    --accent: #c46a3f;
+    --accent-soft: #fbe9da;
+    --warn: #b35c14;
+    --warn-soft: #fbf0dd;
+    --good: #2f6041;
+    --good-soft: #dbe9dd;
+    --info: #2c4977;
+    --info-soft: #dee5f1;
+    --purple: #5b3b8a;
+    --purple-soft: #e6dff0;
+    --serif: 'Fraunces', Georgia, serif;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --mono: 'JetBrains Mono', SF Mono, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.65;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+  .grain {
+    position: fixed; inset: 0; pointer-events: none; opacity: 0.4; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.07'/%3E%3C/svg%3E");
+  }
+  .container {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 48px 32px 96px;
+    position: relative;
+    z-index: 1;
+  }
+  header.hero {
+    margin-bottom: 56px;
+    padding-bottom: 40px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .eyebrow {
+    font-size: 0.76rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.18em;
+    color: var(--accent); margin-bottom: 20px;
+  }
+  h1.title {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(2rem, 4.5vw, 3.2rem);
+    line-height: 1.05; letter-spacing: -0.02em;
+    margin-bottom: 18px;
+  }
+  h1.title em { font-style: italic; color: var(--primary); }
+  .lede {
+    font-size: 1.08rem; color: var(--ink-soft);
+    max-width: 660px; line-height: 1.55;
+  }
+  .lede code {
+    font-family: var(--mono); font-size: 0.9em;
+    background: var(--bg-card); padding: 1px 6px;
+    border-radius: 4px; border: 1px solid var(--rule);
+  }
+
+  /* Framework block */
+  .framework {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 32px;
+    margin: 32px 0 48px;
+    box-shadow: 0 1px 0 rgba(20,37,45,0.04), 0 12px 32px rgba(20,37,45,0.05);
+  }
+  .framework p {
+    font-size: 1.02rem; line-height: 1.7;
+    color: var(--ink); margin: 0;
+  }
+  .framework p strong { color: var(--primary); font-weight: 600; }
+  .framework p code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: var(--bg); padding: 1px 6px;
+    border-radius: 4px; color: var(--primary);
+    border: 1px solid var(--rule);
+  }
+
+  /* Section heading */
+  section { margin-bottom: 56px; }
+  h2.section {
+    font-family: var(--serif); font-weight: 500;
+    font-size: 1.85rem; line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: var(--ink); margin-bottom: 14px;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  h2.section em { font-style: italic; color: var(--primary); }
+  h2.section .num {
+    font-family: var(--serif); font-style: italic;
+    color: var(--accent); font-size: 0.85rem; font-weight: 500;
+  }
+  section > p {
+    color: var(--ink-soft); font-size: 0.98rem;
+    margin-bottom: 14px; max-width: 760px;
+  }
+  section > p strong { color: var(--ink); font-weight: 600; }
+  section > p code {
+    font-family: var(--mono); font-size: 0.86em;
+    background: var(--bg); padding: 1px 6px;
+    border-radius: 4px; color: var(--primary);
+    border: 1px solid var(--rule);
+  }
+  section > ul { margin: 14px 0 14px 6px; }
+  section > ul li {
+    margin-bottom: 6px; padding-left: 20px;
+    position: relative; list-style: none;
+    color: var(--ink-soft);
+  }
+  section > ul li::before {
+    content: ''; position: absolute;
+    left: 4px; top: 0.7em;
+    width: 5px; height: 5px;
+    background: var(--accent); border-radius: 50%;
+  }
+
+  /* Audience strip */
+  .audiences {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    margin: 24px 0;
+  }
+  .aud {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 14px 16px;
+    border-left: 3px solid;
+  }
+  .aud.patients { border-left-color: var(--accent); }
+  .aud.devs { border-left-color: var(--info); }
+  .aud.providers { border-left-color: var(--good); }
+  .aud .label {
+    font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--ink-mute);
+    font-weight: 600; margin-bottom: 4px;
+  }
+  .aud .name {
+    font-family: var(--serif); font-weight: 600;
+    color: var(--ink); font-size: 0.96rem;
+  }
+
+  /* Tables */
+  .table-wrap {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    overflow: hidden; margin: 16px 0;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  table thead { background: rgba(14, 77, 78, 0.04); }
+  table th {
+    text-align: left; padding: 10px 14px;
+    font-weight: 600; color: var(--ink);
+    border-bottom: 1px solid var(--rule);
+    font-size: 0.74rem; text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  table td {
+    padding: 10px 14px; border-bottom: 1px solid var(--rule);
+    vertical-align: top; color: var(--ink-soft);
+  }
+  table tr:last-child td { border-bottom: none; }
+  table tr:hover td { background: rgba(14, 77, 78, 0.025); }
+  table code {
+    font-family: var(--mono); background: var(--bg);
+    padding: 1px 5px; border-radius: 3px;
+    font-size: 0.85em; color: var(--primary);
+    border: 1px solid var(--rule);
+  }
+
+  /* The stack diagram */
+  .stack {
+    background: var(--bg-deep);
+    border-radius: 12px;
+    padding: 24px 28px;
+    color: white;
+    margin: 20px 0;
+    box-shadow: 0 12px 32px rgba(20,37,45,0.12);
+  }
+  .stack-layer {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 12px 18px;
+    margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .stack-layer:last-child { margin-bottom: 0; }
+  .stack-layer .name {
+    font-family: var(--serif); font-weight: 600;
+    color: white; font-size: 1rem;
+  }
+  .stack-layer .type {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .stack-arrow {
+    text-align: center; color: rgba(255,255,255,0.3);
+    font-size: 0.75rem; padding: 2px 0;
+  }
+
+  /* The compare block */
+  .compare-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px; margin: 16px 0;
+  }
+  .compare-card {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .compare-card.bulk { border-left: 4px solid var(--purple); }
+  .compare-card.api { border-left: 4px solid var(--primary); }
+  .compare-card h4 {
+    font-family: var(--serif); font-size: 1.1rem;
+    margin: 0 0 4px; color: var(--ink);
+  }
+  .compare-card .citation {
+    font-family: var(--mono); font-size: 0.78rem;
+    color: var(--ink-mute); margin-bottom: 12px;
+  }
+  .compare-card dl { margin: 0; }
+  .compare-card dt {
+    font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--ink-mute);
+    font-weight: 600; margin-top: 10px; margin-bottom: 2px;
+  }
+  .compare-card dt:first-child { margin-top: 0; }
+  .compare-card dd { font-size: 0.88rem; color: var(--ink-soft); }
+
+  /* Audience callout boxes */
+  .audience-block {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    border-left: 4px solid;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 16px;
+  }
+  .audience-block.devs { border-left-color: var(--info); }
+  .audience-block.providers { border-left-color: var(--good); }
+  .audience-block.patients { border-left-color: var(--accent); }
+  .audience-block .ab-label {
+    font-size: 0.7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    margin-bottom: 6px;
+  }
+  .audience-block.devs .ab-label { color: var(--info); }
+  .audience-block.providers .ab-label { color: var(--good); }
+  .audience-block.patients .ab-label { color: var(--accent); }
+  .audience-block h3 {
+    font-family: var(--serif); font-size: 1.2rem;
+    font-weight: 600; color: var(--ink); margin-bottom: 10px;
+  }
+  .audience-block p {
+    font-size: 0.94rem; color: var(--ink-soft);
+    line-height: 1.55; margin-bottom: 10px;
+  }
+  .audience-block ul {
+    margin: 8px 0 8px 6px;
+  }
+  .audience-block li {
+    font-size: 0.92rem; padding-left: 18px;
+    margin-bottom: 4px; list-style: none;
+    position: relative; color: var(--ink-soft);
+  }
+  .audience-block li::before {
+    content: ''; position: absolute;
+    left: 4px; top: 0.65em;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+  }
+  .audience-block.devs li::before { background: var(--info); }
+  .audience-block.providers li::before { background: var(--good); }
+  .audience-block.patients li::before { background: var(--accent); }
+
+  /* Status / clinical reality */
+  .status-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 14px; margin: 16px 0;
+  }
+  .status {
+    padding: 18px 20px; border-radius: 10px;
+    border: 1px solid;
+  }
+  .status.works { background: var(--good-soft); border-color: rgba(47, 96, 65, 0.2); }
+  .status.broken { background: var(--warn-soft); border-color: rgba(179, 92, 20, 0.2); }
+  .status .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+  .status.works .pill { color: var(--good); }
+  .status.broken .pill { color: var(--warn); }
+  .status .pill .dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor;
+  }
+  .status h4 {
+    font-family: var(--serif); font-size: 1rem;
+    font-weight: 600; margin: 0 0 8px; color: var(--ink);
+  }
+  .status ul { margin: 0; }
+  .status li {
+    font-size: 0.84rem; padding-left: 14px;
+    list-style: none; position: relative;
+    margin-bottom: 3px;
+  }
+  .status.works li::before {
+    content: '✓'; position: absolute; left: 0;
+    color: var(--good); font-weight: 700;
+  }
+  .status.broken li::before {
+    content: '✕'; position: absolute; left: 0;
+    color: var(--warn); font-weight: 700;
+  }
+
+  /* The pillars */
+  .pillars {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px; margin: 24px 0;
+  }
+  .pillar {
+    background: var(--bg-card); border: 1px solid var(--rule);
+    border-radius: 12px; padding: 22px 20px; text-align: center;
+  }
+  .pillar .num {
+    font-family: var(--serif); font-style: italic;
+    color: var(--accent); font-size: 0.78rem; margin-bottom: 8px;
+  }
+  .pillar .name {
+    font-family: var(--serif); font-size: 1.1rem;
+    font-weight: 600; color: var(--ink); margin-bottom: 4px;
+  }
+  .pillar .source {
+    font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--ink-mute);
+    margin-bottom: 10px;
+  }
+  .pillar .desc { font-size: 0.85rem; color: var(--ink-soft); line-height: 1.5; }
+
+  /* Tile grids */
+  .tile-grid {
+    display: grid; gap: 8px; margin: 14px 0;
+  }
+  .tile-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .tile-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .tile-grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+  .tile {
+    background: var(--bg-card); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 10px 12px;
+    font-size: 0.84rem; color: var(--ink);
+    text-align: center;
+  }
+  .tile strong { color: var(--primary); display: block; font-family: var(--serif); }
+  .tile span { color: var(--ink-mute); font-size: 0.75rem; }
+
+  /* Footer */
+  footer {
+    margin-top: 64px; padding-top: 28px;
+    border-top: 1px solid var(--rule);
+    color: var(--ink-mute); font-size: 0.84rem;
+    text-align: center; line-height: 1.7;
+  }
+  footer code { font-family: var(--mono); color: var(--ink-soft); }
+
+  @media (max-width: 800px) {
+    .container { padding: 32px 20px 64px; }
+    .pillars { grid-template-columns: 1fr; }
+    .audiences { grid-template-columns: 1fr; }
+    .compare-grid { grid-template-columns: 1fr; }
+    .status-grid { grid-template-columns: 1fr; }
+    .tile-grid.cols-4, .tile-grid.cols-3, .tile-grid.cols-5 { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media print {
+    .grain { display: none; }
+    section { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="container">
+
+  <header class="hero">
+    <div class="eyebrow">Quick Reference · The Distilled Version</div>
+    <h1 class="title">The US patient <em>data stack</em> — a one-page map.</h1>
+    <p class="lede">
+      A distilled overview of the laws, standards, and products governing US patient health data access. For full detail: <code>health_data_access_summary.md</code>.
+    </p>
+
+    <div class="audiences">
+      <div class="aud patients"><div class="label">Audience 1</div><div class="name">Patients</div></div>
+      <div class="aud devs"><div class="label">Audience 2</div><div class="name">Third-party health tech</div></div>
+      <div class="aud providers"><div class="label">Audience 3</div><div class="name">Small private practices</div></div>
+    </div>
+  </header>
+
+  <div class="framework">
+    <p>
+      <strong>HIPAA</strong> (<code>45 CFR 164.524</code>) gives patients the right to their records. The <strong>21st Century Cures Act / ASTP/ONC rules</strong> provide the mechanisms: bulk EHI Export (<code>170.315(b)(10)</code>) and a FHIR-based Patient Access API (<code>170.315(g)(10)</code>). The <strong>Information Blocking Rule</strong> (<code>45 CFR Part 171</code>) prohibits interference. Around this core sits a technical stack (FHIR R4 + US Core + SMART + OAuth + USCDI), older standards still dominant (HL7 v2, CCDA, DIRECT), terminologies (LOINC, SNOMED, RxNorm, ICD-10, CPT), DICOM in a parallel imaging universe, and inter-organizational networks (Care Everywhere, Carequality, CommonWell, TEFCA).
+    </p>
+  </div>
+
+  <section>
+    <h2 class="section"><span class="num">i.</span>The Three Pillars</h2>
+    <div class="pillars">
+      <div class="pillar">
+        <div class="num">i.</div>
+        <div class="name">The Right</div>
+        <div class="source">HIPAA · 1996</div>
+        <div class="desc">45 CFR 164.524 — patient access to PHI in the designated record set.</div>
+      </div>
+      <div class="pillar">
+        <div class="num">ii.</div>
+        <div class="name">The Mechanisms</div>
+        <div class="source">Cures Act · 2016</div>
+        <div class="desc">ASTP/ONC certification: EHI Export + FHIR Patient Access API.</div>
+      </div>
+      <div class="pillar">
+        <div class="num">iii.</div>
+        <div class="name">The Backstop</div>
+        <div class="source">Info Blocking · 2020</div>
+        <div class="desc">45 CFR Part 171 — prohibits interference with EHI access.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">ii.</span>The <em>Six</em> HIPAA Patient Rights</h2>
+    <div class="tile-grid cols-3">
+      <div class="tile"><strong>Access</strong><span>§ 164.524</span></div>
+      <div class="tile"><strong>Amend</strong><span>§ 164.526</span></div>
+      <div class="tile"><strong>Accounting</strong><span>§ 164.528</span></div>
+      <div class="tile"><strong>Restrict</strong><span>§ 164.522(a)</span></div>
+      <div class="tile"><strong>Confidential</strong><span>§ 164.522(b)</span></div>
+      <div class="tile"><strong>NPP</strong><span>§ 164.520</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">iii.</span>The Federal <em>Layers</em></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Law / Rule</th><th>Year</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><strong>HIPAA Privacy Rule</strong></td><td>1996</td><td>Right of access; designated record set; six patient rights</td></tr>
+          <tr><td><strong>HIPAA Security Rule</strong></td><td>1996</td><td>Administrative, physical, technical safeguards for ePHI</td></tr>
+          <tr><td><strong>HITECH Act</strong></td><td>2009</td><td>Electronic copies; BA liability; breach notification</td></tr>
+          <tr><td><strong>21st Century Cures Act</strong></td><td>2016</td><td>Mandates interop standards; info blocking</td></tr>
+          <tr><td><strong>ONC Cures Final Rule</strong></td><td>2020</td><td>EHI Export + Patient Access API + Info Blocking</td></tr>
+          <tr><td><strong>HTI-1</strong></td><td>2024</td><td>USCDI v3 + Predictive DSI / AI transparency</td></tr>
+          <tr><td><strong>HTI-2</strong></td><td>2024</td><td>USCDI v4 + prior auth expansions</td></tr>
+          <tr><td><strong>CMS Interoperability Rule</strong></td><td>2020</td><td>Payer-side Patient Access API</td></tr>
+          <tr><td><strong>42 CFR Part 2</strong></td><td>various</td><td>Stricter rules for SUD records; amended 2024</td></tr>
+          <tr><td><strong>GINA</strong></td><td>2008</td><td>Genetic information protections</td></tr>
+          <tr><td><strong>Hospital Price Transparency</strong></td><td>2021</td><td>Publish standard charges</td></tr>
+          <tr><td><strong>No Surprises Act</strong></td><td>2022</td><td>Surprise billing protections</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">iv.</span>The Two <em>Access Mechanisms</em></h2>
+    <div class="compare-grid">
+      <div class="compare-card bulk">
+        <h4>EHI Export</h4>
+        <div class="citation">45 CFR 170.315(b)(10)</div>
+        <dl>
+          <dt>Cadence</dt><dd>One-time snapshot</dd>
+          <dt>Scope</dt><dd>Everything EHR maintains</dd>
+          <dt>Format</dt><dd>Vendor-defined</dd>
+          <dt>Use case</dt><dd>Archive</dd>
+          <dt>Trigger</dt><dd>Manual patient request</dd>
+        </dl>
+      </div>
+      <div class="compare-card api">
+        <h4>Patient Access API</h4>
+        <div class="citation">45 CFR 170.315(g)(10)</div>
+        <dl>
+          <dt>Cadence</dt><dd>Continuous</dd>
+          <dt>Scope</dt><dd>USCDI minimum</dd>
+          <dt>Format</dt><dd>FHIR R4 + US Core JSON</dd>
+          <dt>Use case</dt><dd>Live apps</dd>
+          <dt>Trigger</dt><dd>App OAuth flow</dd>
+        </dl>
+      </div>
+    </div>
+    <p>Sibling spec: <strong>Bulk FHIR Data Access</strong> (Flat FHIR) for population queries — used for HEDIS, ACO analytics, public health, research.</p>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">v.</span>The Technical <em>Stack</em></h2>
+    <div class="stack">
+      <div class="stack-layer"><span class="name">USCDI v3 / v4</span><span class="type">CONTENT</span></div>
+      <div class="stack-arrow">▲</div>
+      <div class="stack-layer"><span class="name">US Core IG</span><span class="type">IMPLEMENTATION GUIDE</span></div>
+      <div class="stack-arrow">▲</div>
+      <div class="stack-layer"><span class="name">FHIR R4</span><span class="type">DATA MODEL</span></div>
+      <div class="stack-arrow">▲</div>
+      <div class="stack-layer"><span class="name">SMART on FHIR</span><span class="type">AUTH FRAMEWORK</span></div>
+      <div class="stack-arrow">▲</div>
+      <div class="stack-layer"><span class="name">OAuth 2.0 + PKCE</span><span class="type">PROTOCOL</span></div>
+      <div class="stack-arrow">▲</div>
+      <div class="stack-layer"><span class="name">HTTPS / TLS</span><span class="type">TRANSPORT</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">vi.</span>Terminologies — Where <em>Interoperability Actually Happens</em></h2>
+    <p>FHIR is the envelope; terminologies make the data computable.</p>
+    <div class="tile-grid cols-4">
+      <div class="tile"><strong>LOINC</strong><span>Labs &amp; observations</span></div>
+      <div class="tile"><strong>SNOMED CT</strong><span>Clinical concepts</span></div>
+      <div class="tile"><strong>RxNorm</strong><span>Medications</span></div>
+      <div class="tile"><strong>ICD-10</strong><span>Diagnoses, procedures</span></div>
+      <div class="tile"><strong>CPT</strong><span>Procedures (billing)</span></div>
+      <div class="tile"><strong>HCPCS</strong><span>Equipment, supplies</span></div>
+      <div class="tile"><strong>NDC</strong><span>Drug products</span></div>
+      <div class="tile"><strong>UCUM</strong><span>Units of measure</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">vii.</span>Older Standards <em>Still Dominant</em></h2>
+    <div class="tile-grid cols-3">
+      <div class="tile"><strong>HL7 v2</strong><span>Hospital workhorse — ADT, lab, billing</span></div>
+      <div class="tile"><strong>CCDA</strong><span>XML docs — powers Care Everywhere</span></div>
+      <div class="tile"><strong>DIRECT</strong><span>Secure email for referrals</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">viii.</span>Implementation Guides — <em>Where Development Targets</em></h2>
+    <div class="tile-grid cols-3">
+      <div class="tile"><strong>US Core</strong><span>Required for ONC certification</span></div>
+      <div class="tile"><strong>Argonaut</strong><span>Original accelerator</span></div>
+      <div class="tile"><strong>Da Vinci</strong><span>Payer/provider FHIR</span></div>
+      <div class="tile"><strong>CARIN Blue Button</strong><span>Patient claims data</span></div>
+      <div class="tile"><strong>Gravity</strong><span>Social determinants</span></div>
+      <div class="tile"><strong>mCODE / CodeX</strong><span>Cancer data</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">ix.</span>The <em>DICOM Gap</em></h2>
+    <p>Imaging operates in a parallel universe. <strong>PACS</strong>, not EHR, stores pixel data. File sizes (0.5–3 GB per study) make patient-direct access hard. <strong>No certified patient API for DICOM</strong> under HTI-1/HTI-2.</p>
+    <ul>
+      <li>The technical standard exists: <strong>DICOMweb</strong> (WADO-RS, QIDO-RS, STOW-RS) — but no federal mandate</li>
+      <li>De facto patient access: imaging portals (<strong>PocketHealth</strong>, <strong>Ambra</strong>, <strong>LifeImage</strong>, <strong>PowerShare</strong>) or CD/USB</li>
+      <li>IHE PDI profile defines CD/USB packaging</li>
+      <li>Major PACS vendors: Sectra, Visage, GE, Philips, Fujifilm Synapse</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">x.</span>Inter-Organizational <em>Exchange</em></h2>
+    <ul>
+      <li><strong>Care Everywhere</strong> (Epic-to-Epic): dominant given Epic's market position; largely CCDA under the hood</li>
+      <li><strong>Carequality</strong>: cross-vendor framework run by Sequoia Project</li>
+      <li><strong>CommonWell Health Alliance</strong>: Cerner-led; now a TEFCA QHIN</li>
+      <li><strong>TEFCA</strong>: federal "network of networks" with designated QHINs (Epic Nexus, eHealth Exchange, Health Gorilla, CommonWell, KONZA, MedAllies, Kno2)</li>
+      <li><strong>Regional HIEs</strong>: Healthix (NYC), CRISP (MD/DC), Manifest MedEx (CA), IHIE (IN), etc.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xi.</span>The Product <em>Landscape</em></h2>
+    <p><strong>Hospital EHR market share (~2024)</strong>: Epic ~36% / Oracle Health ~25% / Meditech ~13% / CPSI ~5% / Others ~21%. Epic dominates large AMCs and IDNs (~70-80% in those segments) and represents 50%+ of US hospital admissions. <strong>This concentration shapes the entire ecosystem.</strong></p>
+
+    <p><strong>Consumer patient apps</strong>: Apple Health (iOS) · Google Health Connect (Android) · CommonHealth · Fasten OnPrem · OneRecord · PocketHealth.</p>
+
+    <p><strong>Developer platforms</strong>: 1upHealth · Particle Health · Health Gorilla · Flexpa · Redox · Datavant · Metriport.</p>
+
+    <p><strong>Ambulatory EHRs (small practice)</strong>: Athenahealth · eClinicalWorks · NextGen · Practice Fusion · Elation Health · Kareo/Tebra · DrChrono · OpenEMR.</p>
+
+    <p><strong>AI scribes</strong> (subject to HTI-1 DSI transparency): DAX Copilot · Abridge · Suki · Augmedix · DeepScribe · Epic ambient AI · Heidi · Freed.</p>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xii.</span>For <em>Third-Party Health Tech</em></h2>
+
+    <div class="audience-block devs">
+      <div class="ab-label">Building</div>
+      <h3>SMART on FHIR development</h3>
+      <ul>
+        <li>Register with each EHR developer portal (fhir.epic.com, fhir.oracle.com, etc.)</li>
+        <li>Build against sandbox first; target US Core profiles, not bare FHIR</li>
+        <li>Handle terminology resolution (LOINC, SNOMED, RxNorm)</li>
+        <li>Expect implementation variance across vendors</li>
+      </ul>
+    </div>
+
+    <div class="audience-block devs">
+      <div class="ab-label">HIPAA gap</div>
+      <h3>HIPAA stops applying for patient-authorized apps</h3>
+      <p>Governed by FTC Act Section 5, FTC Health Breach Notification Rule, state health data laws (WA, CA, NV, CT, OR), general privacy laws. Recent enforcement: GoodRx ($1.5M), BetterHelp ($7.8M), Premom, Cerebral ($7M).</p>
+    </div>
+
+    <div class="audience-block devs">
+      <div class="ab-label">Compliance certifications</div>
+      <h3>Beyond HIPAA</h3>
+      <p><strong>HITRUST CSF</strong> (healthcare de facto) · <strong>SOC 2 Type II</strong> (enterprise) · ISO 27001 · FedRAMP (federal) · GDPR readiness. HITRUST: 12-18 months, $50K-$500K.</p>
+    </div>
+
+    <div class="audience-block devs">
+      <div class="ab-label">FDA</div>
+      <h3>Software as a Medical Device</h3>
+      <p>If you interpret data clinically or give recommendations, SaMD regulations may apply. HTI-1 Predictive DSI transparency adds an AI-specific layer.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xiii.</span>For <em>Small Private Practices</em></h2>
+
+    <div class="audience-block providers">
+      <div class="ab-label">Compliance checklist</div>
+      <h3>Under HIPAA</h3>
+      <ul>
+        <li>Privacy Officer + Security Officer designated</li>
+        <li>Security Risk Analysis (164.308(a)(1))</li>
+        <li>Administrative, physical, technical safeguards</li>
+        <li>30-day access response (or shorter state)</li>
+        <li>BAAs with business associates</li>
+        <li>Workforce training</li>
+      </ul>
+    </div>
+
+    <div class="audience-block providers">
+      <div class="ab-label">Common pitfalls</div>
+      <h3>What to avoid</h3>
+      <ul>
+        <li>Excessive fees — $6.50 electronic safe harbor is safest</li>
+        <li>Requiring in-person pickup when electronic is feasible</li>
+        <li>Overly broad authorizations for self-direct access</li>
+        <li>Delays past 30 days without written extension</li>
+        <li>Refusing electronic delivery when requested</li>
+        <li>Withholding clinical notes (OpenNotes mandate)</li>
+      </ul>
+    </div>
+
+    <div class="audience-block providers">
+      <div class="ab-label">Mitigations</div>
+      <h3>Practical resources</h3>
+      <p>Choose an EHR that handles certification machinery. Engage compliance consultant. Cyber insurance. MGMA resources. Outsource records requests (ChartRequest, MRO) if volume is high.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xiv.</span>For <em>Patients</em></h2>
+
+    <div class="audience-block patients">
+      <div class="ab-label">Connect an app</div>
+      <h3>How to get continuous access</h3>
+      <ul>
+        <li><strong>iOS</strong>: Apple Health → Browse → Health Records → Add Account → search provider</li>
+        <li><strong>Android</strong>: Google Health Connect or CommonHealth</li>
+        <li><strong>Cross-platform</strong>: Fasten OnPrem (self-hosted) or OneRecord (cloud)</li>
+      </ul>
+    </div>
+
+    <div class="audience-block patients">
+      <div class="ab-label">Records language</div>
+      <h3>Template phrases</h3>
+      <p style="font-style: italic; padding: 12px 16px; background: var(--bg); border-radius: 8px;">"I am requesting access to my protected health information in the designated record set under 45 CFR 164.524."</p>
+      <p style="font-style: italic; padding: 12px 16px; background: var(--bg); border-radius: 8px;">"Pursuant to 45 CFR 164.524(c)(3), I am directing you to send a copy of these records to [recipient]."</p>
+    </div>
+
+    <div class="audience-block patients">
+      <div class="ab-label">Escalation</div>
+      <h3>If a provider stonewalls</h3>
+      <ul>
+        <li>Written follow-up referencing 30-day (or shorter state) window</li>
+        <li>OCR complaint at hhs.gov/ocr or 1-800-368-1019</li>
+        <li>ASTP/ONC info blocking complaint at healthit.gov</li>
+        <li>State Department of Health</li>
+        <li>State Attorney General</li>
+        <li>Attorney</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xv.</span>The Clinical <em>Reality</em></h2>
+    <div class="status-grid">
+      <div class="status works">
+        <div class="pill"><span class="dot"></span> Works well</div>
+        <h4>Reliable</h4>
+        <ul>
+          <li>USCDI data via Patient Access API</li>
+          <li>Apple Health / Google Health Connect</li>
+          <li>Care Everywhere Epic-to-Epic</li>
+          <li>TEFCA growth</li>
+          <li>OCR Right of Access Initiative</li>
+          <li>OpenNotes mandate</li>
+          <li>DIRECT for referrals</li>
+        </ul>
+      </div>
+      <div class="status broken">
+        <div class="pill"><span class="dot"></span> Still broken</div>
+        <h4>Incomplete</h4>
+        <ul>
+          <li>DICOM imaging — no certified API</li>
+          <li>Patient portal messages — not in API</li>
+          <li>Billing/financial — uneven</li>
+          <li>Scanned documents — only via EHI Export</li>
+          <li>Cross-provider history depth</li>
+          <li>Genomic data — uneven</li>
+          <li>Mental health — restricted</li>
+          <li>Audit logs — no patient access</li>
+          <li>AI-generated note provenance</li>
+        </ul>
+      </div>
+    </div>
+    <p style="margin-top: 20px;"><strong>Implementation quality varies.</strong> Certification provides a floor, not a quality guarantee. Some vendor FHIR endpoints are fast and complete; others are slow or partial. Production differs from sandbox. Write defensive code.</p>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xvi.</span>Enforcement <em>Landscape</em></h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Regime</th><th>Enforcer</th><th>Mechanism</th></tr></thead>
+        <tbody>
+          <tr><td>HIPAA</td><td>HHS OCR</td><td>Complaints; CMPs up to $1.5M/yr</td></tr>
+          <tr><td>Info Blocking — devs/HIEs</td><td>HHS OIG</td><td>CMPs up to $1M/violation</td></tr>
+          <tr><td>Info Blocking — providers</td><td>CMS</td><td>Medicare disincentives</td></tr>
+          <tr><td>CMS Patient Access</td><td>CMS</td><td>Contract terms</td></tr>
+          <tr><td>Non-HIPAA health apps</td><td>FTC</td><td>Unfair/deceptive practices</td></tr>
+          <tr><td>State medical records</td><td>State DOH</td><td>State-specific</td></tr>
+          <tr><td>State consumer health data</td><td>State AG</td><td>State-specific</td></tr>
+          <tr><td>42 CFR Part 2</td><td>SAMHSA</td><td>Federal enforcement</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xvii.</span>Quick <em>Citations</em></h2>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td>HIPAA right of access</td><td><code>45 CFR 164.524</code></td></tr>
+          <tr><td>HIPAA Security Rule</td><td><code>45 CFR Part 164 Subpart C</code></td></tr>
+          <tr><td>Personal representative</td><td><code>45 CFR 164.502(g)</code></td></tr>
+          <tr><td>Patient-directed transfer</td><td><code>45 CFR 164.524(c)(3)</code></td></tr>
+          <tr><td>Fee limits</td><td><code>45 CFR 164.524(c)(4)</code></td></tr>
+          <tr><td>Security Risk Analysis</td><td><code>45 CFR 164.308(a)(1)</code></td></tr>
+          <tr><td>EHI definition</td><td><code>45 CFR 171.102</code></td></tr>
+          <tr><td>Information blocking</td><td><code>45 CFR Part 171</code></td></tr>
+          <tr><td>Patient Access API</td><td><code>45 CFR 170.315(g)(10)</code></td></tr>
+          <tr><td>EHI Export</td><td><code>45 CFR 170.315(b)(10)</code></td></tr>
+          <tr><td>Predictive DSI transparency</td><td><code>45 CFR 170.315(b)(11)</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section"><span class="num">xviii.</span>Standards <em>Bodies</em></h2>
+    <p><strong>Federal</strong>: ASTP/ONC (certification) · OCR (HIPAA) · CMS (payer rules) · OIG (info blocking) · FDA (SaMD) · FTC (non-HIPAA apps) · SAMHSA (42 CFR Part 2).</p>
+    <p><strong>Standards orgs</strong>: HL7 (FHIR, CCDA) · NEMA/MITA (DICOM) · IHE (profiles) · SMART Health IT · DirectTrust · Regenstrief (LOINC) · SNOMED International · NCQA (HEDIS).</p>
+    <p><strong>Networks</strong>: Sequoia Project (TEFCA RCE) · Epic Nexus · eHealth Exchange · Health Gorilla · CommonWell · KONZA · MedAllies · Kno2 — all QHINs.</p>
+    <p><strong>Implementation consortia</strong>: Argonaut Project · Da Vinci Project · CARIN Alliance · Gravity Project.</p>
+  </section>
+
+  <footer>
+    Not legal advice. For full detail: <code>health_data_access_summary.md</code> · <code>health_data_access_summary.html</code>
+  </footer>
+
+</div>
+</body>
+</html>
