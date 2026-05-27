@@ -422,6 +422,136 @@ test.describe('Test Suite 15: Library View - Test Mode Studies Table', () => {
         expect(descNames).toEqual(['Mason, Zed', 'Brown, Bob', 'Adams, Amy', '-']);
     });
 
+    test('Numeric columns sort by value (not lexically) and text columns sort alphabetically', async ({ page }) => {
+        await page.route('**/api/test-data/studies', async (route) => {
+            const response = await route.fetch();
+            const originalStudies = await response.json();
+            expect(Array.isArray(originalStudies)).toBe(true);
+            expect(originalStudies.length).toBeGreaterThan(0);
+
+            // Keep one real study (real series/pixels) first so the test-mode
+            // viewer can auto-load on entry; a fully-synthetic set would stall
+            // waitForViewerReady. Only its display fields are overridden.
+            const baseStudy = originalStudies[0];
+            const fallbackSeries = [
+                {
+                    seriesInstanceUid: 'numsort-seed-series',
+                    seriesDescription: 'Synthetic',
+                    modality: 'CT',
+                    sliceCount: 1,
+                },
+            ];
+            const baseSeries =
+                Array.isArray(baseStudy.series) && baseStudy.series.length > 0 ? baseStudy.series : fallbackSeries;
+            const mkSeries = (uid) => [
+                { seriesInstanceUid: uid, seriesDescription: 'Synthetic', modality: 'CT', sliceCount: 1 },
+            ];
+
+            // imageCount values 2/9/10/100 and seriesCount 12-vs-3 expose
+            // lexical-vs-numeric ordering: a string sort would rank "10"/"100"
+            // ahead of "2"/"9", and "12" ahead of "3".
+            const customStudies = [
+                {
+                    ...baseStudy,
+                    studyInstanceUid: baseStudy.studyInstanceUid,
+                    patientName: 'Casey Base',
+                    studyDate: '20241231',
+                    studyDescription: 'Coconut',
+                    modality: 'NM',
+                    seriesCount: 20,
+                    imageCount: 512,
+                    series: baseSeries,
+                },
+                {
+                    studyInstanceUid: 'numsort-uid-1',
+                    patientName: 'Pat One',
+                    studyDate: '20240101',
+                    studyDescription: 'Zebra',
+                    modality: 'MR',
+                    seriesCount: 3,
+                    imageCount: 9,
+                    series: mkSeries('numsort-series-1'),
+                },
+                {
+                    studyInstanceUid: 'numsort-uid-2',
+                    patientName: 'Pat Two',
+                    studyDate: '20240102',
+                    studyDescription: 'Apple',
+                    modality: 'CT',
+                    seriesCount: 1,
+                    imageCount: 10,
+                    series: mkSeries('numsort-series-2'),
+                },
+                {
+                    studyInstanceUid: 'numsort-uid-3',
+                    patientName: 'Pat Three',
+                    studyDate: '20240103',
+                    studyDescription: 'Mango',
+                    modality: 'US',
+                    seriesCount: 2,
+                    imageCount: 100,
+                    series: mkSeries('numsort-series-3'),
+                },
+                {
+                    studyInstanceUid: 'numsort-uid-4',
+                    patientName: 'Pat Four',
+                    studyDate: '20240104',
+                    studyDescription: 'Banana',
+                    modality: 'XA',
+                    seriesCount: 12,
+                    imageCount: 2,
+                    series: mkSeries('numsort-series-4'),
+                },
+            ];
+
+            await route.fulfill({ response, json: customStudies });
+        });
+
+        await page.goto(TEST_URL);
+        await waitForViewerReady(page);
+        await page.click(BACK_BUTTON_SELECTOR);
+        await expect(page.locator(STUDIES_TABLE_SELECTOR)).toBeVisible();
+
+        // All eight data columns are sortable (the expand column is not).
+        await expect(page.locator('#studiesTable th.sortable')).toHaveCount(8);
+
+        const getColumnTexts = async (columnIndex) => {
+            const cells = page.locator(`${STUDIES_BODY_SELECTOR} .study-row td:nth-child(${columnIndex})`);
+            const values = await cells.allInnerTexts();
+            return values.map((v) => v.trim());
+        };
+
+        // Column order: 4=Description, 5=Modality, 6=Series, 7=Images.
+        const imagesHeader = page.locator('#studiesTable th.sortable[data-sort="images"]');
+        const seriesHeader = page.locator('#studiesTable th.sortable[data-sort="series"]');
+        const descriptionHeader = page.locator('#studiesTable th.sortable[data-sort="description"]');
+        const modalityHeader = page.locator('#studiesTable th.sortable[data-sort="modality"]');
+
+        // Count columns default to descending (most-first) on first click.
+        await imagesHeader.click();
+        await expect(imagesHeader).toHaveAttribute('aria-sort', 'descending');
+        expect(await getColumnTexts(7)).toEqual(['512', '100', '10', '9', '2']);
+
+        // Toggling stays numeric: "10"/"100" must not precede "2"/"9".
+        await imagesHeader.click();
+        await expect(imagesHeader).toHaveAttribute('aria-sort', 'ascending');
+        expect(await getColumnTexts(7)).toEqual(['2', '9', '10', '100', '512']);
+
+        // Series: 12 outranks 3 (a lexical sort would rank "3" above "12").
+        await seriesHeader.click();
+        await expect(seriesHeader).toHaveAttribute('aria-sort', 'descending');
+        expect(await getColumnTexts(6)).toEqual(['20', '12', '3', '2', '1']);
+
+        // Text columns default to ascending (A-Z).
+        await descriptionHeader.click();
+        await expect(descriptionHeader).toHaveAttribute('aria-sort', 'ascending');
+        expect(await getColumnTexts(4)).toEqual(['Apple', 'Banana', 'Coconut', 'Mango', 'Zebra']);
+
+        await modalityHeader.click();
+        await expect(modalityHeader).toHaveAttribute('aria-sort', 'ascending');
+        expect(await getColumnTexts(5)).toEqual(['CT', 'MR', 'NM', 'US', 'XA']);
+    });
+
     test('Studies table has at least one study row', async ({ page }) => {
         await setupLibraryFromTestMode(page);
 

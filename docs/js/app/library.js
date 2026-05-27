@@ -408,6 +408,36 @@
         }
     }
 
+    // Columns whose values are counts; these must be compared numerically, not
+    // lexically (otherwise "10" would sort before "9").
+    const NUMERIC_SORT_COLUMNS = new Set(['series', 'images', 'comments', 'reports']);
+
+    // Extract the comparable value for a given sort column from a study. Text
+    // columns return a normalized (trimmed, lowercased) string; count columns
+    // return a number that defaults to 0 when the underlying data is missing.
+    function studySortValue(study, column) {
+        switch (column) {
+            case 'name':
+                return (study.patientName || '').trim().toLocaleLowerCase();
+            case 'date':
+                return (study.studyDate || '').replace(/\D/g, '');
+            case 'description':
+                return (study.studyDescription || '').trim().toLocaleLowerCase();
+            case 'modality':
+                return (study.modality || '').trim().toLocaleLowerCase();
+            case 'series':
+                return study.seriesCount || 0;
+            case 'images':
+                return study.imageCount || 0;
+            case 'comments':
+                return Array.isArray(study.comments) ? study.comments.length : 0;
+            case 'reports':
+                return Array.isArray(study.reports) ? study.reports.length : 0;
+            default:
+                return '';
+        }
+    }
+
     async function displayStudies() {
         const notesUi = app.notesUi;
         const commentsUi = app.commentsUi;
@@ -444,30 +474,28 @@
 
         const studies = Object.values(state.studies);
         const { column, direction } = state.studySort;
+        const directionFactor = direction === 'asc' ? 1 : -1;
         studies.sort((a, b) => {
-            let aVal;
-            let bVal;
+            // Stable tiebreak keeps equal rows in a deterministic order.
+            const tiebreak = (a.studyInstanceUid || '').localeCompare(b.studyInstanceUid || '');
 
-            if (column === 'name') {
-                aVal = (a.patientName || '').trim().toLocaleLowerCase();
-                bVal = (b.patientName || '').trim().toLocaleLowerCase();
-            } else {
-                aVal = (a.studyDate || '').replace(/\D/g, '');
-                bVal = (b.studyDate || '').replace(/\D/g, '');
+            if (NUMERIC_SORT_COLUMNS.has(column)) {
+                // Counts are always defined (default 0), so 0 is a real value
+                // rather than "missing" -- no blank handling needed.
+                const cmp = studySortValue(a, column) - studySortValue(b, column);
+                return cmp !== 0 ? cmp * directionFactor : tiebreak;
             }
 
-            if (!aVal && !bVal) {
-                return (a.studyInstanceUid || '').localeCompare(b.studyInstanceUid || '');
-            }
+            // Text and date columns: empty values always sink to the bottom,
+            // independent of the sort direction.
+            const aVal = studySortValue(a, column);
+            const bVal = studySortValue(b, column);
+            if (!aVal && !bVal) return tiebreak;
             if (!aVal) return 1;
             if (!bVal) return -1;
 
             const cmp = aVal.localeCompare(bVal);
-            if (cmp !== 0) {
-                return direction === 'asc' ? cmp : -cmp;
-            }
-
-            return (a.studyInstanceUid || '').localeCompare(b.studyInstanceUid || '');
+            return cmp !== 0 ? cmp * directionFactor : tiebreak;
         });
 
         if (!studies.length) {
@@ -940,7 +968,9 @@
             state.studySort.direction = state.studySort.direction === 'asc' ? 'desc' : 'asc';
         } else {
             state.studySort.column = column;
-            state.studySort.direction = column === 'date' ? 'desc' : 'asc';
+            // Counts and dates read best newest/most-first; text reads best A-Z.
+            const defaultsToDescending = column === 'date' || NUMERIC_SORT_COLUMNS.has(column);
+            state.studySort.direction = defaultsToDescending ? 'desc' : 'asc';
         }
 
         displayStudies();
