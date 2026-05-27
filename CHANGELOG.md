@@ -8,6 +8,9 @@ Copyright 2026 Divergent Health Technologies
 
 ## [Unreleased]
 
+### Changed
+- Library study tables can now sort Description, Modality, Series, Images, Comments, and Reports in addition to Patient Name and Study Date.
+
 ## [1.0.0] - 2026-05-17
 
 ### Added
